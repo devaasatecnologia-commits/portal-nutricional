@@ -889,7 +889,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                 :cliente_id,
                 :cliente_nome,
                 :tipo_problema,
-                :itens_afetados::jsonb,
+                CAST(:itens_afetados AS jsonb),
                 :motivo,
                 :observacoes,
                 :valor_total,
