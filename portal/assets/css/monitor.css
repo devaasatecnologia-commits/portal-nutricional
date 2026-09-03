@@ -1,0 +1,49 @@
+/* ==========================================================================
+   MONITOR CSS - TV 55" - Herda module-base.css
+   ========================================================================== */
+
+.monitor-container { display: flex; flex-direction: column; height: calc(100vh - 120px); width: 100% !important; margin: 0; padding: 0; background: var(--cor-fundo); overflow: hidden; position: relative; left: 0; right: 0; }
+
+.top-nav { height: 70px !important; min-height: 70px !important; max-height: 70px !important; background: var(--cor-primaria) !important; border-bottom: 5px solid var(--cor-secundaria) !important; display: flex !important; align-items: center !important; justify-content: space-between !important; padding: 0 30px !important; flex: 0 0 auto !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; z-index: 1000 !important; width: 100%; }
+
+.clock { font-family: 'Chivo Mono', monospace; font-size: 2rem; color: var(--cor-secundaria); font-weight: bold; }
+
+.monitor-scroll-area { flex: 1 1 auto !important; overflow-y: auto !important; overflow-x: hidden !important; padding: 15px 15px !important; min-height: 0; width: 100%; }
+
+#monitor-grid { display: grid !important; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)) !important; gap: 20px !important; width: 100% !important; max-width: 100% !important; }
+
+.footer-conquistas { height: auto !important; min-height: auto !important; background: white !important; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 15px !important; padding: 5px 5px !important; flex: 0 0 auto !important; box-shadow: 0 -8px 18px rgba(0,0,0,0.32) !important; z-index: 100 !important; width: 100%; }
+.conquista-box { background: #f1f5f9; border-radius: 12px; border-left: 8px solid var(--cor-secundaria); display: flex; flex-direction: column; justify-content: center; padding: 2px; overflow: hidden; }
+.conquista-header { display: flex; align-items: center; margin-bottom: 5px; flex-shrink: 0; }
+.conquista-lista { display: flex; flex-wrap: wrap; gap: 11px; overflow-y: auto; max-height: 100%; }
+
+.card-emb { background: var(--cor-branco) !important; border: 1px solid var(--cor-borda) !important; border-radius: 20px !important; padding: 18px !important; position: relative !important; box-shadow: 0 8px 12px -3px rgba(0,0,0,0.05) !important; width: 100% !important; }
+.active-card { border: 2px solid var(--cor-secundaria) !important; border-left: 10px solid var(--cor-secundaria) !important; }
+.done-sep { border-left: 10px solid var(--cor-secundaria) !important; background: #fffdf5 !important; }
+.done-car { border-left: 10px solid var(--cor-sucesso) !important; background: #f0fdf4 !important; }
+.route-title { font-size: 1.4rem; font-weight: 800; color: var(--cor-primaria); margin-bottom: 4px; }
+.sub-details { font-size: 0.85rem; color: #64748b; margin-bottom: 15px; border-bottom: 1px solid var(--cor-borda); padding-bottom: 10px; }
+.prog-label { font-size: 0.75rem; font-weight: 800; display: flex; justify-content: space-between; margin-bottom: 5px; color: var(--cor-primaria); }
+.progress { height: 24px; background: #f1f5f9; border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--cor-borda); overflow: hidden; }
+.bar-sep { background: var(--cor-secundaria); color: #000; font-weight: 900; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+.bar-car { background: var(--cor-sucesso); color: #fff; font-weight: 900; height: 100%; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+.item-box { display: flex; align-items: center; background: #f8fafc; border-radius: 12px; padding: 10px; min-height: 70px; border: 1px solid var(--cor-borda); margin-bottom: 8px; }
+.item-box img { width: 50px; height: 50px; object-fit: contain; background: white; border-radius: 8px; margin-right: 12px; }
+.badge-qtd { background: var(--cor-primaria); color: var(--cor-secundaria); padding: 2px 6px; border-radius: 5px; font-weight: 800; font-size: 0.7rem; }
+.st-badge { position: absolute; top: 15px; right: 18px; background: var(--cor-primaria); color: var(--cor-secundaria); font-weight: 900; padding: 5px 12px; border-radius: 8px; font-size: 0.8rem; }
+
+.monitor-scroll-area::-webkit-scrollbar { width: 12px !important; }
+.monitor-scroll-area::-webkit-scrollbar-track { background: #e2e8f0 !important; }
+.monitor-scroll-area::-webkit-scrollbar-thumb { background: #94a3b8 !important; border-radius: 8px !important; border: 2px solid #e2e8f0 !important; }
+
+#pet-truck-stage { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(55,90,75,0.46); backdrop-filter: blur(15px); z-index: 9999; display: none; flex-direction: column; align-items: center; justify-content: center; }
+.info-overlay { text-align: center; position: absolute; top: 7%; color: var(--cor-primaria); z-index: 10001; font-family: 'Plus Jakarta Sans', sans-serif; animation: fadeInUp 0.8s ease-out; }
+.status-badge { background: var(--cor-secundaria); color: var(--cor-primaria); padding: 6px 20px; border-radius: 50px; font-weight: 900; letter-spacing: 2px; display: inline-block; margin-bottom: 10px; }
+.embarque-id { font-size: 4rem; font-weight: 900; line-height: 1; }
+.detalhes-viagem { font-size: 1.5rem; display: flex; gap: 25px; justify-content: center; margin-top: 10px; }
+#video-caminhao { width: 100%; max-width: 100%; height: auto; z-index: 10000; mix-blend-mode: screen; }
+
+@keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (min-width: 1600px) { #monitor-grid { grid-template-columns: repeat(4, 1fr) !important; } }
+@media (min-width: 2000px) { #monitor-grid { grid-template-columns: repeat(5, 1fr) !important; } }

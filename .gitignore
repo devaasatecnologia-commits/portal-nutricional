@@ -1,0 +1,18 @@
+# Arquivos ignorados pelo Git
+
+vendor/
+.env
+*.log
+.DS_Store
+Thumbs.db
+*.sqlite
+/node_modules/
+/.vscode/
+.idea/
+cache/
+logs/
+tmp/
+uploads/
+*.cache
+*.tmp
+/.git/

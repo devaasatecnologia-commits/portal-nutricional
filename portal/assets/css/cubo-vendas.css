@@ -1,0 +1,51 @@
+/* ==========================================================================
+   CUBO VENDAS CSS - Mesmo padrão do Financeiro
+   ========================================================================== */
+
+.modulo-container {
+    min-height: 100vh;
+    width: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: #f8fafc;
+}
+
+/* Cards */
+.bg-white {
+    transition: all 0.2s ease;
+}
+
+.bg-white:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+}
+
+/* Tabela */
+tbody tr {
+    transition: background 0.2s ease;
+}
+
+tbody tr:hover {
+    background: #f8fafc !important;
+}
+
+/* Modal overlay */
+[x-cloak] {
+    display: none !important;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .grid-cols-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    #graficoEvolucao {
+        height: 200px !important;
+    }
+}
+
+@media (max-width: 640px) {
+    input, select, button {
+        font-size: 16px !important;
+    }
+}

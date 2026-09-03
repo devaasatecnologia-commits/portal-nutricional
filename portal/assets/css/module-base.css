@@ -1,0 +1,238 @@
+/* ==========================================================================
+   MODULE BASE CSS - NUTRICIONAL PORTAL
+   Paleta: #375a4b + #f7be2f | Header Mobile | Relógio | Responsivo
+   ========================================================================== */
+
+:root {
+    --cor-primaria: #375a4b;
+    --cor-secundaria: #f7be2f;
+    --cor-texto: #333333;
+    --cor-fundo: #f8f8f8;
+    --cor-branco: #ffffff;
+    --cor-sucesso: #10b981;
+    --cor-atencao: #f59e0b;
+    --cor-erro: #ef4444;
+    --cor-info: #3b82f6;
+    --cor-borda: #e2e8f0;
+    --transition-premium: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ==========================================================================
+   HEADER MOBILE FIXO
+   ========================================================================== */
+.mobile-toolbar {
+    background: var(--cor-primaria) !important;
+    color: var(--cor-branco) !important;
+    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.3);
+    border-bottom: 3px solid var(--cor-secundaria);
+}
+
+.mobile-toolbar a {
+    color: var(--cor-branco) !important;
+    text-decoration: none;
+    -webkit-tap-highlight-color: transparent;
+    transition: var(--transition-premium);
+}
+
+.mobile-toolbar a:hover { color: var(--cor-secundaria) !important; }
+.mobile-toolbar a:active { transform: scale(0.95); }
+.mobile-toolbar .modulo-nome { color: var(--cor-secundaria) !important; font-weight: 700; }
+.mobile-toolbar .clock { font-family: 'Chivo Mono', monospace; font-weight: 700; color: var(--cor-branco) !important; }
+
+/* ==========================================================================
+   HEADER DESKTOP
+   ========================================================================== */
+.glass .btn-voltar { color: var(--cor-primaria); background: var(--cor-fundo); transition: var(--transition-premium); }
+.glass .btn-voltar:hover { background: var(--cor-primaria); color: var(--cor-branco); }
+.glass .clock { font-family: 'Chivo Mono', monospace; color: var(--cor-primaria); font-weight: 800; }
+.glass .data-topo { color: #94a3b8; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+/* ==========================================================================
+   RELÓGIO
+   ========================================================================== */
+.clock { font-family: 'Chivo Mono', 'Courier New', monospace; font-weight: 700; letter-spacing: 1px; }
+
+/* ==========================================================================
+   CONTAINER
+   ========================================================================== */
+.modulo-container { min-height: 100vh; width: 100%; overflow-x: hidden; overflow-y: auto; background: var(--cor-fundo); }
+
+/* ==========================================================================
+   BADGES
+   ========================================================================== */
+.badge { display: inline-block; padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 700; }
+.badge-success { background: var(--cor-sucesso); color: white; }
+.badge-warning { background: var(--cor-atencao); color: var(--cor-texto); }
+.badge-danger { background: var(--cor-erro); color: white; }
+.badge-info { background: var(--cor-info); color: white; }
+.badge-primario { background: var(--cor-primaria); color: white; }
+.bg-primary { background: var(--cor-primaria); color: white; }
+.bg-success { background: var(--cor-sucesso); color: white; }
+.bg-warning { background: var(--cor-atencao); color: #1e293b; }
+.bg-info { background: #0ea5e9; color: white; }
+.bg-secondary { background: #64748b; color: white; }
+
+/* ==========================================================================
+   TABS
+   ========================================================================== */
+.tab-btn.active { color: var(--cor-primaria); border-bottom-color: var(--cor-secundaria); background: white; }
+.tab-btn:not(.active) { color: #64748b; }
+.tab-btn:not(.active):hover { background: #f8fafc; color: #1e293b; }
+
+/* ==========================================================================
+   TABELAS
+   ========================================================================== */
+.audit-table tbody tr:hover, .ranking-table tbody tr:hover { background: #f8fafc; }
+
+/* ==========================================================================
+   FALLBACKS TAILWIND
+   ========================================================================== */
+@media (min-width: 640px) {
+    a[href="/portal/"].hidden.sm\:flex, .glass a[href="/portal/"].hidden.sm\:flex { display: flex !important; }
+    .text-right.hidden.sm\:block { display: block !important; }
+    span.hidden.sm\:inline { display: inline !important; }
+}
+@media (max-width: 1023px) {
+    .mobile-toolbar.block.lg\:hidden { display: flex !important; }
+    .mobile-spacer.block.lg\:hidden { display: block !important; }
+}
+@media (min-width: 1024px) {
+    .mobile-toolbar.block.lg\:hidden { display: none !important; }
+    .mobile-spacer.block.lg\:hidden { display: none !important; }
+}
+
+/* ==========================================================================
+   UTILITÁRIOS
+   ========================================================================== */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+.hidden { display: none !important; }
+.mini-badge { background: white; border: 1px solid #e2e8f0; padding: 4px 10px; border-radius: 6px; font-size: 0.7rem; font-weight: 700; color: #1e293b; white-space: nowrap; }
+
+/* ==========================================================================
+   RESPONSIVO MOBILE
+   ========================================================================== */
+@media (max-width: 640px) {
+    input[type="text"], input[type="search"], input[type="date"], select { font-size: 16px !important; }
+    button, .tab-btn, .timeline-filter-btn { min-height: 44px; }
+    .audit-table th, .audit-table td { padding: 8px 10px; font-size: 11px; }
+    .ranking-table th, .ranking-table td { padding: 8px 10px; font-size: 11px; }
+}
+
+/* ==========================================================================
+   SCROLLBAR
+   ========================================================================== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--cor-fundo); }
+::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--cor-primaria); }
+
+/* ==========================================================================
+   CORREÇÕES MÓDULOS - MOBILE
+   ========================================================================== */
+@media (max-width: 640px) {
+    .modulo-container,
+    .auditoria-container,
+    .financeiro-container {
+        padding: 8px !important;
+    }
+    
+    /* Cards de resumo - 2 colunas em vez de 1 */
+    .grid.grid-cols-2 {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 6px !important;
+    }
+    
+    /* Cards full width */
+    .col-span-2 {
+        grid-column: span 2 !important;
+    }
+    
+    /* Inputs e selects */
+    input, select {
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+    
+    /* Filtros empilhados */
+    .flex-wrap.items-end.gap-3 {
+        flex-direction: column !important;
+    }
+    
+    .flex-wrap.items-end.gap-3 > div {
+        width: 100% !important;
+    }
+    
+    .flex-wrap.items-end.gap-3 button {
+        width: 100% !important;
+    }
+    
+    /* Ajustar modais */
+    #modalTimeline .max-w-5xl,
+    #modalFoto .max-w-4xl,
+    #modalEditarUsuario .max-w-2xl {
+        width: 100% !important;
+        max-width: 100% !important;
+        border-radius: 12px !important;
+        margin: 0 8px !important;
+    }
+}
+/* ==========================================================================
+   TABELAS RESPONSIVAS - MODO CARD (Mobile)
+   ========================================================================== */
+@media (max-width: 640px) {
+    /* Esconder thead no mobile */
+    .table-to-cards thead {
+        display: none !important;
+    }
+    
+    /* Cada linha vira um card */
+    .table-to-cards tbody tr {
+        display: block !important;
+        margin-bottom: 10px !important;
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 12px !important;
+        padding: 12px !important;
+        background: white !important;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+    }
+    
+    /* Cada célula vira uma linha do card */
+    .table-to-cards tbody td {
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        padding: 8px 0 !important;
+        border-bottom: 1px solid #f1f5f9 !important;
+        font-size: 12px !important;
+        text-align: right !important;
+    }
+    
+    .table-to-cards tbody td:last-child {
+        border-bottom: none !important;
+    }
+    
+    /* Label do data-label */
+    .table-to-cards tbody td::before {
+        content: attr(data-label) !important;
+        font-weight: 700 !important;
+        color: #64748b !important;
+        font-size: 10px !important;
+        text-transform: uppercase !important;
+        margin-right: 8px !important;
+        flex-shrink: 0 !important;
+        text-align: left !important;
+    }
+    
+    /* Ajustes para badges e botões dentro dos cards */
+    .table-to-cards tbody td .badge {
+        font-size: 11px !important;
+    }
+    
+    .table-to-cards tbody td button {
+        padding: 6px 10px !important;
+        font-size: 12px !important;
+    }
+}

@@ -1,0 +1,471 @@
+/* ==========================================================================
+   CONFERÊNCIA XML CSS - CORRIGIDO (Sem travamento)
+   ========================================================================== */
+
+* { box-sizing: border-box; outline: none; }
+
+body {
+    margin: 0;
+    background: #f1f5f9;
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    color: #1e293b;
+    overflow-x: visible !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    min-height: 100vh;
+}
+
+.modulo-container {
+    min-height: 100vh;
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: visible !important;
+}
+
+.dashboard {
+    display: flex;
+    flex-direction: row;
+    gap: 24px;
+    width: 100%;
+    min-height: calc(100vh - 120px);
+}
+
+/* ==========================================================================
+   SIDEBAR
+   ========================================================================== */
+.sidebar {
+    background: white;
+    padding: 24px;
+    border-radius: 24px;
+    border: 1px solid #e2e8f0;
+    width: 380px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 80px;
+    height: fit-content;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+/* Scrollbar da sidebar */
+.sidebar::-webkit-scrollbar {
+    width: 5px;
+}
+.sidebar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+.sidebar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #f8fafc;
+    margin-bottom: 10px;
+}
+
+.brand i {
+    font-size: 2rem;
+    color: #274036;
+}
+
+.brand .logo-text strong {
+    display: block;
+    color: #274036;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.brand .logo-text small {
+    color: #94a3b8;
+    font-size: 0.65rem;
+    text-transform: uppercase;
+    font-weight: 700;
+}
+
+/* ==========================================================================
+   FORMULÁRIOS
+   ========================================================================== */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.form-group label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+select {
+    width: 100%;
+    padding: 12px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 12px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background-color: #fff;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+select:focus {
+    border-color: #274036;
+    box-shadow: 0 0 0 3px rgba(55,90,75,0.1);
+    outline: none;
+}
+
+/* ==========================================================================
+   CONTEÚDO PRINCIPAL
+   ========================================================================== */
+.main-content {
+    flex: 1;
+    padding: 24px;
+    background: #f8fafc;
+    border-radius: 24px;
+    border: 1px solid #e2e8f0;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+/* ==========================================================================
+   CARDS DE NOTAS
+   ========================================================================== */
+.card-nota-mini {
+    padding: 14px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.3s;
+    background: #fff;
+    margin-bottom: 10px;
+}
+
+.card-nota-mini:hover {
+    border-color: #f7be2f;
+    transform: translateX(4px);
+}
+
+.card-nota-mini.active {
+    border-color: #274036;
+    background: #f0f4f2;
+    border-width: 2px;
+}
+
+/* ==========================================================================
+   UPLOAD
+   ========================================================================== */
+.upload-area {
+    margin-top: 16px;
+    padding: 20px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 16px;
+    text-align: center;
+    cursor: pointer;
+    background: #f8fafc;
+    transition: 0.3s;
+}
+
+.upload-area:hover {
+    border-color: #f7be2f;
+    background: #fff;
+}
+
+/* ==========================================================================
+   ALERTA DE AUDITORIA
+   ========================================================================== */
+.audit-warning {
+    display: none;
+    background: #fef2f2;
+    border: 2px solid #fee2e2;
+    color: #991b1b;
+    padding: 16px;
+    border-radius: 16px;
+    margin-bottom: 20px;
+    align-items: center;
+    gap: 15px;
+    font-weight: 700;
+}
+
+/* ==========================================================================
+   HEADER CONFERÊNCIA
+   ========================================================================== */
+.header-conferencia {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+    background: #fff;
+    padding: 20px;
+    border-radius: 20px;
+    border: 1px solid #e2e8f0;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.chave-container {
+    margin-top: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: #f1f5f9;
+    padding: 8px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    border: 1px solid #e2e8f0;
+}
+
+.chave-container:hover {
+    background: #e2e8f0;
+}
+
+/* ==========================================================================
+   RESUMO VALORES
+   ========================================================================== */
+.resumo-valores {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+
+.valor-box {
+    padding: 12px 20px;
+    border-radius: 16px;
+    text-align: right;
+    min-width: 160px;
+}
+
+.valor-box.oc {
+    background: #e2e8f0;
+}
+
+.valor-box.xml {
+    background: #fef3c7;
+}
+
+.valor-box strong {
+    font-size: 1.3rem;
+    color: #274036;
+    font-weight: 800;
+    display: block;
+}
+
+/* ==========================================================================
+   GRID DE ITENS
+   ========================================================================== */
+.grid-header {
+    display: grid;
+    grid-template-columns: 2.5fr 0.8fr 1.2fr 1.5fr 0.7fr 1fr;
+    gap: 12px;
+    padding: 10px 16px;
+    background: #f8fafc;
+    font-weight: bold;
+    color: #64748b;
+    font-size: 11px;
+    text-transform: uppercase;
+    border-bottom: 2px solid #e2e8f0;
+    border-radius: 12px;
+    margin-bottom: 12px;
+}
+
+/* Cards de itens */
+.item-card {
+    background: white;
+    padding: 16px 20px;
+    border-radius: 16px;
+    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: 2.5fr 0.8fr 1.2fr 1.5fr 0.7fr 1fr;
+    gap: 12px;
+    align-items: center;
+    border: 1px solid #e2e8f0;
+    border-left: 6px solid #cbd5e1;
+    transition: all 0.2s;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+
+.item-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+
+.item-card.divergente {
+    border-left-color: #ef4444;
+    background: #fef2f2;
+}
+
+.item-card.ok {
+    border-left-color: #10b981;
+}
+
+/* Valores em destaque */
+.valor-xml-destaque {
+    color: #4338ca;
+    font-weight: 800;
+}
+
+/* Input de quantidade */
+.qtd-input {
+    width: 80px;
+    padding: 10px;
+    border-radius: 10px;
+    border: 2px solid #274036;
+    text-align: center;
+    font-weight: 800;
+    font-size: 1rem;
+    color: #274036;
+}
+
+/* ==========================================================================
+   BOTÕES
+   ========================================================================== */
+.actions-bar {
+    position: sticky;
+    bottom: 0;
+    background: rgba(248, 250, 252, 0.95);
+    padding: 20px 0;
+    display: flex;
+    gap: 16px;
+    backdrop-filter: blur(10px);
+    margin-top: 24px;
+    border-top: 1px solid #e2e8f0;
+}
+
+.btn {
+    padding: 14px 24px;
+    border-radius: 14px;
+    font-weight: 800;
+    cursor: pointer;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: all 0.2s;
+    font-size: 0.9rem;
+}
+
+.btn-main {
+    background: #274036;
+    color: white;
+    flex: 2;
+    justify-content: center;
+}
+
+.btn-main:hover {
+    background: #3d5a4b;
+    transform: translateY(-1px);
+}
+
+.btn-cancel {
+    background: white;
+    color: #ef4444;
+    border: 2px solid #ef4444;
+    flex: 1;
+    justify-content: center;
+}
+
+.btn-cancel:hover {
+    background: #fef2f2;
+}
+
+/* ==========================================================================
+   RESPONSIVO
+   ========================================================================== */
+@media (max-width: 1200px) {
+    .dashboard {
+        flex-direction: column;
+    }
+    
+    .sidebar {
+        width: 100%;
+        position: static;
+        max-height: none;
+    }
+    
+    .grid-header, .item-card {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    
+    .grid-header {
+        display: none;
+    }
+    
+    .item-card > div:first-child {
+        grid-column: 1 / -1;
+    }
+    
+    .valor-box {
+        min-width: 120px;
+        padding: 8px 16px;
+    }
+    
+    .valor-box strong {
+        font-size: 1.1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .sidebar {
+        padding: 16px;
+    }
+    
+    .main-content {
+        padding: 16px;
+    }
+    
+    .header-conferencia {
+        flex-direction: column;
+    }
+    
+    .resumo-valores {
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .valor-box {
+        flex: 1;
+        text-align: center;
+    }
+    
+    .actions-bar {
+        flex-direction: column;
+    }
+    
+    .btn {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* ==========================================================================
+   IMPRESSÃO
+   ========================================================================== */
+@media print {
+    .no-print {
+        display: none !important;
+    }
+    
+    .sidebar, .actions-bar, .mobile-toolbar, .mobile-spacer {
+        display: none !important;
+    }
+    
+    .main-content {
+        padding: 0;
+        margin: 0;
+    }
+    
+    .item-card {
+        break-inside: avoid;
+        page-break-inside: avoid;
+    }
+}

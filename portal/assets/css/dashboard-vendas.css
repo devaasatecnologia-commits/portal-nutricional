@@ -1,0 +1,113 @@
+/* ==========================================================================
+   DASHBOARD VENDAS CSS
+   ========================================================================== */
+
+/* Garantir que os canvas tenham dimensões */
+#chartEvolucao, #chartRegiao, #chartProdutoEvolucao {
+    display: block !important;
+    min-height: 280px;
+    max-height: 350px;
+}
+
+#chartEvolucao {
+    height: 320px !important;
+}
+
+#chartRegiao {
+    height: 280px !important;
+}
+
+/* Evitar truncamento de texto nas listas */
+.max-w-\[180px\] {
+    max-width: 220px !important;
+}
+
+.max-w-\[150px\] {
+    max-width: 200px !important;
+}
+
+/* Skeleton Loader */
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+}
+
+.animate-pulse {
+    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Animações */
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.animate-fadeInUp {
+    animation: fadeInUp 0.5s ease-out forwards;
+}
+
+/* Cards de KPI */
+.bg-gradient-to-br {
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.bg-gradient-to-br:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
+}
+
+/* Tabela de margem */
+tbody tr {
+    transition: background 0.2s ease;
+}
+
+tbody tr:hover {
+    background: #f8fafc !important;
+}
+
+/* Scroll personalizado */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: #f1f5f9;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .grid-cols-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .text-3xl {
+        font-size: 1.5rem !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    input, select, button {
+        font-size: 14px !important;
+    }
+}

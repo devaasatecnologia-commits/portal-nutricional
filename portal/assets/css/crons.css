@@ -1,0 +1,91 @@
+.stat-card {
+    border: none;
+    border-radius: 16px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    transition: all 0.3s ease;
+    border-left: 4px solid;
+}
+
+.stat-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+}
+
+.stat-card.border-primary { border-left-color: #0d6efd !important; }
+.stat-card.border-warning { border-left-color: #f59e0b !important; }
+.stat-card.border-info { border-left-color: #0dcaf0 !important; }
+.stat-card.border-secondary { border-left-color: #6c757d !important; }
+
+.stat-card .card-title {
+    font-weight: 700;
+    margin-bottom: 0;
+}
+
+.table-hover tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.table-hover tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.btn {
+    border-radius: 8px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+}
+
+.badge {
+    font-weight: 500;
+    padding: 5px 10px;
+    border-radius: 6px;
+}
+
+.badge.bg-success { background-color: #10b981 !important; }
+.badge.bg-danger { background-color: #ef4444 !important; }
+.badge.bg-warning { background-color: #f59e0b !important; color: #000; }
+
+.card {
+    border: none;
+    border-radius: 16px;
+}
+
+.card-header {
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    border-radius: 16px 16px 0 0 !important;
+    padding: 1rem 1.5rem;
+}
+
+.shadow-sm {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+}
+/* Modal de detalhes mais largo */
+.swal-wide {
+    width: 750px !important;
+    max-width: 90vw !important;
+}
+
+/* Scrollbar personalizada para o modal */
+.swal2-html-container ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.swal2-html-container ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.swal2-html-container ::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 10px;
+}
+
+.swal2-html-container ::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}

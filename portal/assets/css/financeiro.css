@@ -1,0 +1,52 @@
+/* ==========================================================================
+   FINANCEIRO CSS - Herda module-base.css
+   ========================================================================== */
+
+.modulo-container {
+    min-height: 100vh;
+    width: 100%;
+    overflow-x: hidden;
+    overflow-y: auto;
+    background: var(--cor-fundo);
+}
+
+/* Cards */
+.financeiro-container .bg-white {
+    transition: var(--transition-premium);
+}
+
+.financeiro-container .bg-white:hover {
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.06);
+}
+
+/* Tabela */
+#t-body tr {
+    transition: background 0.2s ease;
+}
+
+#t-body tr:hover {
+    background: #f8fafc !important;
+}
+
+/* Inputs e selects */
+#filtro-dias-recup {
+    font-family: 'Chivo Mono', monospace;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .financeiro-container .grid-cols-2 {
+        grid-template-columns: 1fr;
+    }
+    
+    #chartHistory {
+        height: 200px !important;
+    }
+}
+
+@media (max-width: 640px) {
+    .financeiro-container input,
+    .financeiro-container select {
+        font-size: 16px !important;
+    }
+}

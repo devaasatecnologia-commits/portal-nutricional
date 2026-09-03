@@ -1,0 +1,27 @@
+# php -- BEGIN cPanel-generated handler, do not edit
+<IfModule mime_module>
+  AddHandler application/x-httpd-ea-php82 .php .php8 .phtml
+</IfModule>
+# php -- END cPanel-generated handler, do not edit
+
+# --- CONFIGURAÇÕES DA API NUTRICIONAL ---
+Options -Indexes
+RewriteEngine On
+RewriteBase /
+
+# Repassar Header de Autorização (Bearer Token)
+RewriteCond %{HTTP:Authorization} ^(.*)
+RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
+
+# Proteção de arquivos sensíveis
+<FilesMatch "^(config\.php|conect\.php|uteis\.php|composer\.json|composer\.lock|email_config\.php)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Roteamento com exceções para /v1/ e /portal/
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_URI} !^/v1/
+RewriteCond %{REQUEST_URI} !^/portal/
+RewriteRule ^(.*)$ index.php?acao=$1 [QSA,L]

@@ -1,0 +1,205 @@
+/* ================================================================
+   EMBARQUES - TEMA CLARO
+   ================================================================ */
+
+/* ================================================================
+   TEXTOS E CORES DO TEMA CLARO
+   ================================================================ */
+.hero-stat-chip {
+    color: rgba(255, 255, 255, 0.92) !important;
+}
+.hero-stat-chip i { color: rgba(255, 255, 255, 0.8) !important; }
+.hero-stat-chip.highlight i,
+.hero-stat-chip.highlight span:first-of-type {
+    color: var(--nutri-gold-light) !important;
+}
+
+.section-card .section-header .font-bold {
+    color: var(--nutri-primary) !important;
+}
+.section-card .section-header .section-icon-badge {
+    color: var(--nutri-primary);
+    background: linear-gradient(135deg, rgba(var(--nutri-primary-rgb, 18, 51, 41), 0.1), rgba(var(--nutri-gold-rgb, 212, 160, 23), 0.14));
+    border-color: rgba(var(--nutri-gold-rgb, 212, 160, 23), 0.25);
+}
+.section-card .section-body .font-bold {
+    color: var(--nutri-primary) !important;
+}
+
+.table-frota td .font-bold { color: var(--nutri-primary) !important; }
+.table-frota td .font-medium { color: var(--nutri-primary) !important; }
+
+.bg-gradient-to-r,
+.bg-gradient-to-r *,
+.bg-gradient-to-r h1,
+.bg-gradient-to-r p,
+.bg-gradient-to-r span,
+.bg-gradient-to-r i,
+.bg-gradient-to-r .text-white,
+.bg-gradient-to-r .text-emerald-200\/80 {
+    color: #ffffff !important;
+}
+
+/* Textos gerais */
+.text-slate-400 { color: var(--nutri-text-secondary) !important; }
+.text-slate-500 { color: var(--nutri-text-secondary) !important; }
+.text-slate-600 { color: #475569 !important; }
+.text-slate-700 { color: #334155 !important; }
+.text-slate-800 { color: #1e293b !important; }
+.text-slate-900 { color: #0f172a !important; }
+.text-emerald-600 { color: #059669 !important; }
+.text-emerald-700 { color: #047857 !important; }
+.text-blue-600 { color: #2563eb !important; }
+.text-blue-700 { color: #1d4ed8 !important; }
+.text-purple-700 { color: #6b21a8 !important; }
+.text-red-600 { color: #dc2626 !important; }
+.text-red-700 { color: #b91c1c !important; }
+.text-yellow-600 { color: #d97706 !important; }
+.text-yellow-700 { color: #b45309 !important; }
+.text-gray-500 { color: var(--nutri-text-secondary) !important; }
+.text-gray-600 { color: #475569 !important; }
+.text-gray-700 { color: #334155 !important; }
+.text-gray-800 { color: #1e293b !important; }
+.text-gray-900 { color: #0f172a !important; }
+.text-black { color: var(--nutri-text) !important; }
+.font-bold { color: var(--nutri-text) !important; }
+.font-bold.text-\[#1a3c34\] { color: var(--nutri-primary) !important; }
+.font-medium { color: var(--nutri-text) !important; }
+h1, h2, h3, h4, h5, h6 { color: var(--nutri-text) !important; }
+
+/* Inputs */
+.input-icon-group .input-icon { color: var(--nutri-text-secondary) !important; }
+.input-icon-btn {
+    background: var(--nutri-gradient-brand) !important;
+    color: #ffffff !important;
+}
+.input-icon-btn i { color: #ffffff !important; }
+.input-icon-btn:hover {
+    box-shadow: var(--nutri-shadow-gold) !important;
+    color: #ffffff !important;
+}
+
+/* Selects */
+select#limite-por-pagina {
+    background: var(--nutri-card-bg) !important;
+    color: var(--nutri-text) !important;
+    border-color: var(--nutri-border) !important;
+}
+select#limite-por-pagina option {
+    background: var(--nutri-card-bg) !important;
+    color: var(--nutri-text) !important;
+}
+
+/* Botão Filtros */
+#btn-filtros-avancados {
+    background: var(--nutri-card-bg) !important;
+    color: var(--nutri-text-secondary) !important;
+    border-color: var(--nutri-border) !important;
+}
+#btn-filtros-avancados i { color: var(--nutri-text-secondary) !important; }
+#btn-filtros-avancados:hover {
+    color: var(--nutri-primary) !important;
+    border-color: var(--nutri-gold) !important;
+}
+#btn-filtros-avancados:hover i { color: var(--nutri-primary) !important; }
+#btn-filtros-avancados.aberto {
+    background: var(--nutri-gradient-brand) !important;
+    color: #ffffff !important;
+    border-color: transparent !important;
+}
+#btn-filtros-avancados.aberto i { color: var(--nutri-gold-light) !important; }
+
+/* Embargues disponíveis */
+.embarque-disponivel-item .font-bold.text-\[#1a3c34\] {
+    color: var(--nutri-primary) !important;
+}
+.embarque-disponivel-item .text-slate-500 { color: var(--nutri-text-secondary) !important; }
+.embarque-disponivel-item .text-slate-400 { color: var(--nutri-text-secondary) !important; }
+.embarque-disponivel-item .text-slate-600 { color: #475569 !important; }
+.embarque-disponivel-item .bg-slate-100 {
+    background: #f1f5f9 !important;
+    border-color: #e2e8f0 !important;
+}
+.embarque-disponivel-item .bg-slate-200 { background: #e2e8f0 !important; }
+
+/* Modal */
+.modal-body .text-slate-400 { color: var(--nutri-text-secondary) !important; }
+.modal-body .text-slate-500 { color: var(--nutri-text-secondary) !important; }
+.modal-body .text-slate-600 { color: #475569 !important; }
+.modal-body .text-slate-700 { color: #334155 !important; }
+.modal-body .font-bold { color: var(--nutri-primary) !important; }
+.modal-body .font-medium { color: var(--nutri-text) !important; }
+.modal-body .text-emerald-600 { color: #059669 !important; }
+.modal-body .text-blue-600 { color: #2563eb !important; }
+.modal-body .text-purple-700 { color: #6b21a8 !important; }
+.modal-body .text-red-600 { color: #dc2626 !important; }
+.modal-body .text-yellow-600 { color: #d97706 !important; }
+
+/* Rastreamento */
+#resultado-rastreamento .p-4 {
+    background: var(--nutri-card-bg) !important;
+    border-color: var(--nutri-border) !important;
+    color: var(--nutri-text) !important;
+}
+#resultado-rastreamento .p-4 .text-red-600 { color: #dc2626 !important; }
+#resultado-rastreamento .p-4 .text-emerald-600 { color: #059669 !important; }
+#resultado-rastreamento .p-4 .text-slate-600 { color: var(--nutri-text) !important; }
+#resultado-rastreamento .p-4 .text-slate-400 { color: var(--nutri-text-secondary) !important; }
+#resultado-rastreamento .p-4 .text-slate-300 { color: var(--nutri-text-secondary) !important; }
+#resultado-rastreamento .p-4 .text-blue-600 { color: #2563eb !important; }
+#resultado-rastreamento .p-4 .bg-emerald-50 { background: rgba(16, 185, 129, 0.08) !important; }
+#resultado-rastreamento .p-4 .bg-slate-50 { background: var(--nutri-border) !important; }
+#resultado-rastreamento .p-4 .border-emerald-200 { border-color: rgba(16, 185, 129, 0.3) !important; }
+#resultado-rastreamento .p-4 .border-red-200 { border-color: rgba(239, 68, 68, 0.3) !important; }
+#resultado-rastreamento .p-4 .font-bold.text-\[#1a3c34\] {
+    color: var(--nutri-primary) !important;
+}
+#resultado-rastreamento .p-4 .bg-slate-100 { background: var(--nutri-border) !important; }
+#resultado-rastreamento .p-4 .bg-slate-200 { background: var(--nutri-border) !important; }
+#resultado-rastreamento .p-4 .bg-emerald-200 { background: rgba(16, 185, 129, 0.2) !important; }
+#resultado-rastreamento .btn-primary-nutri {
+    background: var(--nutri-gradient-brand) !important;
+    color: #ffffff !important;
+}
+#resultado-rastreamento .btn-secondary-nutri {
+    background: var(--nutri-border) !important;
+    color: var(--nutri-text) !important;
+}
+#resultado-rastreamento .btn-secondary-nutri:hover {
+    background: #cbd5e1 !important;
+    color: var(--nutri-text) !important;
+}
+
+/* Botões de ação */
+.btn-icone {
+    color: var(--nutri-text-secondary);
+}
+.btn-icone:hover {
+    background: var(--nutri-border);
+    color: var(--nutri-primary);
+}
+
+/* Paginação - setinhas no claro */
+#btn-anterior i,
+#btn-proximo i {
+    color: var(--nutri-text) !important;
+}
+#btn-anterior:hover i,
+#btn-proximo:hover i {
+    color: #ffffff !important;
+}
+#btn-anterior:disabled i,
+#btn-proximo:disabled i {
+    color: var(--nutri-text-secondary) !important;
+}
+
+/* Botão "Atualizar" */
+.px-3.py-1.5.border.border-slate-200 {
+    background: var(--nutri-card-bg) !important;
+    color: var(--nutri-text) !important;
+    border-color: var(--nutri-border) !important;
+}
+.px-3.py-1.5.border.border-slate-200:hover {
+    background: rgba(0, 0, 0, 0.02) !important;
+    color: var(--nutri-text) !important;
+}

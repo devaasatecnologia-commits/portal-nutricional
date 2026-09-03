@@ -1,0 +1,48 @@
+/* Análise de Carteira - Estilos */
+
+.animate-shimmer {
+    animation: shimmer 2s infinite linear;
+}
+
+@keyframes shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* Cards com hover */
+#kpi-cards > div {
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+#kpi-cards > div:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+}
+
+/* Tabela */
+#tabela-representantes tbody tr {
+    transition: background 0.2s ease;
+}
+
+#tabela-representantes tbody tr:hover {
+    background: #f8fafc !important;
+}
+
+/* Modal */
+#modal-titulos table thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    #kpi-cards {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    #kpi-cards .text-2xl {
+        font-size: 1.125rem;
+    }
+}

@@ -1,0 +1,28 @@
+# /home/nutribr/public_html/api.nutricionalbr.com/portal/assets/img/.htaccess
+
+<IfModule mod_headers.c>
+    # Permitir acesso de qualquer origem
+    Header set Access-Control-Allow-Origin "*"
+    Header set Access-Control-Allow-Methods "GET, OPTIONS"
+    Header set Access-Control-Allow-Headers "Content-Type"
+    
+    # Cache de 1 ano para imagens
+    Header set Cache-Control "public, max-age=31536000, immutable"
+    
+    # Content-Type correto para PNG
+    <FilesMatch "\.png$">
+        Header set Content-Type "image/png"
+    </FilesMatch>
+    
+    <FilesMatch "\.jpg|\.jpeg$">
+        Header set Content-Type "image/jpeg"
+    </FilesMatch>
+</IfModule>
+
+# Desabilitar listagem de diretório
+Options -Indexes
+
+# Permitir acesso a todos os arquivos de imagem
+<FilesMatch "\.(jpg|jpeg|png|gif|webp|svg)$">
+    Require all granted
+</FilesMatch>

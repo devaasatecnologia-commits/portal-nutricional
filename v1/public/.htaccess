@@ -1,0 +1,4 @@
+echo RewriteEngine On > c:\xampp\htdocs\API\v1\public\.htaccess
+echo RewriteCond %%{REQUEST_FILENAME} !-f >> c:\xampp\htdocs\API\v1\public\.htaccess
+echo RewriteCond %%{REQUEST_FILENAME} !-d >> c:\xampp\htdocs\API\v1\public\.htaccess
+echo RewriteRule ^ index.php [QSA,L] >> c:\xampp\htdocs\API\v1\public\.htaccess
