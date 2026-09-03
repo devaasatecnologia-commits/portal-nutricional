@@ -1,0 +1,32 @@
+:root {
+    --fleet-ink: #18332d;
+    --fleet-muted: #6d7d78;
+    --fleet-line: #e3ebe7;
+    --fleet-surface: #ffffff;
+    --fleet-bg: #f3f7f4;
+}
+.fleet-dashboard { min-height: 100vh; padding: 28px clamp(16px, 3vw, 48px) 48px; background: radial-gradient(circle at 100% 0%, #e3f1e8 0, transparent 34%), var(--fleet-bg); color: var(--fleet-ink); }
+.dashboard-hero { max-width: 1480px; margin: 0 auto 24px; padding: 28px 32px; display: flex; justify-content: space-between; gap: 20px; align-items: flex-end; background: #18332d; color: white; border-radius: 8px; box-shadow: 0 18px 40px rgba(24,51,45,.16); }
+.dashboard-kicker, .panel-label { display: block; color: #e2b957; font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+.dashboard-hero h1 { margin: 7px 0 5px; font-size: clamp(27px, 3vw, 42px); line-height: 1.05; letter-spacing: 0; }
+.dashboard-hero p { margin: 0; color: #bed0c8; font-size: 14px; }
+.dashboard-actions { display: flex; align-items: center; gap: 12px; white-space: nowrap; }
+.last-update { color: #bed0c8; font-size: 12px; }
+.icon-button { width: 40px; height: 40px; border: 1px solid #54766a; border-radius: 6px; background: transparent; color: white; cursor: pointer; }
+.icon-button:hover { background: #2d5a4e; }
+.kpi-grid, .dashboard-grid { max-width: 1480px; margin-left: auto; margin-right: auto; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 14px; }
+.kpi-card { min-height: 116px; padding: 22px; display: flex; align-items: center; gap: 16px; border: 1px solid var(--fleet-line); border-left: 5px solid; border-radius: 8px; background: var(--fleet-surface); box-shadow: 0 5px 16px rgba(24,51,45,.05); }
+.kpi-card > i { font-size: 22px; width: 42px; height: 42px; display: grid; place-items: center; border-radius: 6px; }
+.kpi-card span, .kpi-card small { display: block; color: var(--fleet-muted); font-size: 12px; }
+.kpi-card strong { display: block; margin: 5px 0 3px; font-size: 30px; line-height: 1; }
+.kpi-green { border-left-color: #2e8b68; }.kpi-green > i { color: #2e8b68; background: #e5f4ed; }
+.kpi-blue { border-left-color: #3979a8; }.kpi-blue > i { color: #3979a8; background: #e6f0f7; }
+.kpi-orange { border-left-color: #d27b32; }.kpi-orange > i { color: #d27b32; background: #fff0e2; }
+.kpi-purple { border-left-color: #7562a8; }.kpi-purple > i { color: #7562a8; background: #eeeafb; }
+.dashboard-grid { display: grid; gap: 14px; margin-bottom: 14px; }.charts-grid { grid-template-columns: 1.6fr 1fr; }.bottom-grid { grid-template-columns: 1.5fr 1fr; }
+.dashboard-panel { min-width: 0; padding: 22px; border: 1px solid var(--fleet-line); border-radius: 8px; background: var(--fleet-surface); box-shadow: 0 5px 16px rgba(24,51,45,.05); }
+.panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; }.panel-heading h2 { margin: 5px 0 0; font-size: 18px; letter-spacing: 0; }.panel-heading > i { color: #86a096; font-size: 20px; }
+.chart-wrap { position: relative; height: 280px; }.chart-wrap-small { height: 280px; max-width: 360px; margin: auto; }.fleet-map { height: 350px; border-radius: 6px; overflow: hidden; background: #dfeae4; }.ranking-list { display: grid; gap: 10px; }.ranking-row { display: grid; grid-template-columns: 32px 1fr auto; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--fleet-line); }.ranking-row:last-child { border-bottom: 0; }.rank-number { color: #c58a25; font-weight: 800; }.ranking-name { font-weight: 700; font-size: 13px; }.ranking-meta { color: var(--fleet-muted); font-size: 11px; }.ranking-value { font-weight: 800; font-size: 14px; }.empty-state { padding: 28px 0; color: var(--fleet-muted); text-align: center; font-size: 13px; }
+@media (max-width: 900px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); }.charts-grid, .bottom-grid { grid-template-columns: 1fr; } }
+@media (max-width: 560px) { .fleet-dashboard { padding: 16px 12px 32px; }.dashboard-hero { padding: 22px 18px; align-items: flex-start; flex-direction: column; }.dashboard-hero h1 { font-size: 30px; }.kpi-card { padding: 16px; }.kpi-card strong { font-size: 25px; }.dashboard-panel { padding: 16px; }.chart-wrap, .chart-wrap-small, .fleet-map { height: 260px; } }

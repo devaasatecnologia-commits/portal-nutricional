@@ -127,6 +127,7 @@ $app->group('/v1', function ($group) {
                 $dash->get('/entregas/hoje', [$controller, 'entregasHoje']);
                 $dash->get('/graficos', [$controller, 'graficos']);
                 $dash->get('/kpis', [$controller, 'kpis']);
+                $dash->get('/kpis-problemas', [$controller, 'kpisProblemas']);
                 $dash->get('/mapa', [$controller, 'mapa']);
                 $dash->get('/alertas', [$controller, 'alertas']);
             });

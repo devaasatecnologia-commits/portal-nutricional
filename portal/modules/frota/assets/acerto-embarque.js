@@ -666,6 +666,16 @@ document.addEventListener('DOMContentLoaded', function() {
 // ================================================================
 function renderizarDetalhesAcerto(dados) {
     console.log('📌 renderizarDetalhesAcerto chamado com dados:', dados);
+
+    const embarquesVinculados = dados.embarques || dados.embarques_vinculados || [];
+    const embarquesErp = embarquesVinculados.length > 0
+        ? embarquesVinculados
+        : (dados.erp_ids_agrupados || dados.erp_embarque_id || '')
+            .toString()
+            .split(',')
+            .map(id => id.trim())
+            .filter(id => id && id !== '0' && id !== 'null')
+            .map(id => ({ erp_embarque_id: id }));
     
     const numeroEl = document.getElementById('acerto-numero');
     if (numeroEl) {
@@ -751,6 +761,26 @@ function renderizarDetalhesAcerto(dados) {
                 </div>
             </div>
         `;
+
+        if (embarquesErp.length > 0) {
+            html += `
+                <div class="mb-6 ${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-1 h-6 bg-purple-500 rounded-full"></div>
+                        <h6 class="font-bold ${textTitle}">Embarques vinculados</h6>
+                        <span class="text-xs ${textSub}">(${embarquesErp.length})</span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${embarquesErp.map(embarque => {
+                            const numero = embarque.numero_embarque || embarque.erp_embarque_id || embarque.id;
+                            return `<span class="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold px-3 py-1.5 rounded-lg text-sm font-mono border border-purple-200 dark:border-purple-800">
+                                <i class="fa-solid fa-truck"></i> #${numero}
+                            </span>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
 
         // ============================================================
         // 2. RESUMO DE PROBLEMAS (se houver)
