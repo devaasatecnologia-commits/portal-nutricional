@@ -1,0 +1,40 @@
+:root {
+    --driver-ink: #17342c;
+    --driver-muted: #66756f;
+    --driver-bg: #f4f7f3;
+    --driver-card: #ffffff;
+    --driver-accent: #d5a84b;
+    --driver-success: #16845e;
+    --driver-danger: #c94b45;
+    --driver-border: #dfe8e1;
+}
+body:has(.motorista-app) { background: var(--driver-bg); }
+.motorista-app { max-width: 720px; min-height: 100vh; margin: 0 auto; padding: 24px 16px 40px; color: var(--driver-ink); }
+.motorista-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
+.eyebrow { color: var(--driver-success); font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.motorista-header h1 { margin: 4px 0; font-size: clamp(1.7rem, 7vw, 2.5rem); line-height: 1.05; }
+.motorista-header p { margin: 0; color: var(--driver-muted); font-size: .9rem; }
+.connection-state { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); padding: 7px 10px; color: var(--driver-muted); font-size: .75rem; font-weight: 700; white-space: nowrap; }
+.connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-success); }
+.connection-state.is-offline .connection-dot { background: var(--driver-danger); }
+.route-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+.route-summary div { border: 1px solid var(--driver-border); border-radius: 14px; background: var(--driver-card); padding: 14px 12px; }
+.route-summary strong, .route-summary span { display: block; }
+.route-summary strong { font-size: 1.5rem; }
+.route-summary span { color: var(--driver-muted); font-size: .75rem; }
+.offline-notice { margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
+.delivery-list { display: grid; gap: 12px; }
+.delivery-card { border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 16px; box-shadow: 0 4px 16px rgba(23, 52, 44, .05); }
+.delivery-card.is-complete { opacity: .72; }
+.delivery-card h2 { margin: 0 0 4px; font-size: 1.05rem; }
+.delivery-address { margin: 0 0 12px; color: var(--driver-muted); font-size: .88rem; }
+.delivery-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; color: var(--driver-muted); font-size: .76rem; }
+.delivery-meta span { border-radius: 999px; background: #eef4ef; padding: 5px 8px; }
+.delivery-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.delivery-actions button { min-height: 42px; border: 0; border-radius: 10px; font-weight: 800; cursor: pointer; }
+.delivery-actions .checkin { background: #e8f4ef; color: var(--driver-success); }
+.delivery-actions .checkout { background: var(--driver-success); color: white; }
+.delivery-actions .failure { background: #fff0ef; color: var(--driver-danger); }
+.delivery-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.empty-state { padding: 48px 16px; text-align: center; color: var(--driver-muted); }
+@media (max-width: 460px) { .motorista-header { display: block; } .connection-state { margin-top: 12px; } .delivery-actions { grid-template-columns: 1fr; } }
