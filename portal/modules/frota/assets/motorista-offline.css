@@ -23,6 +23,7 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .route-summary strong { font-size: 1.5rem; }
 .route-summary span { color: var(--driver-muted); font-size: .75rem; }
 .offline-notice { margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
+.driver-alert { margin-bottom: 16px; border: 1px solid #b9dfcf; border-radius: 12px; background: #eaf7f0; padding: 12px 14px; color: var(--driver-ink); font-size: .85rem; }
 .route-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .route-tool { border: 1px solid var(--driver-ink); border-radius: 10px; background: var(--driver-ink); color: white; padding: 10px 14px; font-weight: 800; cursor: pointer; }
 .gps-status { color: var(--driver-muted); font-size: .78rem; }

@@ -417,6 +417,15 @@ public function iniciar(Request $request, Response $response, array $args): Resp
 
         $this->pdo->commit();
 
+        if (!empty($embarque['motorista_id'])) {
+            $notificacao = $this->pdo->prepare("INSERT INTO frota_notificacao (motorista_id, tipo, titulo, mensagem, created_at) VALUES (:motorista_id, 'rota', :titulo, :mensagem, NOW())");
+            $notificacao->execute([
+                'motorista_id' => $embarque['motorista_id'],
+                'titulo' => 'Nova rota liberada',
+                'mensagem' => 'O embarque ' . ($embarque['numero_embarque'] ?? '#' . $id) . ' foi iniciado e já está disponível no aplicativo.'
+            ]);
+        }
+
         $this->registrarLog($id, 'iniciar', 'Embarque iniciado', $usuarioId);
 
         return $this->json($response, [

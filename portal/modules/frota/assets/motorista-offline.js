@@ -20,6 +20,7 @@
     function updateSummary() { $('total-entregas').textContent = entregas.length; $('entregas-concluidas').textContent = entregas.filter((item) => ['entregue', 'entregue_com_problema'].includes(item.status)).length; $('fila-pendente').textContent = getQueue().length; }
     function persist() { localStorage.setItem(cacheKey, JSON.stringify(entregas)); render(); updateSummary(); }
     async function carregarEntregas() { if (!motoristaId) { $('motorista-status').textContent = 'Informe o motorista para carregar a rota'; $('delivery-list').innerHTML = '<div class="empty-state">A rota ainda não foi vinculada a um motorista.</div>'; return; } try { const response = await fetch(`${apiBase}/motoristas/${motoristaId}/entregas/hoje`, { headers: authHeaders(), credentials: 'include' }); if (!response.ok) throw new Error('Falha ao carregar rota'); const payload = await response.json(); entregas = payload.data?.entregas || payload.entregas || []; persist(); $('motorista-status').textContent = 'Rota atualizada agora'; } catch (error) { entregas = JSON.parse(localStorage.getItem(cacheKey) || '[]'); render(); updateSummary(); $('motorista-status').textContent = entregas.length ? 'Usando a última rota salva neste aparelho' : 'Não foi possível carregar a rota'; } }
+    async function carregarNotificacoes() { if (!motoristaId || !navigator.onLine) return; try { const response = await fetch(`${apiBase}/motoristas/${motoristaId}/notificacoes?limite=5`, { headers: authHeaders(), credentials: 'include' }); if (!response.ok) return; const payload = await response.json(); const notification = (payload.data || []).find((item) => !item.lida); if (notification) { $('driver-alert').hidden = false; $('driver-alert').textContent = `${notification.titulo}: ${notification.mensagem}`; } } catch (error) { /* O app continua operacional offline. */ } }
     function aplicarStatusLocal(id, action) { const item = entregas.find((delivery) => Number(delivery.id) === Number(id)); if (!item) return; item.status = action === 'checkout' ? 'entregue' : action === 'falha' ? 'pendente' : 'em_entrega'; persist(); }
     function escolherArquivo() { return new Promise((resolve) => { const input = document.createElement('input'); input.type = 'file'; input.accept = 'image/*'; input.capture = 'environment'; input.onchange = () => { const file = input.files[0]; if (!file) return resolve(null); const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(null); reader.readAsDataURL(file); }; input.click(); }); }
     async function obterDadosDaAcao(action) {
@@ -55,11 +56,11 @@
     async function sincronizarFila() { if (!navigator.onLine) return; const remaining = []; for (const request of getQueue()) { try { const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) }); if (!response.ok) remaining.push(request); } catch (error) { remaining.push(request); } } saveQueue(remaining); }
     document.addEventListener('click', (event) => { const button = event.target.closest('[data-action], [data-order]'); if (!button) return; if (button.dataset.action) executarAcao(button.dataset.id, button.dataset.action); if (button.dataset.order) mover(Number(button.dataset.index), button.dataset.order === 'up' ? -1 : 1); });
     $('btn-refresh-route')?.addEventListener('click', carregarEntregas);
-    window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); });
+    window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); carregarNotificacoes(); });
     window.addEventListener('offline', setConnectionState);
     if ('serviceWorker' in navigator) {
         const appBase = window.location.pathname.split('/portal/')[0];
         navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {});
     }
-    setConnectionState(); carregarEntregas(); sincronizarFila();
+    setConnectionState(); carregarEntregas(); carregarNotificacoes(); sincronizarFila();
 }());
