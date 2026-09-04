@@ -8,6 +8,16 @@
     --driver-danger: #c94b45;
     --driver-border: #dfe8e1;
 }
+[data-driver-theme="dark"] {
+    --driver-ink: #e8f1ec;
+    --driver-muted: #a5b8ae;
+    --driver-bg: #0d1713;
+    --driver-card: #14231c;
+    --driver-accent: #e0b653;
+    --driver-success: #42d39a;
+    --driver-danger: #ff8178;
+    --driver-border: rgba(232, 241, 236, .14);
+}
 body:has(.motorista-app) { background: var(--driver-bg); }
 .motorista-app { max-width: 720px; min-height: 100vh; margin: 0 auto; padding: 24px 16px 40px; color: var(--driver-ink); }
 .motorista-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
@@ -17,12 +27,14 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .connection-state { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); padding: 7px 10px; color: var(--driver-muted); font-size: .75rem; font-weight: 700; white-space: nowrap; }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-success); }
 .connection-state.is-offline .connection-dot { background: var(--driver-danger); }
+.driver-theme-toggle { border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); color: var(--driver-ink); padding: 8px 11px; font-size: .72rem; font-weight: 800; cursor: pointer; }
 .route-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
 .route-summary div { border: 1px solid var(--driver-border); border-radius: 14px; background: var(--driver-card); padding: 14px 12px; }
 .route-summary strong, .route-summary span { display: block; }
 .route-summary strong { font-size: 1.5rem; }
 .route-summary span { color: var(--driver-muted); font-size: .75rem; }
 .offline-notice { margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
+[data-driver-theme="dark"] .offline-notice { background: #332b16; color: #f6d98b; }
 .driver-alert { margin-bottom: 16px; border: 1px solid #b9dfcf; border-radius: 12px; background: #eaf7f0; padding: 12px 14px; color: var(--driver-ink); font-size: .85rem; }
 .route-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .route-tool { border: 1px solid var(--driver-ink); border-radius: 10px; background: var(--driver-ink); color: white; padding: 10px 14px; font-weight: 800; cursor: pointer; }
@@ -34,15 +46,19 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .delivery-address { margin: 0 0 12px; color: var(--driver-muted); font-size: .88rem; }
 .delivery-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; color: var(--driver-muted); font-size: .76rem; }
 .delivery-meta span { border-radius: 999px; background: #eef4ef; padding: 5px 8px; }
+[data-driver-theme="dark"] .delivery-meta span { background: rgba(66, 211, 154, .12); }
 .delivery-actions { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .delivery-actions button { min-height: 42px; border: 0; border-radius: 10px; font-weight: 800; cursor: pointer; }
 .delivery-actions .checkin { background: #e8f4ef; color: var(--driver-success); }
 .delivery-actions .checkout { background: var(--driver-success); color: white; }
 .delivery-actions .failure { background: #fff0ef; color: var(--driver-danger); }
+[data-driver-theme="dark"] .delivery-actions .checkin { background: rgba(66, 211, 154, .14); }
+[data-driver-theme="dark"] .delivery-actions .failure { background: rgba(255, 129, 120, .14); }
 .delivery-actions button:disabled { cursor: not-allowed; opacity: .45; }
 .delivery-order { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; color: var(--driver-muted); font-size: .75rem; font-weight: 800; }
 .order-actions { display: flex; gap: 6px; }
 .order-actions button { border: 1px solid var(--driver-border); border-radius: 8px; background: #f7faf7; color: var(--driver-ink); padding: 5px 9px; cursor: pointer; }
+[data-driver-theme="dark"] .order-actions button { background: rgba(255, 255, 255, .06); }
 .order-actions button:disabled { opacity: .35; cursor: not-allowed; }
 .empty-state { padding: 48px 16px; text-align: center; color: var(--driver-muted); }
 @media (max-width: 460px) { .motorista-header { display: block; } .connection-state { margin-top: 12px; } .delivery-actions { grid-template-columns: 1fr; } }

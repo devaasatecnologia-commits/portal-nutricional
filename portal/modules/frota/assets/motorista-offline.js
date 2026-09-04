@@ -8,6 +8,8 @@
     const apiBase = `${window.API_URL || '/v1'}/frota`;
     let entregas = [];
     const $ = (id) => document.getElementById(id);
+    function aplicarTema() { const saved = localStorage.getItem('frota.motorista.theme'); const dark = saved ? saved === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches; document.documentElement.dataset.driverTheme = dark ? 'dark' : 'light'; const button = $('driver-theme-toggle'); if (button) button.textContent = dark ? 'Tema claro' : 'Tema escuro'; }
+    function alternarTema() { const dark = document.documentElement.dataset.driverTheme !== 'dark'; localStorage.setItem('frota.motorista.theme', dark ? 'dark' : 'light'); aplicarTema(); }
     const getQueue = () => { try { return JSON.parse(localStorage.getItem(queueKey) || '[]'); } catch (error) { return []; } };
     function saveQueue(queue) { localStorage.setItem(queueKey, JSON.stringify(queue)); $('fila-pendente').textContent = queue.length; }
     function operationId(id, action, body) { return `${motoristaId}:${id}:${action}:${body.data_hora}`; }
@@ -56,11 +58,12 @@
     async function sincronizarFila() { if (!navigator.onLine) return; const remaining = []; for (const request of getQueue()) { try { const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) }); if (!response.ok) remaining.push(request); } catch (error) { remaining.push(request); } } saveQueue(remaining); }
     document.addEventListener('click', (event) => { const button = event.target.closest('[data-action], [data-order]'); if (!button) return; if (button.dataset.action) executarAcao(button.dataset.id, button.dataset.action); if (button.dataset.order) mover(Number(button.dataset.index), button.dataset.order === 'up' ? -1 : 1); });
     $('btn-refresh-route')?.addEventListener('click', carregarEntregas);
+    $('driver-theme-toggle')?.addEventListener('click', alternarTema);
     window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); carregarNotificacoes(); });
     window.addEventListener('offline', setConnectionState);
     if ('serviceWorker' in navigator) {
         const appBase = window.location.pathname.split('/portal/')[0];
         navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {});
     }
-    setConnectionState(); carregarEntregas(); carregarNotificacoes(); sincronizarFila();
+    aplicarTema(); setConnectionState(); carregarEntregas(); carregarNotificacoes(); sincronizarFila();
 }());

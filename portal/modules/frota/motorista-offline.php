@@ -11,6 +11,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <header class="motorista-header">
         <div><span class="eyebrow">Rota do dia</span><h1>Minhas entregas</h1><p id="motorista-status">Preparando dados para uso offline</p></div>
         <div class="connection-state" id="connection-state" aria-live="polite"><span class="connection-dot"></span><span>Online</span></div>
+        <button type="button" class="driver-theme-toggle" id="driver-theme-toggle" aria-label="Alternar tema">Tema escuro</button>
     </header>
     <section class="route-summary" aria-label="Resumo da rota">
         <div><strong id="total-entregas">0</strong><span>entregas</span></div>
