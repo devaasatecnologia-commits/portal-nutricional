@@ -629,6 +629,35 @@ public function checkout(Request $request, Response $response, array $args): Res
             $stmt->execute(['id' => $id]);
         }
 
+        if ($temFaltante || $temDevolucao) {
+            $tipoProblema = $temFaltante ? 'faltante' : 'devolucao';
+            $stmtProblema = $this->pdo->prepare("
+                INSERT INTO frota_entrega_problema (
+                    entrega_id, embarque_id, pedido_id, cliente_id, tipo_problema,
+                    descricao_problema, quantidade_afetada, valor_afetado,
+                    status_problema, prioridade, created_at, updated_at
+                )
+                SELECT
+                    e.id, e.embarque_id, e.pedido_id, e.cliente_id, :tipo,
+                    :descricao, :quantidade, :valor, 'pendente', 'alta', NOW(), NOW()
+                FROM frota_entrega e
+                WHERE e.id = :entrega_id
+                  AND NOT EXISTS (
+                      SELECT 1 FROM frota_entrega_problema ep
+                      WHERE ep.entrega_id = e.id AND ep.tipo_problema = :tipo_existente
+                        AND ep.status_problema IN ('pendente', 'em_analise')
+                  )
+            ");
+            $stmtProblema->execute([
+                'tipo' => $tipoProblema,
+                'tipo_existente' => $tipoProblema,
+                'descricao' => $temFaltante ? 'Itens faltantes registrados no checkout' : 'Itens devolvidos registrados no checkout',
+                'quantidade' => array_sum(array_map(static fn($item) => (float)($item['quantidade_prevista'] ?? 0) - (float)($item['quantidade_entregue'] ?? 0), $checklist)),
+                'valor' => (float)($entrega['valor_total'] ?? $entrega['valor'] ?? 0),
+                'entrega_id' => $id
+            ]);
+        }
+
         // Registrar check-out no histórico
         $stmt = $this->pdo->prepare("
             INSERT INTO frota_checkin 
