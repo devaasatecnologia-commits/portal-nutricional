@@ -93,7 +93,7 @@
                     hostname === '192.168.1.99';
 
     const appBase = window.location.pathname.split('/portal/')[0];
-    const API_URL = isLocal ? `${window.location.origin}${appBase}/index.php?api_route=/v1` : 'https://api.nutricionalbr.com/v1';
+    const API_URL = isLocal ? `${window.location.origin}${appBase}/index.php?api_route=` : 'https://api.nutricionalbr.com/v1';
     
     console.log(`🌐 Ambiente: ${isLocal ? 'DESENVOLVIMENTO' : 'PRODUÇÃO'}`);
     console.log(`🌐 API_URL: ${API_URL}`);

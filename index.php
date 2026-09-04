@@ -36,6 +36,9 @@ if ($environment === 'development') {
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
 $routePath = $_GET['api_route'] ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
+if (isset($_GET['api_route']) && strpos($routePath, '/v1') !== 0) {
+    $routePath = '/v1' . (strpos($routePath, '/') === 0 ? '' : '/') . $routePath;
+}
 if (isset($_GET['api_route'])) {
     $_SERVER['REQUEST_URI'] = $routePath;
 }
