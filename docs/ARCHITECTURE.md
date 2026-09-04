@@ -41,6 +41,8 @@ global conforme o controller de autenticacao.
    entrega e ficam em fila quando o dispositivo esta sem conexao.
 7. Ao retornar, o gestor inicia e finaliza o acerto em
    `frota_acerto_embarque`, com pedidos e itens de acerto.
+8. Problemas do checkout são registrados em `frota_entrega_problema` para a
+   Gestão de Cargas.
 
 ## Tabelas principais
 
@@ -52,6 +54,9 @@ global conforme o controller de autenticacao.
   `frota_entrega_foto`, `frota_historico_posicao`, `frota_notificacao`.
 - Acerto: `frota_acerto_embarque`, `frota_acerto_pedido`, `frota_acerto_item`,
   `frota_entrega_problema`, `frota_entrega_timeline`.
+
+Os valores monetários e quantidades operacionais vêm de `pedido_item.valortotal`
+e `pedido_item.qt`, relacionados pelos IDs ERP em `frota_entrega.pedidos_ids`.
 
 ## Versionamento V2
 

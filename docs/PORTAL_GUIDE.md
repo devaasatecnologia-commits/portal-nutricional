@@ -58,8 +58,10 @@ O usuario do motorista e ligado ao cadastro por:
 O login retorna o `motorista_id` e direciona o usuario para o app offline. O
 manifest e o service worker ficam em `portal/modules/frota`.
 
-O checkout exige nome do recebedor e foto do romaneio. A fila local deve ser
-tratada como pendente ate a API confirmar a operacao.
+O checkout exige nome do recebedor e foto do romaneio. O app possui GPS real,
+fila isolada por motorista, deduplicação, reordenação offline, notificações de
+rota e tema claro/escuro persistente. A fila local deve ser tratada como
+pendente até a API confirmar a operação.
 
 ## API e banco
 
@@ -98,9 +100,16 @@ ambiente controlado:
 ERP_PEDIDO_SANDBOX=false
 ```
 
-Depois da insercao confirmada, o pedido de acerto e marcado como `processado`
+Depois da insercao confirmada, o pedido de acerto e marcado como `criado_erp`
 para impedir duplicidade. Nunca habilite producao sem backup e teste de um
 cliente/item controlado.
+
+### Gestão de Cargas
+
+O painel monitora problemas, faltantes, devoluções, prioridades e status, além
+de indicadores operacionais de embarques ativos, entregas do dia, taxa de
+entrega, motoristas em rota, veículos em rota e faturamento mensal. Os valores
+e quantidades são calculados a partir de `pedido_item` do ERP.
 
 ## Checklist de deploy
 

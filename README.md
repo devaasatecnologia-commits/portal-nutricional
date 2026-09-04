@@ -9,6 +9,8 @@ de frotas, entregas, acerto administrativo e aplicativo offline do motorista.
 - Frontend: PHP, JavaScript, Alpine.js e Tailwind via CDN.
 - API atual: `/v1`.
 - Frota: embarques ERP, rotas, entregas, rastreamento, acerto e motorista offline.
+- App motorista: GPS, fila offline, ordenação de rota, notificações e tema escuro.
+- Gestão de Cargas: problemas, KPIs operacionais e valores reais do ERP.
 - Branch principal: `main`.
 
 ## Desenvolvimento local

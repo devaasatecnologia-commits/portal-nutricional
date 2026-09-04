@@ -10,7 +10,7 @@ senhas, tokens JWT, chaves de API ou credenciais.
 - API estavel: `/v1`
 - Ponte de compatibilidade: `/v2` encaminha temporariamente para `/v1`
 - Banco: PostgreSQL externo, configurado por `.env`
-- Ultima referencia: `bed6e31` - revisao geral, limpeza e ponte V2.
+- Ultima referencia: `f24f358` - monitoramento, quantidades ERP e Gestão de Cargas.
 
 ## Modulos importantes
 
@@ -34,16 +34,14 @@ O modulo liberado usa o slug `motorista-offline` em `usuario_permissoes`.
 
 ## Pendencias prioritarias
 
-1. Capturar GPS real no app offline em check-in e checkout.
-2. Criar notificacao automatica quando uma rota for atribuida/iniciada.
-3. Adicionar ordenacao de rota no app do motorista.
-4. Implementar checklist, fotos de itens e assinatura no offline.
-5. Isolar a fila offline por motorista e criar idempotencia das operacoes.
-6. Validar no backend que o motorista autenticado so opera sua propria rota.
-7. Corrigir rollbacks em retornos antecipados dentro de transacoes.
-8. Migrar senhas MD5 para `password_hash` com compatibilidade temporaria.
-9. Substituir a ponte V2 por contratos V2 implementados e testados.
-10. Validar em homologacao a criacao ERP com transacoes 19/20 antes de ativar producao.
+1. Implementar checklist visual, fotos dos itens e assinatura no offline.
+2. Criar push nativo quando o aplicativo estiver fechado.
+3. Criar idempotencia persistida para todas as operações offline.
+4. Implementar conflitos quando o gestor alterar uma rota durante o offline.
+5. Revisar a função PostgreSQL `calcular_estatisticas_motorista()` para usar `pedido_item`.
+6. Corrigir rollbacks em retornos antecipados dentro de transações.
+7. Substituir a ponte V2 por contratos V2 implementados e testados.
+8. Validar em homologação a criação ERP com transações 19/20 antes de produção.
 
 ## Validacao minima
 
@@ -54,6 +52,16 @@ php -l v1/src/Controllers/AuthController.php
 node --check portal/modules/frota/assets/motorista-offline.js
 curl http://localhost:8080/ping
 ```
+
+## Ultimas entregas
+
+- `a701bd0`: GPS, fila premium, ordenação e autorização do motorista.
+- `fb3a3ad`: notificação automática ao iniciar rota.
+- `bacbafb`: tema escuro persistente no app motorista.
+- `24c23da`: layout e filtros do Acerto.
+- `e8670b6`: correção estrutural da Gestão de Cargas.
+- `6e907f8`: problemas gerados automaticamente no checkout.
+- `f24f358`: KPIs operacionais e valores/quantidades vindos do ERP.
 
 ## Regra de continuidade
 
