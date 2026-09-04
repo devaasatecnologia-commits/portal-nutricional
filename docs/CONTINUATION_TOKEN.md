@@ -10,7 +10,7 @@ senhas, tokens JWT, chaves de API ou credenciais.
 - API estavel: `/v1`
 - Ponte de compatibilidade: `/v2` encaminha temporariamente para `/v1`
 - Banco: PostgreSQL externo, configurado por `.env`
-- Ultima referencia: `f24f358` - monitoramento, quantidades ERP e Gestão de Cargas.
+- Ultima referencia: `e7185d2` - documentação final da sessão e estado atual.
 
 ## Modulos importantes
 
