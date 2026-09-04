@@ -268,7 +268,7 @@ function renderizarTabela(problemas) {
     if (!problemas || problemas.length === 0) {
         tbody.innerHTML = `
             <tr>
-                <td colspan="10" class="text-center py-8 text-slate-400">
+                <td colspan="10" class="empty-state-cargas">
                     <i class="fa-regular fa-circle-check text-3xl block mb-2"></i>
                     Nenhum problema encontrado
                 </td>

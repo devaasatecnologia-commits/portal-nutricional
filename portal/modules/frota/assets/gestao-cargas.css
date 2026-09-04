@@ -5,6 +5,11 @@
 /* ================================================================
    KPI CARDS
    ================================================================ */
+.quick-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 20px; }
+.quick-filter-pill { border: 1px solid var(--nutri-border); border-radius: 999px; background: var(--nutri-card-bg); color: var(--nutri-text-secondary); padding: 9px 14px; font-size: .8rem; font-weight: 700; cursor: pointer; transition: var(--transition); }
+.quick-filter-pill:hover, .quick-filter-pill.active { background: var(--nutri-primary); border-color: var(--nutri-primary); color: #fff; }
+.quick-filter-pill i { margin-right: 5px; }
+.empty-state-cargas { padding: 56px 20px; text-align: center; color: var(--nutri-text-secondary); }
 .kpi-card {
     background: var(--nutri-card-bg);
     border-radius: var(--nutri-radius);

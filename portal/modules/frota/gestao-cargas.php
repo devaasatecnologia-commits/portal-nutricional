@@ -14,6 +14,7 @@ $extraCss = '
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
+<link rel="stylesheet" href="/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/gestao-cargas.css?v=' . $version . '">
 ';
 
