@@ -12,22 +12,27 @@ $dotenv->load();
 date_default_timezone_set($_ENV['TIMEZONE'] ?? 'America/Sao_Paulo');
 
 // ======================================================================
-// DEFINA TODAS AS CONSTANTES AQUI (ANTES DE QUALQUER CONTROLLER)
+// Segredos obrigatorios: nunca usar valores conhecidos como fallback.
 // ======================================================================
+foreach (['CHAVE_SECRETA', 'API_TOKEN', 'CRON_TOKEN'] as $secretName) {
+    if (empty($_ENV[$secretName])) {
+        throw new \RuntimeException("Variavel de ambiente obrigatoria ausente: {$secretName}");
+    }
+}
 if (!defined('CHAVE_SECRETA')) {
-    define('CHAVE_SECRETA', $_ENV['CHAVE_SECRETA'] ?? 'alansabe1234567890abcdefghijklmnopqrstuv');
+    define('CHAVE_SECRETA', $_ENV['CHAVE_SECRETA']);
 }
 if (!defined('TOKEN_EMAIL')) {
-    define('TOKEN_EMAIL', $_ENV['TOKEN_EMAIL'] ?? 'TOKEN_PADRAO_REPRE_2026');
+    define('TOKEN_EMAIL', $_ENV['TOKEN_EMAIL'] ?? '');
 }
 if (!defined('TOKEN_GESTORES')) {
-    define('TOKEN_GESTORES', $_ENV['TOKEN_GESTORES'] ?? 'TOKEN_PADRAO_GEST_2026');
+    define('TOKEN_GESTORES', $_ENV['TOKEN_GESTORES'] ?? '');
 }
 if (!defined('API_TOKEN')) {
-    define('API_TOKEN', $_ENV['API_TOKEN'] ?? 'xoUM?va.JNG93v)@#i9FyH@B6n0}H4.yst%s8zV8M}xc+ZrFAz5:y6T07HxyYGE~');
+    define('API_TOKEN', $_ENV['API_TOKEN']);
 }
 if (!defined('CRON_TOKEN')) {
-    define('CRON_TOKEN', $_ENV['CRON_TOKEN'] ?? 'crn_v9M3xP7kL2wQ8jN4bC1vX5nR6mY0tH9kP2sF8jD3cV7bN1mQ9rT6wK4zL0yA');
+    define('CRON_TOKEN', $_ENV['CRON_TOKEN']);
 }
 
 // Inclui a classe Uteis do sistema legado (se existir)
@@ -86,7 +91,7 @@ $app->add(function ($request, $handler) {
         ->withHeader('Permissions-Policy', 'geolocation=(self), microphone=(), camera=(self)');
 });
 // Middleware de Error Handling (captura erros e retorna JSON)
-$errorMiddleware = $app->addErrorMiddleware(true, true, true);
+$errorMiddleware = $app->addErrorMiddleware($environment === 'development', true, true);
 $errorMiddleware->setDefaultErrorHandler(function (
     $request,
     $exception,

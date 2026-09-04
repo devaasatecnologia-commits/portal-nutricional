@@ -31,19 +31,13 @@ class AuthController
     public function login(Request $request, Response $response): Response
     {
         try {
-            error_log('=== LOGIN START ===');
-            
             $rawBody = $request->getBody()->getContents();
-            error_log('Raw body: ' . $rawBody);
-            
             $request->getBody()->rewind();
             
             $input = json_decode($rawBody, true);
             
             $username = trim($input['user'] ?? '');
             $pass = trim($input['pass'] ?? '');
-            error_log("Username: {$username}");
-
             if (empty($username) || empty($pass)) {
                 return $this->jsonError($response, 'Usuário e senha obrigatórios', 400);
             }
@@ -69,7 +63,6 @@ class AuthController
             $hashCalculado = strtoupper(md5(strtoupper($username) . $pass));
             
             if ($hashCalculado !== $hashBanco) {
-                error_log('Senha incorreta');
                 return $this->jsonError($response, 'Credenciais inválidas', 401);
             }
 
@@ -121,9 +114,7 @@ class AuthController
             return $response->withHeader('Content-Type', 'application/json');
 
         } catch (\Throwable $e) {
-            error_log('=== LOGIN ERROR ===');
-            error_log('Message: ' . $e->getMessage());
-            error_log('Trace: ' . $e->getTraceAsString());
+            error_log('Falha no login: ' . $e->getMessage());
             return $this->jsonError($response, 'Erro interno no servidor.', 500);
         }
     }

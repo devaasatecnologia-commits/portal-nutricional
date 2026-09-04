@@ -3,13 +3,21 @@
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
-// Se for requisição da API, encaminha para o index.php da API
+// O servidor embutido nao aplica .htaccess: bloqueie arquivos privados aqui.
+if (preg_match('#(^|/)(\.env|\.git|logs|erros_log|backup_limpeza_20260603|temp|cache)(/|$)#i', $path)) {
+    http_response_code(403);
+    header('Content-Type: application/json');
+    echo json_encode(['error' => 'Recurso privado']);
+    return true;
+}
+
+// Se for requisiï¿½ï¿½o da API, encaminha para o index.php da API
 if (strpos($path, '/v1/') === 0 || $path === '/ping' || strpos($path, '/auth/') === 0) {
-    require __DIR__ . '/v1/public/index.php';
+    require __DIR__ . '/index.php';
     return;
 }
 
-// Se for arquivo estático do portal, serve diretamente
+// Se for arquivo estï¿½tico do portal, serve diretamente
 $file = __DIR__ . $path;
 if (is_file($file) && pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
     $ext = pathinfo($file, PATHINFO_EXTENSION);
@@ -28,5 +36,5 @@ if (is_file($file) && pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
     return;
 }
 
-// Senão, executa o PHP normalmente
+// Senï¿½o, executa o PHP normalmente
 return false;

@@ -23,6 +23,13 @@ RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
     Deny from all
 </FilesMatch>
 
+# Nunca servir ambiente, repositorio, logs, backups ou arquivos temporarios.
+<FilesMatch "^(\.env|\.gitignore|\.git|.*\.log|.*\.bak|.*\.sql|.*\.sqlite)$">
+  Require all denied
+</FilesMatch>
+
+RewriteRule ^(?:\.git|backup_limpeza_20260603|logs|erros_log|temp|cache)(?:/|$) - [F,L]
+
 # Roteamento com exceções para /v1/ e /portal/
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d

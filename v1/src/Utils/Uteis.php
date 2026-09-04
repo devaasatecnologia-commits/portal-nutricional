@@ -49,7 +49,10 @@ class Uteis
      */
     public static function validarToken($tokenCriptografado, $tokenEsperado, $tipo = 'default') 
     {
-        $chave = $_ENV['CHAVE_SECRETA'] ?? 'alansabe123456';
+        $chave = $_ENV['CHAVE_SECRETA'] ?? '';
+        if ($chave === '') {
+            return false;
+        }
         
         try {
             $decrypted = self::decrypt($tokenCriptografado, $chave);

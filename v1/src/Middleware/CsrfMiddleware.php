@@ -36,14 +36,6 @@ public function __invoke(Request $request, RequestHandler $handler): Response
         $user = $request->getAttribute('user');
         $expectedToken = $user ? md5($user['uid'] . date('Y-m-d')) : null;
         
-        // ✅ ADICIONAR LOGS
-        error_log("=== CSRF DEBUG ===");
-        error_log("UID: " . ($user['uid'] ?? 'null'));
-        error_log("Data: " . date('Y-m-d'));
-        error_log("Token recebido: " . $tokenHeader);
-        error_log("Token esperado: " . $expectedToken);
-        error_log("Token match: " . ($tokenHeader === $expectedToken ? 'SIM' : 'NÃO'));
-
         if (!$tokenHeader || $tokenHeader !== $expectedToken) {
             $response = new \Slim\Psr7\Response();
             $response->getBody()->write(json_encode(['error' => 'CSRF token inv├ílido']));
