@@ -58,12 +58,25 @@ class AuthController
                 return $this->jsonError($response, 'Usuário inativo', 401);
             }
 
-            // ✅ VERIFICAÇÃO DE SENHA APENAS COM MD5 LEGADO (SEM MIGRAÇÃO)
             $hashBanco = $usuario['senha'];
-            $hashCalculado = strtoupper(md5(strtoupper($username) . $pass));
-            
-            if ($hashCalculado !== $hashBanco) {
+            $hashModerno = is_string($hashBanco) && password_get_info($hashBanco)['algo'] !== 0;
+            $senhaValida = $hashModerno
+                ? password_verify($pass, $hashBanco)
+                : hash_equals(strtoupper((string)$hashBanco), strtoupper(md5(strtoupper($username) . $pass)));
+
+            if (!$senhaValida) {
                 return $this->jsonError($response, 'Credenciais inválidas', 401);
+            }
+
+            // Migra o hash legado sem exigir reset de senha do usuario.
+            if (!$hashModerno) {
+                $algoritmo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
+                $novoHash = password_hash($pass, $algoritmo);
+                if ($novoHash === false) {
+                    throw new \RuntimeException('Nao foi possivel proteger a senha');
+                }
+                $stmtUpgrade = $this->pdo->prepare('UPDATE usuario SET senha = :senha WHERE idusuario = :idusuario');
+                $stmtUpgrade->execute(['senha' => $novoHash, 'idusuario' => $usuario['idusuario']]);
             }
 
             // Buscar permissões
