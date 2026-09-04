@@ -75,7 +75,7 @@ class AuthController
 
             // Buscar permissões
             $permissoes = $this->getPermissoesDoUsuario($usuario['idusuario'], $usuario['idcliforemp']);
-            $motoristaId = $this->getMotoristaId($usuario['idusuario']);
+            $motoristaId = $this->getMotoristaIdPorErp((int)$usuario['idcliforemp']);
             
             $dashFiliais = !empty($usuario['dash_filiais']) ? explode(',', $usuario['dash_filiais']) : [];
             $dashGestores = !empty($usuario['dash_gestores']) ? explode(',', $usuario['dash_gestores']) : [];
@@ -129,16 +129,13 @@ class AuthController
     }
 
     /**
-     * Retorna o motorista vinculado ao usuário, quando a coluna de vínculo existir.
+     * O usuario.idcliforemp e a mesma chave ERP de frota_motorista.erp_id.
      */
-    private function getMotoristaId(int $idusuario): int
+    private function getMotoristaIdPorErp(int $idcliforemp): int
     {
         try {
-            $columnExists = $this->pdo->query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'frota_motorista' AND column_name = 'usuario_id')")->fetchColumn();
-            if (!$columnExists) return 0;
-
-            $stmt = $this->pdo->prepare("SELECT id FROM frota_motorista WHERE usuario_id = :idusuario AND status <> 'inativo' LIMIT 1");
-            $stmt->execute(['idusuario' => $idusuario]);
+            $stmt = $this->pdo->prepare("SELECT id FROM frota_motorista WHERE erp_id = :idcliforemp AND status <> 'inativo' LIMIT 1");
+            $stmt->execute(['idcliforemp' => $idcliforemp]);
             return (int)($stmt->fetchColumn() ?: 0);
         } catch (\Throwable $e) {
             error_log('Erro ao buscar vínculo motorista-usuário: ' . $e->getMessage());
