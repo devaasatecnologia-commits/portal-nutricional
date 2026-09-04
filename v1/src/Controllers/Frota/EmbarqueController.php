@@ -80,8 +80,8 @@ class EmbarqueController
                 COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) as entregas_concluidas,
                 COUNT(DISTINCT CASE WHEN ent.status = 'pendente' THEN ent.id END) as entregas_pendentes,
                 COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) as entregas_falha,
-                COALESCE(SUM(ent.valor), 0) as valor_total_entregas,
-                COALESCE(SUM(CASE WHEN ent.status = 'entregue' THEN ent.valor END), 0) as valor_entregue,
+                COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0)), 0) as valor_total_entregas,
+                COALESCE(SUM(CASE WHEN ent.status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0) END), 0) as valor_entregue,
                 COALESCE(SUM(ent.peso_total), 0) as peso_total_entregas
             FROM frota_embarque e
             LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
@@ -151,8 +151,8 @@ public function buscar(Request $request, Response $response, array $args): Respo
             COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) as entregas_concluidas,
             COUNT(DISTINCT CASE WHEN ent.status = 'pendente' THEN ent.id END) as entregas_pendentes,
             COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) as entregas_falha,
-            COALESCE(SUM(ent.valor), 0) as valor_total_entregas,
-            COALESCE(SUM(CASE WHEN ent.status = 'entregue' THEN ent.valor END), 0) as valor_entregue
+            COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0)), 0) as valor_total_entregas,
+            COALESCE(SUM(CASE WHEN ent.status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0) END), 0) as valor_entregue
         FROM frota_embarque e
         LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
         LEFT JOIN frota_motorista m ON m.id = e.motorista_id

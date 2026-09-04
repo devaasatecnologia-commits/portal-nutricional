@@ -62,7 +62,7 @@ public function getEmbarqueById(Request $request, Response $response, array $arg
                 COALESCE(m.cpf, '') as motorista_cpf,
                 (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) as total_entregas,
                 (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) as entregas_concluidas,
-                (SELECT COALESCE(SUM(valor_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as valor_total_entregas,
+                (SELECT COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(fe.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), fe.valor_total, 0)), 0) FROM frota_entrega fe WHERE fe.embarque_id = e.id) as valor_total_entregas,
                 (SELECT COALESCE(SUM(peso_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as peso_total_entregas
             FROM frota_embarque e
             LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
@@ -526,7 +526,7 @@ public function getEmbarques(Request $request, Response $response): Response
                 COALESCE(m.telefone, '') as motorista_telefone,
                 (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) as total_entregas,
                 (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) as entregas_concluidas,
-                (SELECT COALESCE(SUM(valor_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as valor_total_entregas,
+                (SELECT COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(fe.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), fe.valor_total, 0)), 0) FROM frota_entrega fe WHERE fe.embarque_id = e.id) as valor_total_entregas,
                 (SELECT COALESCE(SUM(peso_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as peso_total_entregas
             FROM frota_embarque e
             LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id

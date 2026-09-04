@@ -73,6 +73,15 @@ O banco PostgreSQL e externo ao repositorio. Tabelas centrais:
 - operacao: `frota_checkin`, `frota_ocorrencia`, `frota_notificacao`, `frota_historico_posicao`;
 - acerto: `frota_acerto_embarque`, `frota_acerto_pedido`, `frota_acerto_item`.
 
+### Regra de valores
+
+Os valores operacionais devem ser calculados pela soma de
+`pedido_item.valortotal`, usando `frota_entrega.pedidos_ids` para localizar os
+pedidos ERP. `frota_entrega.valor_total` e apenas fallback para entregas sem
+pedido ERP associado. A funcao PostgreSQL externa
+`calcular_estatisticas_motorista()` deve seguir a mesma regra quando for
+atualizada no banco.
+
 ### Pedidos ERP do acerto
 
 O acerto usa as transacoes ERP:

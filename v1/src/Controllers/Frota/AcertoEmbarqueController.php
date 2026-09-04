@@ -533,7 +533,7 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
                     e.numero_embarque,
                     COUNT(DISTINCT ent.id) as total_entregas,
                     COUNT(DISTINCT ep.id) as total_problemas,
-                    COALESCE(SUM(ent.valor_total), 0) as valor_total
+                    COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0)), 0) as valor_total
                 FROM frota_embarque e
                 LEFT JOIN frota_entrega ent ON ent.embarque_id = e.id
                 LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id AND ep.status_problema IN ('pendente', 'em_analise')

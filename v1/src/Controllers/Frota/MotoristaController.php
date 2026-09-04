@@ -58,7 +58,7 @@ class MotoristaController
                 COUNT(DISTINCT CASE WHEN e.status = 'entregue' THEN e.id END) as entregas_concluidas,
                 COUNT(DISTINCT CASE WHEN e.status = 'pendente' THEN e.id END) as entregas_pendentes,
                 COUNT(DISTINCT CASE WHEN e.status = 'falha' THEN e.id END) as entregas_falha,
-                COALESCE(SUM(e.valor), 0) as valor_total_entregas,
+                COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as valor_total_entregas,
                 COALESCE(AVG(CASE WHEN e.status = 'entregue' THEN EXTRACT(EPOCH FROM (e.horario_entrega - e.horario_checkin))/60 END), 0) as tempo_medio_entrega
             FROM frota_motorista m
             LEFT JOIN frota_veiculo v ON v.id = m.veiculo_atual_id
@@ -121,8 +121,8 @@ class MotoristaController
                 COUNT(DISTINCT CASE WHEN e.status = 'entregue' THEN e.id END) as entregas_concluidas,
                 COUNT(DISTINCT CASE WHEN e.status = 'pendente' THEN e.id END) as entregas_pendentes,
                 COUNT(DISTINCT CASE WHEN e.status = 'falha' THEN e.id END) as entregas_falha,
-                COALESCE(SUM(e.valor), 0) as valor_total,
-                COALESCE(SUM(CASE WHEN e.status = 'entregue' THEN e.valor END), 0) as valor_entregue,
+                COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as valor_total,
+                COALESCE(SUM(CASE WHEN e.status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0) END), 0) as valor_entregue,
                 COALESCE(AVG(CASE WHEN e.status = 'entregue' THEN EXTRACT(EPOCH FROM (e.horario_entrega - e.horario_checkin))/60 END), 0) as tempo_medio_entrega,
                 (SELECT COUNT(*) FROM frota_notificacao WHERE motorista_id = m.id AND lida = false) as notificacoes_nao_lidas
             FROM frota_motorista m
@@ -165,7 +165,7 @@ class MotoristaController
             SELECT 
                 DATE(e.horario_entrega) as data,
                 COUNT(*) as total,
-                SUM(e.valor) as valor
+                SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)) as valor
             FROM frota_entrega e
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
             WHERE eb.motorista_id = :motorista_id
@@ -829,7 +829,7 @@ class MotoristaController
             SELECT 
                 DATE(e.horario_entrega) as data,
                 COUNT(*) as total,
-                SUM(e.valor) as valor,
+                SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)) as valor,
                 AVG(EXTRACT(EPOCH FROM (e.horario_entrega - e.horario_checkin))/60) as tempo_medio
             FROM frota_entrega e
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id

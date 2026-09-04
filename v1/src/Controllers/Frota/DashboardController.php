@@ -131,8 +131,8 @@ class DashboardController
                 $stmt = $this->pdo->query("
                     SELECT 
                         COUNT(*) as total,
-                        COALESCE(SUM(valor), 0) as faturamento
-                    FROM frota_entrega
+                        COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as faturamento
+                    FROM frota_entrega e
                     WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE)
                     AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
                     AND status = 'entregue'
@@ -250,10 +250,10 @@ class DashboardController
                         SELECT 
                             COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
                             COUNT(CASE WHEN status IN ('pendente', 'em_andamento') THEN 1 END) as pendentes,
-                            COALESCE(SUM(CASE WHEN status = 'entregue' THEN valor ELSE 0 END), 0) as faturamento
-                        FROM frota_entrega
-                        WHERE DATE(created_at) = :data
-                        AND status != 'cancelada'
+                            COALESCE(SUM(CASE WHEN status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0) ELSE 0 END), 0) as faturamento
+                        FROM frota_entrega e
+                        WHERE DATE(e.created_at) = :data
+                        AND e.status != 'cancelada'
                     ");
                     $stmt->execute(['data' => $data]);
                     $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -293,7 +293,7 @@ class DashboardController
                         m.id,
                         m.nome,
                         COUNT(e.id) as total_entregas,
-                        COALESCE(SUM(e.valor), 0) as total_faturado
+                        COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as total_faturado
                     FROM frota_motorista m
                     JOIN frota_entrega e ON e.motorista_id = m.id
                     WHERE DATE(e.created_at) >= CURRENT_DATE - INTERVAL '30 days'
