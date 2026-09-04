@@ -12,7 +12,7 @@ if (preg_match('#(^|/)(\.env|\.git|logs|erros_log|backup_limpeza_20260603|temp|c
 }
 
 // Se for requisi��o da API, encaminha para o index.php da API
-if (strpos($path, '/v1/') === 0 || $path === '/ping' || strpos($path, '/auth/') === 0) {
+if (strpos($path, '/v1/') === 0 || strpos($path, '/v2/') === 0 || $path === '/ping' || strpos($path, '/auth/') === 0) {
     require __DIR__ . '/index.php';
     return;
 }

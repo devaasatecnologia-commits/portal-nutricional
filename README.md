@@ -40,6 +40,7 @@ repositorio, na documentacao ou em scripts de teste.
 ## Documentacao oficial
 
 - [Arquitetura e operacao](docs/ARCHITECTURE.md)
+- [Guia completo do portal](docs/PORTAL_GUIDE.md)
 - [Token de continuidade](docs/CONTINUATION_TOKEN.md)
 
 ## Banco

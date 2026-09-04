@@ -56,11 +56,14 @@ global conforme o controller de autenticacao.
 ## Versionamento V2
 
 O codigo atual usa namespace e autoload `Nutricional\\` em `v1/src` e registra
-rotas sob `/v1`. A estrategia segura e:
+rotas sob `/v1`. Existe uma ponte inicial em `v2/index.php`; ela encaminha
+temporariamente as requisicoes para os mesmos contratos estaveis da V1.
+
+A estrategia segura e:
 
 - manter `/v1` funcionando;
 - criar contratos e testes para cada grupo de rotas;
-- introduzir `/v2` como camada de compatibilidade ou novo grupo de rotas;
+- substituir a ponte por implementacoes V2 grupo a grupo;
 - migrar consumidores gradualmente;
 - remover `/v1` somente depois de medir uso e publicar deprecacao.
 

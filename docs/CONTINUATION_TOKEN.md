@@ -7,9 +7,10 @@ senhas, tokens JWT, chaves de API ou credenciais.
 
 - Repositorio: `portal-nutricional`
 - Branch: `main`
-- API atual: `/v1`
+- API estavel: `/v1`
+- Ponte de compatibilidade: `/v2` encaminha temporariamente para `/v1`
 - Banco: PostgreSQL externo, configurado por `.env`
-- Ultima referencia conhecida: `ef61285`
+- Ultima referencia conhecida: atualizar apos o commit desta revisao.
 
 ## Modulos importantes
 
@@ -41,6 +42,7 @@ O modulo liberado usa o slug `motorista-offline` em `usuario_permissoes`.
 6. Validar no backend que o motorista autenticado so opera sua propria rota.
 7. Corrigir rollbacks em retornos antecipados dentro de transacoes.
 8. Migrar senhas MD5 para `password_hash` com compatibilidade temporaria.
+9. Substituir a ponte V2 por contratos V2 implementados e testados.
 
 ## Validacao minima
 
@@ -54,5 +56,6 @@ curl http://localhost:8080/ping
 
 ## Regra de continuidade
 
-Nao renomear `v1` para `v2` diretamente. Primeiro criar uma camada `/v2`,
-testar contratos, migrar clientes e somente depois descontinuar `/v1`.
+Nao renomear `v1` para `v2` diretamente. A ponte `/v2` deve ser substituida
+grupo a grupo por contratos V2 testados; somente depois os clientes podem ser
+migrados e a `/v1` descontinuada.
