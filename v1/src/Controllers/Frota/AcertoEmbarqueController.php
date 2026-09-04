@@ -1048,8 +1048,9 @@ public function criarPedidoERP(Request $request, Response $response, array $args
     $usuarioId = $user['idusuario'] ?? 0;
     $usuarioNome = $user['username'] ?? $user['nome'] ?? 'SISTEMA';
     
-    $idTransacao = (int)($input['id_transacao'] ?? 0);
+    $idTransacaoSolicitada = (int)($input['id_transacao'] ?? 0);
     $idFilial = (int)($input['id_filial'] ?? 1);
+    $sandboxSolicitado = array_key_exists('sandbox', $input) ? (bool)$input['sandbox'] : true;
     
     if ($pedidoAcertoId <= 0) {
         return $this->json($response, [
@@ -1058,7 +1059,7 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         ], 400);
     }
     
-    if ($idTransacao <= 0) {
+    if ($idTransacaoSolicitada <= 0) {
         return $this->json($response, [
             'success' => false,
             'error' => 'ID da transação ERP é obrigatório'
@@ -1126,15 +1127,19 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         // 2. DEFINIR IDTRANSACAO COM BASE NO TIPO
         // ============================================================
         $tipoProblema = $pedidoAcerto['tipo_problema'];
-        $idTransacaoFinal = $idTransacao;
+        $idTransacaoFinal = 0;
         
         $mapTransacao = [
-            'faltante' => 8,
-            'devolucao' => 9
+            'faltante' => 19,
+            'devolucao' => 20
         ];
         
-        if (isset($mapTransacao[$tipoProblema])) {
-            $idTransacaoFinal = $mapTransacao[$tipoProblema];
+        if (!isset($mapTransacao[$tipoProblema])) {
+            return $this->json($response, ['success' => false, 'error' => 'Tipo de problema sem transação ERP configurada'], 400);
+        }
+        $idTransacaoFinal = $mapTransacao[$tipoProblema];
+        if ($idTransacaoSolicitada !== $idTransacaoFinal) {
+            return $this->json($response, ['success' => false, 'error' => "A transação correta para {$tipoProblema} é {$idTransacaoFinal}"], 400);
         }
         
         // ============================================================
@@ -1400,8 +1405,7 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         // ============================================================
         // 10. USAR O ERPPedidoService PARA GERAR OS SQLs
         // ============================================================
-        // 🔥 GARANTIR MODO SANDBOX
-        $this->erpService->setSandboxMode(true);
+        $this->erpService->setSandboxMode($sandboxSolicitado);
         
         // Chamar o serviço para gerar os SQLs
         $resultado = $this->erpService->criarPedidoERP($dadosPedido);
@@ -1416,10 +1420,15 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         // ============================================================
         // 11. RESPOSTA
         // ============================================================
+        if (!$sandboxSolicitado) {
+            $stmtStatus = $pdo->prepare("UPDATE frota_acerto_pedido SET status = 'processado', updated_at = NOW() WHERE id = :id AND status IN ('pendente', 'processando')");
+            $stmtStatus->execute(['id' => $pedidoAcertoId]);
+        }
+
         return $this->json($response, [
             'success' => true,
-            'sandbox' => true,
-            'message' => '🧪 MODO SANDBOX: Pedido validado com sucesso. NENHUMA INSERÇÃO foi feita.',
+            'sandbox' => $sandboxSolicitado,
+            'message' => $sandboxSolicitado ? 'MODO SANDBOX: pedido validado; nenhuma inserção foi feita.' : 'Pedido criado com sucesso no ERP.',
             'data' => [
                 'idpedidopda' => $idPedidoPDA,
                 'sequencial_portal' => $sequencialPortal,
@@ -1607,7 +1616,7 @@ public function listarTransacoes(Request $request, Response $response): Response
                 idserie,
                 tipo
             FROM pedido_transacao
-            WHERE ativo = 'S'
+            WHERE ativo = 'S' AND idtransacao IN (19, 20)
             ORDER BY descricao ASC
         ");
         $stmt->execute();

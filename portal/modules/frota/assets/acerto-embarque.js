@@ -2460,7 +2460,7 @@ function gerarPedidoERP(pedidoAcertoId) {
                         data.data.forEach(transacao => {
                             const option = document.createElement('option');
                             option.value = transacao.idtransacao;
-                            option.textContent = `${transacao.idtransacao} - ${transacao.descricao || 'Sem descrição'}`;
+                            option.textContent = `${transacao.idtransacao} - ${transacao.idtransacao === 19 ? 'Faltante' : 'Devolução'} - ${transacao.descricao || 'Sem descrição'}`;
                             select.appendChild(option);
                         });
                         loading.style.display = 'none';

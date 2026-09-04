@@ -43,6 +43,7 @@ O modulo liberado usa o slug `motorista-offline` em `usuario_permissoes`.
 7. Corrigir rollbacks em retornos antecipados dentro de transacoes.
 8. Migrar senhas MD5 para `password_hash` com compatibilidade temporaria.
 9. Substituir a ponte V2 por contratos V2 implementados e testados.
+10. Validar em homologacao a criacao ERP com transacoes 19/20 antes de ativar producao.
 
 ## Validacao minima
 

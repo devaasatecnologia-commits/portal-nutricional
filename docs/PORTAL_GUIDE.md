@@ -73,6 +73,26 @@ O banco PostgreSQL e externo ao repositorio. Tabelas centrais:
 - operacao: `frota_checkin`, `frota_ocorrencia`, `frota_notificacao`, `frota_historico_posicao`;
 - acerto: `frota_acerto_embarque`, `frota_acerto_pedido`, `frota_acerto_item`.
 
+### Pedidos ERP do acerto
+
+O acerto usa as transacoes ERP:
+
+- `19`: faltante;
+- `20`: devolucao.
+
+O fluxo grava primeiro o pedido de acerto na Frota. A criacao em
+`palmtop_pedido` e `palmtop_pedido_item` permanece em Sandbox por padrao e
+gera SQL para conferencia. Para habilitar insercao real, configure somente no
+ambiente controlado:
+
+```dotenv
+ERP_PEDIDO_SANDBOX=false
+```
+
+Depois da insercao confirmada, o pedido de acerto e marcado como `processado`
+para impedir duplicidade. Nunca habilite producao sem backup e teste de um
+cliente/item controlado.
+
 ## Checklist de deploy
 
 - [ ] `.env` preenchido somente no servidor.

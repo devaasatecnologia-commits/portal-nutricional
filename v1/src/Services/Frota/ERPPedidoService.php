@@ -41,6 +41,7 @@ class ERPPedidoService
     public function __construct(\PDO $pdo)
     {
         $this->pdo = $pdo;
+        $this->sandboxMode = strtolower((string)($_ENV['ERP_PEDIDO_SANDBOX'] ?? 'true')) !== 'false';
         $this->logFile = __DIR__ . '/../../../logs/erp_pedido_' . date('Y-m-d') . '.log';
         
         // Criar diretório de logs se não existir
