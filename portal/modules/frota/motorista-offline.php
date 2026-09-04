@@ -1,9 +1,10 @@
 <?php
 $pageTitle = 'Rota do Motorista | Nutricional';
 $version = time();
+$appBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 $motoristaId = (int)($_GET['motorista_id'] ?? $_SESSION['motorista_id'] ?? 0);
-$extraCss = '<link rel="manifest" href="/portal/modules/frota/manifest-motorista.json"><link rel="stylesheet" href="/portal/modules/frota/assets/motorista-offline.css?v=' . $version . '">';
-$extraJs = '<script src="/portal/modules/frota/assets/motorista-offline.js?v=' . $version . '"></script>';
+$extraCss = '<link rel="manifest" href="' . $appBase . '/portal/modules/frota/manifest-motorista.json"><link rel="stylesheet" href="' . $appBase . '/portal/modules/frota/assets/motorista-offline.css?v=' . $version . '">';
+$extraJs = '<script src="' . $appBase . '/portal/modules/frota/assets/motorista-offline.js?v=' . $version . '"></script>';
 require_once __DIR__ . '/../../estrutura/header.php';
 ?>
 <main class="motorista-app" data-motorista-id="<?= $motoristaId ?>">
@@ -20,3 +21,4 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <section class="delivery-list" id="delivery-list" aria-live="polite"><div class="empty-state">Carregando sua rota...</div></section>
 </main>
 <script>window.MOTORISTA_ID_INICIAL = <?= $motoristaId ?>;</script>
+<?= $extraJs ?>

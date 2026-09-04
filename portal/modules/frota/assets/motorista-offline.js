@@ -5,7 +5,7 @@
     const motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || localStorage.getItem('motoristaId') || 0);
     const cacheKey = `frota.motorista.${motoristaId}.entregas`;
     const queueKey = 'frota.motorista.offline.queue';
-    const apiBase = '/v1/frota';
+    const apiBase = `${window.API_URL || '/v1'}/frota`;
     let entregas = [];
     const $ = (id) => document.getElementById(id);
     const getQueue = () => { try { return JSON.parse(localStorage.getItem(queueKey) || '[]'); } catch (error) { return []; } };
@@ -51,6 +51,9 @@
     document.addEventListener('click', (event) => { const button = event.target.closest('[data-action]'); if (button) executarAcao(button.dataset.id, button.dataset.action); });
     window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); });
     window.addEventListener('offline', setConnectionState);
-    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/portal/modules/frota/service-worker.js').catch(() => {});
+    if ('serviceWorker' in navigator) {
+        const appBase = window.location.pathname.split('/portal/')[0];
+        navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {});
+    }
     setConnectionState(); carregarEntregas(); sincronizarFila();
 }());

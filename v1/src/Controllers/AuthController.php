@@ -75,6 +75,7 @@ class AuthController
 
             // Buscar permissões
             $permissoes = $this->getPermissoesDoUsuario($usuario['idusuario'], $usuario['idcliforemp']);
+            $motoristaId = $this->getMotoristaId($usuario['idusuario']);
             
             $dashFiliais = !empty($usuario['dash_filiais']) ? explode(',', $usuario['dash_filiais']) : [];
             $dashGestores = !empty($usuario['dash_gestores']) ? explode(',', $usuario['dash_gestores']) : [];
@@ -89,6 +90,7 @@ class AuthController
                 'dash_filiais' => $dashFiliais,
                 'dash_gestores' => $dashGestores,
                 'permissoes' => $permissoes,
+                'motorista_id' => $motoristaId,
                 'iat' => time(),
                 'exp' => time() + (2 * 3600)
             ];
@@ -110,7 +112,8 @@ class AuthController
                     'foto_perfil' => $payload['foto_perfil'],
                     'dash_filiais' => $payload['dash_filiais'],
                     'dash_gestores' => $payload['dash_gestores'],
-                    'permissoes' => $payload['permissoes']
+                    'permissoes' => $payload['permissoes'],
+                    'motorista_id' => $payload['motorista_id']
                 ]
             ];
             
@@ -122,6 +125,24 @@ class AuthController
             error_log('Message: ' . $e->getMessage());
             error_log('Trace: ' . $e->getTraceAsString());
             return $this->jsonError($response, 'Erro interno no servidor.', 500);
+        }
+    }
+
+    /**
+     * Retorna o motorista vinculado ao usuário, quando a coluna de vínculo existir.
+     */
+    private function getMotoristaId(int $idusuario): int
+    {
+        try {
+            $columnExists = $this->pdo->query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'frota_motorista' AND column_name = 'usuario_id')")->fetchColumn();
+            if (!$columnExists) return 0;
+
+            $stmt = $this->pdo->prepare("SELECT id FROM frota_motorista WHERE usuario_id = :idusuario AND status <> 'inativo' LIMIT 1");
+            $stmt->execute(['idusuario' => $idusuario]);
+            return (int)($stmt->fetchColumn() ?: 0);
+        } catch (\Throwable $e) {
+            error_log('Erro ao buscar vínculo motorista-usuário: ' . $e->getMessage());
+            return 0;
         }
     }
 

@@ -136,7 +136,10 @@
             submitBtn.innerHTML = '<i class="fa fa-check"></i> Acesso Liberado!';
             
             setTimeout(() => {
-                window.location.href = `${appBase}/portal/`;
+                const motoristaId = Number(data.user?.motorista_id || 0);
+                window.location.href = motoristaId > 0
+                    ? `${appBase}/portal/modules/frota/motorista-offline.php?motorista_id=${motoristaId}`
+                    : `${appBase}/portal/`;
             }, 500);
 
         } catch (error) {

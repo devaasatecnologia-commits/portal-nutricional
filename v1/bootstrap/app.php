@@ -83,7 +83,7 @@ $app->add(function ($request, $handler) {
         ->withHeader('X-Frame-Options', 'DENY')
         ->withHeader('X-XSS-Protection', '1; mode=block')
         ->withHeader('Referrer-Policy', 'strict-origin-when-cross-origin')
-        ->withHeader('Permissions-Policy', 'geolocation=(), microphone=(), camera=()');
+        ->withHeader('Permissions-Policy', 'geolocation=(self), microphone=(), camera=(self)');
 });
 // Middleware de Error Handling (captura erros e retorna JSON)
 $errorMiddleware = $app->addErrorMiddleware(true, true, true);
