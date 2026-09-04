@@ -170,6 +170,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         <th class="text-center">Problemas</th>
                         <th class="text-center">Valor</th>
                         <th class="text-center">Status</th>
+                        <th class="text-center">Acerto</th>
                         <th class="text-center" style="width: 180px;">Ações</th>
                     </tr>
                 </thead>

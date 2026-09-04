@@ -190,7 +190,7 @@ function carregarEmbarquesParaAcerto(forcar = false) {
     });
     
     if (embarcar.filtros.status) {
-        params.append('status', embarcar.filtros.status);
+        params.append('status_acerto', embarcar.filtros.status);
     }
     
     showLoading('lista-embarques');

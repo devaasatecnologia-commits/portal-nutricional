@@ -915,6 +915,10 @@ body {
     .hero-acerto {
         padding: 16px 20px !important;
     }
+    .hero-acerto h1 { font-size: 1.35rem; }
+    .quick-filters { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+    .quick-filters::-webkit-scrollbar { display: none; }
+    .quick-filter-pill { flex: 0 0 auto; white-space: nowrap; }
     .grid-cols-2 {
         grid-template-columns: 1fr !important;
     }
@@ -926,6 +930,8 @@ body {
     .table-frota td { padding: 6px 8px; }
     .table-frota th { font-size: 0.55rem; }
     .modal-dialog { margin: 8px; }
+    .modal-content { max-height: calc(100vh - 16px); }
+    .modal-body { max-height: calc(100vh - 150px); overflow-y: auto; }
     .modal-header { padding: 16px 20px !important; }
     .modal-body { padding: 16px 20px !important; }
     .modal-footer { padding: 12px 20px !important; }
