@@ -20,7 +20,7 @@ $extraCss = '
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '">
+<script src="/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
 ';
 
 require_once __DIR__ . '/../../estrutura/header.php';
@@ -33,7 +33,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/modules/frota/gestao-frota.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
+                <a href="/portal/modules/frota/embarques.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -195,10 +195,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="/portal/modules/frota/assets/gestao-cargas.js?v=<?= $version ?>"></script>
 
 <?php
 require_once __DIR__ . '/../../estrutura/footer.php';
