@@ -246,12 +246,44 @@ async function carregarDados(forceRefresh = false) {
                 cache.timestamp = Date.now();
                 renderizarDados(dados);
                 carregarKPIs();
+                carregarKPIsOperacionais();
             }
         }
     } catch (error) {
         console.error('Erro ao carregar dados:', error);
         mostrarNotificacao('Erro ao carregar dados', 'error');
     }
+}
+
+async function carregarKPIsOperacionais() {
+    const token = getAuthToken();
+    if (!token) return;
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/dashboard/kpis`, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!response.ok) return;
+        const payload = await response.json();
+        if (payload.success) renderizarKPIsOperacionais(payload.data || {});
+    } catch (error) {
+        const container = document.getElementById('operational-kpis');
+        if (container) container.innerHTML = '<div class="operational-loading">Indicadores operacionais indisponíveis.</div>';
+    }
+}
+
+function renderizarKPIsOperacionais(kpis) {
+    const container = document.getElementById('operational-kpis');
+    if (!container) return;
+    const cards = [
+        ['embarques_ativos', 'Embarques ativos'],
+        ['entregas_hoje', 'Entregas hoje'],
+        ['taxa_entrega_hoje', 'Taxa de entrega', '%'],
+        ['motoristas_em_rota', 'Motoristas em rota'],
+        ['veiculos_em_rota', 'Veículos em rota'],
+        ['faturamento_mes', 'Faturamento do mês', 'money']
+    ];
+    container.innerHTML = cards.map(([key, label, format]) => {
+        const value = format === 'money' ? formatarMoeda(kpis[key]) : `${kpis[key] || 0}${format || ''}`;
+        return `<div class="operational-kpi"><strong>${value}</strong><span>${label}</span></div>`;
+    }).join('');
 }
 
 // ================================================================

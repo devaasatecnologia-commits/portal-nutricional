@@ -10,6 +10,15 @@
 .quick-filter-pill:hover, .quick-filter-pill.active { background: var(--nutri-primary); border-color: var(--nutri-primary); color: #fff; }
 .quick-filter-pill i { margin-right: 5px; }
 .empty-state-cargas { padding: 56px 20px; text-align: center; color: var(--nutri-text-secondary); }
+.operational-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 18px 20px 20px; }
+.operational-kpi { border: 1px solid var(--nutri-border); border-radius: 12px; padding: 14px; background: rgba(var(--nutri-primary-rgb), .025); }
+.operational-kpi strong { display: block; color: var(--nutri-text); font-size: 1.25rem; line-height: 1.2; }
+.operational-kpi span { display: block; margin-top: 5px; color: var(--nutri-text-secondary); font-size: .68rem; font-weight: 800; text-transform: uppercase; }
+.live-caption { color: var(--nutri-text-secondary); font-size: .72rem; font-weight: 700; }
+.live-caption span { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border-radius: 50%; background: var(--nutri-accent); }
+.operational-loading { grid-column: 1 / -1; color: var(--nutri-text-secondary); font-size: .85rem; }
+@media (max-width: 1100px) { .operational-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .operational-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; } }
 .kpi-card {
     background: var(--nutri-card-bg);
     border-radius: var(--nutri-radius);

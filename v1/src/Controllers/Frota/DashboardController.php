@@ -746,8 +746,8 @@ public function problemas(Request $request, Response $response): Response
                 ep.tipo_problema,
                 ep.referencia,
                 ep.descricao_problema,
-                ep.quantidade_afetada,
-                ep.valor_afetado,
+                COALESCE(NULLIF(ep.quantidade_afetada, 0), erp.quantidade, 0) as quantidade_afetada,
+                COALESCE(NULLIF(ep.valor_afetado, 0), erp.valor, 0) as valor_afetado,
                 ep.status_problema,
                 ep.prioridade,
                 ep.created_at as data_problema,
@@ -764,6 +764,15 @@ public function problemas(Request $request, Response $response): Response
             INNER JOIN frota_embarque em ON em.id = ep.embarque_id
             LEFT JOIN frota_motorista mo ON mo.id = em.motorista_id
             LEFT JOIN frota_veiculo ve ON ve.id = em.veiculo_id
+            LEFT JOIN LATERAL (
+                SELECT SUM(pi.qt) as quantidade, SUM(pi.valortotal) as valor
+                FROM pedido_item pi
+                WHERE pi.idpedido IN (
+                    SELECT value::integer
+                    FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value
+                    WHERE value ~ '^[0-9]+$'
+                )
+            ) erp ON true
             {$whereClause}
             ORDER BY 
                 CASE ep.prioridade 

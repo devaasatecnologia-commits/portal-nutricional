@@ -100,6 +100,17 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <!-- Gerado via JavaScript -->
     </div>
 
+    <div class="section-card operational-overview mb-6">
+        <div class="section-header flex justify-between items-center flex-wrap gap-2">
+            <div class="flex items-center gap-3">
+                <div class="section-icon-badge"><i class="fa-solid fa-gauge-high"></i></div>
+                <div><span class="font-bold">Visão operacional</span><span class="text-xs text-slate-400 block">Acompanhamento da operação em tempo real</span></div>
+            </div>
+            <span class="live-caption"><span></span> Atualizado automaticamente</span>
+        </div>
+        <div class="operational-kpis" id="operational-kpis"><div class="operational-loading">Carregando indicadores...</div></div>
+    </div>
+
     <!-- ================================================================
        TABELA DE PROBLEMAS
     ================================================================ -->
