@@ -10,7 +10,7 @@ senhas, tokens JWT, chaves de API ou credenciais.
 - API estavel: `/v1`
 - Ponte de compatibilidade: `/v2` encaminha temporariamente para `/v1`
 - Banco: PostgreSQL externo, configurado por `.env`
-- Ultima referencia conhecida: atualizar apos o commit desta revisao.
+- Ultima referencia: `bed6e31` - revisao geral, limpeza e ponte V2.
 
 ## Modulos importantes
 
