@@ -9,6 +9,10 @@ Options -Indexes
 RewriteEngine On
 RewriteBase /
 
+# Encaminha as rotas virtuais da API no projeto publicado em /API.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^v1(?:/(.*))?$ index.php?api_route=/$1 [QSA,END]
+
 # Repassar Header de Autorização (Bearer Token)
 RewriteCond %{HTTP:Authorization} ^(.*)
 RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
@@ -23,5 +27,7 @@ RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_URI} !^/v1/
+RewriteCond %{REQUEST_URI} !^/API/v1/
 RewriteCond %{REQUEST_URI} !^/portal/
+RewriteCond %{REQUEST_URI} !^/API/portal/
 RewriteRule ^(.*)$ index.php?acao=$1 [QSA,L]

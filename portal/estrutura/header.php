@@ -4,9 +4,11 @@ $pageTitle = $pageTitle ?? 'Portal Operacional | Nutricional';
 if (!function_exists('asset')) {
     function asset($path) {
         $version = time(); 
-        return $path . '?v=' . $version;
+        $base = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
+        return $base . $path . '?v=' . $version;
     }
 }
+$portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -22,7 +24,7 @@ if (!function_exists('asset')) {
     <!-- Alpine.js com Collapse - VERSÃO CORRETA (SEM DUPLICAÇÃO) -->
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
-    <script src="/portal/assets/js/config.js"></script>
+    <script src="<?= asset('/portal/assets/js/config.js') ?>"></script>
     <script>
        
         (function() {
@@ -39,7 +41,7 @@ if (!function_exists('asset')) {
                     localStorage.removeItem('userData');
                     
                     if (!window.location.pathname.includes('login.php')) {
-                        window.location.href = '/portal/login.php?expired=1';
+                        window.location.href = '<?= $portalBase ?>/portal/login.php?expired=1';
                     }
                 }
             } catch (e) {

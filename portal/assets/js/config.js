@@ -10,8 +10,9 @@ const isLocal = hostname === 'localhost' ||
                 hostname.startsWith('192.168.') ||
                 hostname === '192.168.1.99';
 
-// URL da API (GLOBAL)
-window.API_URL = isLocal ? 'http://localhost:8080/v1' : 'https://api.nutricionalbr.com/v1';
+// URL da API (GLOBAL), respeitando a pasta de publicação local (/API).
+const appBase = window.location.pathname.split('/portal/')[0];
+window.API_URL = isLocal ? `${window.location.origin}${appBase}/index.php?api_route=/v1` : 'https://api.nutricionalbr.com/v1';
 
 // Versão simplificada
 const API_URL = window.API_URL;

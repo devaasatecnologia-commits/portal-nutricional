@@ -92,7 +92,8 @@
                     hostname.startsWith('192.168.') ||
                     hostname === '192.168.1.99';
 
-    const API_URL = isLocal ? 'http://localhost:8080/v1' : 'https://api.nutricionalbr.com/v1';
+    const appBase = window.location.pathname.split('/portal/')[0];
+    const API_URL = isLocal ? `${window.location.origin}${appBase}/index.php?api_route=/v1` : 'https://api.nutricionalbr.com/v1';
     
     console.log(`🌐 Ambiente: ${isLocal ? 'DESENVOLVIMENTO' : 'PRODUÇÃO'}`);
     console.log(`🌐 API_URL: ${API_URL}`);
@@ -135,7 +136,7 @@
             submitBtn.innerHTML = '<i class="fa fa-check"></i> Acesso Liberado!';
             
             setTimeout(() => {
-                window.location.href = '/portal/';
+                window.location.href = `${appBase}/portal/`;
             }, 500);
 
         } catch (error) {

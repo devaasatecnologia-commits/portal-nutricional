@@ -35,12 +35,16 @@ if ($environment === 'development') {
 
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
+$routePath = $_GET['api_route'] ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
+if (isset($_GET['api_route'])) {
+    $_SERVER['REQUEST_URI'] = $routePath;
+}
 
 // ------------------------------------------------------------
 // 1. SERVE ARQUIVOS ESTÁTICOS DO NOVO PORTAL (/portal/*)
 // ------------------------------------------------------------
-if (strpos($path, '/portal/') === 0) {
-    $relativePath = substr($path, 7);
+if (strpos($routePath, '/portal/') === 0) {
+    $relativePath = substr($routePath, 8);
     $relativePath = ltrim($relativePath, '/');
     $file = __DIR__ . '/portal/' . $relativePath;
 
@@ -74,12 +78,12 @@ if (strpos($path, '/portal/') === 0) {
 //    - /ping  → Ping público
 //    - /auth  → Autenticação
 // ------------------------------------------------------------
-if (strpos($path, '/v1/') === 0 || 
-    $path === '/ping' || 
-    $path === '/auth/login' || 
-    strpos($path, '/auth/') === 0 ||
-    $path === '/swagger' ||
-    $path === '/swagger-ui') {
+if (strpos($routePath, '/v1/') === 0 ||
+    $routePath === '/ping' ||
+    $routePath === '/auth/login' ||
+    strpos($routePath, '/auth/') === 0 ||
+    $routePath === '/swagger' ||
+    $routePath === '/swagger-ui') {
     
     // Definir constantes para a API
     define('BASE_PATH', __DIR__);
@@ -92,12 +96,12 @@ if (strpos($path, '/v1/') === 0 ||
 // ------------------------------------------------------------
 // 3. ROTAS DO PORTAL (Front-end)
 // ------------------------------------------------------------
-if ($path === '/' || $path === '/portal' || $path === '/portal/') {
+if ($routePath === '/' || $routePath === '/portal' || $routePath === '/portal/') {
     require_once __DIR__ . '/portal/index.php';
     exit;
 }
 
-if ($path === '/login' || $path === '/portal/login') {
+if ($routePath === '/login' || $routePath === '/portal/login') {
     require_once __DIR__ . '/portal/login.php';
     exit;
 }

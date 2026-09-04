@@ -129,7 +129,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
     
     if (!token || !userData.uid) {
-        window.location.href = '/portal/login.php';
+        const portalBase = window.location.pathname.startsWith('/API/') ? '/API' : '';
+        window.location.href = portalBase + '/portal/login.php';
         return;
     }
     
