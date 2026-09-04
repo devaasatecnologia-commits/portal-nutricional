@@ -345,6 +345,9 @@ class EntregaController
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
         }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
+            return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
+        }
         
         if ($entrega['status'] === 'entregue') {
             return $this->json($response, ['success' => false, 'error' => 'Esta entrega já foi concluída'], 400);
@@ -467,6 +470,9 @@ public function checkout(Request $request, Response $response, array $args): Res
     $entrega = $this->getEntrega($id);
     if (!$entrega) {
         return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
+    }
+    if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
+        return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
     }
 
     if ($entrega['status'] === 'entregue') {
@@ -703,6 +709,9 @@ public function checkout(Request $request, Response $response, array $args): Res
         $entrega = $this->getEntrega($id);
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
+        }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega, (bool)($input['desktop'] ?? false))) {
+            return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
         }
         
         $lat = (float)($input['latitude'] ?? 0);
@@ -963,6 +972,15 @@ public function checkout(Request $request, Response $response, array $args): Res
             ");
         $stmt->execute(['id' => $id]);
         return $stmt->fetch(\PDO::FETCH_ASSOC);
+    }
+
+    private function motoristaPodeOperarEntrega(Request $request, array $entrega, bool $desktop): bool
+    {
+        if ($desktop) return true;
+        $user = $request->getAttribute('user') ?? [];
+        if (in_array('admin', $user['permissoes'] ?? [], true)) return true;
+        $motoristaId = (int)($user['motorista_id'] ?? 0);
+        return $motoristaId > 0 && $motoristaId === (int)($entrega['motorista_id'] ?? 0);
     }
     
     private function getConfig($chave, $padrao = null)

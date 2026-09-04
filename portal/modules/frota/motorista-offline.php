@@ -18,6 +18,10 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div><strong id="fila-pendente">0</strong><span>pendentes</span></div>
     </section>
     <div class="offline-notice" id="offline-notice" hidden>Sem conexão. As ações ficam salvas neste aparelho e serão enviadas automaticamente quando a internet voltar.</div>
+    <section class="route-tools" aria-label="Ferramentas da rota">
+        <button type="button" id="btn-refresh-route" class="route-tool">Atualizar rota</button>
+        <span id="gps-status" class="gps-status">GPS aguardando</span>
+    </section>
     <section class="delivery-list" id="delivery-list" aria-live="polite"><div class="empty-state">Carregando sua rota...</div></section>
 </main>
 <script>window.MOTORISTA_ID_INICIAL = <?= $motoristaId ?>;</script>

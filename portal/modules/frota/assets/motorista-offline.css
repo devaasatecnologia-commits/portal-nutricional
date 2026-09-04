@@ -23,6 +23,9 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .route-summary strong { font-size: 1.5rem; }
 .route-summary span { color: var(--driver-muted); font-size: .75rem; }
 .offline-notice { margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
+.route-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+.route-tool { border: 1px solid var(--driver-ink); border-radius: 10px; background: var(--driver-ink); color: white; padding: 10px 14px; font-weight: 800; cursor: pointer; }
+.gps-status { color: var(--driver-muted); font-size: .78rem; }
 .delivery-list { display: grid; gap: 12px; }
 .delivery-card { border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 16px; box-shadow: 0 4px 16px rgba(23, 52, 44, .05); }
 .delivery-card.is-complete { opacity: .72; }
@@ -36,5 +39,9 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .delivery-actions .checkout { background: var(--driver-success); color: white; }
 .delivery-actions .failure { background: #fff0ef; color: var(--driver-danger); }
 .delivery-actions button:disabled { cursor: not-allowed; opacity: .45; }
+.delivery-order { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; color: var(--driver-muted); font-size: .75rem; font-weight: 800; }
+.order-actions { display: flex; gap: 6px; }
+.order-actions button { border: 1px solid var(--driver-border); border-radius: 8px; background: #f7faf7; color: var(--driver-ink); padding: 5px 9px; cursor: pointer; }
+.order-actions button:disabled { opacity: .35; cursor: not-allowed; }
 .empty-state { padding: 48px 16px; text-align: center; color: var(--driver-muted); }
 @media (max-width: 460px) { .motorista-header { display: block; } .connection-state { margin-top: 12px; } .delivery-actions { grid-template-columns: 1fr; } }
