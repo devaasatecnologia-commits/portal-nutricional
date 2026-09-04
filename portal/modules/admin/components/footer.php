@@ -2,7 +2,7 @@
 
 <script>
 // Funções globais para o módulo admin
-const API_BASE = '/v1';
+const API_BASE = `${window.location.origin}/index.php?api_route=`;
 
 // Obter token JWT
 function getAuthToken() {
@@ -29,7 +29,8 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
     
-    const response = await fetch(`${API_BASE}${endpoint}`, options);
+    const cleanEndpoint = endpoint.startsWith('/v1/') ? endpoint.substring(4) : endpoint;
+    const response = await fetch(`${API_BASE}${cleanEndpoint}`, options);
     const text = await response.text();
     
     try {
