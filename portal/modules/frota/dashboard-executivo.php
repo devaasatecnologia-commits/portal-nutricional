@@ -22,6 +22,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
         <div class="dashboard-actions">
             <span class="last-update" id="ultima-atualizacao">Atualizando...</span>
+            <button class="icon-button" id="btn-exportar" type="button" title="Exportar snapshot CSV" aria-label="Exportar snapshot CSV">
+                <i class="fa-solid fa-download"></i>
+            </button>
             <button class="icon-button" id="btn-atualizar" type="button" title="Atualizar dashboard" aria-label="Atualizar dashboard">
                 <i class="fa-solid fa-rotate-right"></i>
             </button>
@@ -43,6 +46,11 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <section class="dashboard-grid bottom-grid">
         <article class="dashboard-panel map-panel"><div class="panel-heading"><div><span class="panel-label">Telemetria</span><h2>Mapa de calor da operação</h2></div><i class="fa-solid fa-map-location-dot"></i></div><div id="mapa-frota" class="fleet-map" aria-label="Mapa de calor da operação"></div></article>
         <article class="dashboard-panel ranking-panel"><div class="panel-heading"><div><span class="panel-label">Performance</span><h2>Ranking de motoristas</h2></div><i class="fa-solid fa-ranking-star"></i></div><div id="ranking-motoristas" class="ranking-list"><div class="empty-state">Carregando ranking...</div></div></article>
+    </section>
+
+    <section class="dashboard-grid detail-grid">
+        <article class="dashboard-panel"><div class="panel-heading"><div><span class="panel-label">Atenção imediata</span><h2>Alertas operacionais</h2></div><i class="fa-solid fa-bell"></i></div><div id="lista-alertas" class="alert-list"><div class="empty-state">Carregando alertas...</div></div></article>
+        <article class="dashboard-panel"><div class="panel-heading"><div><span class="panel-label">Acompanhamento</span><h2>Entregas de hoje</h2></div><i class="fa-solid fa-truck-fast"></i></div><div id="lista-entregas" class="delivery-list"><div class="empty-state">Carregando entregas...</div></div></article>
     </section>
 </main>
 <script src="/portal/modules/frota/assets/dashboard-executivo.js?v=<?= $version ?>"></script>

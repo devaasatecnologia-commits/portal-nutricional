@@ -1,11 +1,13 @@
 (() => {
-    const state = { charts: {}, map: null, heat: null };
+    const state = { charts: {}, map: null, heat: null, snapshot: null };
     const endpoints = {
         kpis: '/v1/frota/dashboard/kpis',
         problemas: '/v1/frota/dashboard/kpis-problemas',
         graficos: '/v1/frota/dashboard/graficos',
         mapa: '/v1/frota/dashboard/mapa',
-        acertos: '/v1/frota/acerto/embarques?pagina=1&limite=1000'
+        acertos: '/v1/frota/acerto/embarques?pagina=1&limite=1000',
+        alertas: '/v1/frota/dashboard/alertas',
+        entregas: '/v1/frota/dashboard/entregas/hoje'
     };
 
     function token() { return localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || ''; }
@@ -58,20 +60,50 @@
         state.heat = L.heatLayer(points, { radius: 30, blur: 22, maxZoom: 12, gradient: { .35: '#3979a8', .6: '#e2b957', .85: '#d27b32', 1: '#b84b4b' } }).addTo(state.map);
         if (points.length) state.map.fitBounds(points.map(point => [point[0], point[1]]), { padding: [20, 20], maxZoom: 12 });
     }
+    function renderAlerts(items) {
+        const target = document.getElementById('lista-alertas');
+        if (!items || !items.length) { target.innerHTML = '<div class="empty-state">Nenhum alerta pendente.</div>'; return; }
+        target.innerHTML = items.slice(0, 6).map(item => `<div class="alert-row alert-${item.tipo || 'atencao'}"><i class="fa-solid fa-circle-exclamation"></i><div><strong>${item.titulo || 'Alerta operacional'}</strong><p>${item.mensagem || ''}</p></div></div>`).join('');
+    }
+    function renderDeliveries(items) {
+        const target = document.getElementById('lista-entregas');
+        if (!items || !items.length) { target.innerHTML = '<div class="empty-state">Nenhuma entrega registrada hoje.</div>'; return; }
+        const labels = { entregue: 'Concluída', pendente: 'Pendente', em_andamento: 'Em andamento', falha: 'Falha', cancelada: 'Cancelada' };
+        target.innerHTML = items.slice(0, 6).map(item => `<div class="delivery-row"><div><strong>${item.cliente_nome || 'Cliente não identificado'}</strong><span>${item.motorista_nome || 'Motorista não informado'}${item.veiculo_placa ? ` · ${item.veiculo_placa}` : ''}</span></div><b class="status-${item.status || 'pendente'}">${labels[item.status] || item.status || 'Pendente'}</b></div>`).join('');
+    }
+    function exportSnapshot() {
+        if (!state.snapshot) return;
+        const rows = [['Categoria', 'Indicador', 'Valor'],
+            ['KPI', 'Entregas hoje', state.snapshot.kpis.entregas_hoje || 0],
+            ['KPI', 'Motoristas em rota', state.snapshot.kpis.motoristas_em_rota || 0],
+            ['KPI', 'Problemas pendentes', state.snapshot.problemas.pendentes || 0],
+            ['KPI', 'Taxa de acerto', document.getElementById('kpi-acerto').textContent],
+            ...state.snapshot.alertas.map(item => ['Alerta', item.titulo || '', item.mensagem || '']),
+            ...state.snapshot.entregas.map(item => ['Entrega', item.cliente_nome || '', item.status || ''])];
+        const csv = rows.map(row => row.map(value => `"${String(value).replace(/"/g, '""')}"`).join(';')).join('\n');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+        link.download = `snapshot-frota-${new Date().toISOString().slice(0, 10)}.csv`;
+        link.click();
+        URL.revokeObjectURL(link.href);
+    }
     async function load() {
         const button = document.getElementById('btn-atualizar');
         button.disabled = true; button.querySelector('i').classList.add('fa-spin');
         try {
-            const [kpis, problemas, graficos, mapa, acertos] = await Promise.all(Object.values(endpoints).map(get));
+            const [kpis, problemas, graficos, mapa, acertos, alertas, entregas] = await Promise.all(Object.values(endpoints).map(get));
+            state.snapshot = { kpis: kpis.data || {}, problemas: problemas.data || {}, alertas: alertas.data || [], entregas: entregas.data || [] };
             fillKpis(kpis.data || {}, problemas.data || {}, acertos.data || []);
             renderCharts(graficos.data || {});
             renderRanking((graficos.data || {}).top_motoristas || []);
             renderMap(mapa.data || []);
+            renderAlerts(alertas.data || []);
+            renderDeliveries(entregas.data || []);
             document.getElementById('ultima-atualizacao').textContent = `Atualizado às ${new Date().toLocaleTimeString('pt-BR')}`;
         } catch (error) {
             console.error('Erro ao carregar dashboard executivo:', error);
             document.getElementById('ultima-atualizacao').textContent = 'Falha ao atualizar';
         } finally { button.disabled = false; button.querySelector('i').classList.remove('fa-spin'); }
     }
-    document.addEventListener('DOMContentLoaded', () => { document.getElementById('btn-atualizar').addEventListener('click', load); load(); setInterval(load, 60000); });
+    document.addEventListener('DOMContentLoaded', () => { document.getElementById('btn-atualizar').addEventListener('click', load); document.getElementById('btn-exportar').addEventListener('click', exportSnapshot); load(); setInterval(load, 60000); });
 })();
