@@ -373,6 +373,8 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
         $embarqueId = (int)($args['id'] ?? 0);
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         $novaOrdem = $input['ordem'] ?? [];
+        $operationId = is_string($input['operation_id'] ?? null) ? trim($input['operation_id']) : '';
+        $expectedUpdatedAt = is_string($input['expected_updated_at'] ?? null) ? trim($input['expected_updated_at']) : '';
         
         if ($embarqueId <= 0) {
             return $this->json($response, [
@@ -390,6 +392,46 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
         
         try {
             $pdo = $this->pdo;
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS frota_operacao_offline (
+                    operation_id VARCHAR(180) PRIMARY KEY,
+                    resposta JSONB NOT NULL,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            ");
+            if ($operationId !== '') {
+                $stmtOperacao = $pdo->prepare("
+                    SELECT resposta FROM frota_operacao_offline
+                    WHERE operation_id = :operation_id
+                ");
+                $stmtOperacao->execute(['operation_id' => $operationId]);
+                $respostaAnterior = $stmtOperacao->fetchColumn();
+                if ($respostaAnterior !== false) {
+                    $resposta = json_decode($respostaAnterior, true);
+                    return $this->json($response, is_array($resposta) ? $resposta : [
+                        'success' => true,
+                        'message' => 'Operação já processada'
+                    ]);
+                }
+            }
+            if ($expectedUpdatedAt !== '') {
+                $stmtVersion = $pdo->prepare("SELECT updated_at FROM frota_embarque WHERE id = :id");
+                $stmtVersion->execute(['id' => $embarqueId]);
+                $currentUpdatedAt = $stmtVersion->fetchColumn();
+                if ($currentUpdatedAt === false) {
+                    return $this->json($response, ['success' => false, 'error' => 'Embarque não encontrado'], 404);
+                }
+                $currentTimestamp = (new \DateTimeImmutable($currentUpdatedAt))->getTimestamp();
+                $expectedTimestamp = (new \DateTimeImmutable($expectedUpdatedAt))->getTimestamp();
+                if ($currentTimestamp !== $expectedTimestamp) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'conflict' => true,
+                        'error' => 'A rota foi alterada pelo gestor enquanto o motorista estava offline',
+                        'data' => ['embarque_id' => $embarqueId, 'updated_at' => $currentUpdatedAt]
+                    ], 409);
+                }
+            }
             $pdo->beginTransaction();
             
             // Atualizar ordem de cada entrega
@@ -407,17 +449,31 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                     'embarque_id' => $embarqueId
                 ]);
             }
+            $pdo->prepare("UPDATE frota_embarque SET updated_at = NOW() WHERE id = :id")
+                ->execute(['id' => $embarqueId]);
             
             $pdo->commit();
             
-            return $this->json($response, [
+            $resultado = [
                 'success' => true,
                 'message' => 'Ordem atualizada com sucesso',
                 'data' => [
                     'embarque_id' => $embarqueId,
                     'total_entregas' => count($novaOrdem)
                 ]
-            ]);
+            ];
+            if ($operationId !== '') {
+                $stmtOperacao = $pdo->prepare("
+                    INSERT INTO frota_operacao_offline (operation_id, resposta)
+                    VALUES (:operation_id, :resposta)
+                    ON CONFLICT (operation_id) DO NOTHING
+                ");
+                $stmtOperacao->execute([
+                    'operation_id' => substr($operationId, 0, 180),
+                    'resposta' => json_encode($resultado, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)
+                ]);
+            }
+            return $this->json($response, $resultado);
             
         } catch (\Exception $e) {
             if ($pdo->inTransaction()) {

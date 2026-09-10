@@ -981,6 +981,7 @@ setInterval(atualizarIndicadorCache, 5000);
 // ======================================================================
 function renderizarEmbarques(embarques, pagination) {
     const tbody = document.getElementById('lista-embarques');
+    renderizarVisaoOperacional(embarques || []);
 
     if (!embarques || embarques.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400">
@@ -1146,6 +1147,35 @@ if (pagination) {
     paginaAtual = pagination.pagina || 1;
     document.getElementById('total-embarques').textContent = totalRegistros;
 }
+}
+
+function renderizarVisaoOperacional(embarques) {
+    const container = document.getElementById('embarques-overview');
+    if (!container) return;
+    const status = embarques.reduce((acc, embarque) => {
+        const chave = embarque.status || 'planejado';
+        acc[chave] = (acc[chave] || 0) + 1;
+        return acc;
+    }, {});
+    const entregas = embarques.reduce((total, embarque) => total + Number(embarque.total_entregas || 0), 0);
+    const concluidas = embarques.reduce((total, embarque) => total + Number(embarque.entregas_concluidas || 0), 0);
+    const progresso = entregas ? Math.round((concluidas / entregas) * 100) : 0;
+    const cards = [
+        ['fa-route', embarques.length, 'rotas na página', 'neutral'],
+        ['fa-truck-fast', status.em_andamento || 0, 'em andamento', 'active'],
+        ['fa-circle-check', `${progresso}%`, `${concluidas}/${entregas} entregas`, 'success'],
+        ['fa-triangle-exclamation', status.problema || 0, 'com problema', status.problema ? 'danger' : 'neutral']
+    ];
+    container.innerHTML = `
+        <div class="overview-heading">
+            <div><span class="overview-eyebrow"><i class="fa-solid fa-signal"></i> Painel operacional</span><strong>Visão da página atual</strong></div>
+            <span class="overview-caption">${entregas} entregas monitoradas</span>
+        </div>
+        <div class="overview-cards">
+            ${cards.map(([icon, value, label, tone]) => `<div class="overview-card ${tone}"><i class="fa-solid ${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('')}
+        </div>
+        <div class="overview-progress"><div><span>Conclusão das entregas</span><strong>${progresso}%</strong></div><div class="overview-progress-track"><span style="width:${progresso}%"></span></div></div>
+    `;
 }
 
 function mudarPagina(direcao) {

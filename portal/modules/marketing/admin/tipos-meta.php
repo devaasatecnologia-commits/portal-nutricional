@@ -20,7 +20,7 @@ require_once __DIR__ . '/../../../estrutura/header.php';
     <!-- Header -->
     <div class="rounded-3xl p-5 mb-6 flex justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
-            <a href="/portal/modules/marketing/admin/index.php" class="btn-voltar sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200">
+            <a href="/portal/" class="btn-voltar sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200" title="Voltar ao Portal">
                 <i class="fa-solid fa-arrow-left text-slate-600"></i>
             </a>
             <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl flex items-center justify-center shadow-lg">

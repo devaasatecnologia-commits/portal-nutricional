@@ -120,7 +120,7 @@ class RastreamentoController
         
         $dataInicio = $params['data_inicio'] ?? date('Y-m-d', strtotime('-7 days'));
         $dataFim = $params['data_fim'] ?? date('Y-m-d');
-        $limite = (int)($params['limite'] ?? 1000);
+        $limite = max(1, min((int)($params['limite'] ?? 1000), 5000));
         
         $sql = "
             SELECT 

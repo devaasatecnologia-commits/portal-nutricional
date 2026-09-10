@@ -44,7 +44,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="hero-acerto">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/modules/frota/embarques.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
+                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -95,6 +95,10 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <i class="fa-solid fa-triangle-exclamation"></i> Com Problemas
     </button>
 </div>
+
+    <div class="acerto-overview" id="acerto-overview" aria-live="polite">
+        <div class="overview-loading"><i class="fa-solid fa-chart-pie"></i> Calculando resumo dos acertos...</div>
+    </div>
 
     <!-- BARRA DE FERRAMENTAS -->
     <div class="section-card">
@@ -197,19 +201,44 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div class="modal-content">
             <!-- HEADER -->
             <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fa-solid fa-file-signature"></i> 
-                    Acerto do Embarque <span id="acerto-numero" class="font-bold" style="color: #f6d365;"></span>
-                    <span id="acerto-status-badge" class="ml-2" style="display: none;"></span>
-                </h5>
+                <div class="acerto-header-main">
+                    <div class="acerto-header-title-row">
+                        <i class="fa-solid fa-file-signature"></i>
+                        <h5 class="modal-title">Acerto do Embarque</h5>
+                        <span id="acerto-numero" class="font-bold"></span>
+                        <span id="acerto-status-badge" class="ml-2" style="display: none;"></span>
+                    </div>
+                    <div class="acerto-header-meta">
+                        <strong id="acerto-header-motorista">Motorista não identificado</strong>
+                        <span id="acerto-header-veiculo"></span>
+                        <div id="acerto-header-vinculados"></div>
+                    </div>
+                </div>
+                <div class="acerto-header-metrics" id="acerto-header-metrics"></div>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar">×</button>
             </div>
             
             <!-- BODY -->
-            <div class="modal-body" id="acerto-conteudo">
-                <div class="text-center py-8">
-                    <i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-500"></i>
-                    <p class="mt-3 text-slate-400">Carregando detalhes do embarque...</p>
+            <div class="modal-body">
+                <div id="acerto-topo" class="acerto-modal-top"></div>
+                <div class="acerto-pedido-search">
+                    <label for="acerto-busca-pedido">Localizar entrega</label>
+                    <div class="acerto-pedido-search-row">
+                        <input id="acerto-busca-pedido" type="search" placeholder="Pedido, cliente, entrega ou ERP" oninput="filtrarEntregasAcerto()">
+                        <button type="button" onclick="limparBuscaAcerto()"><i class="fa-solid fa-xmark"></i> Limpar</button>
+                    </div>
+                    <div class="acerto-conferencia-filters" aria-label="Filtros de conferência">
+                        <button type="button" class="active" data-conferencia="todos" onclick="aplicarFiltroConferencia('todos', this)">Todos</button>
+                        <button type="button" data-conferencia="entregue" onclick="aplicarFiltroConferencia('entregue', this)">Entregues</button>
+                        <button type="button" data-conferencia="divergencia" onclick="aplicarFiltroConferencia('divergencia', this)">Com divergência</button>
+                    </div>
+                    <div id="acerto-pedido-resultado" class="acerto-pedido-result" hidden></div>
+                </div>
+                <div id="acerto-conteudo">
+                    <div class="text-center py-8">
+                        <i class="fa-solid fa-spinner fa-spin text-3xl text-emerald-500"></i>
+                        <p class="mt-3 text-slate-400">Carregando detalhes do embarque...</p>
+                    </div>
                 </div>
             </div>
             
@@ -221,8 +250,32 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <button type="button" class="btn btn-success-nutri" onclick="finalizarAcerto()" id="btn-finalizar-acerto" style="display: none;">
                     <i class="fa-solid fa-check-double"></i> Finalizar Acerto
                 </button>
+                <button type="button" class="btn btn-secondary-nutri" onclick="marcarEmbarqueConferido()" id="btn-conferido-total">
+                    <i class="fa-solid fa-clipboard-check"></i> Conferido Total
+                </button>
                 <button type="button" class="btn btn-danger-nutri" onclick="cancelarAcerto()" id="btn-cancelar-acerto" style="display: none;">
                     <i class="fa-solid fa-ban"></i> Cancelar
+                </button>
+                <button type="button" class="btn btn-secondary-nutri" data-bs-dismiss="modal">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL COMPROVANTE DE CONFERÊNCIA TOTAL -->
+<div class="modal" id="modalComprovanteConferencia" tabindex="-1" style="display: none;">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content" id="comprovante-conferencia-modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fa-solid fa-file-circle-check"></i> Comprovante de Conferência</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="comprovante-conferencia-corpo"></div>
+            <div class="modal-footer no-print">
+                <button type="button" class="btn btn-primary-nutri" onclick="imprimirComprovanteConferencia()">
+                    <i class="fa-solid fa-print"></i> Imprimir
                 </button>
                 <button type="button" class="btn btn-secondary-nutri" data-bs-dismiss="modal">
                     Fechar

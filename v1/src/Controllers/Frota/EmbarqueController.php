@@ -62,8 +62,8 @@ class EmbarqueController
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
         
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         $sql = "

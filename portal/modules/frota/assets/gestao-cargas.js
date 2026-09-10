@@ -472,6 +472,36 @@ function aplicarFiltro(status, btnEl) {
     carregarDados();
 }
 
+function aplicarPrioridade(prioridade) {
+    state.filtroPrioridade = prioridade;
+    state.paginaAtual = 1;
+    cache.dados = null;
+    cache.timestamp = null;
+    atualizarAcaoLimparFiltros();
+    carregarDados();
+}
+
+function atualizarAcaoLimparFiltros() {
+    const button = document.getElementById('limpar-filtros');
+    if (button) button.hidden = state.filtroStatus === 'todos' && state.filtroPrioridade === 'todas' && !state.filtroBusca;
+}
+
+function limparFiltros() {
+    state.filtroStatus = 'todos';
+    state.filtroPrioridade = 'todas';
+    state.filtroBusca = '';
+    state.paginaAtual = 1;
+    cache.dados = null;
+    cache.timestamp = null;
+    const input = document.getElementById('filtro-busca');
+    const select = document.getElementById('filtro-prioridade');
+    if (input) input.value = '';
+    if (select) select.value = 'todas';
+    document.querySelectorAll('.quick-filter-pill').forEach(pill => pill.classList.toggle('active', pill.dataset.filtro === 'todos'));
+    atualizarAcaoLimparFiltros();
+    carregarDados();
+}
+
 function mudarPagina(direcao) {
     if (direcao === 'anterior' && state.paginaAtual > 1) state.paginaAtual--;
     else if (direcao === 'proximo' && state.paginaAtual < state.totalPaginas) state.paginaAtual++;
@@ -524,8 +554,31 @@ async function verAnalise(entregaId) {
 }
 
 function montarHtmlAnalise(entrega) {
+    const checklist = Array.isArray(entrega.checklist) ? entrega.checklist : [];
+    const problemas = Array.isArray(entrega.problemas) ? entrega.problemas : [];
+    const fotos = Array.isArray(entrega.fotos) ? entrega.fotos : [];
+    const itensComProblema = checklist.filter(item => item.status && item.status !== 'entregue').length;
+    const valorAfetado = problemas.reduce((total, problema) => total + Number(problema.valor_afetado || 0), 0);
+    const resumoHtml = `
+        <div class="analise-summary">
+            <div class="analise-summary-main">
+                <span class="analise-eyebrow"><i class="fa-solid fa-route"></i> Ficha operacional</span>
+                <strong>${entrega.cliente_nome || 'Entrega sem cliente identificado'}</strong>
+                <span>${entrega.cidade || ''}${entrega.uf ? ', ' + entrega.uf : ''}${entrega.veiculo_placa ? ' · ' + entrega.veiculo_placa : ''}</span>
+            </div>
+            <div class="analise-summary-stats">
+                <div><strong>${checklist.length}</strong><span>itens</span></div>
+                <div class="${itensComProblema ? 'is-alert' : ''}"><strong>${itensComProblema}</strong><span>com divergência</span></div>
+                <div class="${problemas.length ? 'is-alert' : ''}"><strong>${problemas.length}</strong><span>ocorrências</span></div>
+                <div><strong>${fotos.length}</strong><span>evidências</span></div>
+            </div>
+        </div>
+        ${problemas.length ? `<div class="analise-impact"><i class="fa-solid fa-chart-line"></i><span>Impacto registrado</span><strong>${formatarMoeda(valorAfetado)}</strong><small>valor afetado</small></div>` : ''}
+    `;
+
     // Info da entrega
     const infoHtml = `
+        ${resumoHtml}
         <div class="detalhes-grid">
             <div class="detalhes-card">
                 <div class="label"><i class="fa-solid fa-hashtag"></i> ID Entrega</div>
@@ -562,15 +615,15 @@ function montarHtmlAnalise(entrega) {
 
     // Checklist de itens
     let checklistHtml = '';
-    if (entrega.checklist && entrega.checklist.length > 0) {
+    if (checklist.length > 0) {
         checklistHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-solid fa-clipboard-list mr-2" style="color:var(--nutri-accent);"></i>
-                    Checklist de Itens (${entrega.checklist.length})
+                    Checklist de Itens (${checklist.length})
                 </h6>
                 <div class="analise-checklist">
-                    ${entrega.checklist.map(item => {
+                    ${checklist.map(item => {
                         const isProblema = item.status !== 'entregue';
                         const statusClass = item.status || 'entregue';
                         return `
@@ -600,15 +653,15 @@ function montarHtmlAnalise(entrega) {
 
     // Problemas registrados
     let problemasHtml = '';
-    if (entrega.problemas && entrega.problemas.length > 0) {
+    if (problemas.length > 0) {
         problemasHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-solid fa-triangle-exclamation mr-2" style="color:#f59e0b;"></i>
-                    Problemas Registrados (${entrega.problemas.length})
+                    Problemas Registrados (${problemas.length})
                 </h6>
                 <div class="analise-checklist">
-                    ${entrega.problemas.map(p => `
+                    ${problemas.map(p => `
                         <div class="checklist-item" style="border-left: 3px solid ${p.prioridade === 'critica' ? '#dc2626' : p.prioridade === 'alta' ? '#f59e0b' : '#3b82f6'};">
                             <div class="info">
                                 <div class="ref">${getTipoLabel(p.tipo_problema)}</div>
@@ -686,15 +739,15 @@ function montarHtmlAnalise(entrega) {
 
     // Fotos
     let fotosHtml = '';
-    if (entrega.fotos && entrega.fotos.length > 0) {
+    if (fotos.length > 0) {
         fotosHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-regular fa-images mr-2" style="color:var(--nutri-accent);"></i>
-                    Fotos (${entrega.fotos.length})
+                    Fotos (${fotos.length})
                 </h6>
                 <div class="flex flex-wrap gap-3">
-                    ${entrega.fotos.map(foto => `
+                    ${fotos.map(foto => `
                         <div class="foto-thumbnail" style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid var(--nutri-border);" 
                              onclick="abrirZoomFoto('${foto.url_foto}', '${foto.tipo_foto || 'Foto'}')">
                             <img src="${foto.url_foto}" style="width: 100%; height: 100%; object-fit: cover;" 
@@ -1067,6 +1120,316 @@ function exportarCSV() {
 }
 
 // ================================================================
+// ABAS PRINCIPAIS (Visão Geral / Motoristas / Histórico)
+// ================================================================
+let abaCargasAtiva = 'visao-geral';
+let motoristasCarregados = false;
+let historicoState = {
+    pagina: 1,
+    totalPaginas: 1,
+    busca: '',
+    status: 'todos',
+    dataInicio: '',
+    dataFim: ''
+};
+
+function mudarAbaCargas(aba, btn) {
+    abaCargasAtiva = aba;
+
+    document.querySelectorAll('.cargas-tab').forEach(t => {
+        t.classList.toggle('active', t === btn);
+        t.setAttribute('aria-selected', t === btn ? 'true' : 'false');
+    });
+    document.querySelectorAll('.cargas-tab-panel').forEach(p => {
+        p.hidden = p.id !== `tab-${aba}`;
+    });
+
+    if (aba === 'motoristas' && !motoristasCarregados) {
+        carregarRankingMotoristas();
+    }
+    if (aba === 'historico') {
+        carregarHistoricoEmbarques();
+    }
+}
+
+// ================================================================
+// ABA: DESEMPENHO DE MOTORISTAS
+// ================================================================
+async function carregarRankingMotoristas() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-motoristas-dias')?.value || 30;
+    const infoPeriodo = document.getElementById('info-motoristas-periodo');
+    if (infoPeriodo) {
+        const labels = { '7': 'Últimos 7 dias', '30': 'Últimos 30 dias', '90': 'Últimos 90 dias', '365': 'Últimos 12 meses' };
+        infoPeriodo.textContent = labels[dias] || `Últimos ${dias} dias`;
+    }
+
+    const tbody = document.getElementById('lista-motoristas');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/ranking-motoristas?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar ranking');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        motoristasCarregados = true;
+        renderizarDestaquesMotoristas(payload.data || []);
+        renderizarTabelaMotoristas(payload.data || []);
+    } catch (error) {
+        console.error('Erro ao carregar ranking de motoristas:', error);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-500">Erro ao carregar ranking de motoristas</td></tr>';
+    }
+}
+
+function renderizarDestaquesMotoristas(dados) {
+    const container = document.getElementById('motoristas-destaques');
+    if (!container) return;
+
+    if (!dados.length) {
+        container.innerHTML = '<div class="empty-state-cargas">Nenhum dado de motorista no período selecionado.</div>';
+        return;
+    }
+
+    const maisDivergencia = [...dados].sort((a, b) => b.taxa_divergencia - a.taxa_divergencia)[0];
+    const maisAtrasos = [...dados].sort((a, b) => (b.entregas_atrasadas || 0) - (a.entregas_atrasadas || 0))[0];
+    const melhorDesempenho = [...dados].sort((a, b) => a.indice_ineficiencia - b.indice_ineficiencia)[0];
+
+    container.innerHTML = `
+        <div class="motoristas-destaques-grid">
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-solid fa-triangle-exclamation"></i> Maior taxa de divergência</div>
+                <div class="destaque-nome">${escapeHtml(maisDivergencia?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${(maisDivergencia?.taxa_divergencia ?? 0).toFixed(1)}%</div>
+            </div>
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-regular fa-clock"></i> Mais entregas atrasadas</div>
+                <div class="destaque-nome">${escapeHtml(maisAtrasos?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${maisAtrasos?.entregas_atrasadas ?? 0}</div>
+            </div>
+            <div class="motorista-destaque-card sucesso">
+                <div class="destaque-label"><i class="fa-solid fa-medal"></i> Melhor desempenho</div>
+                <div class="destaque-nome">${escapeHtml(melhorDesempenho?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${(melhorDesempenho?.indice_ineficiencia ?? 0).toFixed(1)} pts</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderizarTabelaMotoristas(dados) {
+    const tbody = document.getElementById('lista-motoristas');
+    if (!tbody) return;
+
+    if (!dados.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Nenhum motorista com embarques no período.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = dados.map((m, idx) => {
+        const indice = Number(m.indice_ineficiencia || 0);
+        const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+        const taxaDivClass = m.taxa_divergencia >= 15 ? 'critico' : (m.taxa_divergencia >= 5 ? 'alerta' : 'ok');
+        const taxaPrazoClass = m.taxa_no_prazo >= 90 ? 'ok' : (m.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+
+        return `
+        <tr class="tabela-motoristas-linha">
+            <td class="text-center">${idx + 1}</td>
+            <td>
+                <div class="motorista-nome-cell">
+                    <strong>${escapeHtml(m.motorista_nome || '-')}</strong>
+                    <span>${escapeHtml(m.motorista_telefone || '')}</span>
+                </div>
+            </td>
+            <td class="text-center">${m.total_embarques ?? 0}</td>
+            <td class="text-center">${m.total_entregas ?? 0}</td>
+            <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(m.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(m.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center">${Math.round(m.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${m.total_problemas ?? 0}</td>
+            <td>
+                <div class="indice-ineficiencia-bar">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">${indice.toFixed(1)}</div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+// ================================================================
+// ABA: HISTÓRICO DE EMBARQUES
+// ================================================================
+async function carregarHistoricoEmbarques() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const lista = document.getElementById('hist-lista-embarques');
+    if (lista) lista.innerHTML = '<div class="text-center py-8">Carregando...</div>';
+
+    let url = `${CONFIG.API_BASE}/gestao-cargas/historico-embarques?pagina=${historicoState.pagina}&limite=15`;
+    if (historicoState.busca) url += `&busca=${encodeURIComponent(historicoState.busca)}`;
+    if (historicoState.status && historicoState.status !== 'todos') url += `&status=${historicoState.status}`;
+    if (historicoState.dataInicio) url += `&data_inicio=${historicoState.dataInicio}`;
+    if (historicoState.dataFim) url += `&data_fim=${historicoState.dataFim}`;
+
+    try {
+        const response = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!response.ok) throw new Error('Falha ao carregar histórico');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        renderizarHistoricoEmbarques(payload.data || [], payload.pagination || {});
+    } catch (error) {
+        console.error('Erro ao carregar histórico de embarques:', error);
+        if (lista) lista.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar histórico de embarques</div>';
+    }
+}
+
+function renderizarHistoricoEmbarques(dados, pagination) {
+    const lista = document.getElementById('hist-lista-embarques');
+    const info = document.getElementById('hist-info-registros');
+    const infoPag = document.getElementById('hist-info-paginacao');
+
+    historicoState.totalPaginas = pagination.total_paginas || 1;
+    if (info) info.textContent = `${pagination.total ?? 0} embarque(s) encontrado(s)`;
+    if (infoPag) infoPag.textContent = `Página ${historicoState.pagina} de ${historicoState.totalPaginas}`;
+
+    document.getElementById('hist-pagina-atual').textContent = historicoState.pagina;
+    document.getElementById('hist-btn-anterior').disabled = historicoState.pagina <= 1;
+    document.getElementById('hist-btn-proximo').disabled = historicoState.pagina >= historicoState.totalPaginas;
+
+    if (!lista) return;
+
+    if (!dados.length) {
+        lista.innerHTML = '<div class="empty-state-cargas">Nenhum embarque encontrado com os filtros atuais.</div>';
+        return;
+    }
+
+    const statusLabels = {
+        planejado: 'Planejado', em_andamento: 'Em andamento',
+        finalizado: 'Finalizado', cancelado: 'Cancelado', problema: 'Com problema'
+    };
+
+    lista.innerHTML = dados.map(e => {
+        const status = e.embarque_status || 'planejado';
+        let acertoLabel = 'Sem acerto';
+        let acertoClass = 'pendente';
+        if (e.acerto_status === 'finalizado') { acertoLabel = 'Conferido total'; acertoClass = ''; }
+        else if (e.acerto_id) { acertoLabel = 'Conferido parcial'; acertoClass = 'parcial'; }
+
+        return `
+        <div class="hist-embarque-card" onclick="abrirDetalheEmbarque(${e.id})">
+            <div class="hist-embarque-main">
+                <div class="hist-embarque-icon"><i class="fa-solid fa-truck-fast"></i></div>
+                <div class="hist-embarque-info">
+                    <strong>${escapeHtml(e.numero_embarque || ('#' + e.id))}</strong>
+                    <span>${escapeHtml(e.motorista_nome || 'Sem motorista')} • ${escapeHtml(e.veiculo_placa || '-')} • ${formatarData(e.data_saida)}</span>
+                </div>
+            </div>
+            <div class="hist-embarque-meta">
+                <div class="meta-item"><strong>${e.entregas_concluidas ?? 0}/${e.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                <div class="meta-item"><strong>${e.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                <span class="hist-acerto-badge ${acertoClass}">${acertoLabel}</span>
+                <span class="hist-status-badge ${status}">${statusLabels[status] || status}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function mudarPaginaHistorico(direcao) {
+    if (direcao === 'anterior' && historicoState.pagina > 1) historicoState.pagina--;
+    if (direcao === 'proximo' && historicoState.pagina < historicoState.totalPaginas) historicoState.pagina++;
+    carregarHistoricoEmbarques();
+}
+
+async function abrirDetalheEmbarque(embarqueId) {
+    const modalEl = document.getElementById('modalDetalheEmbarque');
+    const conteudo = document.getElementById('detalhe-embarque-conteudo');
+    const numeroEl = document.getElementById('detalhe-embarque-numero');
+    if (conteudo) conteudo.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...</div>';
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    const token = getAuthToken();
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/embarques/${embarqueId}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao buscar embarque');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        const dados = payload.data || {};
+        if (numeroEl) numeroEl.textContent = dados.numero_embarque || ('#' + embarqueId);
+        if (conteudo) conteudo.innerHTML = montarHtmlDetalheEmbarque(dados);
+    } catch (error) {
+        console.error('Erro ao abrir detalhe do embarque:', error);
+        if (conteudo) conteudo.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar detalhes do embarque</div>';
+    }
+}
+
+function montarHtmlDetalheEmbarque(dados) {
+    const entregas = dados.entregas || [];
+    const totalEntregas = entregas.length;
+    const concluidas = entregas.filter(e => e.status === 'entregue' || e.status === 'entregue_com_problema').length;
+    const comProblema = entregas.filter(e => e.status === 'entregue_com_problema' || e.status === 'falha').length;
+
+    const header = `
+        <div class="detalhe-embarque-header">
+            <div>
+                <strong>${escapeHtml(dados.motorista_nome || 'Sem motorista')}</strong>
+                <div class="text-sm text-slate-500">${escapeHtml(dados.veiculo_placa || '-')} • ${formatarData(dados.data_saida)}</div>
+            </div>
+            <div class="detalhe-embarque-stats">
+                <div class="stat"><strong>${totalEntregas}</strong><span>Entregas</span></div>
+                <div class="stat"><strong>${concluidas}</strong><span>Concluídas</span></div>
+                <div class="stat"><strong>${comProblema}</strong><span>Com problema</span></div>
+            </div>
+        </div>
+    `;
+
+    if (!entregas.length) {
+        return header + '<div class="empty-state-cargas">Nenhuma entrega registrada neste embarque.</div>';
+    }
+
+    const lista = entregas.map(e => {
+        const comProb = e.status === 'entregue_com_problema' || e.status === 'falha';
+        const fotos = (e.checklist || []).filter(c => c.foto_url);
+
+        const fotosHtml = fotos.length
+            ? `<div class="entrega-item-fotos">${fotos.map(f => `<img src="${escapeHtml(f.foto_url)}" onclick="abrirZoomFoto('${escapeHtml(f.foto_url)}', '${escapeHtml(e.cliente_nome || '')}')" alt="Foto">`).join('')}</div>`
+            : '';
+
+        return `
+        <div class="detalhe-entrega-item ${comProb ? 'com-problema' : ''}">
+            <div class="entrega-item-head">
+                <strong>${escapeHtml(e.cliente_nome || 'Cliente não identificado')}</strong>
+                <span class="hist-status-badge ${e.status || ''}">${escapeHtml(e.status || '-')}</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">${escapeHtml(e.cidade || '')}/${escapeHtml(e.uf || '')} • Pedido(s): ${escapeHtml(e.pedidos_ids || '-')}</div>
+            ${fotosHtml}
+        </div>`;
+    }).join('');
+
+    return header + `<div class="detalhe-entregas-lista">${lista}</div>`;
+}
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ================================================================
 // INICIALIZAÇÃO
 // ================================================================
 document.addEventListener('DOMContentLoaded', function() {
@@ -1090,9 +1453,58 @@ document.addEventListener('DOMContentLoaded', function() {
             state.paginaAtual = 1;
             cache.dados = null;
             cache.timestamp = null;
+            atualizarAcaoLimparFiltros();
             carregarDados();
         }, 400));
     }
+
+    const prioridadeSelect = document.getElementById('filtro-prioridade');
+    if (prioridadeSelect) prioridadeSelect.addEventListener('change', function() { aplicarPrioridade(this.value); });
+    const limparButton = document.getElementById('limpar-filtros');
+    if (limparButton) limparButton.addEventListener('click', limparFiltros);
+
+    // Filtros da aba Desempenho de Motoristas
+    const motoristasDias = document.getElementById('filtro-motoristas-dias');
+    if (motoristasDias) motoristasDias.addEventListener('change', carregarRankingMotoristas);
+
+    // Filtros da aba Histórico de Embarques
+    const histBusca = document.getElementById('hist-busca');
+    if (histBusca) histBusca.addEventListener('input', debounce(function() {
+        historicoState.busca = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    }, 400));
+
+    const histStatus = document.getElementById('hist-status');
+    if (histStatus) histStatus.addEventListener('change', function() {
+        historicoState.status = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histDataInicio = document.getElementById('hist-data-inicio');
+    if (histDataInicio) histDataInicio.addEventListener('change', function() {
+        historicoState.dataInicio = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histDataFim = document.getElementById('hist-data-fim');
+    if (histDataFim) histDataFim.addEventListener('change', function() {
+        historicoState.dataFim = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histLimpar = document.getElementById('hist-limpar-filtros');
+    if (histLimpar) histLimpar.addEventListener('click', function() {
+        historicoState = { pagina: 1, totalPaginas: 1, busca: '', status: 'todos', dataInicio: '', dataFim: '' };
+        if (histBusca) histBusca.value = '';
+        if (histStatus) histStatus.value = 'todos';
+        if (histDataInicio) histDataInicio.value = '';
+        if (histDataFim) histDataFim.value = '';
+        carregarHistoricoEmbarques();
+    });
 
     // Limpar cache ao mudar página
     window.addEventListener('beforeunload', function() {
@@ -1129,3 +1541,7 @@ window.verFotoItem = verFotoItem;
 window.toggleTheme = toggleTheme;
 window.mostrarNotificacao = mostrarNotificacao;
 window.fecharModalAnalise = fecharModalAnalise;
+window.mudarAbaCargas = mudarAbaCargas;
+window.carregarRankingMotoristas = carregarRankingMotoristas;
+window.mudarPaginaHistorico = mudarPaginaHistorico;
+window.abrirDetalheEmbarque = abrirDetalheEmbarque;

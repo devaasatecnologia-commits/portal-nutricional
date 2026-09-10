@@ -19,12 +19,23 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div><strong id="fila-pendente">0</strong><span>pendentes</span></div>
     </section>
     <div class="offline-notice" id="offline-notice" hidden>Sem conexão. As ações ficam salvas neste aparelho e serão enviadas automaticamente quando a internet voltar.</div>
+    <div class="route-conflict" id="route-conflict" hidden><strong>Rota atualizada pelo gestor</strong><span>A ordenação feita offline não foi aplicada para evitar sobrescrever a versão mais recente.</span><div><button type="button" id="route-conflict-refresh">Atualizar rota</button><button type="button" id="route-conflict-discard">Descartar ordenação local</button></div></div>
     <div class="driver-alert" id="driver-alert" hidden></div>
     <section class="route-tools" aria-label="Ferramentas da rota">
         <button type="button" id="btn-refresh-route" class="route-tool">Atualizar rota</button>
         <span id="gps-status" class="gps-status">GPS aguardando</span>
     </section>
     <section class="delivery-list" id="delivery-list" aria-live="polite"><div class="empty-state">Carregando sua rota...</div></section>
+    <div class="driver-modal" id="checkout-modal" hidden>
+        <form class="driver-modal-card" id="checkout-form">
+            <div class="driver-modal-head"><div><span class="eyebrow">Comprovante digital</span><h2>Finalizar entrega</h2></div><button type="button" class="modal-close" id="checkout-cancel">Fechar</button></div>
+            <label>Nome de quem recebeu<input id="receiver-name" required maxlength="120" autocomplete="name"></label>
+            <div id="checklist-fields"></div>
+            <label>Foto do romaneio assinado<input id="romaneio-photo" type="file" accept="image/*" capture="environment" required></label>
+            <div><span class="field-label">Assinatura do recebedor</span><canvas id="signature-pad" width="560" height="180"></canvas><button type="button" class="signature-clear" id="signature-clear">Limpar assinatura</button></div>
+            <button class="checkout-submit" type="submit">Salvar entrega no aparelho</button>
+        </form>
+    </div>
 </main>
 <script>window.MOTORISTA_ID_INICIAL = <?= $motoristaId ?>;</script>
 <?= $extraJs ?>

@@ -373,6 +373,12 @@ $app->group('/v1', function ($group) {
                 // RESUMO DE PROBLEMAS POR VEÍCULO
                 $cargas->get('/resumo-veiculo', [$controller, 'resumoVeiculo']);
 
+                // 🆕 RANKING COMPLETO DE EFICIÊNCIA/INEFICIÊNCIA POR MOTORISTA
+                $cargas->get('/ranking-motoristas', [$controller, 'rankingMotoristas']);
+
+                // 🆕 HISTÓRICO DE EMBARQUES COM BUSCA E FILTROS COMPLETOS
+                $cargas->get('/historico-embarques', [$controller, 'historicoEmbarques']);
+
                 // EXPORTAR RELATÓRIO DE PROBLEMAS
                 $cargas->post('/exportar', [$controller, 'exportarProblemas']);
             });

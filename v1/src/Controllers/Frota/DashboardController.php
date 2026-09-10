@@ -1363,6 +1363,216 @@ public function exportarProblemas(Request $request, Response $response): Respons
         ], 500);
     }
 }
+
+/**
+ * GET /v1/frota/gestao-cargas/ranking-motoristas
+ * Ranking completo de eficiência/ineficiência por motorista
+ */
+public function rankingMotoristas(Request $request, Response $response): Response
+{
+    try {
+        $params = $request->getQueryParams();
+        $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+
+        $sql = "
+            SELECT
+                mo.id,
+                mo.nome AS motorista_nome,
+                mo.telefone AS motorista_telefone,
+                mo.status AS motorista_status,
+                COUNT(DISTINCT em.id) AS total_embarques,
+                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
+                COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
+                COUNT(DISTINCT CASE WHEN ent.status = 'pendente' AND ent.data_prevista < CURRENT_DATE THEN ent.id END) AS entregas_atrasadas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL
+                    AND ent.data_prevista IS NOT NULL AND DATE(ent.horario_entrega) <= ent.data_prevista THEN ent.id END) AS entregas_no_prazo,
+                COUNT(DISTINCT ep.id) AS total_problemas,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
+                COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+            FROM frota_motorista mo
+            LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
+                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+            LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
+            LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            GROUP BY mo.id, mo.nome, mo.telefone, mo.status
+            HAVING COUNT(DISTINCT em.id) > 0
+            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['dias' => $dias]);
+        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        foreach ($dados as &$m) {
+            $totalEntregas = (int)$m['total_entregas'];
+            $m['taxa_divergencia'] = $totalEntregas > 0
+                ? round(($m['entregas_com_problema'] + $m['entregas_falha']) / $totalEntregas * 100, 1)
+                : 0.0;
+            $m['taxa_no_prazo'] = $totalEntregas > 0
+                ? round($m['entregas_no_prazo'] / $totalEntregas * 100, 1)
+                : 0.0;
+            $m['tempo_medio_entrega_min'] = round((float)$m['tempo_medio_entrega_min'], 1);
+
+            // Índice de ineficiência (0-100): pondera divergência, atraso e problemas pendentes
+            $indice = ($m['taxa_divergencia'] * 0.5)
+                + ((100 - $m['taxa_no_prazo']) * 0.3)
+                + (min($m['problemas_pendentes'] * 5, 100) * 0.2);
+            $m['indice_ineficiencia'] = round(min($indice, 100), 1);
+        }
+        unset($m);
+
+        // Reordenar pelo índice de ineficiência calculado (piores primeiro)
+        usort($dados, function ($a, $b) {
+            return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
+        });
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $dados,
+            'dias' => $dias,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+
+    } catch (\Exception $e) {
+        error_log('Erro em rankingMotoristas: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao carregar ranking de motoristas'
+        ], 500);
+    }
+}
+
+/**
+ * GET /v1/frota/gestao-cargas/historico-embarques
+ * Busca completa de embarques (inclusive finalizados) com filtros avançados
+ */
+public function historicoEmbarques(Request $request, Response $response): Response
+{
+    try {
+        $params = $request->getQueryParams();
+
+        $where = [];
+        $bind = [];
+
+        if (!empty($params['status']) && $params['status'] !== 'todos') {
+            $where[] = "e.status = :status";
+            $bind['status'] = $params['status'];
+        }
+
+        if (!empty($params['motorista_id'])) {
+            $where[] = "e.motorista_id = :motorista_id";
+            $bind['motorista_id'] = (int)$params['motorista_id'];
+        }
+
+        if (!empty($params['veiculo_id'])) {
+            $where[] = "e.veiculo_id = :veiculo_id";
+            $bind['veiculo_id'] = (int)$params['veiculo_id'];
+        }
+
+        if (!empty($params['data_inicio'])) {
+            $where[] = "e.data_saida >= :data_inicio";
+            $bind['data_inicio'] = $params['data_inicio'];
+        }
+
+        if (!empty($params['data_fim'])) {
+            $where[] = "e.data_saida <= :data_fim";
+            $bind['data_fim'] = $params['data_fim'];
+        }
+
+        if (!empty($params['busca'])) {
+            $where[] = "(e.numero_embarque ILIKE :busca OR e.nome_embarque ILIKE :busca2 
+                OR m.nome ILIKE :busca3 OR v.placa ILIKE :busca4 
+                OR EXISTS (SELECT 1 FROM frota_entrega fe WHERE fe.embarque_id = e.id AND fe.cliente_nome ILIKE :busca5))";
+            $termo = "%{$params['busca']}%";
+            $bind['busca'] = $termo;
+            $bind['busca2'] = $termo;
+            $bind['busca3'] = $termo;
+            $bind['busca4'] = $termo;
+            $bind['busca5'] = $termo;
+        }
+
+        $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
+        $offset = ($pagina - 1) * $limite;
+
+        $sql = "
+            SELECT
+                e.id,
+                e.numero_embarque,
+                e.nome_embarque,
+                e.status AS embarque_status,
+                e.data_saida,
+                e.data_retorno,
+                e.horario_saida,
+                e.horario_retorno,
+                v.placa AS veiculo_placa,
+                v.modelo AS veiculo_modelo,
+                m.id AS motorista_id,
+                m.nome AS motorista_nome,
+                ae.id AS acerto_id,
+                ae.status AS acerto_status,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) AS total_entregas,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) AS entregas_concluidas,
+                (SELECT COUNT(*) FROM frota_entrega_problema ep2 INNER JOIN frota_entrega fe2 ON fe2.id = ep2.entrega_id WHERE fe2.embarque_id = e.id) AS total_problemas
+            FROM frota_embarque e
+            LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+            LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+            LEFT JOIN frota_acerto_embarque ae ON ae.embarque_id = e.id
+            {$whereClause}
+            ORDER BY e.data_saida DESC, e.id DESC
+            LIMIT :limite OFFSET :offset
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($bind as $key => $value) {
+            $stmt->bindValue($key, $value);
+        }
+        $stmt->bindValue(':limite', $limite, \PDO::PARAM_INT);
+        $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
+        $stmt->execute();
+        $embarques = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $sqlCount = "
+            SELECT COUNT(DISTINCT e.id)
+            FROM frota_embarque e
+            LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+            LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+            {$whereClause}
+        ";
+        $stmtCount = $this->pdo->prepare($sqlCount);
+        foreach ($bind as $key => $value) {
+            $stmtCount->bindValue($key, $value);
+        }
+        $stmtCount->execute();
+        $total = (int)$stmtCount->fetchColumn();
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $embarques,
+            'pagination' => [
+                'total' => $total,
+                'pagina' => $pagina,
+                'limite' => $limite,
+                'total_paginas' => (int)ceil($total / $limite)
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        error_log('Erro em historicoEmbarques: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao carregar histórico de embarques'
+        ], 500);
+    }
+}
     
     /**
      * Resposta JSON

@@ -59,7 +59,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="hero-embarques bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/modules/frota/gestao-frota.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
+                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -256,6 +256,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </button>
 </div>
 </div>
+</div>
+<div class="embarques-overview" id="embarques-overview" aria-live="polite">
+    <div class="overview-loading"><i class="fa-solid fa-chart-line"></i> Calculando visão operacional...</div>
 </div>
 <div class="section-body p-0 overflow-x-auto">
     <table class="table-frota w-full">

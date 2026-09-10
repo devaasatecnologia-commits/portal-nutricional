@@ -65,8 +65,8 @@ class VeiculoController extends BaseController
         $params = $request->getQueryParams();
         $status = $params['status'] ?? null;
         $busca = $params['busca'] ?? null;
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         try {

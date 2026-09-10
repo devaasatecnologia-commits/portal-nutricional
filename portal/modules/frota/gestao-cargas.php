@@ -34,7 +34,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/modules/frota/embarques.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
+                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -73,6 +73,26 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div>
 
     <!-- ================================================================
+       ABAS PRINCIPAIS
+    ================================================================ -->
+    <div class="cargas-tabs" id="cargas-tabs" role="tablist">
+        <button type="button" class="cargas-tab active" data-tab="visao-geral" onclick="mudarAbaCargas('visao-geral', this)" role="tab" aria-selected="true">
+            <i class="fa-solid fa-gauge-high"></i> Visão Geral
+        </button>
+        <button type="button" class="cargas-tab" data-tab="motoristas" onclick="mudarAbaCargas('motoristas', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-ranking-star"></i> Desempenho de Motoristas
+        </button>
+        <button type="button" class="cargas-tab" data-tab="historico" onclick="mudarAbaCargas('historico', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Embarques
+        </button>
+    </div>
+
+    <!-- ================================================================
+       ABA: VISÃO GERAL
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-visao-geral" role="tabpanel">
+
+    <!-- ================================================================
        FILTROS RÁPIDOS
     ================================================================ -->
     <div class="quick-filters" id="quick-filters">
@@ -90,6 +110,25 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </button>
         <button type="button" class="quick-filter-pill" data-filtro="cancelado" onclick="aplicarFiltro('cancelado', this)">
             <i class="fa-solid fa-ban"></i> Cancelados
+        </button>
+    </div>
+    <div class="cargas-filter-bar" role="search" aria-label="Filtrar problemas de entrega">
+        <label class="cargas-search">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" id="filtro-busca" placeholder="Buscar entrega, cliente ou motorista" autocomplete="off" aria-label="Buscar problemas">
+        </label>
+        <label class="cargas-priority">
+            <span>Prioridade</span>
+            <select id="filtro-prioridade" aria-label="Filtrar por prioridade">
+                <option value="todas">Todas</option>
+                <option value="critica">Crítica</option>
+                <option value="alta">Alta</option>
+                <option value="media">Média</option>
+                <option value="baixa">Baixa</option>
+            </select>
+        </label>
+        <button type="button" class="cargas-clear-filter" id="limpar-filtros" hidden>
+            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Limpar filtros
         </button>
     </div>
 
@@ -175,7 +214,157 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div>
+    </div> <!-- /#tab-visao-geral -->
+
+    <!-- ================================================================
+       ABA: DESEMPENHO DE MOTORISTAS
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-motoristas" role="tabpanel" hidden>
+        <div class="section-card mb-6">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-ranking-star"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Ranking de Eficiência dos Motoristas</span>
+                        <span class="text-xs text-slate-400 block" id="info-motoristas-periodo">Últimos 30 dias</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <label class="cargas-priority">
+                        <span>Período</span>
+                        <select id="filtro-motoristas-dias">
+                            <option value="7">7 dias</option>
+                            <option value="30" selected>30 dias</option>
+                            <option value="90">90 dias</option>
+                            <option value="365">12 meses</option>
+                        </select>
+                    </label>
+                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="carregarRankingMotoristas()">
+                        <i class="fa-solid fa-rotate-right"></i> Atualizar
+                    </button>
+                </div>
+            </div>
+            <div class="section-body" id="motoristas-destaques"></div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
+                    <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
+                </div>
+            </div>
+            <div class="section-body p-0 overflow-x-auto">
+                <table class="table-frota w-full" id="tabela-motoristas">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width: 45px;">#</th>
+                            <th>Motorista</th>
+                            <th class="text-center">Embarques</th>
+                            <th class="text-center">Entregas</th>
+                            <th class="text-center">Divergência</th>
+                            <th class="text-center">No Prazo</th>
+                            <th class="text-center">Tempo Médio</th>
+                            <th class="text-center">Problemas</th>
+                            <th class="text-center">Índice de Ineficiência</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-motoristas">
+                        <tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div> <!-- /#tab-motoristas -->
+
+    <!-- ================================================================
+       ABA: HISTÓRICO DE EMBARQUES
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-historico" role="tabpanel" hidden>
+        <div class="cargas-filter-bar" role="search" aria-label="Filtrar histórico de embarques">
+            <label class="cargas-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="hist-busca" placeholder="Buscar por embarque, motorista, placa ou cliente" autocomplete="off">
+            </label>
+            <label class="cargas-priority">
+                <span>Status</span>
+                <select id="hist-status">
+                    <option value="todos">Todos</option>
+                    <option value="planejado">Planejado</option>
+                    <option value="em_andamento">Em andamento</option>
+                    <option value="finalizado">Finalizado</option>
+                    <option value="cancelado">Cancelado</option>
+                </select>
+            </label>
+            <label class="cargas-priority">
+                <span>De</span>
+                <input type="date" id="hist-data-inicio">
+            </label>
+            <label class="cargas-priority">
+                <span>Até</span>
+                <input type="date" id="hist-data-fim">
+            </label>
+            <button type="button" class="cargas-clear-filter" id="hist-limpar-filtros">
+                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Limpar filtros
+            </button>
+        </div>
+
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Embarques</span>
+                        <span class="text-xs text-slate-400 block" id="hist-info-registros">Carregando...</span>
+                    </div>
+                </div>
+            </div>
+            <div class="section-body p-0" id="hist-lista-embarques">
+                <div class="text-center py-8">Carregando...</div>
+            </div>
+            <div class="section-body border-t border-slate-200 flex justify-between items-center flex-wrap gap-2 py-3 px-4">
+                <span class="text-sm text-slate-500" id="hist-info-paginacao">Carregando...</span>
+                <div class="flex gap-1">
+                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+                            id="hist-btn-anterior" onclick="mudarPaginaHistorico('anterior')">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span class="px-3 py-1.5 text-sm font-bold text-slate-600" id="hist-pagina-atual">1</span>
+                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+                            id="hist-btn-proximo" onclick="mudarPaginaHistorico('proximo')">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div> <!-- /#tab-historico -->
 </div>
+
+<!-- ================================================================
+   MODAL: DETALHE DO EMBARQUE (HISTÓRICO)
+=============================================================== -->
+<div class="modal fade" id="modalDetalheEmbarque" tabindex="-1" data-bs-backdrop="static" style="display: none;">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fa-solid fa-truck-fast mr-2"></i> Detalhe do Embarque
+                    <span id="detalhe-embarque-numero" class="font-bold"></span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalhe-embarque-conteudo">
+                <div class="text-center py-8">
+                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary rounded-xl" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 
 <!-- ================================================================
    MODAL: ANÁLISE DA ENTREGA
