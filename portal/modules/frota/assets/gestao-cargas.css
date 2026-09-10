@@ -576,6 +576,10 @@
 .perfil-veiculo-card strong { font-size: .85rem; }
 .perfil-veiculo-card span { font-size: .68rem; color: var(--nutri-text-secondary); }
 
+.btn-premium { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--nutri-gradient-gold, linear-gradient(135deg, #d4a017, #f0c33c)); color: #1a3c34; font-size: .82rem; font-weight: 800; cursor: pointer; transition: var(--transition); box-shadow: 0 4px 14px rgba(212, 160, 23, .25); }
+.btn-premium:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(212, 160, 23, .35); }
+.btn-premium:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
 .perfil-embarques-lista { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
 .perfil-embarque-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
 .perfil-embarque-item:hover { background: rgba(var(--nutri-primary-rgb), .05); }

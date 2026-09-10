@@ -12,17 +12,18 @@ $version = time();
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/gestao-cargas.css?v=' . $version . '">
+<link rel="stylesheet" href="/portal/modules/frota/assets/cadastro-frota.css?v=' . $version . '">
 ';
 
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
 ';
 
@@ -63,6 +64,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <span id="total-resolvidos">0</span>
                     <span class="hero-stat-label">resolvidos</span>
                 </div>
+                <a href="/portal/modules/frota/cadastro-frota.php" class="hero-refresh-btn" title="Cadastro de Frota (veículos e motoristas)">
+                    <i class="fa-solid fa-id-card-clip"></i>
+                </a>
                 <button class="hero-refresh-btn" onclick="carregarDados()" title="Atualizar dados">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
@@ -459,100 +463,84 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div> <!-- /#tab-historico -->
 
     <!-- ================================================================
-       ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
+      ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
     ================================================================ -->
     <div class="cargas-tab-panel" id="tab-cobli" role="tabpanel" hidden>
-        <div class="section-card">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-satellite-dish"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Integração Cobli</span>
-                        <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli (chave configurada no servidor)</span>
-                    </div>
-                </div>
-                <span id="cobli-status-badge" class="hist-status-badge">Verificando...</span>
-            </div>
-            <div class="section-body">
-                <div id="cobli-status-detalhe" class="text-sm"></div>
-            </div>
-        </div>
+       <div class="section-card">
+           <div class="section-header flex justify-between items-center flex-wrap gap-2">
+               <div class="flex items-center gap-3">
+                   <div class="section-icon-badge"><i class="fa-solid fa-satellite-dish"></i></div>
+                   <div>
+                       <span class="font-bold text-[#1a3c34]">Integração Cobli</span>
+                       <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli (chave configurada no servidor)</span>
+                   </div>
+               </div>
+               <span id="cobli-status-badge" class="hist-status-badge">Verificando...</span>
+           </div>
+           <div class="section-body">
+               <div id="cobli-status-detalhe" class="text-sm"></div>
+           </div>
+       </div>
 
-        <div class="section-card mt-4">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-map-location-dot"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Mapa ao vivo</span>
-                        <span class="text-xs text-slate-400 block">Posição em tempo real dos veículos vinculados à Cobli</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2">
-                    <span id="cobli-mapa-atualizado" class="text-xs text-slate-400"></span>
-                    <button type="button" class="cargas-clear-filter" id="cobli-atualizar-mapa">
-                        <i class="fa-solid fa-rotate-right"></i> Atualizar posições
-                    </button>
-                </div>
-            </div>
-            <div class="section-body p-0">
-                <div id="cobli-mapa-vazio" class="text-center py-8 text-slate-400">
-                    Vincule ao menos um veículo a um dispositivo Cobli para ver a posição no mapa.
-                </div>
-                <div id="cobli-mapa" style="width:100%; height:420px; border-radius:0 0 16px 16px; display:none;"></div>
-            </div>
-        </div>
+       <div class="section-card mt-4">
+           <div class="section-header flex justify-between items-center flex-wrap gap-2">
+               <div class="flex items-center gap-3">
+                   <div class="section-icon-badge"><i class="fa-solid fa-map-location-dot"></i></div>
+                   <div>
+                       <span class="font-bold text-[#1a3c34]">Mapa ao vivo</span>
+                       <span class="text-xs text-slate-400 block">Posição em tempo real dos veículos vinculados à Cobli</span>
+                   </div>
+               </div>
+               <div class="flex items-center gap-2">
+                   <span id="cobli-mapa-atualizado" class="text-xs text-slate-400"></span>
+                   <button type="button" class="cargas-clear-filter" id="cobli-atualizar-mapa">
+                       <i class="fa-solid fa-rotate-right"></i> Atualizar posições
+                   </button>
+               </div>
+           </div>
+           <div class="section-body p-0">
+               <div id="cobli-mapa-vazio" class="text-center py-8 text-slate-400">
+                   Nenhum veículo vinculado à Cobli no momento.
+               </div>
+               <div id="cobli-mapa" style="width:100%; height:420px; border-radius:0 0 16px 16px; display:none;"></div>
+           </div>
+       </div>
 
-        <div class="section-card mt-4">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-link"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Vincular veículos à Cobli</span>
-                        <span class="text-xs text-slate-400 block">Associe cada veículo do sistema ao dispositivo GPS correspondente na Cobli</span>
-                    </div>
-                </div>
-                <button type="button" class="cargas-clear-filter" id="cobli-atualizar-dispositivos">
-                    <i class="fa-solid fa-rotate-right"></i> Atualizar
-                </button>
-            </div>
-            <div class="section-body p-0">
-                <div class="flex gap-2 flex-wrap items-end p-4 border-b border-slate-100">
-                    <label class="cargas-priority" style="flex:1; min-width:220px;">
-                        <span>Veículo do sistema</span>
-                        <select id="cobli-vincular-veiculo"></select>
-                    </label>
-                    <label class="cargas-priority" style="flex:1; min-width:220px;">
-                        <span>Dispositivo Cobli</span>
-                        <select id="cobli-vincular-device"></select>
-                    </label>
-                    <button type="button" class="btn-premium" id="cobli-vincular-btn">
-                        <i class="fa-solid fa-link"></i> Vincular
-                    </button>
-                </div>
-                <div id="cobli-lista-dispositivos">
-                    <div class="text-center py-8 text-slate-400">Configure a chave de API para listar os dispositivos.</div>
-                </div>
-            </div>
-        </div>
+       <div class="section-card mt-4">
+           <div class="section-header flex justify-between items-center flex-wrap gap-2">
+               <div class="flex items-center gap-3">
+                   <div class="section-icon-badge"><i class="fa-solid fa-link"></i></div>
+                   <div>
+                       <span class="font-bold text-[#1a3c34]">Vínculo de veículos com a Cobli</span>
+                       <span class="text-xs text-slate-400 block">Cadastro, vínculo por placa e sincronização com o ERP agora ficam no módulo dedicado</span>
+                   </div>
+               </div>
+           </div>
+           <div class="section-body">
+               <a href="/portal/modules/frota/cadastro-frota.php" class="btn-premium" style="text-decoration:none; display:inline-flex;">
+                   <i class="fa-solid fa-id-card-clip"></i> Abrir Cadastro de Frota
+               </a>
+           </div>
+       </div>
 
-        <div class="section-card mt-4">
-            <div class="section-header flex items-center gap-3">
-                <div class="section-icon-badge"><i class="fa-solid fa-shield-halved"></i></div>
-                <div>
-                    <span class="font-bold text-[#1a3c34]">Próximos passos planejados</span>
-                    <span class="text-xs text-slate-400 block">Roadmap da integração completa</span>
-                </div>
-            </div>
-            <div class="section-body">
-                <ul class="text-sm text-slate-600" style="list-style:disc; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
-                    <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
-                    <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
-                    <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>
-                    <li>Sincronização ERP ↔ Cobli ↔ Portal: buscar dados de veículo/motorista no ERP e na Cobli (somente leitura) e gravar/atualizar apenas na tabela interna da Frota, sem inserir nada de volta nos sistemas de origem.</li>
-                    <li>Manutenções preventivas (odômetro/horímetro da Cobli), eficiência de combustível e monitoramento completo do veículo (bateria, câmera, geocercas).</li>
-                </ul>
-            </div>
-        </div>
+       <div class="section-card mt-4">
+           <div class="section-header flex items-center gap-3">
+               <div class="section-icon-badge"><i class="fa-solid fa-shield-halved"></i></div>
+               <div>
+                   <span class="font-bold text-[#1a3c34]">Próximos passos planejados</span>
+                   <span class="text-xs text-slate-400 block">Roadmap da integração completa</span>
+               </div>
+           </div>
+           <div class="section-body">
+               <ul class="text-sm text-slate-600" style="list-style:disc; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
+                   <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
+                   <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
+                   <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>
+                   <li>Sincronização ERP ↔ Cobli ↔ Portal: buscar dados de veículo/motorista no ERP e na Cobli (somente leitura) e gravar/atualizar apenas na tabela interna da Frota, sem inserir nada de volta nos sistemas de origem.</li>
+                   <li>Manutenções preventivas (odômetro/horímetro da Cobli), eficiência de combustível e monitoramento completo do veículo (bateria, câmera, geocercas).</li>
+               </ul>
+           </div>
+       </div>
     </div> <!-- /#tab-cobli -->
 </div>
 
