@@ -2004,40 +2004,6 @@ async function carregarStatusCobli() {
     }
 }
 
-async function salvarChaveCobli() {
-    const input = document.getElementById('cobli-api-key-input');
-    const btn = document.getElementById('cobli-salvar-chave');
-    const apiKey = (input?.value || '').trim();
-    if (!apiKey) {
-        alert('Informe a chave de API da Cobli.');
-        return;
-    }
-
-    const token = getAuthToken();
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testando...'; }
-
-    try {
-        const response = await fetch(`${CONFIG.API_BASE}/cobli/configurar`, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ api_key: apiKey })
-        });
-        const payload = await response.json();
-        if (!payload.success) throw new Error(payload.error || 'Erro ao salvar chave');
-
-        if (input) input.value = '';
-        await carregarStatusCobli();
-    } catch (error) {
-        console.error('Erro ao salvar chave da Cobli:', error);
-        alert('Erro ao salvar/testar a chave da Cobli: ' + error.message);
-    } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plug"></i> Salvar e Testar Conexão'; }
-    }
-}
-
 async function carregarDispositivosCobli() {
     const token = getAuthToken();
     const container = document.getElementById('cobli-lista-dispositivos');
@@ -2389,9 +2355,6 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // Aba Rastreio (Cobli)
-    const cobliSalvar = document.getElementById('cobli-salvar-chave');
-    if (cobliSalvar) cobliSalvar.addEventListener('click', salvarChaveCobli);
-
     const cobliAtualizar = document.getElementById('cobli-atualizar-dispositivos');
     if (cobliAtualizar) cobliAtualizar.addEventListener('click', carregarDispositivosCobli);
 

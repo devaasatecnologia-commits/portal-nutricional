@@ -468,26 +468,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <div class="section-icon-badge"><i class="fa-solid fa-satellite-dish"></i></div>
                     <div>
                         <span class="font-bold text-[#1a3c34]">Integração Cobli</span>
-                        <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli</span>
+                        <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli (chave configurada no servidor)</span>
                     </div>
                 </div>
                 <span id="cobli-status-badge" class="hist-status-badge">Verificando...</span>
             </div>
             <div class="section-body">
-                <p class="text-sm text-slate-500 mb-4">
-                    Cole abaixo a chave de API gerada no painel da Cobli
-                    (<em>Configurações → Chaves de API → Nova chave de API</em>) para habilitar
-                    a sincronização de posição dos veículos e os eventos de risco/pontuação dos motoristas.
-                </p>
-                <div class="flex gap-2 flex-wrap items-end mb-4">
-                    <label class="cargas-priority" style="flex:1; min-width:280px;">
-                        <span>Chave de API da Cobli (cobli-api-key)</span>
-                        <input type="password" id="cobli-api-key-input" placeholder="Cole aqui a chave de API" autocomplete="off">
-                    </label>
-                    <button type="button" class="btn-premium" id="cobli-salvar-chave">
-                        <i class="fa-solid fa-plug"></i> Salvar e Testar Conexão
-                    </button>
-                </div>
                 <div id="cobli-status-detalhe" class="text-sm"></div>
             </div>
         </div>
