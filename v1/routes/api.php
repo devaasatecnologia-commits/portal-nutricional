@@ -295,6 +295,7 @@ $app->group('/v1', function ($group) {
                 $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
                 $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
                 $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
+                $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);
 
                 $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista']);
                 $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);

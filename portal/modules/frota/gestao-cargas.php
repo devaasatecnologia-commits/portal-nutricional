@@ -12,6 +12,7 @@ $version = time();
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
@@ -21,6 +22,7 @@ $extraCss = '
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
 ';
 
@@ -493,6 +495,30 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div class="section-card mt-4">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
                 <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-map-location-dot"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Mapa ao vivo</span>
+                        <span class="text-xs text-slate-400 block">Posição em tempo real dos veículos vinculados à Cobli</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span id="cobli-mapa-atualizado" class="text-xs text-slate-400"></span>
+                    <button type="button" class="cargas-clear-filter" id="cobli-atualizar-mapa">
+                        <i class="fa-solid fa-rotate-right"></i> Atualizar posições
+                    </button>
+                </div>
+            </div>
+            <div class="section-body p-0">
+                <div id="cobli-mapa-vazio" class="text-center py-8 text-slate-400">
+                    Vincule ao menos um veículo a um dispositivo Cobli para ver a posição no mapa.
+                </div>
+                <div id="cobli-mapa" style="width:100%; height:420px; border-radius:0 0 16px 16px; display:none;"></div>
+            </div>
+        </div>
+
+        <div class="section-card mt-4">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
                     <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
                     <div>
                         <span class="font-bold text-[#1a3c34]">Dispositivos da Cobli</span>
@@ -518,7 +544,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
             <div class="section-body">
                 <ul class="text-sm text-slate-600" style="list-style:disc; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
-                    <li>Mapa ao vivo (Leaflet) com a posição real dos veículos vinda da Cobli, substituindo/complementando o GPS do app do motorista.</li>
                     <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
                     <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
                     <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>

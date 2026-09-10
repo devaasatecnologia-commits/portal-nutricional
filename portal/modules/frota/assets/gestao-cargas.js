@@ -1164,7 +1164,11 @@ function mudarAbaCargas(aba, btn) {
     }
     if (aba === 'cobli' && !cobliCarregado) {
         carregarStatusCobli();
+        carregarMapaCobli();
         cobliCarregado = true;
+    } else if (aba === 'cobli') {
+        // Reabrir a aba: garante que o mapa recalcula o tamanho corretamente
+        setTimeout(() => { if (cobliMapa) cobliMapa.invalidateSize(); }, 100);
     }
 }
 
@@ -2057,18 +2061,121 @@ async function carregarDispositivosCobli() {
                 <div class="perfil-veiculos-lista" style="padding:16px;">
                     ${dispositivos.map(d => `
                         <div class="perfil-veiculo-card">
-                            <strong>${escapeHtml(d.license_plate || d.vehicle?.license_plate || d.device_id || '-')}</strong>
-                            <span>${escapeHtml(d.brand || d.vehicle?.brand || '')} ${escapeHtml(d.model || d.vehicle?.model || '')}</span>
-                            <span class="text-xs text-slate-500">Device ID: ${escapeHtml(d.device_id || d.id || '-')}</span>
+                            <strong>Dispositivo ${escapeHtml(d.cobli_id || d.id || '-')}</strong>
+                            <span class="text-xs text-slate-500">Device ID: ${escapeHtml(d.id || '-')}</span>
+                            <span class="text-xs text-slate-500">Veículo (Cobli ID): ${escapeHtml(d.vehicle_id || '-')}</span>
+                            <span class="text-xs text-slate-400">${escapeHtml(d.type || '')}</span>
                         </div>
                     `).join('')}
                 </div>
-                <p class="text-xs text-slate-400 px-4 pb-4">Use estes IDs para vincular cada veículo do sistema via a rota /v1/frota/cobli/veiculo/{id}/vincular.</p>
+                <p class="text-xs text-slate-400 px-4 pb-4">Use o "Device ID" acima para vincular cada veículo do sistema via a rota /v1/frota/cobli/veiculo/{id}/vincular.</p>
             `;
         }
     } catch (error) {
         console.error('Erro ao carregar dispositivos da Cobli:', error);
         if (container) container.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar dispositivos da Cobli</div>';
+    }
+}
+
+// ----------------------------------------------------------------
+// Mapa ao vivo (Leaflet) com a posição dos veículos vinculados
+// ----------------------------------------------------------------
+let cobliMapa = null;
+let cobliMapaMarcadores = {};
+
+function inicializarMapaCobli() {
+    if (cobliMapa) return cobliMapa;
+    const el = document.getElementById('cobli-mapa');
+    if (!el || typeof L === 'undefined') return null;
+
+    cobliMapa = L.map(el).setView([-14.235, -51.925], 4); // centro do Brasil por padrão
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+    }).addTo(cobliMapa);
+
+    return cobliMapa;
+}
+
+async function carregarMapaCobli() {
+    const token = getAuthToken();
+    const vazio = document.getElementById('cobli-mapa-vazio');
+    const mapaEl = document.getElementById('cobli-mapa');
+    const atualizadoEl = document.getElementById('cobli-mapa-atualizado');
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/frota/posicoes`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao buscar posições');
+
+        const veiculos = payload.data || [];
+
+        if (!veiculos.length) {
+            if (vazio) vazio.style.display = 'block';
+            if (mapaEl) mapaEl.style.display = 'none';
+            return;
+        }
+
+        if (vazio) vazio.style.display = 'none';
+        if (mapaEl) mapaEl.style.display = 'block';
+
+        const mapa = inicializarMapaCobli();
+        if (!mapa) return;
+
+        // Remove marcadores antigos que não existem mais
+        Object.keys(cobliMapaMarcadores).forEach(id => {
+            if (!veiculos.some(v => String(v.veiculo_id) === id)) {
+                mapa.removeLayer(cobliMapaMarcadores[id]);
+                delete cobliMapaMarcadores[id];
+            }
+        });
+
+        const bounds = [];
+        veiculos.forEach(v => {
+            const id = String(v.veiculo_id);
+            const latLng = [v.latitude, v.longitude];
+            bounds.push(latLng);
+
+            const popup = `
+                <strong>${escapeHtml(v.placa || 'Veículo')} ${v.modelo ? '- ' + escapeHtml(v.modelo) : ''}</strong><br>
+                ${v.motorista ? 'Motorista: ' + escapeHtml(v.motorista) + '<br>' : ''}
+                Velocidade: ${v.velocidade ?? '-'} km/h<br>
+                Ignição: ${v.ignicao_ligada ? 'Ligada' : 'Desligada'}<br>
+                <span class="text-xs text-slate-400">Atualizado: ${v.atualizado_em ? new Date(v.atualizado_em).toLocaleString('pt-BR') : '-'}</span>
+            `;
+
+            if (cobliMapaMarcadores[id]) {
+                cobliMapaMarcadores[id].setLatLng(latLng).setPopupContent(popup);
+            } else {
+                const icone = L.divIcon({
+                    className: 'cobli-mapa-icone',
+                    html: `<i class="fa-solid fa-truck" style="color:#1a3c34; font-size:20px; filter: drop-shadow(0 1px 2px rgba(0,0,0,.4));"></i>`,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+                cobliMapaMarcadores[id] = L.marker(latLng, { icon: icone }).addTo(mapa).bindPopup(popup);
+            }
+        });
+
+        if (bounds.length) {
+            mapa.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+        }
+
+        // Necessário quando o mapa foi criado enquanto a aba estava oculta
+        setTimeout(() => mapa.invalidateSize(), 100);
+
+        if (atualizadoEl) {
+            atualizadoEl.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar mapa da Cobli:', error);
+        if (vazio) {
+            vazio.style.display = 'block';
+            vazio.textContent = 'Erro ao carregar posições dos veículos.';
+        }
+        if (mapaEl) mapaEl.style.display = 'none';
     }
 }
 
@@ -2163,6 +2270,9 @@ document.addEventListener('DOMContentLoaded', function() {
 
     const cobliAtualizar = document.getElementById('cobli-atualizar-dispositivos');
     if (cobliAtualizar) cobliAtualizar.addEventListener('click', carregarDispositivosCobli);
+
+    const cobliAtualizarMapa = document.getElementById('cobli-atualizar-mapa');
+    if (cobliAtualizarMapa) cobliAtualizarMapa.addEventListener('click', carregarMapaCobli);
 
     // Limpar cache ao mudar página
     window.addEventListener('beforeunload', function() {

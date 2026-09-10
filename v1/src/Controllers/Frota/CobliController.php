@@ -263,7 +263,7 @@ class CobliController
                     'lat' => $localizacao['latitude'],
                     'lng' => $localizacao['longitude'],
                     'vel' => $localizacao['speed'] ?? null,
-                    'ign' => $localizacao['ignition_on'] ?? null,
+                    'ign' => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
                     'capturado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : date('Y-m-d H:i:s')
                 ]);
             } catch (\Exception $e) {
@@ -301,6 +301,68 @@ class CobliController
         $stmt->execute(['veiculo_id' => $veiculoId, 'horas' => $horas]);
 
         return $this->json($response, ['success' => true, 'data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+    }
+
+    /**
+     * GET /v1/frota/cobli/frota/posicoes
+     * Busca, ao vivo na Cobli, a posição de TODOS os veículos vinculados
+     * (para exibição no mapa da tela de Gestão de Cargas).
+     */
+    public function posicoesFrota(Request $request, Response $response): Response
+    {
+        $stmt = $this->pdo->query("
+            SELECT d.veiculo_id, d.cobli_device_id, v.placa, v.modelo
+            FROM frota_cobli_dispositivo d
+            JOIN frota_veiculo v ON v.id = d.veiculo_id
+            WHERE d.ativo = TRUE
+        ");
+        $vinculos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $veiculos = [];
+        foreach ($vinculos as $vinculo) {
+            $resultado = $this->cobli->buscarDispositivo($vinculo['cobli_device_id']);
+            if (!$resultado['success']) {
+                continue;
+            }
+
+            $dados = $resultado['data'] ?? [];
+            $localizacao = $dados['last_location'] ?? $dados['lastLocation'] ?? null;
+
+            if (!$localizacao || empty($localizacao['latitude']) || empty($localizacao['longitude'])) {
+                continue;
+            }
+
+            try {
+                $stmtIns = $this->pdo->prepare("
+                    INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
+                    VALUES (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
+                ");
+                $stmtIns->execute([
+                    'veiculo_id' => $vinculo['veiculo_id'],
+                    'lat' => $localizacao['latitude'],
+                    'lng' => $localizacao['longitude'],
+                    'vel' => $localizacao['speed'] ?? null,
+                    'ign' => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
+                    'capturado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : date('Y-m-d H:i:s')
+                ]);
+            } catch (\Exception $e) {
+                error_log('Erro ao gravar posição Cobli (frota): ' . $e->getMessage());
+            }
+
+            $veiculos[] = [
+                'veiculo_id' => (int)$vinculo['veiculo_id'],
+                'placa' => $vinculo['placa'],
+                'modelo' => $vinculo['modelo'],
+                'motorista' => $dados['driver']['name'] ?? null,
+                'latitude' => (float)$localizacao['latitude'],
+                'longitude' => (float)$localizacao['longitude'],
+                'velocidade' => $localizacao['speed'] ?? null,
+                'ignicao_ligada' => $localizacao['ignition_on'] ?? null,
+                'atualizado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : null
+            ];
+        }
+
+        return $this->json($response, ['success' => true, 'data' => $veiculos]);
     }
 
     /**
@@ -435,7 +497,7 @@ class CobliController
                     'lat' => $eventData['latitude'],
                     'lng' => $eventData['longitude'],
                     'vel' => $eventData['speed'] ?? null,
-                    'ign' => $eventData['ignitionOn'] ?? null
+                    'ign' => $this->paraBooleanoPg($eventData['ignitionOn'] ?? null)
                 ]);
             } elseif (in_array($eventType, ['hard_break', 'fast_acceleration', 'speedy_turn', 'tailgating', 'distracted_driving', 'phone_usage', 'eyes_closed', 'smoking', 'yawn', 'sos', 'alert_driven_over_speed'])) {
                 $stmt = $this->pdo->prepare("
@@ -511,6 +573,19 @@ class CobliController
         } catch (\Exception $e) {
             return null;
         }
+    }
+
+    /**
+     * Converte um valor booleano (ou nulo) para o formato aceito pelo PDO/Postgres,
+     * evitando erro "invalid input syntax for type boolean" quando o driver
+     * retorna string vazia em vez de NULL/true/false.
+     */
+    private function paraBooleanoPg($valor): ?string
+    {
+        if ($valor === null || $valor === '') {
+            return null;
+        }
+        return $valor ? '1' : '0';
     }
 
     private function json($response, $data, $status = 200): Response
