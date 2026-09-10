@@ -5,6 +5,9 @@
 
 $pageTitle = 'Gestão de Cargas | Frota | Nutricional';
 $version = time();
+// Mesmo cálculo de base usado em header.php/asset(), necessário aqui porque
+// $extraCss/$extraJs são strings HTML cruas (não passam pela função asset()).
+$assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 
 // ================================================================
 // HEADER E CSS
@@ -13,18 +16,18 @@ $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/gestao-cargas.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/cadastro-frota.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/gestao-cargas.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/cadastro-frota.css?v=' . $version . '">
 ';
 
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-<script src="/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
+<script src="' . $assetBase . '/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
 ';
 
 require_once __DIR__ . '/../../estrutura/header.php';

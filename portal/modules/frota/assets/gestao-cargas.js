@@ -5,8 +5,10 @@
 // ================================================================
 // CONFIGURAÇÕES
 // ================================================================
+// Respeita window.API_URL definido em /portal/assets/js/config.js,
+// que já trata corretamente ambiente local (pasta /API) vs produção.
 const CONFIG = {
-    API_BASE: '/v1/frota',
+    API_BASE: (window.API_URL || '/') + 'frota',
     CACHE_VALIDADE: 60000,
     LIMITE_PADRAO: 25,
     DEBOUNCE_DELAY: 400
