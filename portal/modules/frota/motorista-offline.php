@@ -21,6 +21,23 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div><strong id="entregas-concluidas">0</strong><span>concluídas</span></div>
         <div><strong id="fila-pendente">0</strong><span>pendentes</span></div>
     </section>
+    <section class="driver-progress-card" aria-label="Progresso da rota">
+        <div class="driver-progress-head">
+            <div><span class="eyebrow">Progresso da rota</span><strong id="route-progress-label">0% concluído</strong></div>
+            <span id="route-progress-count">0 de 0</span>
+        </div>
+        <div class="driver-progress-track"><span id="route-progress-bar"></span></div>
+    </section>
+    <section class="next-stop-card" id="next-stop-card" hidden aria-label="Próxima parada">
+        <div class="next-stop-icon"><i class="fa-solid fa-location-dot"></i></div>
+        <div class="next-stop-content">
+            <span class="eyebrow">Próxima parada</span>
+            <h2 id="next-stop-name">-</h2>
+            <p id="next-stop-address">-</p>
+            <span class="next-stop-distance" id="next-stop-distance"></span>
+        </div>
+        <button type="button" class="next-stop-action" id="next-stop-action">Cheguei</button>
+    </section>
     <div class="offline-notice" id="offline-notice" hidden>Sem conexão. As ações ficam salvas neste aparelho e serão enviadas automaticamente quando a internet voltar.</div>
     <div class="route-conflict" id="route-conflict" hidden><strong>Rota atualizada pelo gestor</strong><span>A ordenação feita offline não foi aplicada para evitar sobrescrever a versão mais recente.</span><div><button type="button" id="route-conflict-refresh">Atualizar rota</button><button type="button" id="route-conflict-discard">Descartar ordenação local</button></div></div>
     <div class="driver-alert" id="driver-alert" hidden></div>
@@ -34,7 +51,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="route-map-offline" id="route-map-offline" hidden>Sem conexão para exibir o mapa — mostrando distância estimada de cada parada.</div>
     <section class="route-tools" aria-label="Ferramentas da rota">
         <button type="button" id="btn-refresh-route" class="route-tool">Atualizar rota</button>
-        <span id="gps-status" class="gps-status">GPS aguardando</span>
+        <span id="gps-status" class="gps-status"><i class="fa-solid fa-location-crosshairs"></i> GPS aguardando</span>
     </section>
     <section class="delivery-list" id="delivery-list" aria-live="polite"><div class="empty-state">Carregando sua rota...</div></section>
     <div class="driver-modal" id="checkout-modal" hidden>

@@ -102,18 +102,46 @@
   function formatDistance(km) { if (km == null || Number.isNaN(km)) return ''; return km < 1 ? `${Math.round(km * 1000)} m` : `${km.toFixed(1)} km`; }
   function refPoint(item) { return driverPosition || truckPosition || (typeof item.veiculo_lat === 'number' && typeof item.veiculo_lng === 'number' ? { latitude: item.veiculo_lat, longitude: item.veiculo_lng } : null); }
   function distanciaEntrega(item) { return typeof item.latitude === 'number' && typeof item.longitude === 'number' && refPoint(item) ? haversineKm(refPoint(item).latitude, refPoint(item).longitude, item.latitude, item.longitude) : null; }
+  function atualizarPainelRota() {
+    const total = entregas.length;
+    const concluidas = entregas.filter((item) => ['entregue', 'entregue_com_problema'].includes(item.status)).length;
+    const percentual = total ? Math.round((concluidas / total) * 100) : 0;
+    const progressLabel = $('route-progress-label');
+    const progressCount = $('route-progress-count');
+    const progressBar = $('route-progress-bar');
+    if (progressLabel) progressLabel.textContent = `${percentual}% concluído`;
+    if (progressCount) progressCount.textContent = `${concluidas} de ${total}`;
+    if (progressBar) progressBar.style.width = `${percentual}%`;
+
+    const proxima = entregas.find((item) => !['entregue', 'entregue_com_problema'].includes(item.status));
+    const card = $('next-stop-card');
+    if (!card) return;
+    if (!proxima) {
+      card.hidden = true;
+      return;
+    }
+    card.hidden = false;
+    $('next-stop-name').textContent = proxima.cliente_nome || `Entrega #${proxima.id}`;
+    $('next-stop-address').textContent = formatAddress(proxima);
+    const distancia = distanciaEntrega(proxima);
+    $('next-stop-distance').textContent = distancia !== null ? `${formatDistance(distancia)} de distância` : 'Distância indisponível';
+    $('next-stop-action').dataset.id = proxima.id;
+    $('next-stop-action').disabled = proxima.status === 'em_entrega';
+    $('next-stop-action').textContent = proxima.status === 'em_entrega' ? 'Em atendimento' : 'Cheguei';
+  }
 
   function render() {
     const list = $('delivery-list');
-    if (!entregas.length) { list.innerHTML = '<div class="empty-state">Nenhuma entrega encontrada para hoje.</div>'; atualizarMapaRota(); return; }
+    if (!entregas.length) { list.innerHTML = '<div class="empty-state">Nenhuma entrega encontrada para hoje.</div>'; atualizarPainelRota(); atualizarMapaRota(); return; }
     list.innerHTML = entregas.map((item, index) => {
       const complete = ['entregue', 'entregue_com_problema'].includes(item.status);
       const d = distanciaEntrega(item);
       return `<article class="delivery-card${complete ? ' is-complete' : ''}"><div class="delivery-order"><span>Parada ${index + 1}</span><span class="order-actions"><button data-order="up" data-index="${index}" ${index === 0 ? 'disabled' : ''}>Subir</button><button data-order="down" data-index="${index}" ${index === entregas.length - 1 ? 'disabled' : ''}>Descer</button></span></div><h2>${escapeHtml(item.cliente_nome || `Entrega #${item.id}`)}</h2><p class="delivery-address">${escapeHtml(formatAddress(item))}</p><div class="delivery-meta"><span>${escapeHtml(item.status || 'pendente')}</span>${item.codigo_rastreamento ? `<span>${escapeHtml(item.codigo_rastreamento)}</span>` : ''}${d != null ? `<span class="delivery-distance">${escapeHtml(formatDistance(d))} de distância</span>` : ''}</div><div class="delivery-actions"><button class="checkin" data-action="checkin" data-id="${item.id}" ${complete ? 'disabled' : ''}>Cheguei</button><button class="checkout" data-action="checkout" data-id="${item.id}" ${complete ? 'disabled' : ''}>Entregue</button><button class="failure" data-action="falha" data-id="${item.id}" ${complete ? 'disabled' : ''}>Problema</button></div></article>`;
     }).join('');
+    atualizarPainelRota();
     atualizarMapaRota();
   }
-  function updateSummary() { $('total-entregas').textContent = entregas.length; $('entregas-concluidas').textContent = entregas.filter((item) => ['entregue', 'entregue_com_problema'].includes(item.status)).length; $('fila-pendente').textContent = getQueue().length; }
+  function updateSummary() { $('total-entregas').textContent = entregas.length; $('entregas-concluidas').textContent = entregas.filter((item) => ['entregue', 'entregue_com_problema'].includes(item.status)).length; $('fila-pendente').textContent = getQueue().length; atualizarPainelRota(); }
   function persist() { localStorage.setItem(cacheKey, JSON.stringify(entregas)); render(); updateSummary(); }
   function salvarPosicaoMotorista(position) { if (!position || typeof position.latitude !== 'number' || typeof position.longitude !== 'number') return; driverPosition = position; localStorage.setItem(positionKey, JSON.stringify(position)); atualizarMapaRota(); render(); }
   function salvarPosicaoCaminhao(position) { if (!position || typeof position.latitude !== 'number' || typeof position.longitude !== 'number') return; truckPosition = position; localStorage.setItem(truckKey, JSON.stringify(position)); atualizarMapaRota(); render(); }
@@ -270,6 +298,12 @@
     const button = event.target.closest('[data-action], [data-order]'); if (!button) return;
     if (button.dataset.action === 'checkout') abrirCheckout(entregas.find((item) => Number(item.id) === Number(button.dataset.id))); else if (button.dataset.action) executarAcao(button.dataset.id, button.dataset.action);
     if (button.dataset.order) mover(Number(button.dataset.index), button.dataset.order === 'up' ? -1 : 1);
+  });
+  $('next-stop-action')?.addEventListener('click', () => {
+    const item = entregas.find((delivery) => Number(delivery.id) === Number($('next-stop-action').dataset.id));
+    if (!item) return;
+    if (item.status === 'em_entrega') abrirCheckout(item);
+    else executarAcao(item.id, 'checkin');
   });
   $('checkout-cancel')?.addEventListener('click', () => { $('checkout-modal').hidden = true; });
   $('signature-clear')?.addEventListener('click', limparAssinatura);
