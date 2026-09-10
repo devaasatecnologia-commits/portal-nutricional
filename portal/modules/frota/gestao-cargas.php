@@ -91,6 +91,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <button type="button" class="cargas-tab" data-tab="historico" onclick="mudarAbaCargas('historico', this)" role="tab" aria-selected="false">
             <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Embarques
         </button>
+        <button type="button" class="cargas-tab" data-tab="cobli" onclick="mudarAbaCargas('cobli', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-satellite-dish"></i> Rastreio (Cobli)
+        </button>
     </div>
 
     <!-- ================================================================
@@ -452,7 +455,79 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div> <!-- /#tab-historico -->
+
+    <!-- ================================================================
+       ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-cobli" role="tabpanel" hidden>
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-satellite-dish"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Integração Cobli</span>
+                        <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli</span>
+                    </div>
+                </div>
+                <span id="cobli-status-badge" class="hist-status-badge">Verificando...</span>
+            </div>
+            <div class="section-body">
+                <p class="text-sm text-slate-500 mb-4">
+                    Cole abaixo a chave de API gerada no painel da Cobli
+                    (<em>Configurações → Chaves de API → Nova chave de API</em>) para habilitar
+                    a sincronização de posição dos veículos e os eventos de risco/pontuação dos motoristas.
+                </p>
+                <div class="flex gap-2 flex-wrap items-end mb-4">
+                    <label class="cargas-priority" style="flex:1; min-width:280px;">
+                        <span>Chave de API da Cobli (cobli-api-key)</span>
+                        <input type="password" id="cobli-api-key-input" placeholder="Cole aqui a chave de API" autocomplete="off">
+                    </label>
+                    <button type="button" class="btn-premium" id="cobli-salvar-chave">
+                        <i class="fa-solid fa-plug"></i> Salvar e Testar Conexão
+                    </button>
+                </div>
+                <div id="cobli-status-detalhe" class="text-sm"></div>
+            </div>
+        </div>
+
+        <div class="section-card mt-4">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Dispositivos da Cobli</span>
+                        <span class="text-xs text-slate-400 block">Vincule cada veículo do sistema ao dispositivo correspondente na Cobli</span>
+                    </div>
+                </div>
+                <button type="button" class="cargas-clear-filter" id="cobli-atualizar-dispositivos">
+                    <i class="fa-solid fa-rotate-right"></i> Atualizar
+                </button>
+            </div>
+            <div class="section-body p-0" id="cobli-lista-dispositivos">
+                <div class="text-center py-8 text-slate-400">Configure a chave de API para listar os dispositivos.</div>
+            </div>
+        </div>
+
+        <div class="section-card mt-4">
+            <div class="section-header flex items-center gap-3">
+                <div class="section-icon-badge"><i class="fa-solid fa-shield-halved"></i></div>
+                <div>
+                    <span class="font-bold text-[#1a3c34]">Próximos passos planejados</span>
+                    <span class="text-xs text-slate-400 block">Roadmap da integração completa</span>
+                </div>
+            </div>
+            <div class="section-body">
+                <ul class="text-sm text-slate-600" style="list-style:disc; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
+                    <li>Mapa ao vivo (Leaflet) com a posição real dos veículos vinda da Cobli, substituindo/complementando o GPS do app do motorista.</li>
+                    <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
+                    <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
+                    <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>
+                </ul>
+            </div>
+        </div>
+    </div> <!-- /#tab-cobli -->
 </div>
+
 
 <!-- ================================================================
    MODAL: DETALHE DO EMBARQUE (HISTÓRICO)

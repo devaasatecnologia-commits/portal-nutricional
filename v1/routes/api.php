@@ -84,6 +84,10 @@ $app->get('/v1/sistema/modulos-setores', function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json');
 });
 
+// Webhook público da Cobli (autenticado via HMAC X-Cobli-Signature, não JWT)
+$app->post('/v1/frota/cobli/webhook', [new \Nutricional\Controllers\Frota\CobliController(), 'webhook']);
+
+
 // ==========================================================================
 // ROTAS PROTEGIDAS (COM JWT + BLACKLIST)
 // ==========================================================================
@@ -276,6 +280,26 @@ $app->group('/v1', function ($group) {
                 // Alertas
                 $rastreamento->get('/alertas', [$controller, 'getAlertas']);
                 $rastreamento->post('/alertas/{id}/resolver', [$controller, 'resolverAlerta']);
+            });
+
+            // ==================================================================
+            // 5.1 INTEGRAÇÃO COBLI (RASTREAMENTO VEICULAR REAL)
+            // ==================================================================
+            $frota->group('/cobli', function ($cobli) {
+                $controller = new \Nutricional\Controllers\Frota\CobliController();
+
+                $cobli->get('/status', [$controller, 'status']);
+                $cobli->post('/configurar', [$controller, 'configurar']);
+                $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
+
+                $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
+                $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
+                $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
+
+                $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista']);
+                $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
+
+                $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco']);
             });
 
             // ==================================================================

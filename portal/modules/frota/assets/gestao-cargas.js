@@ -1126,6 +1126,7 @@ let abaCargasAtiva = 'visao-geral';
 let motoristasCarregados = false;
 let veiculosCarregados = false;
 let graficosCarregados = false;
+let cobliCarregado = false;
 let rankingMotoristasData = [];
 let rankingVeiculosData = [];
 let chartInstances = {};
@@ -1160,6 +1161,10 @@ function mudarAbaCargas(aba, btn) {
     }
     if (aba === 'historico') {
         carregarHistoricoEmbarques();
+    }
+    if (aba === 'cobli' && !cobliCarregado) {
+        carregarStatusCobli();
+        cobliCarregado = true;
     }
 }
 
@@ -1962,6 +1967,112 @@ function escapeHtml(str) {
 }
 
 // ================================================================
+// ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
+// ================================================================
+async function carregarStatusCobli() {
+    const token = getAuthToken();
+    const badge = document.getElementById('cobli-status-badge');
+    const detalhe = document.getElementById('cobli-status-detalhe');
+    if (badge) badge.textContent = 'Verificando...';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/status`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        const dados = payload.data || {};
+
+        if (badge) {
+            badge.textContent = dados.conexao_ok ? 'Conectado' : (dados.configurado ? 'Falha na conexão' : 'Não configurado');
+            badge.className = 'hist-status-badge ' + (dados.conexao_ok ? 'finalizado' : (dados.configurado ? 'cancelado' : 'planejado'));
+        }
+        if (detalhe) {
+            detalhe.innerHTML = `<i class="fa-solid ${dados.conexao_ok ? 'fa-circle-check text-green-600' : 'fa-circle-exclamation text-amber-500'} mr-1"></i> ${escapeHtml(dados.detalhe || '')}`;
+        }
+
+        if (dados.conexao_ok) {
+            carregarDispositivosCobli();
+        }
+    } catch (error) {
+        console.error('Erro ao verificar status da Cobli:', error);
+        if (badge) { badge.textContent = 'Erro'; badge.className = 'hist-status-badge cancelado'; }
+        if (detalhe) detalhe.textContent = 'Não foi possível verificar o status da integração.';
+    }
+}
+
+async function salvarChaveCobli() {
+    const input = document.getElementById('cobli-api-key-input');
+    const btn = document.getElementById('cobli-salvar-chave');
+    const apiKey = (input?.value || '').trim();
+    if (!apiKey) {
+        alert('Informe a chave de API da Cobli.');
+        return;
+    }
+
+    const token = getAuthToken();
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testando...'; }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/configurar`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ api_key: apiKey })
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao salvar chave');
+
+        if (input) input.value = '';
+        await carregarStatusCobli();
+    } catch (error) {
+        console.error('Erro ao salvar chave da Cobli:', error);
+        alert('Erro ao salvar/testar a chave da Cobli: ' + error.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-plug"></i> Salvar e Testar Conexão'; }
+    }
+}
+
+async function carregarDispositivosCobli() {
+    const token = getAuthToken();
+    const container = document.getElementById('cobli-lista-dispositivos');
+    if (container) container.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando dispositivos...</div>';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/dispositivos`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao listar dispositivos');
+
+        const dispositivos = payload.data?.data || payload.data || [];
+        if (!Array.isArray(dispositivos) || !dispositivos.length) {
+            if (container) container.innerHTML = '<div class="text-center py-8 text-slate-400">Nenhum dispositivo encontrado na Cobli.</div>';
+            return;
+        }
+
+        if (container) {
+            container.innerHTML = `
+                <div class="perfil-veiculos-lista" style="padding:16px;">
+                    ${dispositivos.map(d => `
+                        <div class="perfil-veiculo-card">
+                            <strong>${escapeHtml(d.license_plate || d.vehicle?.license_plate || d.device_id || '-')}</strong>
+                            <span>${escapeHtml(d.brand || d.vehicle?.brand || '')} ${escapeHtml(d.model || d.vehicle?.model || '')}</span>
+                            <span class="text-xs text-slate-500">Device ID: ${escapeHtml(d.device_id || d.id || '-')}</span>
+                        </div>
+                    `).join('')}
+                </div>
+                <p class="text-xs text-slate-400 px-4 pb-4">Use estes IDs para vincular cada veículo do sistema via a rota /v1/frota/cobli/veiculo/{id}/vincular.</p>
+            `;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar dispositivos da Cobli:', error);
+        if (container) container.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar dispositivos da Cobli</div>';
+    }
+}
+
+// ================================================================
 // INICIALIZAÇÃO
 // ================================================================
 document.addEventListener('DOMContentLoaded', function() {
@@ -2045,6 +2156,13 @@ document.addEventListener('DOMContentLoaded', function() {
         if (histDataFim) histDataFim.value = '';
         carregarHistoricoEmbarques();
     });
+
+    // Aba Rastreio (Cobli)
+    const cobliSalvar = document.getElementById('cobli-salvar-chave');
+    if (cobliSalvar) cobliSalvar.addEventListener('click', salvarChaveCobli);
+
+    const cobliAtualizar = document.getElementById('cobli-atualizar-dispositivos');
+    if (cobliAtualizar) cobliAtualizar.addEventListener('click', carregarDispositivosCobli);
 
     // Limpar cache ao mudar página
     window.addEventListener('beforeunload', function() {
