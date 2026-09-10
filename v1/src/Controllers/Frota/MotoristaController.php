@@ -425,6 +425,7 @@ class MotoristaController
                 e.*,
                 eb.numero_embarque,
                 eb.data_saida,
+                eb.veiculo_id,
                 v.placa,
                 v.modelo,
                 v.latitude as veiculo_lat,

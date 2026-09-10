@@ -81,3 +81,26 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 #signature-pad { width: 100%; height: 150px; touch-action: none; border: 1px dashed var(--driver-border); border-radius: 10px; background: #fff; }
 .checkout-submit { width: 100%; margin-top: 18px; border: 0; border-radius: 10px; background: var(--driver-success); color: #fff; padding: 13px; font-weight: 800; }
 @media (max-width: 460px) { .motorista-header { display: block; } .connection-state { margin-top: 12px; } .delivery-actions { grid-template-columns: 1fr; } }
+
+/* ================================================================
+   MAPA DA ROTA (MapLibre + OpenFreeMap)
+================================================================ */
+.route-map-wrap { margin-bottom: 16px; border: 1px solid var(--driver-border); border-radius: 16px; overflow: hidden; background: var(--driver-card); }
+.route-map-wrap[hidden] { display: none; }
+.route-map-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 800; font-size: .82rem; color: var(--driver-ink); }
+.route-map-hint { font-weight: 600; color: var(--driver-muted); font-size: .74rem; }
+.route-map { width: 100%; height: 260px; }
+.route-map-offline { margin-bottom: 16px; border-left: 4px solid var(--driver-muted); border-radius: 8px; background: #eef2ef; padding: 12px; color: var(--driver-muted); font-size: .82rem; }
+.route-map-offline[hidden] { display: none; }
+[data-driver-theme="dark"] .route-map-offline { background: rgba(255,255,255,.05); }
+.delivery-distance { border-radius: 999px; background: #eef4ef; padding: 5px 8px; font-weight: 700; }
+[data-driver-theme="dark"] .delivery-distance { background: rgba(66, 211, 154, .12); }
+/* Marcador do motorista (posição GPS do celular) */
+.driver-me-marker { width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.25), 0 2px 8px rgba(0,0,0,.3); }
+/* Marcador do caminhão (posição Cobli) */
+.driver-truck-marker { display: flex; flex-direction: column; align-items: center; }
+.driver-truck-balloon { background: #1a3c34; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.driver-truck-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--driver-accent); display: flex; align-items: center; justify-content: center; color: #1a3c34; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+/* Marcadores das paradas (entregas) */
+.stop-marker { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 3px solid #1a3c34; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #1a3c34; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.stop-marker.is-complete { background: #16845e; border-color: #16845e; color: #fff; }

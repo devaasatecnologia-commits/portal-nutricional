@@ -3,8 +3,11 @@ $pageTitle = 'Rota do Motorista | Nutricional';
 $version = time();
 $appBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 $motoristaId = (int)($_GET['motorista_id'] ?? $_SESSION['motorista_id'] ?? 0);
-$extraCss = '<link rel="manifest" href="' . $appBase . '/portal/modules/frota/manifest-motorista.json"><link rel="stylesheet" href="' . $appBase . '/portal/modules/frota/assets/motorista-offline.css?v=' . $version . '">';
-$extraJs = '<script src="' . $appBase . '/portal/modules/frota/assets/motorista-offline.js?v=' . $version . '"></script>';
+$extraCss = '<link rel="manifest" href="' . $appBase . '/portal/modules/frota/manifest-motorista.json">
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
+<link rel="stylesheet" href="' . $appBase . '/portal/modules/frota/assets/motorista-offline.css?v=' . $version . '">';
+$extraJs = '<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<script src="' . $appBase . '/portal/modules/frota/assets/motorista-offline.js?v=' . $version . '"></script>';
 require_once __DIR__ . '/../../estrutura/header.php';
 ?>
 <main class="motorista-app" data-motorista-id="<?= $motoristaId ?>">
@@ -21,6 +24,14 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="offline-notice" id="offline-notice" hidden>Sem conexão. As ações ficam salvas neste aparelho e serão enviadas automaticamente quando a internet voltar.</div>
     <div class="route-conflict" id="route-conflict" hidden><strong>Rota atualizada pelo gestor</strong><span>A ordenação feita offline não foi aplicada para evitar sobrescrever a versão mais recente.</span><div><button type="button" id="route-conflict-refresh">Atualizar rota</button><button type="button" id="route-conflict-discard">Descartar ordenação local</button></div></div>
     <div class="driver-alert" id="driver-alert" hidden></div>
+    <section class="route-map-wrap" id="route-map-wrap" hidden>
+        <div class="route-map-head">
+            <span>Mapa da rota</span>
+            <span class="route-map-hint" id="route-map-hint">Sua posição e o caminhão</span>
+        </div>
+        <div id="route-map" class="route-map"></div>
+    </section>
+    <div class="route-map-offline" id="route-map-offline" hidden>Sem conexão para exibir o mapa — mostrando distância estimada de cada parada.</div>
     <section class="route-tools" aria-label="Ferramentas da rota">
         <button type="button" id="btn-refresh-route" class="route-tool">Atualizar rota</button>
         <span id="gps-status" class="gps-status">GPS aguardando</span>
