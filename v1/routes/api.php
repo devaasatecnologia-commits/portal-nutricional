@@ -291,8 +291,10 @@ $app->group('/v1', function ($group) {
                 $cobli->get('/status', [$controller, 'status']);
                 $cobli->post('/configurar', [$controller, 'configurar']);
                 $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
+                $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
 
                 $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
+                $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo']);
                 $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
                 $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
                 $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);

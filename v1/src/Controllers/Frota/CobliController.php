@@ -163,6 +163,23 @@ class CobliController
     }
 
     /**
+     * GET /v1/frota/cobli/veiculos-vinculados
+     * Lista os vínculos veículo <-> dispositivo Cobli já cadastrados,
+     * usado para exibir o status de cada veículo do sistema na tela.
+     */
+    public function listarVinculos(Request $request, Response $response): Response
+    {
+        $stmt = $this->pdo->query("
+            SELECT d.veiculo_id, d.cobli_device_id, d.cobli_vehicle_id, v.placa, v.modelo
+            FROM frota_cobli_dispositivo d
+            JOIN frota_veiculo v ON v.id = d.veiculo_id
+            WHERE d.ativo = TRUE
+            ORDER BY v.placa
+        ");
+        return $this->json($response, ['success' => true, 'data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+    }
+
+    /**
      * POST /v1/frota/cobli/veiculo/{id}/vincular
      * Vincula um veículo do sistema ao deviceId/vehicleId da Cobli.
      * Body: { "cobli_device_id": "...", "cobli_vehicle_id": "..." }
@@ -194,6 +211,23 @@ class CobliController
         } catch (\Exception $e) {
             error_log('Erro ao vincular veículo Cobli: ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'error' => 'Erro ao vincular veículo'], 500);
+        }
+    }
+
+    /**
+     * DELETE /v1/frota/cobli/veiculo/{id}/vincular
+     * Remove o vínculo do veículo com a Cobli (desativa, não apaga o histórico).
+     */
+    public function desvincularVeiculo(Request $request, Response $response, array $args): Response
+    {
+        $veiculoId = (int)$args['id'];
+        try {
+            $stmt = $this->pdo->prepare("UPDATE frota_cobli_dispositivo SET ativo = FALSE, updated_at = NOW() WHERE veiculo_id = :id");
+            $stmt->execute(['id' => $veiculoId]);
+            return $this->json($response, ['success' => true, 'message' => 'Vínculo removido']);
+        } catch (\Exception $e) {
+            error_log('Erro ao desvincular veículo Cobli: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao desvincular veículo'], 500);
         }
     }
 

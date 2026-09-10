@@ -519,18 +519,33 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <div class="section-card mt-4">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
                 <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
+                    <div class="section-icon-badge"><i class="fa-solid fa-link"></i></div>
                     <div>
-                        <span class="font-bold text-[#1a3c34]">Dispositivos da Cobli</span>
-                        <span class="text-xs text-slate-400 block">Vincule cada veículo do sistema ao dispositivo correspondente na Cobli</span>
+                        <span class="font-bold text-[#1a3c34]">Vincular veículos à Cobli</span>
+                        <span class="text-xs text-slate-400 block">Associe cada veículo do sistema ao dispositivo GPS correspondente na Cobli</span>
                     </div>
                 </div>
                 <button type="button" class="cargas-clear-filter" id="cobli-atualizar-dispositivos">
                     <i class="fa-solid fa-rotate-right"></i> Atualizar
                 </button>
             </div>
-            <div class="section-body p-0" id="cobli-lista-dispositivos">
-                <div class="text-center py-8 text-slate-400">Configure a chave de API para listar os dispositivos.</div>
+            <div class="section-body p-0">
+                <div class="flex gap-2 flex-wrap items-end p-4 border-b border-slate-100">
+                    <label class="cargas-priority" style="flex:1; min-width:220px;">
+                        <span>Veículo do sistema</span>
+                        <select id="cobli-vincular-veiculo"></select>
+                    </label>
+                    <label class="cargas-priority" style="flex:1; min-width:220px;">
+                        <span>Dispositivo Cobli</span>
+                        <select id="cobli-vincular-device"></select>
+                    </label>
+                    <button type="button" class="btn-premium" id="cobli-vincular-btn">
+                        <i class="fa-solid fa-link"></i> Vincular
+                    </button>
+                </div>
+                <div id="cobli-lista-dispositivos">
+                    <div class="text-center py-8 text-slate-400">Configure a chave de API para listar os dispositivos.</div>
+                </div>
             </div>
         </div>
 
@@ -547,6 +562,8 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
                     <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
                     <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>
+                    <li>Sincronização ERP ↔ Cobli ↔ Portal: buscar dados de veículo/motorista no ERP e na Cobli (somente leitura) e gravar/atualizar apenas na tabela interna da Frota, sem inserir nada de volta nos sistemas de origem.</li>
+                    <li>Manutenções preventivas (odômetro/horímetro da Cobli), eficiência de combustível e monitoramento completo do veículo (bateria, câmera, geocercas).</li>
                 </ul>
             </div>
         </div>

@@ -2041,39 +2041,126 @@ async function salvarChaveCobli() {
 async function carregarDispositivosCobli() {
     const token = getAuthToken();
     const container = document.getElementById('cobli-lista-dispositivos');
+    const selectVeiculo = document.getElementById('cobli-vincular-veiculo');
+    const selectDevice = document.getElementById('cobli-vincular-device');
     if (container) container.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando dispositivos...</div>';
 
     try {
-        const response = await fetch(`${CONFIG.API_BASE}/cobli/dispositivos`, {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const payload = await response.json();
-        if (!payload.success) throw new Error(payload.error || 'Erro ao listar dispositivos');
+        const [respDispositivos, respVeiculos, respVinculos] = await Promise.all([
+            fetch(`${CONFIG.API_BASE}/cobli/dispositivos`, { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(`${CONFIG.API_BASE}/veiculos?limite=100`, { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(`${CONFIG.API_BASE}/cobli/veiculos-vinculados`, { headers: { 'Authorization': 'Bearer ' + token } })
+        ]);
 
-        const dispositivos = payload.data?.data || payload.data || [];
-        if (!Array.isArray(dispositivos) || !dispositivos.length) {
-            if (container) container.innerHTML = '<div class="text-center py-8 text-slate-400">Nenhum dispositivo encontrado na Cobli.</div>';
+        const payloadDispositivos = await respDispositivos.json();
+        const payloadVeiculos = await respVeiculos.json();
+        const payloadVinculos = await respVinculos.json();
+
+        if (!payloadDispositivos.success) throw new Error(payloadDispositivos.error || 'Erro ao listar dispositivos');
+
+        const dispositivos = payloadDispositivos.data?.data || payloadDispositivos.data || [];
+        const veiculos = payloadVeiculos.data || [];
+        const vinculos = payloadVinculos.data || [];
+        const vinculosPorVeiculo = new Map(vinculos.map(v => [v.veiculo_id, v]));
+
+        // Popula selects de vínculo manual
+        if (selectVeiculo) {
+            selectVeiculo.innerHTML = veiculos.map(v => `<option value="${v.id}">${escapeHtml(v.placa)} - ${escapeHtml(v.modelo || '')}</option>`).join('');
+        }
+        if (selectDevice) {
+            selectDevice.innerHTML = dispositivos.map(d => `<option value="${escapeHtml(d.id)}" data-vehicle-id="${escapeHtml(d.vehicle_id || '')}">${escapeHtml(d.cobli_id || d.id)} (Device ${escapeHtml(d.id)})</option>`).join('');
+        }
+
+        if (!veiculos.length) {
+            if (container) container.innerHTML = '<div class="text-center py-8 text-slate-400">Nenhum veículo cadastrado no sistema ainda.</div>';
             return;
         }
 
         if (container) {
             container.innerHTML = `
                 <div class="perfil-veiculos-lista" style="padding:16px;">
-                    ${dispositivos.map(d => `
+                    ${veiculos.map(v => {
+                        const vinculo = vinculosPorVeiculo.get(v.id);
+                        return `
                         <div class="perfil-veiculo-card">
-                            <strong>Dispositivo ${escapeHtml(d.cobli_id || d.id || '-')}</strong>
-                            <span class="text-xs text-slate-500">Device ID: ${escapeHtml(d.id || '-')}</span>
-                            <span class="text-xs text-slate-500">Veículo (Cobli ID): ${escapeHtml(d.vehicle_id || '-')}</span>
-                            <span class="text-xs text-slate-400">${escapeHtml(d.type || '')}</span>
+                            <strong>${escapeHtml(v.placa)}</strong>
+                            <span>${escapeHtml(v.modelo || '')}</span>
+                            ${vinculo
+                                ? `<span class="hist-status-badge finalizado" style="margin-top:6px;"><i class="fa-solid fa-satellite-dish"></i> Vinculado (Device ${escapeHtml(vinculo.cobli_device_id)})</span>
+                                   <button type="button" class="cargas-clear-filter mt-2" onclick="desvincularVeiculoCobli(${v.id})">
+                                       <i class="fa-solid fa-link-slash"></i> Desvincular
+                                   </button>`
+                                : `<span class="hist-status-badge planejado" style="margin-top:6px;">Sem vínculo</span>`
+                            }
                         </div>
-                    `).join('')}
+                    `; }).join('')}
                 </div>
-                <p class="text-xs text-slate-400 px-4 pb-4">Use o "Device ID" acima para vincular cada veículo do sistema via a rota /v1/frota/cobli/veiculo/{id}/vincular.</p>
+                <p class="text-xs text-slate-400 px-4 pb-4">Use os campos acima para vincular um veículo ao dispositivo GPS correspondente na Cobli.</p>
             `;
         }
     } catch (error) {
         console.error('Erro ao carregar dispositivos da Cobli:', error);
         if (container) container.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar dispositivos da Cobli</div>';
+    }
+}
+
+async function vincularVeiculoCobli() {
+    const token = getAuthToken();
+    const selectVeiculo = document.getElementById('cobli-vincular-veiculo');
+    const selectDevice = document.getElementById('cobli-vincular-device');
+    const btn = document.getElementById('cobli-vincular-btn');
+
+    const veiculoId = selectVeiculo?.value;
+    const deviceOption = selectDevice?.selectedOptions?.[0];
+    const deviceId = deviceOption?.value;
+    const vehicleId = deviceOption?.dataset?.vehicleId || '';
+
+    if (!veiculoId || !deviceId) {
+        alert('Selecione um veículo do sistema e um dispositivo da Cobli.');
+        return;
+    }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Vinculando...'; }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/veiculo/${veiculoId}/vincular`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ cobli_device_id: deviceId, cobli_vehicle_id: vehicleId })
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao vincular veículo');
+
+        await carregarDispositivosCobli();
+        await carregarMapaCobli();
+    } catch (error) {
+        console.error('Erro ao vincular veículo à Cobli:', error);
+        alert('Erro ao vincular: ' + error.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-link"></i> Vincular'; }
+    }
+}
+
+async function desvincularVeiculoCobli(veiculoId) {
+    if (!confirm('Remover o vínculo deste veículo com a Cobli?')) return;
+
+    const token = getAuthToken();
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/veiculo/${veiculoId}/vincular`, {
+            method: 'DELETE',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao desvincular veículo');
+
+        await carregarDispositivosCobli();
+        await carregarMapaCobli();
+    } catch (error) {
+        console.error('Erro ao desvincular veículo da Cobli:', error);
+        alert('Erro ao desvincular: ' + error.message);
     }
 }
 
@@ -2271,6 +2358,9 @@ document.addEventListener('DOMContentLoaded', function() {
     const cobliAtualizar = document.getElementById('cobli-atualizar-dispositivos');
     if (cobliAtualizar) cobliAtualizar.addEventListener('click', carregarDispositivosCobli);
 
+    const cobliVincularBtn = document.getElementById('cobli-vincular-btn');
+    if (cobliVincularBtn) cobliVincularBtn.addEventListener('click', vincularVeiculoCobli);
+
     const cobliAtualizarMapa = document.getElementById('cobli-atualizar-mapa');
     if (cobliAtualizarMapa) cobliAtualizarMapa.addEventListener('click', carregarMapaCobli);
 
@@ -2310,6 +2400,7 @@ window.toggleTheme = toggleTheme;
 window.mostrarNotificacao = mostrarNotificacao;
 window.fecharModalAnalise = fecharModalAnalise;
 window.mudarAbaCargas = mudarAbaCargas;
+window.desvincularVeiculoCobli = desvincularVeiculoCobli;
 window.carregarRankingMotoristas = carregarRankingMotoristas;
 window.carregarRankingVeiculos = carregarRankingVeiculos;
 window.carregarGraficosCargas = carregarGraficosCargas;
