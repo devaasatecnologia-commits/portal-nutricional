@@ -1178,7 +1178,7 @@ async function carregarRankingMotoristas() {
     }
 
     const tbody = document.getElementById('lista-motoristas');
-    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8">Carregando...</td></tr>';
 
     try {
         const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/ranking-motoristas?dias=${dias}`, {
@@ -1237,7 +1237,7 @@ function renderizarTabelaMotoristas(dados) {
     if (!tbody) return;
 
     if (!dados.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Nenhum motorista com embarques no período.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8">Nenhum motorista com embarques no período.</td></tr>';
         return;
     }
 
@@ -1246,6 +1246,8 @@ function renderizarTabelaMotoristas(dados) {
         const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
         const taxaDivClass = m.taxa_divergencia >= 15 ? 'critico' : (m.taxa_divergencia >= 5 ? 'alerta' : 'ok');
         const taxaPrazoClass = m.taxa_no_prazo >= 90 ? 'ok' : (m.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+        const score = Number(m.score_desempenho || 0);
+        const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
 
         return `
         <tr class="tabela-motoristas-linha" onclick="abrirDetalheMotorista(${m.id})">
@@ -1262,6 +1264,7 @@ function renderizarTabelaMotoristas(dados) {
             <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(m.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
             <td class="text-center">${Math.round(m.tempo_medio_entrega_min ?? 0)} min</td>
             <td class="text-center">${m.total_problemas ?? 0}</td>
+            <td class="text-center"><span class="score-mini-badge nivel-${scoreNivel}">${score.toFixed(1)}</span></td>
             <td>
                 <div class="indice-ineficiencia-bar">
                     <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
@@ -1272,48 +1275,137 @@ function renderizarTabelaMotoristas(dados) {
     }).join('');
 }
 
-function abrirDetalheMotorista(id) {
+async function abrirDetalheMotorista(id) {
     const m = rankingMotoristasData.find(x => String(x.id) === String(id));
     if (!m) return;
 
     const titulo = document.getElementById('detalhe-ranking-titulo');
     const conteudo = document.getElementById('detalhe-ranking-conteudo');
     if (titulo) titulo.innerHTML = `<i class="fa-solid fa-id-badge mr-2"></i> ${escapeHtml(m.motorista_nome || '-')}`;
-
-    const indice = Number(m.indice_ineficiencia || 0);
-    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
-
-    if (conteudo) {
-        conteudo.innerHTML = `
-            <div class="detalhe-ranking-header">
-                <div>
-                    <strong style="font-size:1.1rem;">${escapeHtml(m.motorista_nome || '-')}</strong>
-                    <div class="text-sm text-slate-500">${escapeHtml(m.motorista_telefone || 'Sem telefone')} • Status: ${escapeHtml(m.motorista_status || '-')}</div>
-                </div>
-                <div class="indice-ineficiencia-bar" style="max-width:220px;">
-                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
-                    <div class="indice-ineficiencia-bar-label">Índice: ${indice.toFixed(1)}</div>
-                </div>
-                <div class="detalhe-ranking-stats">
-                    <div class="stat"><strong>${m.total_embarques ?? 0}</strong><span>Embarques</span></div>
-                    <div class="stat"><strong>${m.total_entregas ?? 0}</strong><span>Entregas</span></div>
-                    <div class="stat"><strong>${m.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
-                    <div class="stat"><strong>${m.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
-                    <div class="stat"><strong>${(m.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
-                    <div class="stat"><strong>${(m.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
-                    <div class="stat"><strong>${Math.round(m.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
-                    <div class="stat"><strong>${m.total_problemas ?? 0}</strong><span>Problemas</span></div>
-                    <div class="stat"><strong>${m.faltantes ?? 0}</strong><span>Faltantes</span></div>
-                    <div class="stat"><strong>${m.devolucoes ?? 0}</strong><span>Devoluções</span></div>
-                    <div class="stat"><strong>${formatarMoeda(m.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
-                </div>
-            </div>
-        `;
-    }
+    if (conteudo) conteudo.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando perfil completo...</div>';
 
     const modal = new bootstrap.Modal(document.getElementById('modalDetalheRanking'));
     modal.show();
+
+    const token = getAuthToken();
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/motorista/${id}/perfil?dias=90`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao buscar perfil do motorista');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        if (conteudo) conteudo.innerHTML = montarHtmlPerfilMotorista(payload.data || {});
+    } catch (error) {
+        console.error('Erro ao abrir perfil do motorista:', error);
+        if (conteudo) conteudo.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar perfil do motorista</div>';
+    }
 }
+
+function montarHtmlPerfilMotorista(data) {
+    const mot = data.motorista || {};
+    const met = data.metricas || {};
+    const veiculos = data.veiculos_utilizados || [];
+    const embarques = data.embarques || [];
+    const positivos = data.pontos_positivos || [];
+    const negativos = data.pontos_negativos || [];
+
+    const indice = Number(met.indice_ineficiencia || 0);
+    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+    const score = Number(met.score_desempenho || 0);
+    const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
+
+    const header = `
+        <div class="detalhe-ranking-header">
+            <div>
+                <strong style="font-size:1.1rem;">${escapeHtml(mot.nome || '-')}</strong>
+                <div class="text-sm text-slate-500">${escapeHtml(mot.telefone || 'Sem telefone')} • Status: ${escapeHtml(mot.status || '-')}</div>
+            </div>
+            <div class="perfil-score-badges">
+                <div class="score-motorista-badge nivel-${scoreNivel}">
+                    <span class="score-valor">${score.toFixed(1)}</span>
+                    <span class="score-label">Score de Desempenho</span>
+                </div>
+                <div class="indice-ineficiencia-bar" style="max-width:220px;">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">Índice de Ineficiência: ${indice.toFixed(1)}</div>
+                </div>
+            </div>
+            <div class="detalhe-ranking-stats">
+                <div class="stat"><strong>${met.total_embarques ?? 0}</strong><span>Embarques</span></div>
+                <div class="stat"><strong>${met.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                <div class="stat"><strong>${met.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
+                <div class="stat"><strong>${met.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
+                <div class="stat"><strong>${(met.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
+                <div class="stat"><strong>${(met.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
+                <div class="stat"><strong>${Math.round(met.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                <div class="stat"><strong>${met.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                <div class="stat"><strong>${formatarMoeda(met.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+            </div>
+        </div>
+    `;
+
+    const pontosHtml = `
+        <div class="perfil-pontos-grid">
+            <div class="perfil-pontos-coluna positivos">
+                <h4><i class="fa-solid fa-circle-check mr-1"></i> Pontos Positivos</h4>
+                ${positivos.length ? '<ul>' + positivos.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>' : '<p class="text-slate-500 text-sm">Nenhum destaque no período.</p>'}
+            </div>
+            <div class="perfil-pontos-coluna negativos">
+                <h4><i class="fa-solid fa-circle-exclamation mr-1"></i> Pontos de Atenção</h4>
+                ${negativos.length ? '<ul>' + negativos.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>' : '<p class="text-slate-500 text-sm">Nenhum ponto de atenção identificado.</p>'}
+            </div>
+        </div>
+    `;
+
+    const veiculosHtml = veiculos.length ? `
+        <div class="perfil-secao">
+            <h4><i class="fa-solid fa-truck mr-1"></i> Veículos Utilizados</h4>
+            <div class="perfil-veiculos-lista">
+                ${veiculos.map(v => `
+                    <div class="perfil-veiculo-card">
+                        <strong>${escapeHtml(v.placa || '-')}</strong>
+                        <span>${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')}</span>
+                        <span class="text-xs text-slate-500">${v.total_embarques} embarques • Último uso: ${formatarData(v.ultimo_uso)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    const embarquesHtml = embarques.length ? `
+        <div class="perfil-secao">
+            <h4><i class="fa-solid fa-clock-rotate-left mr-1"></i> Histórico de Embarques (rastreável)</h4>
+            <div class="perfil-embarques-lista">
+                ${embarques.map(e => `
+                    <div class="perfil-embarque-item" onclick="fecharModalRankingEAbrirEmbarque(${e.id})">
+                        <div>
+                            <strong>${escapeHtml(e.numero_embarque || ('#' + e.id))}</strong>
+                            <span class="text-xs text-slate-500">${escapeHtml(e.veiculo_placa || '-')} • ${formatarData(e.data_saida)}</span>
+                        </div>
+                        <div class="perfil-embarque-badges">
+                            <span class="hist-status-badge ${e.embarque_status || ''}">${escapeHtml(e.embarque_status || '-')}</span>
+                            ${e.acerto_status ? `<span class="hist-status-badge ${e.acerto_status}">${escapeHtml(e.acerto_status)}</span>` : ''}
+                            <span class="text-xs">${e.entregas_concluidas ?? 0}/${e.total_entregas ?? 0} entregas</span>
+                            ${(e.total_problemas ?? 0) > 0 ? `<span class="text-xs text-red-500">${e.total_problemas} problema(s)</span>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    return header + pontosHtml + veiculosHtml + embarquesHtml;
+}
+
+function fecharModalRankingEAbrirEmbarque(embarqueId) {
+    const rankingModalEl = document.getElementById('modalDetalheRanking');
+    const rankingModal = bootstrap.Modal.getInstance(rankingModalEl);
+    if (rankingModal) rankingModal.hide();
+    setTimeout(() => abrirDetalheEmbarque(embarqueId), 300);
+}
+
 
 // ================================================================
 // ABA: POR CAMINHÃO (VEÍCULOS)
@@ -1748,7 +1840,7 @@ async function abrirDetalheEmbarque(embarqueId) {
 
     const token = getAuthToken();
     try {
-        const response = await fetch(`${CONFIG.API_BASE}/embarques/${embarqueId}`, {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/embarque/${embarqueId}/detalhes-completos`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) throw new Error('Falha ao buscar embarque');
@@ -1766,49 +1858,98 @@ async function abrirDetalheEmbarque(embarqueId) {
 
 function montarHtmlDetalheEmbarque(dados) {
     const entregas = dados.entregas || [];
-    const totalEntregas = entregas.length;
-    const concluidas = entregas.filter(e => e.status === 'entregue' || e.status === 'entregue_com_problema').length;
-    const comProblema = entregas.filter(e => e.status === 'entregue_com_problema' || e.status === 'falha').length;
+    const resumo = dados.resumo || {};
+    const totalEntregas = resumo.total_entregas ?? entregas.length;
+    const concluidas = resumo.entregas_concluidas ?? entregas.filter(e => e.status === 'entregue' || e.status === 'entregue_com_problema').length;
+    const totalProblemas = resumo.total_problemas ?? 0;
 
     const header = `
         <div class="detalhe-embarque-header">
             <div>
                 <strong>${escapeHtml(dados.motorista_nome || 'Sem motorista')}</strong>
-                <div class="text-sm text-slate-500">${escapeHtml(dados.veiculo_placa || '-')} • ${formatarData(dados.data_saida)}</div>
+                <div class="text-sm text-slate-500">${escapeHtml(dados.veiculo_placa || '-')} • ${formatarData(dados.data_saida)}${dados.acerto ? ' • Conferência: ' + escapeHtml(dados.acerto.status || '-') : ''}</div>
             </div>
             <div class="detalhe-embarque-stats">
                 <div class="stat"><strong>${totalEntregas}</strong><span>Entregas</span></div>
                 <div class="stat"><strong>${concluidas}</strong><span>Concluídas</span></div>
-                <div class="stat"><strong>${comProblema}</strong><span>Com problema</span></div>
+                <div class="stat"><strong>${totalProblemas}</strong><span>Problemas</span></div>
+                <div class="stat"><strong>${resumo.percentual_concluido ?? 0}%</strong><span>Progresso</span></div>
             </div>
         </div>
     `;
 
+    // Timeline geral do embarque (logs)
+    const logs = dados.timeline_embarque || [];
+    const timelineHtml = logs.length ? `
+        <div class="detalhe-embarque-timeline">
+            <h4><i class="fa-solid fa-timeline mr-1"></i> Timeline do Embarque</h4>
+            <div class="timeline-embarque-lista">
+                ${logs.map(l => `
+                    <div class="timeline-embarque-item">
+                        <div class="timeline-embarque-ponto"></div>
+                        <div class="timeline-embarque-conteudo">
+                            <strong>${escapeHtml(l.acao || '-')}</strong>
+                            <span class="text-xs text-slate-500">${formatarDataHora(l.created_at)} • ${escapeHtml(l.usuario_nome || 'Sistema')}</span>
+                            ${l.descricao ? `<div class="text-sm">${escapeHtml(l.descricao)}</div>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
     if (!entregas.length) {
-        return header + '<div class="empty-state-cargas">Nenhuma entrega registrada neste embarque.</div>';
+        return header + timelineHtml + '<div class="empty-state-cargas">Nenhuma entrega registrada neste embarque.</div>';
     }
 
     const lista = entregas.map(e => {
-        const comProb = e.status === 'entregue_com_problema' || e.status === 'falha';
+        const comProb = e.status === 'entregue_com_problema' || e.status === 'falha' || (e.problemas && e.problemas.length);
         const fotos = (e.checklist || []).filter(c => c.foto_url);
+        const clienteNome = e.cliente_nome || e.cliente_nome_cadastro || 'Cliente não identificado';
 
-        const fotosHtml = fotos.length
-            ? `<div class="entrega-item-fotos">${fotos.map(f => `<img src="${escapeHtml(f.foto_url)}" onclick="abrirZoomFoto('${escapeHtml(f.foto_url)}', '${escapeHtml(e.cliente_nome || '')}')" alt="Foto">`).join('')}</div>`
-            : '';
+        const itensHtml = (e.checklist || []).length ? `
+            <div class="entrega-item-itens-grid">
+                ${e.checklist.map(item => {
+                    const divergente = item.status && item.status !== 'ok' && item.status !== 'conforme';
+                    return `
+                    <div class="entrega-item-card ${divergente ? 'item-divergente' : ''}">
+                        ${item.foto_url ? `<img src="${escapeHtml(item.foto_url)}" onclick="abrirZoomFoto('${escapeHtml(item.foto_url)}', '${escapeHtml(clienteNome)}')" alt="Foto item">` : '<div class="item-sem-foto"><i class="fa-solid fa-image"></i></div>'}
+                        <div class="entrega-item-card-info">
+                            <strong>${escapeHtml(item.descricao || item.referencia || '-')}</strong>
+                            <span>Prev: ${item.quantidade_prevista ?? '-'} • Entregue: ${item.quantidade_entregue ?? '-'}</span>
+                            ${item.motivo ? `<span class="text-red-500">${escapeHtml(item.motivo)}</span>` : ''}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        ` : '';
+
+        const problemasHtml = (e.problemas || []).length ? `
+            <div class="entrega-item-problemas">
+                ${e.problemas.map(p => `
+                    <span class="problema-badge ${p.status_problema || ''}">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        ${escapeHtml(p.tipo_problema || '-')}: ${escapeHtml(p.descricao_problema || '-')} (${escapeHtml(p.status_problema || '-')})
+                    </span>
+                `).join('')}
+            </div>
+        ` : '';
 
         return `
         <div class="detalhe-entrega-item ${comProb ? 'com-problema' : ''}">
             <div class="entrega-item-head">
-                <strong>${escapeHtml(e.cliente_nome || 'Cliente não identificado')}</strong>
+                <strong>${escapeHtml(clienteNome)}</strong>
                 <span class="hist-status-badge ${e.status || ''}">${escapeHtml(e.status || '-')}</span>
             </div>
-            <div class="text-xs text-slate-500 mt-1">${escapeHtml(e.cidade || '')}/${escapeHtml(e.uf || '')} • Pedido(s): ${escapeHtml(e.pedidos_ids || '-')}</div>
-            ${fotosHtml}
+            <div class="text-xs text-slate-500 mt-1">${escapeHtml(e.cliente_cidade || '')}/${escapeHtml(e.cliente_uf || '')} • Pedido(s): ${escapeHtml(e.pedidos_ids || '-')}</div>
+            ${itensHtml}
+            ${problemasHtml}
         </div>`;
     }).join('');
 
-    return header + `<div class="detalhe-entregas-lista">${lista}</div>`;
+    return header + timelineHtml + `<div class="detalhe-entregas-lista">${lista}</div>`;
 }
+
 
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';

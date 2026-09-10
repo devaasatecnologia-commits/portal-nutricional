@@ -461,7 +461,7 @@
 .badge-taxa.critico { background: rgba(220, 38, 38, .12); color: #dc2626; }
 
 /* ================================================================
-   ABA: HISTÓRICO DE EMBARQUES
+   ABA: HISTï¿½RICO DE EMBARQUES
    ================================================================ */
 .hist-embarque-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--nutri-border); cursor: pointer; transition: var(--transition); flex-wrap: wrap; }
 .hist-embarque-card:hover { background: rgba(var(--nutri-primary-rgb), .04); }
@@ -501,7 +501,7 @@
 
 
 /* ================================================================
-   ABA: GRÁFICOS PREMIUM
+   ABA: GRï¿½FICOS PREMIUM
    ================================================================ */
 .graficos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
 .grafico-card { padding: 0; overflow: hidden; }
@@ -511,7 +511,7 @@
 @media (max-width: 900px) { .graficos-grid { grid-template-columns: 1fr; } }
 
 /* ================================================================
-   RANKING CLICÁVEL (MOTORISTAS/VEÍCULOS)
+   RANKING CLICï¿½VEL (MOTORISTAS/VEï¿½CULOS)
    ================================================================ */
 .tabela-motoristas-linha, .tabela-veiculos-linha { cursor: pointer; }
 .tabela-motoristas-linha:hover, .tabela-veiculos-linha:hover { background: rgba(var(--nutri-primary-rgb), .05); }
@@ -522,3 +522,62 @@
 .detalhe-ranking-stats .stat strong { display: block; font-size: 1.2rem; color: var(--nutri-text); }
 .detalhe-ranking-stats .stat span { display: block; font-size: .66rem; color: var(--nutri-text-secondary); font-weight: 800; text-transform: uppercase; margin-top: 3px; }
 .detalhe-ranking-chart-wrap { padding: 10px 4px 4px; }
+
+/* ================================================================
+   RASTREABILIDADE TOTAL: TIMELINE DE EMBARQUE, ITENS E PERFIL DO MOTORISTA
+   ================================================================ */
+.detalhe-embarque-timeline { margin-bottom: 18px; }
+.detalhe-embarque-timeline h4 { font-size: .85rem; font-weight: 800; color: var(--nutri-text); margin-bottom: 10px; }
+.timeline-embarque-lista { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--nutri-border); padding-left: 16px; max-height: 220px; overflow-y: auto; }
+.timeline-embarque-item { position: relative; padding-bottom: 14px; }
+.timeline-embarque-ponto { position: absolute; left: -21px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--nutri-primary); border: 2px solid #fff; }
+.timeline-embarque-conteudo { display: flex; flex-direction: column; gap: 2px; }
+
+.entrega-item-itens-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+.entrega-item-card { border: 1px solid var(--nutri-border); border-radius: 10px; padding: 8px; display: flex; gap: 8px; align-items: center; background: rgba(148, 163, 184, .04); }
+.entrega-item-card.item-divergente { border-color: rgba(220, 38, 38, .45); background: rgba(220, 38, 38, .06); }
+.entrega-item-card img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; cursor: zoom-in; flex-shrink: 0; }
+.entrega-item-card .item-sem-foto { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: rgba(148, 163, 184, .15); color: var(--nutri-text-secondary); flex-shrink: 0; }
+.entrega-item-card-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.entrega-item-card-info strong { font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entrega-item-card-info span { font-size: .68rem; color: var(--nutri-text-secondary); }
+
+.entrega-item-problemas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.problema-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .68rem; font-weight: 700; background: rgba(220, 38, 38, .1); color: #b91c1c; }
+.problema-badge.resolvido { background: rgba(16, 185, 129, .12); color: #047857; }
+
+.perfil-score-badges { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.score-motorista-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 92px; height: 92px; border-radius: 50%; border: 4px solid; background: #fff; }
+.score-motorista-badge .score-valor { font-size: 1.3rem; font-weight: 900; line-height: 1; }
+.score-motorista-badge .score-label { font-size: .55rem; font-weight: 700; text-transform: uppercase; text-align: center; margin-top: 2px; color: var(--nutri-text-secondary); }
+.score-motorista-badge.nivel-alto { border-color: #10b981; }
+.score-motorista-badge.nivel-alto .score-valor { color: #10b981; }
+.score-motorista-badge.nivel-medio { border-color: #f59e0b; }
+.score-motorista-badge.nivel-medio .score-valor { color: #f59e0b; }
+.score-motorista-badge.nivel-baixo { border-color: #dc2626; }
+.score-motorista-badge.nivel-baixo .score-valor { color: #dc2626; }
+
+.score-mini-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 800; font-size: .72rem; }
+.score-mini-badge.nivel-alto { background: rgba(16, 185, 129, .12); color: #047857; }
+.score-mini-badge.nivel-medio { background: rgba(245, 158, 11, .14); color: #b45309; }
+.score-mini-badge.nivel-baixo { background: rgba(220, 38, 38, .12); color: #b91c1c; }
+
+.perfil-pontos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.perfil-pontos-coluna { border: 1px solid var(--nutri-border); border-radius: 12px; padding: 14px 16px; }
+.perfil-pontos-coluna h4 { font-size: .8rem; font-weight: 800; margin-bottom: 8px; }
+.perfil-pontos-coluna.positivos h4 { color: #047857; }
+.perfil-pontos-coluna.negativos h4 { color: #b91c1c; }
+.perfil-pontos-coluna ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: .78rem; color: var(--nutri-text); }
+
+.perfil-secao { margin-bottom: 18px; }
+.perfil-secao h4 { font-size: .8rem; font-weight: 800; color: var(--nutri-text); margin-bottom: 10px; }
+.perfil-veiculos-lista { display: flex; flex-wrap: wrap; gap: 10px; }
+.perfil-veiculo-card { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; min-width: 160px; }
+.perfil-veiculo-card strong { font-size: .85rem; }
+.perfil-veiculo-card span { font-size: .68rem; color: var(--nutri-text-secondary); }
+
+.perfil-embarques-lista { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.perfil-embarque-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
+.perfil-embarque-item:hover { background: rgba(var(--nutri-primary-rgb), .05); }
+.perfil-embarque-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+

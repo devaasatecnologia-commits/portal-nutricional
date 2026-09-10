@@ -385,6 +385,12 @@ $app->group('/v1', function ($group) {
                 // 🆕 HISTÓRICO DE EMBARQUES COM BUSCA E FILTROS COMPLETOS
                 $cargas->get('/historico-embarques', [$controller, 'historicoEmbarques']);
 
+                // 🆕 RASTREABILIDADE TOTAL: DETALHES COMPLETOS DE UM EMBARQUE (timeline, itens, fotos, rota)
+                $cargas->get('/embarque/{id}/detalhes-completos', [$controller, 'embarqueDetalhesCompletos']);
+
+                // 🆕 PERFIL COMPLETO DO MOTORISTA (embarques, veículos usados, pontos, score)
+                $cargas->get('/motorista/{id}/perfil', [$controller, 'motoristaPerfilCompleto']);
+
                 // EXPORTAR RELATÓRIO DE PROBLEMAS
                 $cargas->post('/exportar', [$controller, 'exportarProblemas']);
             });

@@ -224,7 +224,61 @@ public function buscar(Request $request, Response $response, array $args): Respo
             $entrega['checklist'] = $checklistPorEntrega[$entrega['id']] ?? [];
         }
         unset($entrega);
+
+        // ============================================================
+        // 3.1 PROBLEMAS REGISTRADOS POR ENTREGA (rastreabilidade total)
+        // ============================================================
+        $stmtProblemas = $this->pdo->prepare("
+            SELECT
+                entrega_id, id, tipo_problema, referencia, descricao_problema,
+                quantidade_afetada, valor_afetado, status_problema, prioridade,
+                created_at, data_resolucao
+            FROM frota_entrega_problema
+            WHERE entrega_id IN ({$placeholders})
+            ORDER BY created_at DESC
+        ");
+        $stmtProblemas->execute($entregaIds);
+        $problemasItems = $stmtProblemas->fetchAll(\PDO::FETCH_ASSOC);
+
+        $problemasPorEntrega = [];
+        foreach ($problemasItems as $p) {
+            $problemasPorEntrega[$p['entrega_id']][] = $p;
+        }
+
+        // 3.2 TIMELINE DE CADA ENTREGA
+        $stmtTimeline = $this->pdo->prepare("
+            SELECT entrega_id, acao, descricao, usuario_nome, dados_novos, created_at
+            FROM frota_entrega_timeline
+            WHERE entrega_id IN ({$placeholders})
+            ORDER BY created_at ASC
+        ");
+        $stmtTimeline->execute($entregaIds);
+        $timelineItems = $stmtTimeline->fetchAll(\PDO::FETCH_ASSOC);
+
+        $timelinePorEntrega = [];
+        foreach ($timelineItems as $t) {
+            $timelinePorEntrega[$t['entrega_id']][] = $t;
+        }
+
+        foreach ($embarque['entregas'] as &$entrega) {
+            $entrega['problemas'] = $problemasPorEntrega[$entrega['id']] ?? [];
+            $entrega['timeline'] = $timelinePorEntrega[$entrega['id']] ?? [];
+        }
+        unset($entrega);
     }
+
+    // ================================================================
+    // 3.3 ACERTO/CONFERÊNCIA DO EMBARQUE (se existir)
+    // ================================================================
+    $stmtAcerto = $this->pdo->prepare("
+        SELECT id, status, data_inicio_acerto, data_fim_acerto
+        FROM frota_acerto_embarque
+        WHERE embarque_id = :embarque_id
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmtAcerto->execute(['embarque_id' => $id]);
+    $embarque['acerto'] = $stmtAcerto->fetch(\PDO::FETCH_ASSOC) ?: null;
 
     // ================================================================
     // 4. BUSCAR HISTÓRICO (logs do embarque)

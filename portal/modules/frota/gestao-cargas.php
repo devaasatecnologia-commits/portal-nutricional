@@ -272,11 +272,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
                             <th class="text-center">No Prazo</th>
                             <th class="text-center">Tempo Médio</th>
                             <th class="text-center">Problemas</th>
+                            <th class="text-center">Score</th>
                             <th class="text-center">Índice de Ineficiência</th>
                         </tr>
                     </thead>
                     <tbody id="lista-motoristas">
-                        <tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>
+                        <tr><td colspan="10" class="text-center py-8">Carregando...</td></tr>
                     </tbody>
                 </table>
             </div>
