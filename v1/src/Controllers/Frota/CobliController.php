@@ -163,6 +163,97 @@ class CobliController
     }
 
     /**
+     * GET /v1/frota/cobli/veiculos
+     * Lista os veículos cadastrados na Cobli, já com placa (license_plate), marca,
+     * modelo, ano e device_id — usado para casar automaticamente com a placa do sistema.
+     */
+    public function listarVeiculosCobli(Request $request, Response $response): Response
+    {
+        $resultado = $this->cobli->listarVeiculos();
+        if (!$resultado['success']) {
+            return $this->json($response, ['success' => false, 'error' => $resultado['error']], 502);
+        }
+        return $this->json($response, ['success' => true, 'data' => $resultado['data']]);
+    }
+
+    /**
+     * POST /v1/frota/cobli/vincular-automatico
+     * Casa automaticamente os veículos do sistema com os veículos da Cobli
+     * comparando a placa (normalizada, sem traço/espaço, case-insensitive).
+     * Somente cria vínculos novos — não sobrescreve vínculos já existentes.
+     */
+    public function vincularAutomatico(Request $request, Response $response): Response
+    {
+        $resultado = $this->cobli->listarVeiculos();
+        if (!$resultado['success']) {
+            return $this->json($response, ['success' => false, 'error' => $resultado['error']], 502);
+        }
+
+        $veiculosCobli = $resultado['data']['data'] ?? $resultado['data'] ?? [];
+        $porPlaca = [];
+        foreach ($veiculosCobli as $vc) {
+            $placa = $this->normalizarPlaca($vc['license_plate'] ?? '');
+            if ($placa !== '') {
+                $porPlaca[$placa] = $vc;
+            }
+        }
+
+        $vinculados = [];
+        $naoEncontrados = [];
+
+        try {
+            $stmt = $this->pdo->query("
+                SELECT v.id, v.placa
+                FROM frota_veiculo v
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM frota_cobli_dispositivo d WHERE d.veiculo_id = v.id AND d.ativo = TRUE
+                )
+            ");
+            $veiculosSemVinculo = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($veiculosSemVinculo as $veiculo) {
+                $placaNormalizada = $this->normalizarPlaca($veiculo['placa']);
+                if (isset($porPlaca[$placaNormalizada])) {
+                    $vc = $porPlaca[$placaNormalizada];
+                    $insere = $this->pdo->prepare("
+                        INSERT INTO frota_cobli_dispositivo (veiculo_id, cobli_device_id, cobli_vehicle_id, ativo, updated_at)
+                        VALUES (:veiculo_id, :device_id, :vehicle_id, TRUE, NOW())
+                        ON CONFLICT (veiculo_id) DO UPDATE SET
+                            cobli_device_id = EXCLUDED.cobli_device_id,
+                            cobli_vehicle_id = EXCLUDED.cobli_vehicle_id,
+                            ativo = TRUE,
+                            updated_at = NOW()
+                    ");
+                    $insere->execute([
+                        'veiculo_id' => $veiculo['id'],
+                        'device_id' => $vc['device_id'] ?? '',
+                        'vehicle_id' => $vc['id'] ?? null
+                    ]);
+                    $vinculados[] = $veiculo['placa'];
+                } else {
+                    $naoEncontrados[] = $veiculo['placa'];
+                }
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'vinculados' => $vinculados,
+                    'nao_encontrados_na_cobli' => $naoEncontrados
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro ao vincular automaticamente veículos Cobli: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao vincular automaticamente'], 500);
+        }
+    }
+
+    private function normalizarPlaca(?string $placa): string
+    {
+        return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $placa ?? ''));
+    }
+
+    /**
      * GET /v1/frota/cobli/veiculos-vinculados
      * Lista os vínculos veículo <-> dispositivo Cobli já cadastrados,
      * usado para exibir o status de cada veículo do sistema na tela.

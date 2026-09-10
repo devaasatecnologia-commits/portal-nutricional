@@ -52,6 +52,16 @@ class CobliService
     }
 
     /**
+     * Lista os veículos cadastrados na Cobli (com placa, marca, modelo, ano e device_id).
+     * Diferente de listarDispositivos(): aqui vem a placa (license_plate) pronta,
+     * permitindo casar automaticamente com a placa cadastrada no sistema.
+     */
+    public function listarVeiculos(int $page = 1, int $pageSize = 2000): array
+    {
+        return $this->request('GET', "/public/v1/vehicles?limit={$pageSize}&page={$page}");
+    }
+
+    /**
      * Eventos de risco de condução (score/comportamento) da frota, em um período.
      */
     public function eventosDeRisco(string $startDate, string $endDate, string $timezone = 'America/Sao_Paulo'): array

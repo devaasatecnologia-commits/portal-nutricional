@@ -2012,29 +2012,41 @@ async function carregarDispositivosCobli() {
     if (container) container.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando dispositivos...</div>';
 
     try {
-        const [respDispositivos, respVeiculos, respVinculos] = await Promise.all([
+        const [respDispositivos, respVeiculosCobli, respVeiculos, respVinculos] = await Promise.all([
             fetch(`${CONFIG.API_BASE}/cobli/dispositivos`, { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(`${CONFIG.API_BASE}/cobli/veiculos-cobli`, { headers: { 'Authorization': 'Bearer ' + token } }),
             fetch(`${CONFIG.API_BASE}/veiculos?limite=100`, { headers: { 'Authorization': 'Bearer ' + token } }),
             fetch(`${CONFIG.API_BASE}/cobli/veiculos-vinculados`, { headers: { 'Authorization': 'Bearer ' + token } })
         ]);
 
         const payloadDispositivos = await respDispositivos.json();
+        const payloadVeiculosCobli = await respVeiculosCobli.json();
         const payloadVeiculos = await respVeiculos.json();
         const payloadVinculos = await respVinculos.json();
 
         if (!payloadDispositivos.success) throw new Error(payloadDispositivos.error || 'Erro ao listar dispositivos');
 
         const dispositivos = payloadDispositivos.data?.data || payloadDispositivos.data || [];
+        const veiculosCobli = payloadVeiculosCobli.data?.data || payloadVeiculosCobli.data || [];
         const veiculos = payloadVeiculos.data || [];
         const vinculos = payloadVinculos.data || [];
         const vinculosPorVeiculo = new Map(vinculos.map(v => [v.veiculo_id, v]));
+
+        // Placa da Cobli por device_id, para exibir sugestão de correspondência
+        const placaPorDeviceId = new Map(veiculosCobli.map(vc => [vc.device_id, vc.license_plate]));
+        const normalizarPlaca = (p) => (p || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const placasCobli = new Set(veiculosCobli.map(vc => normalizarPlaca(vc.license_plate)));
 
         // Popula selects de vínculo manual
         if (selectVeiculo) {
             selectVeiculo.innerHTML = veiculos.map(v => `<option value="${v.id}">${escapeHtml(v.placa)} - ${escapeHtml(v.modelo || '')}</option>`).join('');
         }
         if (selectDevice) {
-            selectDevice.innerHTML = dispositivos.map(d => `<option value="${escapeHtml(d.id)}" data-vehicle-id="${escapeHtml(d.vehicle_id || '')}">${escapeHtml(d.cobli_id || d.id)} (Device ${escapeHtml(d.id)})</option>`).join('');
+            selectDevice.innerHTML = dispositivos.map(d => {
+                const placa = placaPorDeviceId.get(d.id);
+                const rotulo = placa ? `${escapeHtml(placa)} — Device ${escapeHtml(d.id)}` : `${escapeHtml(d.cobli_id || d.id)} (Device ${escapeHtml(d.id)})`;
+                return `<option value="${escapeHtml(d.id)}" data-vehicle-id="${escapeHtml(d.vehicle_id || '')}">${rotulo}</option>`;
+            }).join('');
         }
 
         if (!veiculos.length) {
@@ -2042,8 +2054,21 @@ async function carregarDispositivosCobli() {
             return;
         }
 
+        const semVinculoComPlacaNaCobli = veiculos.filter(v => !vinculosPorVeiculo.has(v.id) && placasCobli.has(normalizarPlaca(v.placa)));
+
         if (container) {
             container.innerHTML = `
+                ${semVinculoComPlacaNaCobli.length ? `
+                    <div class="flex items-center justify-between flex-wrap gap-2 p-4 bg-amber-50 border-b border-amber-100">
+                        <span class="text-sm text-amber-700">
+                            <i class="fa-solid fa-circle-info mr-1"></i>
+                            ${semVinculoComPlacaNaCobli.length} veículo(s) têm a placa cadastrada na Cobli mas ainda não estão vinculados.
+                        </span>
+                        <button type="button" class="btn-premium" style="padding:6px 12px; font-size:12px;" id="cobli-vincular-auto-btn">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Vincular automaticamente por placa
+                        </button>
+                    </div>
+                ` : ''}
                 <div class="perfil-veiculos-lista" style="padding:16px;">
                     ${veiculos.map(v => {
                         const vinculo = vinculosPorVeiculo.get(v.id);
@@ -2061,17 +2086,52 @@ async function carregarDispositivosCobli() {
                                            <i class="fa-solid fa-link-slash"></i> Desvincular
                                        </button>
                                    </div>`
-                                : `<span class="hist-status-badge planejado" style="margin-top:6px;">Sem vínculo</span>`
+                                : `<span class="hist-status-badge ${placasCobli.has(normalizarPlaca(v.placa)) ? 'em_andamento' : 'planejado'}" style="margin-top:6px;">${placasCobli.has(normalizarPlaca(v.placa)) ? 'Placa encontrada na Cobli' : 'Sem vínculo'}</span>`
                             }
                         </div>
                     `; }).join('')}
                 </div>
-                <p class="text-xs text-slate-400 px-4 pb-4">Use os campos acima para vincular um veículo ao dispositivo GPS correspondente na Cobli.</p>
+                <p class="text-xs text-slate-400 px-4 pb-4">Use os campos acima para vincular um veículo ao dispositivo GPS correspondente na Cobli, ou vincule automaticamente por placa.</p>
             `;
+
+            const btnAuto = document.getElementById('cobli-vincular-auto-btn');
+            if (btnAuto) btnAuto.addEventListener('click', () => vincularAutomaticoCobli(btnAuto));
         }
     } catch (error) {
         console.error('Erro ao carregar dispositivos da Cobli:', error);
         if (container) container.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar dispositivos da Cobli</div>';
+    }
+}
+
+async function vincularAutomaticoCobli(btn) {
+    const token = getAuthToken();
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Vinculando...'; }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/vincular-automatico`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao vincular automaticamente');
+
+        const { vinculados = [], nao_encontrados_na_cobli: naoEncontrados = [] } = payload.data || {};
+        let mensagem = vinculados.length
+            ? `Vinculados automaticamente por placa: ${vinculados.join(', ')}`
+            : 'Nenhum veículo novo foi vinculado.';
+        if (naoEncontrados.length) {
+            mensagem += `\n\nNão encontrados na Cobli: ${naoEncontrados.join(', ')}`;
+        }
+        alert(mensagem);
+
+        await carregarDispositivosCobli();
+        await carregarMapaCobli();
+    } catch (error) {
+        console.error('Erro ao vincular automaticamente por placa:', error);
+        alert('Erro ao vincular automaticamente: ' + error.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
     }
 }
 

@@ -291,6 +291,8 @@ $app->group('/v1', function ($group) {
                 $cobli->get('/status', [$controller, 'status']);
                 $cobli->post('/configurar', [$controller, 'configurar']);
                 $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
+                $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);
+                $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico']);
                 $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
 
                 $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
