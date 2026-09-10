@@ -32,7 +32,7 @@ class CobliService
         if (!$this->isConfigurado()) {
             return ['success' => false, 'error' => 'Chave de API da Cobli não configurada'];
         }
-        return $this->request('GET', '/herbie-1.1/dash/devices?page=1&pageSize=1');
+        return $this->request('GET', '/public/v1/devices?limit=1&page=1');
     }
 
     /**
@@ -48,7 +48,7 @@ class CobliService
      */
     public function listarDispositivos(int $page = 1, int $pageSize = 50): array
     {
-        return $this->request('GET', "/herbie-1.1/dash/devices?page={$page}&pageSize={$pageSize}");
+        return $this->request('GET', "/public/v1/devices?limit={$pageSize}&page={$page}");
     }
 
     /**
