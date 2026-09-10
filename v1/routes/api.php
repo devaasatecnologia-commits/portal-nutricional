@@ -376,6 +376,12 @@ $app->group('/v1', function ($group) {
                 // 🆕 RANKING COMPLETO DE EFICIÊNCIA/INEFICIÊNCIA POR MOTORISTA
                 $cargas->get('/ranking-motoristas', [$controller, 'rankingMotoristas']);
 
+                // 🆕 RANKING COMPLETO DE EFICIÊNCIA/INEFICIÊNCIA POR VEÍCULO (CAMINHÃO)
+                $cargas->get('/ranking-veiculos', [$controller, 'rankingVeiculos']);
+
+                // 🆕 GRÁFICOS (EVOLUÇÃO, DISTRIBUIÇÕES, TOP OFENSORES)
+                $cargas->get('/graficos', [$controller, 'graficosCargas']);
+
                 // 🆕 HISTÓRICO DE EMBARQUES COM BUSCA E FILTROS COMPLETOS
                 $cargas->get('/historico-embarques', [$controller, 'historicoEmbarques']);
 

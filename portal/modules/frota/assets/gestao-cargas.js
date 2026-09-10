@@ -1124,6 +1124,11 @@ function exportarCSV() {
 // ================================================================
 let abaCargasAtiva = 'visao-geral';
 let motoristasCarregados = false;
+let veiculosCarregados = false;
+let graficosCarregados = false;
+let rankingMotoristasData = [];
+let rankingVeiculosData = [];
+let chartInstances = {};
 let historicoState = {
     pagina: 1,
     totalPaginas: 1,
@@ -1146,6 +1151,12 @@ function mudarAbaCargas(aba, btn) {
 
     if (aba === 'motoristas' && !motoristasCarregados) {
         carregarRankingMotoristas();
+    }
+    if (aba === 'veiculos' && !veiculosCarregados) {
+        carregarRankingVeiculos();
+    }
+    if (aba === 'graficos' && !graficosCarregados) {
+        carregarGraficosCargas();
     }
     if (aba === 'historico') {
         carregarHistoricoEmbarques();
@@ -1178,8 +1189,9 @@ async function carregarRankingMotoristas() {
         if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
 
         motoristasCarregados = true;
-        renderizarDestaquesMotoristas(payload.data || []);
-        renderizarTabelaMotoristas(payload.data || []);
+        rankingMotoristasData = payload.data || [];
+        renderizarDestaquesMotoristas(rankingMotoristasData);
+        renderizarTabelaMotoristas(rankingMotoristasData);
     } catch (error) {
         console.error('Erro ao carregar ranking de motoristas:', error);
         if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-500">Erro ao carregar ranking de motoristas</td></tr>';
@@ -1236,7 +1248,7 @@ function renderizarTabelaMotoristas(dados) {
         const taxaPrazoClass = m.taxa_no_prazo >= 90 ? 'ok' : (m.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
 
         return `
-        <tr class="tabela-motoristas-linha">
+        <tr class="tabela-motoristas-linha" onclick="abrirDetalheMotorista(${m.id})">
             <td class="text-center">${idx + 1}</td>
             <td>
                 <div class="motorista-nome-cell">
@@ -1260,9 +1272,388 @@ function renderizarTabelaMotoristas(dados) {
     }).join('');
 }
 
+function abrirDetalheMotorista(id) {
+    const m = rankingMotoristasData.find(x => String(x.id) === String(id));
+    if (!m) return;
+
+    const titulo = document.getElementById('detalhe-ranking-titulo');
+    const conteudo = document.getElementById('detalhe-ranking-conteudo');
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-id-badge mr-2"></i> ${escapeHtml(m.motorista_nome || '-')}`;
+
+    const indice = Number(m.indice_ineficiencia || 0);
+    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+
+    if (conteudo) {
+        conteudo.innerHTML = `
+            <div class="detalhe-ranking-header">
+                <div>
+                    <strong style="font-size:1.1rem;">${escapeHtml(m.motorista_nome || '-')}</strong>
+                    <div class="text-sm text-slate-500">${escapeHtml(m.motorista_telefone || 'Sem telefone')} • Status: ${escapeHtml(m.motorista_status || '-')}</div>
+                </div>
+                <div class="indice-ineficiencia-bar" style="max-width:220px;">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">Índice: ${indice.toFixed(1)}</div>
+                </div>
+                <div class="detalhe-ranking-stats">
+                    <div class="stat"><strong>${m.total_embarques ?? 0}</strong><span>Embarques</span></div>
+                    <div class="stat"><strong>${m.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                    <div class="stat"><strong>${m.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
+                    <div class="stat"><strong>${m.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
+                    <div class="stat"><strong>${(m.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
+                    <div class="stat"><strong>${(m.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
+                    <div class="stat"><strong>${Math.round(m.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                    <div class="stat"><strong>${m.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                    <div class="stat"><strong>${m.faltantes ?? 0}</strong><span>Faltantes</span></div>
+                    <div class="stat"><strong>${m.devolucoes ?? 0}</strong><span>Devoluções</span></div>
+                    <div class="stat"><strong>${formatarMoeda(m.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+                </div>
+            </div>
+        `;
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('modalDetalheRanking'));
+    modal.show();
+}
+
 // ================================================================
-// ABA: HISTÓRICO DE EMBARQUES
+// ABA: POR CAMINHÃO (VEÍCULOS)
 // ================================================================
+async function carregarRankingVeiculos() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-veiculos-dias')?.value || 30;
+    const infoPeriodo = document.getElementById('info-veiculos-periodo');
+    if (infoPeriodo) {
+        const labels = { '7': 'Últimos 7 dias', '30': 'Últimos 30 dias', '90': 'Últimos 90 dias', '365': 'Últimos 12 meses' };
+        infoPeriodo.textContent = labels[dias] || `Últimos ${dias} dias`;
+    }
+
+    const tbody = document.getElementById('lista-veiculos');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/ranking-veiculos?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar ranking de veículos');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        veiculosCarregados = true;
+        rankingVeiculosData = payload.data || [];
+        renderizarDestaquesVeiculos(rankingVeiculosData);
+        renderizarTabelaVeiculos(rankingVeiculosData);
+    } catch (error) {
+        console.error('Erro ao carregar ranking de veículos:', error);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-500">Erro ao carregar ranking de veículos</td></tr>';
+    }
+}
+
+function renderizarDestaquesVeiculos(dados) {
+    const container = document.getElementById('veiculos-destaques');
+    if (!container) return;
+
+    if (!dados.length) {
+        container.innerHTML = '<div class="empty-state-cargas">Nenhum dado de veículo no período selecionado.</div>';
+        return;
+    }
+
+    const maisDivergencia = [...dados].sort((a, b) => b.taxa_divergencia - a.taxa_divergencia)[0];
+    const maisAtrasos = [...dados].sort((a, b) => (b.entregas_atrasadas || 0) - (a.entregas_atrasadas || 0))[0];
+    const melhorDesempenho = [...dados].sort((a, b) => a.indice_ineficiencia - b.indice_ineficiencia)[0];
+
+    container.innerHTML = `
+        <div class="motoristas-destaques-grid">
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-solid fa-triangle-exclamation"></i> Maior taxa de divergência</div>
+                <div class="destaque-nome">${escapeHtml(maisDivergencia?.placa || '-')}</div>
+                <div class="destaque-valor">${(maisDivergencia?.taxa_divergencia ?? 0).toFixed(1)}%</div>
+            </div>
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-regular fa-clock"></i> Mais entregas atrasadas</div>
+                <div class="destaque-nome">${escapeHtml(maisAtrasos?.placa || '-')}</div>
+                <div class="destaque-valor">${maisAtrasos?.entregas_atrasadas ?? 0}</div>
+            </div>
+            <div class="motorista-destaque-card sucesso">
+                <div class="destaque-label"><i class="fa-solid fa-medal"></i> Melhor desempenho</div>
+                <div class="destaque-nome">${escapeHtml(melhorDesempenho?.placa || '-')}</div>
+                <div class="destaque-valor">${(melhorDesempenho?.indice_ineficiencia ?? 0).toFixed(1)} pts</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderizarTabelaVeiculos(dados) {
+    const tbody = document.getElementById('lista-veiculos');
+    if (!tbody) return;
+
+    if (!dados.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Nenhum veículo com embarques no período.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = dados.map((v, idx) => {
+        const indice = Number(v.indice_ineficiencia || 0);
+        const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+        const taxaDivClass = v.taxa_divergencia >= 15 ? 'critico' : (v.taxa_divergencia >= 5 ? 'alerta' : 'ok');
+        const taxaPrazoClass = v.taxa_no_prazo >= 90 ? 'ok' : (v.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+
+        return `
+        <tr class="tabela-veiculos-linha" onclick="abrirDetalheVeiculo(${v.id})">
+            <td class="text-center">${idx + 1}</td>
+            <td>
+                <div class="motorista-nome-cell">
+                    <strong>${escapeHtml(v.placa || '-')}</strong>
+                    <span>${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')}</span>
+                </div>
+            </td>
+            <td class="text-center">${v.total_embarques ?? 0}</td>
+            <td class="text-center">${v.total_entregas ?? 0}</td>
+            <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(v.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(v.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center">${Math.round(v.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${v.total_problemas ?? 0}</td>
+            <td>
+                <div class="indice-ineficiencia-bar">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">${indice.toFixed(1)}</div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function abrirDetalheVeiculo(id) {
+    const v = rankingVeiculosData.find(x => String(x.id) === String(id));
+    if (!v) return;
+
+    const titulo = document.getElementById('detalhe-ranking-titulo');
+    const conteudo = document.getElementById('detalhe-ranking-conteudo');
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-truck mr-2"></i> ${escapeHtml(v.placa || '-')}`;
+
+    const indice = Number(v.indice_ineficiencia || 0);
+    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+
+    if (conteudo) {
+        conteudo.innerHTML = `
+            <div class="detalhe-ranking-header">
+                <div>
+                    <strong style="font-size:1.1rem;">${escapeHtml(v.placa || '-')}</strong>
+                    <div class="text-sm text-slate-500">${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')} • ${escapeHtml(v.tipo || '-')} • Status: ${escapeHtml(v.veiculo_status || '-')}</div>
+                </div>
+                <div class="indice-ineficiencia-bar" style="max-width:220px;">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">Índice: ${indice.toFixed(1)}</div>
+                </div>
+                <div class="detalhe-ranking-stats">
+                    <div class="stat"><strong>${v.total_embarques ?? 0}</strong><span>Embarques</span></div>
+                    <div class="stat"><strong>${v.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                    <div class="stat"><strong>${v.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
+                    <div class="stat"><strong>${v.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
+                    <div class="stat"><strong>${(v.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
+                    <div class="stat"><strong>${(v.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
+                    <div class="stat"><strong>${Math.round(v.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                    <div class="stat"><strong>${v.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                    <div class="stat"><strong>${v.faltantes ?? 0}</strong><span>Faltantes</span></div>
+                    <div class="stat"><strong>${v.devolucoes ?? 0}</strong><span>Devoluções</span></div>
+                    <div class="stat"><strong>${Math.round(v.peso_total_transportado ?? 0)} kg</strong><span>Peso Transportado</span></div>
+                    <div class="stat"><strong>${formatarMoeda(v.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+                </div>
+            </div>
+        `;
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('modalDetalheRanking'));
+    modal.show();
+}
+
+function formatarMoeda(valor) {
+    return 'R$ ' + Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ================================================================
+// ABA: GRÁFICOS PREMIUM (Chart.js)
+// ================================================================
+const CORES_GRAFICO = {
+    primaria: '#1a3c34',
+    dourado: '#c9a227',
+    sucesso: '#10b981',
+    alerta: '#f59e0b',
+    perigo: '#dc2626',
+    info: '#3b82f6',
+    roxo: '#8b5cf6',
+    palette: ['#1a3c34', '#c9a227', '#3b82f6', '#dc2626', '#8b5cf6', '#10b981', '#f59e0b']
+};
+
+async function carregarGraficosCargas() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-graficos-dias')?.value || 14;
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/graficos?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar gráficos');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        graficosCarregados = true;
+        renderizarGraficosCargas(payload.data || {});
+    } catch (error) {
+        console.error('Erro ao carregar gráficos de gestão de cargas:', error);
+        mostrarNotificacao('Erro ao carregar gráficos', 'error');
+    }
+}
+
+function destruirChart(id) {
+    if (chartInstances[id]) {
+        chartInstances[id].destroy();
+        delete chartInstances[id];
+    }
+}
+
+function renderizarGraficosCargas(data) {
+    if (typeof Chart === 'undefined') return;
+
+    // 1. Evolução diária (linha)
+    destruirChart('evolucao');
+    const ctxEvolucao = document.getElementById('chart-evolucao');
+    if (ctxEvolucao) {
+        const evolucao = data.evolucao_diaria || [];
+        chartInstances.evolucao = new Chart(ctxEvolucao, {
+            type: 'line',
+            data: {
+                labels: evolucao.map(e => e.label),
+                datasets: [
+                    {
+                        label: 'Problemas Criados',
+                        data: evolucao.map(e => e.criados),
+                        borderColor: CORES_GRAFICO.perigo,
+                        backgroundColor: 'rgba(220, 38, 38, .08)',
+                        tension: .35,
+                        fill: true,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Problemas Resolvidos',
+                        data: evolucao.map(e => e.resolvidos),
+                        borderColor: CORES_GRAFICO.sucesso,
+                        backgroundColor: 'rgba(16, 185, 129, .08)',
+                        tension: .35,
+                        fill: true,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 2. Distribuição por tipo (doughnut)
+    destruirChart('tipo');
+    const ctxTipo = document.getElementById('chart-tipo');
+    if (ctxTipo) {
+        const porTipo = data.por_tipo || [];
+        chartInstances.tipo = new Chart(ctxTipo, {
+            type: 'doughnut',
+            data: {
+                labels: porTipo.map(t => (t.tipo_problema || '-').replace(/_/g, ' ')),
+                datasets: [{
+                    data: porTipo.map(t => t.total),
+                    backgroundColor: CORES_GRAFICO.palette,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '62%' }
+        });
+    }
+
+    // 3. Distribuição por prioridade (barra horizontal)
+    destruirChart('prioridade');
+    const ctxPrioridade = document.getElementById('chart-prioridade');
+    if (ctxPrioridade) {
+        const porPrioridade = data.por_prioridade || [];
+        const ordem = ['critica', 'alta', 'media', 'baixa'];
+        const ordenado = [...porPrioridade].sort((a, b) => ordem.indexOf(a.prioridade) - ordem.indexOf(b.prioridade));
+        const coresPrioridade = { critica: CORES_GRAFICO.perigo, alta: CORES_GRAFICO.alerta, media: CORES_GRAFICO.info, baixa: CORES_GRAFICO.sucesso };
+        chartInstances.prioridade = new Chart(ctxPrioridade, {
+            type: 'bar',
+            data: {
+                labels: ordenado.map(p => (p.prioridade || '-').toUpperCase()),
+                datasets: [{
+                    label: 'Problemas ativos',
+                    data: ordenado.map(p => p.total),
+                    backgroundColor: ordenado.map(p => coresPrioridade[p.prioridade] || CORES_GRAFICO.primaria),
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 4. Top motoristas com mais problemas (barra)
+    destruirChart('topMotoristas');
+    const ctxTopMotoristas = document.getElementById('chart-top-motoristas');
+    if (ctxTopMotoristas) {
+        const topM = data.top_motoristas_problemas || [];
+        chartInstances.topMotoristas = new Chart(ctxTopMotoristas, {
+            type: 'bar',
+            data: {
+                labels: topM.map(m => m.motorista_nome),
+                datasets: [{
+                    label: 'Problemas',
+                    data: topM.map(m => m.total_problemas),
+                    backgroundColor: CORES_GRAFICO.dourado,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 5. Top veículos com mais problemas (barra)
+    destruirChart('topVeiculos');
+    const ctxTopVeiculos = document.getElementById('chart-top-veiculos');
+    if (ctxTopVeiculos) {
+        const topV = data.top_veiculos_problemas || [];
+        chartInstances.topVeiculos = new Chart(ctxTopVeiculos, {
+            type: 'bar',
+            data: {
+                labels: topV.map(v => v.placa),
+                datasets: [{
+                    label: 'Problemas',
+                    data: topV.map(v => v.total_problemas),
+                    backgroundColor: CORES_GRAFICO.primaria,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+}
+
+
 async function carregarHistoricoEmbarques() {
     const token = getAuthToken();
     if (!token) return;
@@ -1467,6 +1858,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const motoristasDias = document.getElementById('filtro-motoristas-dias');
     if (motoristasDias) motoristasDias.addEventListener('change', carregarRankingMotoristas);
 
+    // Filtros da aba Por Caminhão
+    const veiculosDias = document.getElementById('filtro-veiculos-dias');
+    if (veiculosDias) veiculosDias.addEventListener('change', carregarRankingVeiculos);
+
+    // Filtro da aba Gráficos
+    const graficosDias = document.getElementById('filtro-graficos-dias');
+    if (graficosDias) graficosDias.addEventListener('change', carregarGraficosCargas);
+
     // Filtros da aba Histórico de Embarques
     const histBusca = document.getElementById('hist-busca');
     if (histBusca) histBusca.addEventListener('input', debounce(function() {
@@ -1543,5 +1942,9 @@ window.mostrarNotificacao = mostrarNotificacao;
 window.fecharModalAnalise = fecharModalAnalise;
 window.mudarAbaCargas = mudarAbaCargas;
 window.carregarRankingMotoristas = carregarRankingMotoristas;
+window.carregarRankingVeiculos = carregarRankingVeiculos;
+window.carregarGraficosCargas = carregarGraficosCargas;
+window.abrirDetalheMotorista = abrirDetalheMotorista;
+window.abrirDetalheVeiculo = abrirDetalheVeiculo;
 window.mudarPaginaHistorico = mudarPaginaHistorico;
 window.abrirDetalheEmbarque = abrirDetalheEmbarque;

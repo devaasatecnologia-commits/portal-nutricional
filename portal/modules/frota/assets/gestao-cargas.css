@@ -498,3 +498,27 @@
 .detalhe-entrega-item .entrega-item-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
 .detalhe-entrega-item .entrega-item-fotos { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 .detalhe-entrega-item .entrega-item-fotos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid var(--nutri-border); }
+
+
+/* ================================================================
+   ABA: GRÁFICOS PREMIUM
+   ================================================================ */
+.graficos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.grafico-card { padding: 0; overflow: hidden; }
+.grafico-card.grafico-full { grid-column: 1 / -1; }
+.grafico-card .section-body { padding: 18px 20px 22px; }
+.grafico-card canvas { max-width: 100%; }
+@media (max-width: 900px) { .graficos-grid { grid-template-columns: 1fr; } }
+
+/* ================================================================
+   RANKING CLICÁVEL (MOTORISTAS/VEÍCULOS)
+   ================================================================ */
+.tabela-motoristas-linha, .tabela-veiculos-linha { cursor: pointer; }
+.tabela-motoristas-linha:hover, .tabela-veiculos-linha:hover { background: rgba(var(--nutri-primary-rgb), .05); }
+
+.detalhe-ranking-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; padding: 16px 18px; border-radius: 14px; background: rgba(var(--nutri-primary-rgb), .05); border: 1px solid var(--nutri-border); margin-bottom: 18px; }
+.detalhe-ranking-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 16px; width: 100%; margin-top: 14px; }
+.detalhe-ranking-stats .stat { text-align: center; }
+.detalhe-ranking-stats .stat strong { display: block; font-size: 1.2rem; color: var(--nutri-text); }
+.detalhe-ranking-stats .stat span { display: block; font-size: .66rem; color: var(--nutri-text-secondary); font-weight: 800; text-transform: uppercase; margin-top: 3px; }
+.detalhe-ranking-chart-wrap { padding: 10px 4px 4px; }

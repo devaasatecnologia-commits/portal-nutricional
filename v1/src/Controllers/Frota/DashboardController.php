@@ -1573,6 +1573,192 @@ public function historicoEmbarques(Request $request, Response $response): Respon
         ], 500);
     }
 }
+
+/**
+ * GET /v1/frota/gestao-cargas/ranking-veiculos
+ * Ranking completo de eficiência/ineficiência por veículo (caminhão)
+ */
+public function rankingVeiculos(Request $request, Response $response): Response
+{
+    try {
+        $params = $request->getQueryParams();
+        $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+
+        $sql = "
+            SELECT
+                ve.id,
+                ve.placa,
+                ve.modelo,
+                ve.marca,
+                ve.tipo,
+                ve.status AS veiculo_status,
+                COUNT(DISTINCT em.id) AS total_embarques,
+                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
+                COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
+                COUNT(DISTINCT CASE WHEN ent.status = 'pendente' AND ent.data_prevista < CURRENT_DATE THEN ent.id END) AS entregas_atrasadas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL
+                    AND ent.data_prevista IS NOT NULL AND DATE(ent.horario_entrega) <= ent.data_prevista THEN ent.id END) AS entregas_no_prazo,
+                COUNT(DISTINCT ep.id) AS total_problemas,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
+                COALESCE(SUM(ent.peso_total), 0) AS peso_total_transportado,
+                COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+            FROM frota_veiculo ve
+            LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
+                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+            LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
+            LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status
+            HAVING COUNT(DISTINCT em.id) > 0
+            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['dias' => $dias]);
+        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        foreach ($dados as &$v) {
+            $totalEntregas = (int)$v['total_entregas'];
+            $v['taxa_divergencia'] = $totalEntregas > 0
+                ? round(($v['entregas_com_problema'] + $v['entregas_falha']) / $totalEntregas * 100, 1)
+                : 0.0;
+            $v['taxa_no_prazo'] = $totalEntregas > 0
+                ? round($v['entregas_no_prazo'] / $totalEntregas * 100, 1)
+                : 0.0;
+            $v['tempo_medio_entrega_min'] = round((float)$v['tempo_medio_entrega_min'], 1);
+
+            $indice = ($v['taxa_divergencia'] * 0.5)
+                + ((100 - $v['taxa_no_prazo']) * 0.3)
+                + (min($v['problemas_pendentes'] * 5, 100) * 0.2);
+            $v['indice_ineficiencia'] = round(min($indice, 100), 1);
+        }
+        unset($v);
+
+        usort($dados, function ($a, $b) {
+            return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
+        });
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $dados,
+            'dias' => $dias,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+
+    } catch (\Exception $e) {
+        error_log('Erro em rankingVeiculos: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao carregar ranking de veículos'
+        ], 500);
+    }
+}
+
+/**
+ * GET /v1/frota/gestao-cargas/graficos
+ * Séries e distribuições para os gráficos do dashboard de Gestão de Cargas
+ */
+public function graficosCargas(Request $request, Response $response): Response
+{
+    try {
+        $params = $request->getQueryParams();
+        $dias = max(1, min((int)($params['dias'] ?? 14), 90));
+
+        // 1. Evolução diária de problemas (criados x resolvidos)
+        $evolucao = [];
+        for ($i = $dias - 1; $i >= 0; $i--) {
+            $data = date('Y-m-d', strtotime("-$i days"));
+            $stmt = $this->pdo->prepare("
+                SELECT
+                    COUNT(CASE WHEN DATE(created_at) = :data THEN 1 END) AS criados,
+                    COUNT(CASE WHEN DATE(data_resolucao) = :data2 THEN 1 END) AS resolvidos
+                FROM frota_entrega_problema
+                WHERE DATE(created_at) = :data3 OR DATE(data_resolucao) = :data4
+            ");
+            $stmt->execute(['data' => $data, 'data2' => $data, 'data3' => $data, 'data4' => $data]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $evolucao[] = [
+                'data' => $data,
+                'label' => date('d/m', strtotime($data)),
+                'criados' => (int)($row['criados'] ?? 0),
+                'resolvidos' => (int)($row['resolvidos'] ?? 0)
+            ];
+        }
+
+        // 2. Distribuição por tipo de problema
+        $stmt = $this->pdo->query("
+            SELECT tipo_problema, COUNT(*) AS total, COALESCE(SUM(valor_afetado), 0) AS valor
+            FROM frota_entrega_problema
+            GROUP BY tipo_problema
+            ORDER BY total DESC
+        ");
+        $porTipo = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // 3. Distribuição por prioridade (ativos)
+        $stmt = $this->pdo->query("
+            SELECT prioridade, COUNT(*) AS total
+            FROM frota_entrega_problema
+            WHERE status_problema NOT IN ('resolvido', 'cancelado')
+            GROUP BY prioridade
+        ");
+        $porPrioridade = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // 4. Top 5 motoristas com mais problemas (para o gráfico comparativo)
+        $stmt = $this->pdo->prepare("
+            SELECT mo.nome AS motorista_nome, COUNT(DISTINCT ep.id) AS total_problemas
+            FROM frota_motorista mo
+            INNER JOIN frota_embarque em ON em.motorista_id = mo.id
+            INNER JOIN frota_entrega ent ON ent.embarque_id = em.id
+            INNER JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
+            GROUP BY mo.id, mo.nome
+            ORDER BY total_problemas DESC
+            LIMIT 5
+        ");
+        $stmt->execute(['dias' => $dias]);
+        $topMotoristasProblemas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // 5. Top 5 veículos com mais problemas
+        $stmt = $this->pdo->prepare("
+            SELECT ve.placa, COUNT(DISTINCT ep.id) AS total_problemas
+            FROM frota_veiculo ve
+            INNER JOIN frota_embarque em ON em.veiculo_id = ve.id
+            INNER JOIN frota_entrega ent ON ent.embarque_id = em.id
+            INNER JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
+            GROUP BY ve.id, ve.placa
+            ORDER BY total_problemas DESC
+            LIMIT 5
+        ");
+        $stmt->execute(['dias' => $dias]);
+        $topVeiculosProblemas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => [
+                'evolucao_diaria' => $evolucao,
+                'por_tipo' => $porTipo,
+                'por_prioridade' => $porPrioridade,
+                'top_motoristas_problemas' => $topMotoristasProblemas,
+                'top_veiculos_problemas' => $topVeiculosProblemas
+            ],
+            'dias' => $dias,
+            'timestamp' => date('Y-m-d H:i:s')
+        ]);
+
+    } catch (\Exception $e) {
+        error_log('Erro em graficosCargas: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao carregar gráficos de gestão de cargas'
+        ], 500);
+    }
+}
     
     /**
      * Resposta JSON

@@ -82,6 +82,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <button type="button" class="cargas-tab" data-tab="motoristas" onclick="mudarAbaCargas('motoristas', this)" role="tab" aria-selected="false">
             <i class="fa-solid fa-ranking-star"></i> Desempenho de Motoristas
         </button>
+        <button type="button" class="cargas-tab" data-tab="veiculos" onclick="mudarAbaCargas('veiculos', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-truck"></i> Por Caminhão
+        </button>
+        <button type="button" class="cargas-tab" data-tab="graficos" onclick="mudarAbaCargas('graficos', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-chart-pie"></i> Gráficos
+        </button>
         <button type="button" class="cargas-tab" data-tab="historico" onclick="mudarAbaCargas('historico', this)" role="tab" aria-selected="false">
             <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Embarques
         </button>
@@ -278,6 +284,113 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div> <!-- /#tab-motoristas -->
 
     <!-- ================================================================
+       ABA: POR CAMINHÃO (VEÍCULOS)
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-veiculos" role="tabpanel" hidden>
+        <div class="section-card mb-6">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Ranking de Eficiência por Caminhão</span>
+                        <span class="text-xs text-slate-400 block" id="info-veiculos-periodo">Últimos 30 dias</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 flex-wrap">
+                    <label class="cargas-priority">
+                        <span>Período</span>
+                        <select id="filtro-veiculos-dias">
+                            <option value="7">7 dias</option>
+                            <option value="30" selected>30 dias</option>
+                            <option value="90">90 dias</option>
+                            <option value="365">12 meses</option>
+                        </select>
+                    </label>
+                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="carregarRankingVeiculos()">
+                        <i class="fa-solid fa-rotate-right"></i> Atualizar
+                    </button>
+                </div>
+            </div>
+            <div class="section-body" id="veiculos-destaques"></div>
+        </div>
+
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
+                    <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
+                </div>
+            </div>
+            <div class="section-body p-0 overflow-x-auto">
+                <table class="table-frota w-full" id="tabela-veiculos">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width: 45px;">#</th>
+                            <th>Veículo</th>
+                            <th class="text-center">Embarques</th>
+                            <th class="text-center">Entregas</th>
+                            <th class="text-center">Divergência</th>
+                            <th class="text-center">No Prazo</th>
+                            <th class="text-center">Tempo Médio</th>
+                            <th class="text-center">Problemas</th>
+                            <th class="text-center">Índice de Ineficiência</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-veiculos">
+                        <tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div> <!-- /#tab-veiculos -->
+
+    <!-- ================================================================
+       ABA: GRÁFICOS
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-graficos" role="tabpanel" hidden>
+        <div class="section-card mb-6">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-chart-pie"></i></div>
+                    <div><span class="font-bold text-[#1a3c34]">Painel de Gráficos</span></div>
+                </div>
+                <label class="cargas-priority">
+                    <span>Período</span>
+                    <select id="filtro-graficos-dias">
+                        <option value="7">7 dias</option>
+                        <option value="14" selected>14 dias</option>
+                        <option value="30">30 dias</option>
+                        <option value="90">90 dias</option>
+                    </select>
+                </label>
+            </div>
+        </div>
+
+        <div class="graficos-grid">
+            <div class="section-card grafico-card grafico-full">
+                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-chart-line"></i></div><span class="font-bold text-[#1a3c34]">Evolução de Problemas: Criados x Resolvidos</span></div></div>
+                <div class="section-body"><canvas id="chart-evolucao" height="90"></canvas></div>
+            </div>
+            <div class="section-card grafico-card">
+                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-chart-pie"></i></div><span class="font-bold text-[#1a3c34]">Distribuição por Tipo</span></div></div>
+                <div class="section-body"><canvas id="chart-tipo" height="220"></canvas></div>
+            </div>
+            <div class="section-card grafico-card">
+                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-layer-group"></i></div><span class="font-bold text-[#1a3c34]">Distribuição por Prioridade</span></div></div>
+                <div class="section-body"><canvas id="chart-prioridade" height="220"></canvas></div>
+            </div>
+            <div class="section-card grafico-card">
+                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-ranking-star"></i></div><span class="font-bold text-[#1a3c34]">Top 5 Motoristas com Mais Problemas</span></div></div>
+                <div class="section-body"><canvas id="chart-top-motoristas" height="220"></canvas></div>
+            </div>
+            <div class="section-card grafico-card">
+                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div><span class="font-bold text-[#1a3c34]">Top 5 Caminhões com Mais Problemas</span></div></div>
+                <div class="section-body"><canvas id="chart-top-veiculos" height="220"></canvas></div>
+            </div>
+        </div>
+    </div> <!-- /#tab-graficos -->
+
+    <!-- ================================================================
        ABA: HISTÓRICO DE EMBARQUES
     ================================================================ -->
     <div class="cargas-tab-panel" id="tab-historico" role="tabpanel" hidden>
@@ -354,6 +467,31 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body" id="detalhe-embarque-conteudo">
+                <div class="text-center py-8">
+                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary rounded-xl" data-bs-dismiss="modal">Fechar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ================================================================
+   MODAL: DETALHE DO MOTORISTA / VEÍCULO (Ranking)
+=============================================================== -->
+<div class="modal fade" id="modalDetalheRanking" tabindex="-1" data-bs-backdrop="static" style="display: none;">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fa-solid fa-circle-info mr-2"></i>
+                    <span id="detalhe-ranking-titulo">Detalhes</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="detalhe-ranking-conteudo">
                 <div class="text-center py-8">
                     <i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...
                 </div>
