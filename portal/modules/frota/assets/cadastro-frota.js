@@ -479,4 +479,50 @@ document.addEventListener('DOMContentLoaded', () => {
 
     carregarContadores();
     carregarVeiculosCad();
+    abrirPendenciasERP();
 });
+
+// ================================================================
+// PENDÊNCIAS VINDAS DA TELA DE EMBARQUES (motorista/veículo do ERP
+// que ainda não existem no cadastro). Ver embarques.js -> irParaCadastroFrotaERP().
+// ================================================================
+function abrirPendenciasERP() {
+    let pendencias;
+    try {
+        pendencias = JSON.parse(sessionStorage.getItem('cadfrota_pendencias_erp') || 'null');
+    } catch (e) {
+        pendencias = null;
+    }
+    if (!pendencias) return;
+    sessionStorage.removeItem('cadfrota_pendencias_erp');
+
+    const motoristas = pendencias.motoristas || [];
+    const veiculos = pendencias.veiculos || [];
+    if (motoristas.length === 0 && veiculos.length === 0) return;
+
+    const partes = [];
+    if (motoristas.length > 0) partes.push(`${motoristas.length} motorista(s)`);
+    if (veiculos.length > 0) partes.push(`${veiculos.length} veículo(s)`);
+
+    if (typeof Swal !== 'undefined') {
+        Swal.fire({
+            icon: 'info',
+            title: 'Cadastro pendente do ERP',
+            html: `Encontramos ${partes.join(' e ')} vindos do ERP que ainda não estão cadastrados aqui.<br>Os campos serão pré-preenchidos automaticamente.`,
+            confirmButtonText: 'Cadastrar agora',
+            confirmButtonColor: '#10b981',
+            showCancelButton: motoristas.length > 0 && veiculos.length > 0,
+            cancelButtonText: veiculos.length > 0 ? 'Cadastrar veículo(s) depois' : 'Cadastrar motorista(s) depois'
+        }).then(() => {
+            if (motoristas.length > 0) {
+                document.querySelector('.cadfrota-tab[data-tab="motoristas"]')?.click();
+                abrirFormMotorista(motoristas[0]);
+            } else if (veiculos.length > 0) {
+                abrirFormVeiculo(veiculos[0]);
+            }
+        });
+    } else {
+        if (motoristas.length > 0) abrirFormMotorista(motoristas[0]);
+        else if (veiculos.length > 0) abrirFormVeiculo(veiculos[0]);
+    }
+}
