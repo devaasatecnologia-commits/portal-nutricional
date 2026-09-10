@@ -262,6 +262,138 @@ class CobliController
     }
 
     /**
+     * POST /v1/frota/cobli/veiculo/{id}/sincronizar
+     * Sincronização "sob demanda" ERP + Cobli -> tabelas internas da Frota.
+     * Somente LEITURA no ERP e na Cobli; grava/atualiza (upsert) apenas em
+     * frota_veiculo e frota_motorista. Nunca escreve de volta nas origens.
+     */
+    public function sincronizarVeiculoMotorista(Request $request, Response $response, array $args): Response
+    {
+        $veiculoId = (int)$args['id'];
+        $atualizados = [];
+        $avisos = [];
+
+        try {
+            $veiculo = $this->pdo->prepare("SELECT id, placa FROM frota_veiculo WHERE id = :id");
+            $veiculo->execute(['id' => $veiculoId]);
+            $veiculoDados = $veiculo->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$veiculoDados) {
+                return $this->json($response, ['success' => false, 'error' => 'Veículo não encontrado'], 404);
+            }
+
+            // Motorista mais recente associado a este veículo (via último embarque)
+            $stmtMotoristaAtual = $this->pdo->prepare("
+                SELECT motorista_id FROM frota_embarque
+                WHERE veiculo_id = :veiculo_id AND motorista_id IS NOT NULL
+                ORDER BY created_at DESC LIMIT 1
+            ");
+            $stmtMotoristaAtual->execute(['veiculo_id' => $veiculoId]);
+            $veiculoDados['motorista_id'] = $stmtMotoristaAtual->fetchColumn() ?: null;
+
+            // ------------------------------------------------------------
+            // 1) COBLI (leitura): dados reais do veículo/motorista/posição
+            // ------------------------------------------------------------
+            $vinculoCobli = $this->pdo->prepare("SELECT cobli_device_id FROM frota_cobli_dispositivo WHERE veiculo_id = :id AND ativo = TRUE");
+            $vinculoCobli->execute(['id' => $veiculoId]);
+            $device = $vinculoCobli->fetch(\PDO::FETCH_ASSOC);
+
+            if ($device) {
+                $resultado = $this->cobli->buscarDispositivo($device['cobli_device_id']);
+                if ($resultado['success']) {
+                    $dados = $resultado['data'] ?? [];
+                    $veiculoCobli = $dados['vehicle'] ?? [];
+                    $motoristaCobli = $dados['driver'] ?? [];
+
+                    // Upsert de dados do veículo (marca/modelo/ano vêm da Cobli, fonte confiável de cadastro)
+                    $campos = [];
+                    $params = ['id' => $veiculoId];
+                    if (!empty($veiculoCobli['brand'])) { $campos[] = 'marca = :marca'; $params['marca'] = $veiculoCobli['brand']; }
+                    if (!empty($veiculoCobli['model'])) { $campos[] = 'modelo = :modelo'; $params['modelo'] = $veiculoCobli['model']; }
+                    if (!empty($veiculoCobli['year'])) { $campos[] = 'ano = :ano'; $params['ano'] = $veiculoCobli['year']; }
+
+                    if ($campos) {
+                        $campos[] = 'updated_at = NOW()';
+                        $this->pdo->prepare("UPDATE frota_veiculo SET " . implode(', ', $campos) . " WHERE id = :id")->execute($params);
+                        $atualizados[] = 'Veículo atualizado com dados da Cobli (marca/modelo/ano)';
+                    }
+
+                    // Se o veículo já tem motorista vinculado no sistema, atualiza o vínculo Cobli dele também
+                    if (!empty($motoristaCobli['id']) && !empty($veiculoDados['motorista_id'])) {
+                        $this->pdo->prepare("
+                            INSERT INTO frota_cobli_motorista (motorista_id, cobli_driver_id)
+                            VALUES (:motorista_id, :driver_id)
+                            ON CONFLICT (motorista_id) DO UPDATE SET cobli_driver_id = EXCLUDED.cobli_driver_id
+                        ")->execute(['motorista_id' => $veiculoDados['motorista_id'], 'driver_id' => $motoristaCobli['id']]);
+                        $atualizados[] = 'Vínculo motorista ↔ Cobli atualizado automaticamente pelo device';
+                    }
+                } else {
+                    $avisos[] = 'Cobli: ' . $resultado['error'];
+                }
+            } else {
+                $avisos[] = 'Veículo sem dispositivo Cobli vinculado — pulei a sincronização de posição/telemetria.';
+            }
+
+            // ------------------------------------------------------------
+            // 2) ERP (leitura): dados cadastrais do motorista (cliforemp)
+            // ------------------------------------------------------------
+            if (!empty($veiculoDados['motorista_id'])) {
+                $motorista = $this->pdo->prepare("SELECT id, erp_id FROM frota_motorista WHERE id = :id");
+                $motorista->execute(['id' => $veiculoDados['motorista_id']]);
+                $motoristaDados = $motorista->fetch(\PDO::FETCH_ASSOC);
+
+                if ($motoristaDados && !empty($motoristaDados['erp_id'])) {
+                    $stmtErp = $this->pdo->prepare("
+                        SELECT fantasia, razao, cpf, fone, email, endereco
+                        FROM cliforemp
+                        WHERE idcliforemp = :id
+                    ");
+                    $stmtErp->execute(['id' => $motoristaDados['erp_id']]);
+                    $erpMotorista = $stmtErp->fetch(\PDO::FETCH_ASSOC);
+
+                    if ($erpMotorista) {
+                        $this->pdo->prepare("
+                            UPDATE frota_motorista SET
+                                nome = COALESCE(NULLIF(:nome, ''), nome),
+                                cpf = COALESCE(NULLIF(:cpf, ''), cpf),
+                                telefone = COALESCE(NULLIF(:telefone, ''), telefone),
+                                email = COALESCE(NULLIF(:email, ''), email),
+                                endereco = COALESCE(NULLIF(:endereco, ''), endereco),
+                                updated_at = NOW()
+                            WHERE id = :id
+                        ")->execute([
+                            'id' => $motoristaDados['id'],
+                            'nome' => $erpMotorista['fantasia'] ?? $erpMotorista['razao'] ?? '',
+                            'cpf' => $erpMotorista['cpf'] ?? '',
+                            'telefone' => $erpMotorista['fone'] ?? '',
+                            'email' => $erpMotorista['email'] ?? '',
+                            'endereco' => $erpMotorista['endereco'] ?? ''
+                        ]);
+                        $atualizados[] = 'Motorista atualizado com dados cadastrais do ERP';
+                    } else {
+                        $avisos[] = 'ERP: motorista erp_id ' . $motoristaDados['erp_id'] . ' não encontrado em cliforemp.';
+                    }
+                } else {
+                    $avisos[] = 'Motorista sem erp_id vinculado — pulei a sincronização com o ERP.';
+                }
+            } else {
+                $avisos[] = 'Veículo sem motorista vinculado no sistema.';
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'atualizados' => $atualizados,
+                    'avisos' => $avisos
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro ao sincronizar veículo/motorista (ERP+Cobli): ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao sincronizar: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * GET /v1/frota/cobli/veiculo/{id}/posicao
      * Busca a posição em tempo real do veículo diretamente na Cobli
      * (usa o device vinculado) e já registra no histórico local.

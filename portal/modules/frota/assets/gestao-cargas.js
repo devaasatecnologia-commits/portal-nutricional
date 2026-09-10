@@ -2087,9 +2087,14 @@ async function carregarDispositivosCobli() {
                             <span>${escapeHtml(v.modelo || '')}</span>
                             ${vinculo
                                 ? `<span class="hist-status-badge finalizado" style="margin-top:6px;"><i class="fa-solid fa-satellite-dish"></i> Vinculado (Device ${escapeHtml(vinculo.cobli_device_id)})</span>
-                                   <button type="button" class="cargas-clear-filter mt-2" onclick="desvincularVeiculoCobli(${v.id})">
-                                       <i class="fa-solid fa-link-slash"></i> Desvincular
-                                   </button>`
+                                   <div class="flex gap-2 mt-2 flex-wrap">
+                                       <button type="button" class="btn-premium" style="padding:6px 10px; font-size:12px;" onclick="sincronizarVeiculoCobli(${v.id}, this)">
+                                           <i class="fa-solid fa-arrows-rotate"></i> Sincronizar agora
+                                       </button>
+                                       <button type="button" class="cargas-clear-filter" onclick="desvincularVeiculoCobli(${v.id})">
+                                           <i class="fa-solid fa-link-slash"></i> Desvincular
+                                       </button>
+                                   </div>`
                                 : `<span class="hist-status-badge planejado" style="margin-top:6px;">Sem vínculo</span>`
                             }
                         </div>
@@ -2161,6 +2166,38 @@ async function desvincularVeiculoCobli(veiculoId) {
     } catch (error) {
         console.error('Erro ao desvincular veículo da Cobli:', error);
         alert('Erro ao desvincular: ' + error.message);
+    }
+}
+
+async function sincronizarVeiculoCobli(veiculoId, btn) {
+    const token = getAuthToken();
+    const original = btn ? btn.innerHTML : '';
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sincronizando...'; }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/veiculo/${veiculoId}/sincronizar`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao sincronizar');
+
+        const { atualizados = [], avisos = [] } = payload.data || {};
+        let mensagem = atualizados.length
+            ? 'Sincronização concluída:\n- ' + atualizados.join('\n- ')
+            : 'Nenhum dado novo atualizado.';
+        if (avisos.length) {
+            mensagem += '\n\nAvisos:\n- ' + avisos.join('\n- ');
+        }
+        alert(mensagem);
+
+        await carregarDispositivosCobli();
+        await carregarMapaCobli();
+    } catch (error) {
+        console.error('Erro ao sincronizar veículo (ERP+Cobli):', error);
+        alert('Erro ao sincronizar: ' + error.message);
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = original; }
     }
 }
 
@@ -2401,6 +2438,7 @@ window.mostrarNotificacao = mostrarNotificacao;
 window.fecharModalAnalise = fecharModalAnalise;
 window.mudarAbaCargas = mudarAbaCargas;
 window.desvincularVeiculoCobli = desvincularVeiculoCobli;
+window.sincronizarVeiculoCobli = sincronizarVeiculoCobli;
 window.carregarRankingMotoristas = carregarRankingMotoristas;
 window.carregarRankingVeiculos = carregarRankingVeiculos;
 window.carregarGraficosCargas = carregarGraficosCargas;
