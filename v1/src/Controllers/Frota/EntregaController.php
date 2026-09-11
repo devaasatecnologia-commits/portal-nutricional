@@ -16,6 +16,7 @@ class EntregaController
     {
         $this->pdo = \getPDO();
         $this->geocodingService = new GeocodingService();
+        $this->ensureOfflineOperationsTable();
     }
     
     /**
@@ -58,8 +59,8 @@ class EntregaController
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
         
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         $sql = "
@@ -338,8 +339,14 @@ class EntregaController
     {
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $operationId = $this->normalizarOperationId($input['operation_id'] ?? null);
+        $storedResponse = $this->buscarOperacaoOffline($operationId);
+        if ($storedResponse !== null) {
+            return $this->json($response, $storedResponse);
+        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
+        $desktop = (bool)($input['desktop'] ?? false);
         
         $entrega = $this->getEntrega($id);
         if (!$entrega) {
@@ -353,19 +360,18 @@ class EntregaController
             return $this->json($response, ['success' => false, 'error' => 'Esta entrega já foi concluída'], 400);
         }
         
-        $desktop = (bool)($input['desktop'] ?? false);
         $lat = (float)($input['latitude'] ?? 0);
         $lng = (float)($input['longitude'] ?? 0);
         
         if ($lat == 0 || $lng == 0) {
-            if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
+            if ($desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
                 $lat = (float)$entrega['latitude'];
                 $lng = (float)$entrega['longitude'];
-            } else {
-                define('DISTRIBUIDORA_LAT', -28.979438954992666);
-                define('DISTRIBUIDORA_LNG', -49.53561648427039);
-                $lat = DISTRIBUIDORA_LAT;
-                $lng = DISTRIBUIDORA_LNG;
+            } elseif (!$desktop) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'A localização atual é obrigatória para o check-in'
+                ], 400);
             }
         }
         
@@ -436,7 +442,7 @@ class EntregaController
         // 🔥 LOG: usando registrarLogEntrega com usuarioId
         $this->registrarLogEntrega($id, 'checkin', "Check-in registrado para entrega #{$id}" . ($desktop ? ' (desktop)' : ''), $usuarioId);
         
-        return $this->json($response, [
+        $result = [
             'success' => true,
             'message' => 'Check-in registrado com sucesso!',
             'data' => [
@@ -444,7 +450,9 @@ class EntregaController
                 'status' => 'em_entrega',
                 'horario_checkin' => date('Y-m-d H:i:s')
             ]
-        ]);
+        ];
+        $this->salvarOperacaoOffline($operationId, $result);
+        return $this->json($response, $result);
     }
     
   /**
@@ -455,6 +463,11 @@ public function checkout(Request $request, Response $response, array $args): Res
 {
     $id = (int)$args['id'];
     $input = json_decode($request->getBody()->getContents(), true) ?? [];
+    $operationId = $this->normalizarOperationId($input['operation_id'] ?? null);
+    $storedResponse = $this->buscarOperacaoOffline($operationId);
+    if ($storedResponse !== null) {
+        return $this->json($response, $storedResponse);
+    }
     $user = $request->getAttribute('user');
     $usuarioId = $user['idusuario'] ?? 0;
 
@@ -463,6 +476,7 @@ public function checkout(Request $request, Response $response, array $args): Res
     $lng = (float)($input['longitude'] ?? 0);
     $nomeRecebedor = trim($input['nome_recebedor'] ?? '');
     $fotoRomaneioBase64 = $input['foto_romaneio'] ?? null;
+    $assinaturaBase64 = $input['assinatura_base64'] ?? null;
     $checklist = $input['checklist'] ?? [];
     $temFaltante = (bool)($input['tem_faltante'] ?? false);
     $temDevolucao = (bool)($input['tem_devolucao'] ?? false);
@@ -486,6 +500,9 @@ public function checkout(Request $request, Response $response, array $args): Res
     if (empty($nomeRecebedor)) {
         return $this->json($response, ['success' => false, 'error' => 'Nome do recebedor é obrigatório'], 400);
     }
+    if (!$desktop && empty($assinaturaBase64)) {
+        return $this->json($response, ['success' => false, 'error' => 'Assinatura do recebedor é obrigatória'], 400);
+    }
     if (!$desktop && !empty($checklist)) {
         foreach ($checklist as $item) {
             if (empty($item['foto_item'])) {
@@ -506,11 +523,8 @@ public function checkout(Request $request, Response $response, array $args): Res
                 if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
                     $lat = (float)$entrega['latitude'];
                     $lng = (float)$entrega['longitude'];
-                } else {
-                    define('DISTRIBUIDORA_LAT', -28.979438954992666);
-                    define('DISTRIBUIDORA_LNG', -49.53561648427039);
-                    $lat = DISTRIBUIDORA_LAT;
-                    $lng = DISTRIBUIDORA_LNG;
+                } elseif (!$desktop) {
+                    throw new \InvalidArgumentException('A localização atual é obrigatória para o checkout');
                 }
             }
             if (!empty($entrega['cliente_id'])) {
@@ -534,16 +548,15 @@ public function checkout(Request $request, Response $response, array $args): Res
             if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
                 $lat = (float)$entrega['latitude'];
                 $lng = (float)$entrega['longitude'];
-            } else {
-                define('DISTRIBUIDORA_LAT', -28.979438954992666);
-                define('DISTRIBUIDORA_LNG', -49.53561648427039);
-                $lat = DISTRIBUIDORA_LAT;
-                $lng = DISTRIBUIDORA_LNG;
             }
         }
 
         // Salvar foto do romaneio
         $fotoRomaneioUrl = $this->salvarFotoBase64($fotoRomaneioBase64, 'romaneio_' . $id);
+        $assinaturaUrl = $assinaturaBase64 ? $this->salvarAssinatura($assinaturaBase64, $id) : null;
+        if (!$desktop && $assinaturaUrl === null) {
+            throw new \InvalidArgumentException('Assinatura inválida ou excede o limite permitido');
+        }
 
         // ATUALIZAR ENTREGA
         $statusEntrega = ($temFaltante || $temDevolucao) ? 'entregue_com_problema' : 'entregue';
@@ -557,6 +570,7 @@ public function checkout(Request $request, Response $response, array $args): Res
                 horario_entrega = NOW(),
                 nome_recebedor = :nome_recebedor,
                 foto_romaneio_url = :foto_romaneio,
+                assinatura_entrega_url = :assinatura_url,
                 data_checkout = NOW(),
                 updated_at = NOW()
             WHERE id = :id
@@ -568,6 +582,7 @@ public function checkout(Request $request, Response $response, array $args): Res
             'status' => $statusEntrega,
             'nome_recebedor' => $nomeRecebedor,
             'foto_romaneio' => $fotoRomaneioUrl
+            , 'assinatura_url' => $assinaturaUrl
         ]);
 
         // ================================================================
@@ -668,7 +683,7 @@ public function checkout(Request $request, Response $response, array $args): Res
                 'checkout',
                 :lat,
                 :lng,
-                :foto_romaneio,
+                :assinatura_url,
                 NOW()
             )
         ");
@@ -677,7 +692,7 @@ public function checkout(Request $request, Response $response, array $args): Res
             'entrega_id2' => $id,
             'lat' => $lat,
             'lng' => $lng,
-            'foto_romaneio' => $fotoRomaneioUrl
+            'assinatura_url' => $assinaturaUrl
         ]);
 
         // LOG
@@ -690,7 +705,7 @@ public function checkout(Request $request, Response $response, array $args): Res
 
         $this->pdo->commit();
 
-        return $this->json($response, [
+        $result = [
             'success' => true,
             'message' => ($temFaltante || $temDevolucao) 
                 ? 'Entrega concluída com pendências (faltantes/devoluções). Embarque marcado como problema.' 
@@ -700,7 +715,9 @@ public function checkout(Request $request, Response $response, array $args): Res
                 'status' => $statusEntrega,
                 'embarque_status' => ($temFaltante || $temDevolucao) ? 'problema' : null
             ]
-        ]);
+        ];
+        $this->salvarOperacaoOffline($operationId, $result);
+        return $this->json($response, $result);
 
     } catch (\Exception $e) {
         $this->pdo->rollBack();
@@ -719,6 +736,11 @@ public function checkout(Request $request, Response $response, array $args): Res
     {
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $operationId = $this->normalizarOperationId($input['operation_id'] ?? null);
+        $storedResponse = $this->buscarOperacaoOffline($operationId);
+        if ($storedResponse !== null) {
+            return $this->json($response, $storedResponse);
+        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         
@@ -802,7 +824,7 @@ public function checkout(Request $request, Response $response, array $args): Res
         // 🔥 LOG: usando registrarLog (para embarque) com usuarioId
         $this->registrarLog($entrega['embarque_id'] ?? 0, 'falha', "Falha na entrega #{$id}: {$motivo}", $usuarioId);
         
-        return $this->json($response, [
+        $result = [
             'success' => true,
             'message' => 'Falha registrada com sucesso',
             'data' => [
@@ -811,7 +833,9 @@ public function checkout(Request $request, Response $response, array $args): Res
                 'tentativas' => $tentativas,
                 'proxima_tentativa' => $proximaTentativa
             ]
-        ]);
+        ];
+        $this->salvarOperacaoOffline($operationId, $result);
+        return $this->json($response, $result);
     }
     
     /**
@@ -1005,9 +1029,15 @@ public function checkout(Request $request, Response $response, array $args): Res
 
     private function motoristaPodeOperarEntrega(Request $request, array $entrega, bool $desktop): bool
     {
-        if ($desktop) return true;
         $user = $request->getAttribute('user') ?? [];
-        if (in_array('admin', $user['permissoes'] ?? [], true)) return true;
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        if ($desktop) {
+            return $isAdmin
+                || in_array('frota', $permissoes, true)
+                || in_array('gestao-cargas', $permissoes, true)
+                || in_array('acerto-embarque', $permissoes, true);
+        }
         $motoristaId = (int)($user['motorista_id'] ?? 0);
         return $motoristaId > 0 && $motoristaId === (int)($entrega['motorista_id'] ?? 0);
     }
@@ -1129,8 +1159,24 @@ public function checkout(Request $request, Response $response, array $args): Res
 
     private function uploadFoto($file, $prefix): ?string
     {
-        $extensao = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-        $nome = $prefix . '_' . date('Ymd_His') . '.' . $extensao;
+        if (($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK
+            || ($file['size'] ?? 0) <= 0
+            || $file['size'] > 8 * 1024 * 1024
+            || !is_uploaded_file($file['tmp_name'] ?? '')) {
+            return null;
+        }
+
+        $mime = (new \finfo(FILEINFO_MIME_TYPE))->file($file['tmp_name']);
+        $extensoes = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp'
+        ];
+        if (!isset($extensoes[$mime]) || @getimagesize($file['tmp_name']) === false) {
+            return null;
+        }
+
+        $nome = $prefix . '_' . bin2hex(random_bytes(16)) . '.' . $extensoes[$mime];
 
         $basePath = rtrim($_SERVER['DOCUMENT_ROOT'], '/');
         $caminho = $basePath . '/portal/uploads/frota/entregas/';
@@ -1145,11 +1191,10 @@ public function checkout(Request $request, Response $response, array $args): Res
     
     private function salvarAssinatura($base64, $entregaId): ?string
     {
-        $dados = explode(',', $base64);
-        $imagem = base64_decode($dados[1] ?? '');
-        if (!$imagem) return null;
+        $imagem = $this->decodificarImagemBase64($base64);
+        if ($imagem === null) return null;
 
-        $nome = 'assinatura_' . $entregaId . '_' . date('Ymd_His') . '.png';
+        $nome = 'assinatura_' . $entregaId . '_' . bin2hex(random_bytes(16)) . '.png';
 
         $basePath = rtrim($_SERVER['DOCUMENT_ROOT'], '/');
         $caminho = $basePath . '/portal/uploads/frota/assinaturas/';
@@ -1164,13 +1209,10 @@ public function checkout(Request $request, Response $response, array $args): Res
     
     private function salvarFotoBase64($base64, $prefix): ?string
     {
-        $dados = explode(',', $base64);
-        if (count($dados) < 2) return null;
-        $imagem = base64_decode($dados[1]);
-        if (!$imagem) return null;
+        $imagem = $this->decodificarImagemBase64($base64);
+        if ($imagem === null) return null;
 
-        $extensao = 'png';
-        $nome = $prefix . '_' . date('Ymd_His') . '.' . $extensao;
+        $nome = $prefix . '_' . bin2hex(random_bytes(16)) . '.png';
 
     // Usando DOCUMENT_ROOT para caminho absoluto
         $basePath = rtrim($_SERVER['DOCUMENT_ROOT'], '/');
@@ -1184,10 +1226,90 @@ public function checkout(Request $request, Response $response, array $args): Res
         }
         return null;
     }
+
+    private function decodificarImagemBase64(?string $base64): ?string
+    {
+        if (!$base64 || !preg_match('#^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/=\r\n]+)$#', $base64, $matches)) {
+            return null;
+        }
+
+        $imagem = base64_decode($matches[2], true);
+        if ($imagem === false || strlen($imagem) > 8 * 1024 * 1024) {
+            return null;
+        }
+
+        $tmp = tmpfile();
+        if ($tmp === false) return null;
+        fwrite($tmp, $imagem);
+        $meta = stream_get_meta_data($tmp);
+        $valida = @getimagesize($meta['uri']) !== false;
+        fclose($tmp);
+
+        return $valida ? $imagem : null;
+    }
     
     private function enviarNotificacaoWS($dados)
     {
         error_log('WebSocket: ' . json_encode($dados));
+    }
+
+    private function ensureOfflineOperationsTable(): void
+    {
+        $this->pdo->exec("
+            CREATE TABLE IF NOT EXISTS frota_operacao_offline (
+                operation_id VARCHAR(180) PRIMARY KEY,
+                resposta JSONB NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+        ");
+    }
+
+    private function normalizarOperationId($operationId): ?string
+    {
+        if (!is_string($operationId)) {
+            return null;
+        }
+
+        $operationId = trim($operationId);
+        return $operationId !== '' && strlen($operationId) <= 180 ? $operationId : null;
+    }
+
+    private function buscarOperacaoOffline(?string $operationId): ?array
+    {
+        if ($operationId === null) {
+            return null;
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT resposta
+            FROM frota_operacao_offline
+            WHERE operation_id = :operation_id
+        ");
+        $stmt->execute(['operation_id' => $operationId]);
+        $resposta = $stmt->fetchColumn();
+        if ($resposta === false) {
+            return null;
+        }
+
+        $decodificada = json_decode($resposta, true);
+        return is_array($decodificada) ? $decodificada : null;
+    }
+
+    private function salvarOperacaoOffline(?string $operationId, array $resposta): void
+    {
+        if ($operationId === null) {
+            return;
+        }
+
+        $stmt = $this->pdo->prepare("
+            INSERT INTO frota_operacao_offline (operation_id, resposta)
+            VALUES (:operation_id, :resposta)
+            ON CONFLICT (operation_id) DO NOTHING
+        ");
+        $stmt->execute([
+            'operation_id' => $operationId,
+            'resposta' => json_encode($resposta, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR)
+        ]);
     }
     
     private function json($response, $data, $status = 200): Response

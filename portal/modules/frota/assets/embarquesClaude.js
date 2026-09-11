@@ -1,3 +1,4 @@
+var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
 // ======================================================================
 // CONFIGURAÇÕES
 // ======================================================================
@@ -157,7 +158,7 @@ async function mapearErpIdsParaSistema(erpIds) {
     // Buscar todos os embarques do sistema uma única vez
     let todosEmbarques = [];
     try {
-        const respLista = await fetch('/v1/frota/embarques?limite=10000', {
+        const respLista = await fetch(API_BASE + '/frota/embarques?limite=10000', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (respLista.ok) {
@@ -203,7 +204,7 @@ async function mapearErpIdsParaSistema(erpIds) {
             }
             
             // 5. Tentar buscar diretamente pela API (fallback)
-            const respSistema = await fetch(`/v1/frota/embarques/${erpId}`, {
+            const respSistema = await fetch(`${API_BASE}/frota/embarques/${erpId}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             
@@ -347,7 +348,7 @@ async function carregarDisponiveis() {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/importar/embarques-erp', {
+        const response = await fetch(API_BASE + '/frota/importar/embarques-erp', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const dados = await response.json();
@@ -768,7 +769,7 @@ async function rastrearEntrega() {
     `;
 
     try {
-        const response = await fetch(`/v1/frota/entregas/rastreamento/${encodeURIComponent(codigo)}`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/rastreamento/${encodeURIComponent(codigo)}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
@@ -917,7 +918,7 @@ const busca = document.getElementById('filtro-busca').value;
 const dataInicio = document.getElementById('filtro-data-inicio').value;
 const dataFim = document.getElementById('filtro-data-fim').value;
 
-let url = '/v1/frota/embarques?pagina=' + paginaAtual + '&limite=' + limitePorPagina;
+let url = API_BASE + '/frota/embarques?pagina=' + paginaAtual + '&limite=' + limitePorPagina;
 if (status) url += '&status=' + status;
 if (busca) url += '&busca=' + encodeURIComponent(busca);
 if (dataInicio) url += '&data_inicio=' + dataInicio;
@@ -981,6 +982,7 @@ setInterval(atualizarIndicadorCache, 5000);
 // ======================================================================
 function renderizarEmbarques(embarques, pagination) {
     const tbody = document.getElementById('lista-embarques');
+    renderizarVisaoOperacional(embarques || []);
 
     if (!embarques || embarques.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400">
@@ -1148,6 +1150,35 @@ if (pagination) {
 }
 }
 
+function renderizarVisaoOperacional(embarques) {
+    const container = document.getElementById('embarques-overview');
+    if (!container) return;
+    const status = embarques.reduce((acc, embarque) => {
+        const chave = embarque.status || 'planejado';
+        acc[chave] = (acc[chave] || 0) + 1;
+        return acc;
+    }, {});
+    const entregas = embarques.reduce((total, embarque) => total + Number(embarque.total_entregas || 0), 0);
+    const concluidas = embarques.reduce((total, embarque) => total + Number(embarque.entregas_concluidas || 0), 0);
+    const progresso = entregas ? Math.round((concluidas / entregas) * 100) : 0;
+    const cards = [
+        ['fa-route', embarques.length, 'rotas na página', 'neutral'],
+        ['fa-truck-fast', status.em_andamento || 0, 'em andamento', 'active'],
+        ['fa-circle-check', `${progresso}%`, `${concluidas}/${entregas} entregas`, 'success'],
+        ['fa-triangle-exclamation', status.problema || 0, 'com problema', status.problema ? 'danger' : 'neutral']
+    ];
+    container.innerHTML = `
+        <div class="overview-heading">
+            <div><span class="overview-eyebrow"><i class="fa-solid fa-signal"></i> Painel operacional</span><strong>Visão da página atual</strong></div>
+            <span class="overview-caption">${entregas} entregas monitoradas</span>
+        </div>
+        <div class="overview-cards">
+            ${cards.map(([icon, value, label, tone]) => `<div class="overview-card ${tone}"><i class="fa-solid ${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('')}
+        </div>
+        <div class="overview-progress"><div><span>Conclusão das entregas</span><strong>${progresso}%</strong></div><div class="overview-progress-track"><span style="width:${progresso}%"></span></div></div>
+    `;
+}
+
 function mudarPagina(direcao) {
     if (direcao === 'anterior' && paginaAtual > 1) paginaAtual--;
     else if (direcao === 'proximo' && paginaAtual < totalPaginas) paginaAtual++;
@@ -1221,7 +1252,7 @@ async function cancelarGrupo(ids) {
 
     for (const id of sistemaIds) {
         try {
-            const response = await fetch('/v1/frota/embarques/' + id + '/cancelar', {
+            const response = await fetch(API_BASE + '/frota/embarques/' + id + '/cancelar', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token }
             });
@@ -1319,7 +1350,7 @@ async function verDetalhesGrupo(ids) {
         let totalProblemas = 0;
 
         for (const id of listaIds) {
-            const response = await fetch('/v1/frota/embarques/' + id, {
+            const response = await fetch(API_BASE + '/frota/embarques/' + id, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (response.ok) {
@@ -1460,7 +1491,7 @@ async function iniciarGrupo(ids) {
     for (let i = 0; i < sistemaIds.length; i++) {
         const id = sistemaIds[i];
         try {
-            const response = await fetch(`/v1/frota/embarques/${id}/iniciar`, {
+            const response = await fetch(`${API_BASE}/frota/embarques/${id}/iniciar`, {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token }
             });
@@ -1584,7 +1615,7 @@ async function finalizarGrupo(ids) {
     try {
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const resp = await fetch(`/v1/frota/embarques/${id}`, {
+            const resp = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const data = await resp.json();
@@ -1671,7 +1702,7 @@ async function finalizarGrupo(ids) {
         for (let i = 0; i < sistemaIds.length; i++) {
             const id = sistemaIds[i];
             try {
-                const response = await fetch(`/v1/frota/embarques/${id}/finalizar`, {
+                const response = await fetch(`${API_BASE}/frota/embarques/${id}/finalizar`, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
@@ -1777,7 +1808,7 @@ async function registrarCheckin(entregaId) {
     try {
         const lat = DISTRIBUIDORA_LAT;
         const lng = DISTRIBUIDORA_LNG;
-        const response = await fetch(`/v1/frota/entregas/${entregaId}/checkin`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/checkin`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1807,7 +1838,7 @@ async function registrarCheckout(entregaId) {
     let itens = [];
 
     try {
-        const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+        const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await resp.json();
@@ -1828,7 +1859,7 @@ async function registrarCheckout(entregaId) {
         const ids = entrega.pedidos_ids.split(',').map(id => parseInt(id.trim())).filter(id => id > 0);
         if (ids.length > 0) {
             try {
-                const resp = await fetch('/v1/frota/importar/itens-pedidos', {
+                const resp = await fetch(API_BASE + '/frota/importar/itens-pedidos', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pedidos_ids: ids })
@@ -2166,7 +2197,7 @@ if (!formData) return;
 const { foto_romaneio, nome_recebedor, checklist, tem_faltante, tem_devolucao } = formData;
 
 try {
-    const response = await fetch(`/v1/frota/entregas/${entregaId}/checkout`, {
+    const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/checkout`, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2216,7 +2247,7 @@ async function registrarFalha(entregaId) {
 
     const token = getAuthToken();
     try {
-        const response = await fetch(`/v1/frota/entregas/${entregaId}/falha`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/falha`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({ motivo, observacao: 'Registrado pelo gestor' })
@@ -2252,7 +2283,7 @@ async function iniciarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/iniciar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/iniciar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2284,7 +2315,7 @@ async function finalizarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/finalizar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/finalizar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2316,7 +2347,7 @@ async function cancelarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/cancelar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/cancelar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2423,7 +2454,7 @@ async function verDetalhes(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id, {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -2869,7 +2900,7 @@ async function verDetalhes(id) {
                         async function abrirGaleriaFotos(entregaId) {
                             const token = getAuthToken();
                             try {
-                                const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3363,7 +3394,7 @@ async function verDetalhes(id) {
                         const token = getAuthToken();
                         if (!token) return;
                         try {
-                            await fetch('/v1/frota/embarques/' + embarqueId + '/reordenar', {
+                            await fetch(API_BASE + '/frota/embarques/' + embarqueId + '/reordenar', {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ ordem: novaOrdem })
@@ -3380,7 +3411,7 @@ async function verDetalhes(id) {
                         const token = getAuthToken();
                         if (!token) return;
                         try {
-                            const response = await fetch('/v1/frota/embarques/' + id + '/otimizar-rota', {
+                            const response = await fetch(API_BASE + '/frota/embarques/' + id + '/otimizar-rota', {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token }
                             });
@@ -3415,7 +3446,7 @@ async function verDetalhes(id) {
                             }
 
                             if (!entrega || !entrega.checklist || entrega.checklist.length === 0) {
-                                const resp = await fetch(`/v1/frota/embarques/${embarqueId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/embarques/${embarqueId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3425,7 +3456,7 @@ async function verDetalhes(id) {
                             }
 
                             if (!entrega) {
-                                const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3636,10 +3667,17 @@ async function criarRotasSelecionadas() {
         return;
     }
 
-    const totalSelecionados = embarquesSelecionados.length;
+    // 🔥 CORREÇÃO: capturar um snapshot imutável dos IDs selecionados no início.
+    // Isso evita que a lista global `embarquesSelecionados` seja esvaziada ou
+    // alterada (por exemplo, ao trocar de aba ou recarregar a lista) enquanto
+    // esta função assíncrona ainda está buscando dados do ERP, causando o erro
+    // "Informe pelo menos um ID de embarque" ao montar o payload final.
+    const idsSelecionados = [...embarquesSelecionados];
+
+    const totalSelecionados = idsSelecionados.length;
     const isMultiplo = totalSelecionados > 1;
 
-    console.log('📌 Embarques selecionados:', embarquesSelecionados);
+    console.log('📌 Embarques selecionados:', idsSelecionados);
     console.log('📌 É múltiplo?', isMultiplo);
 
     let motoristasERP = [];
@@ -3653,8 +3691,8 @@ async function criarRotasSelecionadas() {
             allowOutsideClick: false
         });
 
-        for (const id of embarquesSelecionados) {
-            const response = await fetch(`/v1/frota/importar/embarque-detalhes/${id}`, {
+        for (const id of idsSelecionados) {
+            const response = await fetch(`${API_BASE}/frota/importar/embarque-detalhes/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (response.ok) {
@@ -3710,8 +3748,8 @@ async function criarRotasSelecionadas() {
 
     try {
         const [respVeiculos, respMotoristas] = await Promise.all([
-            fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-            fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+            fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
         ]);
 
         if (respVeiculos.ok) {
@@ -3749,8 +3787,8 @@ async function criarRotasSelecionadas() {
             if (!cadastrados) return;
 
             const [rv2, rm2] = await Promise.all([
-                fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-                fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+                fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+                fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
             ]);
             if (rv2.ok) {
                 const d = await rv2.json();
@@ -3888,11 +3926,11 @@ async function criarRotasSelecionadas() {
     // 🔥 CORREÇÃO: Usar o campo correto para a API
     if (isMultiplo) {
         // Para múltiplos embarques, usar ids_agrupados
-        payload.ids_agrupados = embarquesSelecionados;
+        payload.ids_agrupados = idsSelecionados;
         // 🔥 IMPORTANTE: NÃO enviar id_embarque_erp quando for múltiplo
     } else {
         // Para um único embarque, usar id_embarque_erp
-        payload.id_embarque_erp = embarquesSelecionados[0];
+        payload.id_embarque_erp = idsSelecionados[0];
     }
 
     console.log('📤 Payload enviado:', payload);
@@ -3905,7 +3943,7 @@ async function criarRotasSelecionadas() {
     );
 
     try {
-        const response = await fetch('/v1/frota/importar/criar-embarque', {
+        const response = await fetch(API_BASE + '/frota/importar/criar-embarque', {
             method: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + token,
@@ -3946,6 +3984,7 @@ async function criarRotasSelecionadas() {
                 timer: 4000,
                 showConfirmButton: false
             });
+            embarquesSelecionados = [];
             carregarDisponiveis();
             carregarEmbarques();
 
@@ -4154,7 +4193,7 @@ async function criarRotasSelecionadas() {
                                         const token = getAuthToken();
                                         const resultados = [];
                                         for (const m of motoristasParaCadastrar) {
-                                            const r = await fetch('/v1/frota/motoristas', {
+                                            const r = await fetch(API_BASE + '/frota/motoristas', {
                                                 method: 'POST',
                                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(m)
@@ -4162,7 +4201,7 @@ async function criarRotasSelecionadas() {
                                             resultados.push(await r.json());
                                         }
                                         for (const v of veiculosParaCadastrar) {
-                                            const r = await fetch('/v1/frota/veiculos', {
+                                            const r = await fetch(API_BASE + '/frota/veiculos', {
                                                 method: 'POST',
                                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(v)
@@ -4236,7 +4275,7 @@ async function abrirModalEditarGrupo(ids) {
 
     try {
         const primeiroId = sistemaIds[0];
-        const resp = await fetch(`/v1/frota/embarques/${primeiroId}`, {
+        const resp = await fetch(`${API_BASE}/frota/embarques/${primeiroId}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await resp.json();
@@ -4247,8 +4286,8 @@ async function abrirModalEditarGrupo(ids) {
         const emb = data.data;
 
         const [respVeiculos, respMotoristas] = await Promise.all([
-            fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-            fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+            fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
         ]);
         const veiculos = (await respVeiculos.json()).data || [];
         const motoristas = (await respMotoristas.json()).data || [];
@@ -4266,7 +4305,7 @@ async function abrirModalEditarGrupo(ids) {
 
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const respEntrega = await fetch(`/v1/frota/embarques/${id}`, {
+            const respEntrega = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const dataEntrega = await respEntrega.json();
@@ -4407,7 +4446,7 @@ async function abrirModalEditarGrupo(ids) {
                     let sucessos = 0;
                     
                     for (const id of sistemaIds) {
-                        const respUpdate = await fetch(`/v1/frota/embarques/${id}`, {
+                        const respUpdate = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                             method: 'PUT',
                             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
@@ -4444,7 +4483,7 @@ async function abrirModalEditarGrupo(ids) {
                         if (!confirm.isConfirmed) return;
 
                         try {
-                            const respDel = await fetch(`/v1/frota/embarques/${embId}/entregas/${entregaId}`, {
+                            const respDel = await fetch(`${API_BASE}/frota/embarques/${embId}/entregas/${entregaId}`, {
                                 method: 'DELETE',
                                 headers: { 'Authorization': 'Bearer ' + token }
                             });
@@ -4472,7 +4511,7 @@ async function abrirModalEditarGrupo(ids) {
                             allowOutsideClick: false
                         });
 
-                        const respErp = await fetch('/v1/frota/importar/embarques-erp', {
+                        const respErp = await fetch(API_BASE + '/frota/importar/embarques-erp', {
                             headers: { 'Authorization': 'Bearer ' + token }
                         });
                         const dadosErp = await respErp.json();
@@ -4514,7 +4553,7 @@ async function abrirModalEditarGrupo(ids) {
 
                         if (!erpId) return;
 
-                        const respAdd = await fetch(`/v1/frota/embarques/${sistemaIds[0]}/adicionar-embarque-erp`, {
+                        const respAdd = await fetch(`${API_BASE}/frota/embarques/${sistemaIds[0]}/adicionar-embarque-erp`, {
                             method: 'POST',
                             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ erp_embarque_id: erpId })
@@ -4581,7 +4620,7 @@ async function abrirModalEditarGrupo(ids) {
                                     return;
                                 }
                                 try {
-                                    const resp = await fetch(`/v1/frota/importar/buscar-pedidos?q=${encodeURIComponent(termo)}`, {
+                                    const resp = await fetch(`${API_BASE}/frota/importar/buscar-pedidos?q=${encodeURIComponent(termo)}`, {
                                         headers: { 'Authorization': 'Bearer ' + token }
                                     });
                                     const dados = await resp.json();
@@ -4607,7 +4646,7 @@ async function abrirModalEditarGrupo(ids) {
 
                     if (resultado && resultado.pedidos.length > 0) {
                         try {
-                            const respAdd = await fetch(`/v1/frota/embarques/${sistemaIds[0]}/adicionar-pedidos`, {
+                            const respAdd = await fetch(`${API_BASE}/frota/embarques/${sistemaIds[0]}/adicionar-pedidos`, {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4689,7 +4728,7 @@ async function removerEntregaGrupo(ids) {
     try {
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const resp = await fetch(`/v1/frota/embarques/${id}`, {
+            const resp = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const data = await resp.json();
@@ -4744,7 +4783,7 @@ async function removerEntregaGrupo(ids) {
         });
         if (!confirm.isConfirmed) return;
 
-        const respDel = await fetch(`/v1/frota/embarques/${embId}/entregas/${entregaId}`, {
+        const respDel = await fetch(`${API_BASE}/frota/embarques/${embId}/entregas/${entregaId}`, {
             method: 'DELETE',
             headers: { 'Authorization': 'Bearer ' + token }
         });

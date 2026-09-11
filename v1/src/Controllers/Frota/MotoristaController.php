@@ -19,9 +19,38 @@ class MotoristaController
      * GET /v1/frota/motoristas
      * Listar motoristas com filtros
      */
+    /**
+     * Garante que o usuário autenticado só acesse dados do próprio motorista,
+     * a menos que seja admin ou tenha permissão de gestão de frota.
+     */
+    private function usuarioPodeAcessarMotorista(Request $request, int $motoristaId): bool
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        if ($isAdmin || in_array('frota', $permissoes, true) || in_array('gestao-cargas', $permissoes, true)) {
+            return true;
+        }
+        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
+        return $motoristaAutenticado > 0 && $motoristaAutenticado === $motoristaId;
+    }
+
     public function listar(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        $temAcessoGestao = $isAdmin || in_array('frota', $permissoes, true) || in_array('gestao-cargas', $permissoes, true);
+        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
+
+        // Motorista comum: só enxerga o próprio cadastro, nunca a lista completa.
+        if (!$temAcessoGestao) {
+            if ($motoristaAutenticado <= 0) {
+                return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+            }
+            $params['id_unico'] = $motoristaAutenticado;
+        }
         
         $filtros = [];
         $bindParams = [];
@@ -42,11 +71,16 @@ class MotoristaController
             $filtros[] = "m.veiculo_atual_id = :veiculo_id";
             $bindParams['veiculo_id'] = (int)$params['veiculo_id'];
         }
+
+        if (!empty($params['id_unico'])) {
+            $filtros[] = "m.id = :id_unico";
+            $bindParams['id_unico'] = (int)$params['id_unico'];
+        }
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
         
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         $sql = "
@@ -107,6 +141,9 @@ class MotoristaController
     public function buscar(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
@@ -345,6 +382,9 @@ class MotoristaController
     public function entregas(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $params = $request->getQueryParams();
         
         $filtros = ["eb.motorista_id = :motorista_id"];
@@ -419,17 +459,22 @@ class MotoristaController
     public function entregasHoje(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
                 e.*,
                 eb.numero_embarque,
                 eb.data_saida,
+                eb.veiculo_id,
                 v.placa,
                 v.modelo,
                 v.latitude as veiculo_lat,
                 v.longitude as veiculo_lng,
-                eb.id as embarque_id
+                eb.id as embarque_id,
+                eb.updated_at as embarque_updated_at
             FROM frota_entrega e
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
             LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
@@ -441,6 +486,55 @@ class MotoristaController
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['motorista_id' => $id]);
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (empty($entregas)) {
+            $stmtLast = $this->pdo->prepare("
+                SELECT 
+                    e.*,
+                    eb.numero_embarque,
+                    eb.data_saida,
+                    eb.veiculo_id,
+                    v.placa,
+                    v.modelo,
+                    v.latitude as veiculo_lat,
+                    v.longitude as veiculo_lng,
+                    eb.id as embarque_id,
+                    eb.updated_at as embarque_updated_at
+                FROM frota_entrega e
+                LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
+                LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
+                WHERE eb.motorista_id = :motorista_id
+                  AND eb.id = (
+                      SELECT id FROM frota_embarque 
+                      WHERE motorista_id = :motorista_id 
+                      ORDER BY created_at DESC LIMIT 1
+                  )
+                ORDER BY e.ordem_entrega ASC
+            ");
+            $stmtLast->execute(['motorista_id' => $id]);
+            $entregas = $stmtLast->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
+        $entregaIds = array_column($entregas, 'id');
+        if ($entregaIds) {
+            $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
+            $stmtChecklist = $this->pdo->prepare("
+                SELECT entrega_id, item_id, referencia, descricao,
+                       quantidade_prevista, quantidade_entregue, status, motivo
+                FROM frota_checklist_entrega
+                WHERE entrega_id IN ({$placeholders})
+                ORDER BY entrega_id, item_id
+            ");
+            $stmtChecklist->execute($entregaIds);
+            $checklists = [];
+            foreach ($stmtChecklist->fetchAll(\PDO::FETCH_ASSOC) as $item) {
+                $checklists[$item['entrega_id']][] = $item;
+            }
+            foreach ($entregas as &$entrega) {
+                $entrega['checklist'] = $checklists[$entrega['id']] ?? [];
+            }
+            unset($entrega);
+        }
         
         // Calcular métricas
         $total = count($entregas);
@@ -493,6 +587,9 @@ class MotoristaController
     public function rotaAtiva(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
@@ -719,13 +816,23 @@ class MotoristaController
     {
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
+        if (!$isAdmin && $motoristaAutenticado !== $id) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Motorista não autorizado'
+            ], 403);
+        }
         
         $lat = (float)($input['lat'] ?? 0);
         $lng = (float)($input['lng'] ?? 0);
         $velocidade = (float)($input['velocidade'] ?? 0);
         $precisao = (float)($input['precisao'] ?? 0);
         
-        if ($lat == 0 || $lng == 0) {
+        if ($lat < -90 || $lat > 90 || $lng < -180 || $lng > 180 || ($lat == 0 && $lng == 0)) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Latitude e longitude são obrigatórios'
@@ -980,6 +1087,9 @@ class MotoristaController
     public function getNotificacoes(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $limite = (int)($request->getQueryParams()['limite'] ?? 20);
         
         $stmt = $this->pdo->prepare("

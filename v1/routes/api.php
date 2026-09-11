@@ -84,6 +84,10 @@ $app->get('/v1/sistema/modulos-setores', function ($request, $response) {
     return $response->withHeader('Content-Type', 'application/json');
 });
 
+// Webhook público da Cobli (autenticado via HMAC X-Cobli-Signature, não JWT)
+$app->post('/v1/frota/cobli/webhook', [new \Nutricional\Controllers\Frota\CobliController(), 'webhook']);
+
+
 // ==========================================================================
 // ROTAS PROTEGIDAS (COM JWT + BLACKLIST)
 // ==========================================================================
@@ -279,6 +283,32 @@ $app->group('/v1', function ($group) {
             });
 
             // ==================================================================
+            // 5.1 INTEGRAÇÃO COBLI (RASTREAMENTO VEICULAR REAL)
+            // ==================================================================
+            $frota->group('/cobli', function ($cobli) {
+                $controller = new \Nutricional\Controllers\Frota\CobliController();
+
+                $cobli->get('/status', [$controller, 'status']);
+                $cobli->post('/configurar', [$controller, 'configurar']);
+                $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
+                $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);
+                $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico']);
+                $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
+
+                $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
+                $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo']);
+                $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista']);
+                $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
+                $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
+                $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);
+
+                $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista']);
+                $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
+
+                $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco']);
+            });
+
+            // ==================================================================
             // 6. IMPORTAÇÃO DO ERP
             // ==================================================================
             $frota->group('/importar', function ($importar) {
@@ -372,6 +402,24 @@ $app->group('/v1', function ($group) {
 
                 // RESUMO DE PROBLEMAS POR VEÍCULO
                 $cargas->get('/resumo-veiculo', [$controller, 'resumoVeiculo']);
+
+                // 🆕 RANKING COMPLETO DE EFICIÊNCIA/INEFICIÊNCIA POR MOTORISTA
+                $cargas->get('/ranking-motoristas', [$controller, 'rankingMotoristas']);
+
+                // 🆕 RANKING COMPLETO DE EFICIÊNCIA/INEFICIÊNCIA POR VEÍCULO (CAMINHÃO)
+                $cargas->get('/ranking-veiculos', [$controller, 'rankingVeiculos']);
+
+                // 🆕 GRÁFICOS (EVOLUÇÃO, DISTRIBUIÇÕES, TOP OFENSORES)
+                $cargas->get('/graficos', [$controller, 'graficosCargas']);
+
+                // 🆕 HISTÓRICO DE EMBARQUES COM BUSCA E FILTROS COMPLETOS
+                $cargas->get('/historico-embarques', [$controller, 'historicoEmbarques']);
+
+                // 🆕 RASTREABILIDADE TOTAL: DETALHES COMPLETOS DE UM EMBARQUE (timeline, itens, fotos, rota)
+                $cargas->get('/embarque/{id}/detalhes-completos', [$controller, 'embarqueDetalhesCompletos']);
+
+                // 🆕 PERFIL COMPLETO DO MOTORISTA (embarques, veículos usados, pontos, score)
+                $cargas->get('/motorista/{id}/perfil', [$controller, 'motoristaPerfilCompleto']);
 
                 // EXPORTAR RELATÓRIO DE PROBLEMAS
                 $cargas->post('/exportar', [$controller, 'exportarProblemas']);

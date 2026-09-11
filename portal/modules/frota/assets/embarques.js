@@ -3629,231 +3629,36 @@ async function criarRotasSelecionadas() {
 }
 
 // ======================================================================
-// MODAL CADASTRO COMPLETO
+// AVISO DE CADASTRO PENDENTE -> REDIRECIONA PARA O MÓDULO CADASTRO DE FROTA
 // ======================================================================
-                    async function abrirModalCadastroCompleto(motoristasNaoExistentes, veiculosNaoExistentes) {
-                        return new Promise(function(resolve) {
-                            let html = `
-            <div class="text-left">
-                <p class="text-sm text-amber-600 font-bold mb-3">
-                    ⚠️ Os seguintes dados não foram encontrados no sistema. 
-                    <br>Os campos já estão pré-preenchidos com as informações do ERP.
-                    <br>Complete as informações faltantes e clique em "Cadastrar".
-                </p>
-                            `;
+// Em vez de duplicar o formulário completo de veículo/motorista aqui,
+// avisamos o usuário e o levamos para o módulo dedicado (cadastro-frota.php),
+// já com os dados do ERP pré-preenchidos via sessionStorage.
+async function abrirModalCadastroCompleto(motoristasNaoExistentes, veiculosNaoExistentes) {
+    const partes = [];
+    if (motoristasNaoExistentes.length > 0) partes.push(`${motoristasNaoExistentes.length} motorista(s)`);
+    if (veiculosNaoExistentes.length > 0) partes.push(`${veiculosNaoExistentes.length} veículo(s)`);
 
-                            if (motoristasNaoExistentes.length > 0) {
-                                html += `
-                <div class="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <h4 class="font-bold text-[#1a3c34] text-sm mb-2">
-                        <i class="fa-solid fa-user mr-2"></i> Motoristas a cadastrar (${motoristasNaoExistentes.length})
-                    </h4>
-                                `;
-                                motoristasNaoExistentes.forEach(function(m, index) {
-                                    html += `
-                    <div class="mb-3 p-3 bg-white rounded-lg border border-slate-200">
-                        <p class="text-sm font-bold text-[#1a3c34] mb-2">Motorista ${index + 1}: ${m.nome}</p>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div class="col-span-2">
-                                <label class="text-[10px] font-bold text-slate-500">Nome *</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-nome" data-id="${m.id}" value="${m.nome}" readonly style="background:#f1f5f9;">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">CPF</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-cpf" data-id="${m.id}" value="${m.cpf || ''}" placeholder="000.000.000-00">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Telefone</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-telefone" data-id="${m.id}" value="${m.telefone || ''}" placeholder="(00) 00000-0000">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">E-mail</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-email" data-id="${m.id}" value="${m.email || ''}" placeholder="email@exemplo.com">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Endereço</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-endereco" data-id="${m.id}" value="${m.endereco || ''}" placeholder="Endereço completo">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Bairro</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-bairro" data-id="${m.id}" value="${m.bairro || ''}">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Cidade</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-cidade" data-id="${m.id}" value="${m.cidade || ''}">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">UF</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-uf" data-id="${m.id}" value="${m.uf || ''}" maxlength="2">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">CEP</label>
-                                <input type="text" class="form-control form-control-sm cadastro-motorista-cep" data-id="${m.id}" value="${m.cep || ''}">
-                            </div>
-                        </div>
-                    </div>
-                                    `;
-                                });
-                                html += `</div>`;
-                            }
+    const result = await Swal.fire({
+        icon: 'warning',
+        title: 'Cadastro necessário',
+        html: `Encontramos ${partes.join(' e ')} do ERP que ainda não estão cadastrados no sistema.
+               <br><br>Cadastre-os no módulo <strong>Cadastro de Frota</strong> e depois volte aqui para criar a rota.`,
+        showCancelButton: true,
+        confirmButtonText: 'Abrir Cadastro de Frota',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#10b981',
+        cancelButtonColor: '#dc2626'
+    });
 
-                            if (veiculosNaoExistentes.length > 0) {
-                                html += `
-                <div class="mb-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
-                    <h4 class="font-bold text-[#1a3c34] text-sm mb-2">
-                        <i class="fa-solid fa-truck mr-2"></i> Veículos a cadastrar (${veiculosNaoExistentes.length})
-                    </h4>
-                                `;
-                                veiculosNaoExistentes.forEach(function(v, index) {
-                                    html += `
-                    <div class="mb-3 p-3 bg-white rounded-lg border border-slate-200">
-                        <p class="text-sm font-bold text-[#1a3c34] mb-2">Veículo ${index + 1}: ${v.placa}</p>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Placa *</label>
-                                <input type="text" class="form-control form-control-sm cadastro-veiculo-placa" data-placa="${v.placa}" value="${v.placa}" readonly style="background:#f1f5f9;">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Modelo *</label>
-                                <input type="text" class="form-control form-control-sm cadastro-veiculo-modelo" data-placa="${v.placa}" value="${v.modelo || ''}" placeholder="Ex: Caminhão Mercedes">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Marca *</label>
-                                <input type="text" class="form-control form-control-sm cadastro-veiculo-marca" data-placa="${v.placa}" value="${v.marca || ''}" placeholder="Ex: Mercedes">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Tipo *</label>
-                                <select class="form-control form-control-sm cadastro-veiculo-tipo" data-placa="${v.placa}">
-                                    <option value="bau">Baú</option>
-                                    <option value="carreta">Carreta</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Ano</label>
-                                <input type="number" class="form-control form-control-sm cadastro-veiculo-ano" data-placa="${v.placa}" value="${v.ano || ''}" placeholder="2024">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Capacidade (kg)</label>
-                                <input type="number" class="form-control form-control-sm cadastro-veiculo-capacidade" data-placa="${v.placa}" value="${v.capacidade_peso || ''}" placeholder="10000">
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-bold text-slate-500">Cor</label>
-                                <input type="text" class="form-control form-control-sm cadastro-veiculo-cor" data-placa="${v.placa}" value="" placeholder="Ex: Branco">
-                            </div>
-                        </div>
-                    </div>
-                                    `;
-                                });
-                                html += `</div>`;
-                            }
-
-                            html += `
-            <div class="text-xs text-slate-400 mt-2">
-                <i class="fa-solid fa-info-circle mr-1"></i>
-                Campos com * são obrigatórios. Os dados em cinza vieram do ERP.
-            </div>
-                            </div>`;
-
-                            Swal.fire({
-                                title: '📝 Cadastro de Dados Faltantes',
-                                html: html,
-                                width: '750px',
-                                showCancelButton: true,
-                                confirmButtonText: '✅ Cadastrar e Continuar',
-                                cancelButtonText: 'Cancelar',
-                                confirmButtonColor: '#10b981',
-                                cancelButtonColor: '#dc2626',
-                                preConfirm: async function() {
-                                    const motoristasParaCadastrar = [];
-                                    const motoristaElements = document.querySelectorAll('.cadastro-motorista-nome');
-                                    for (const input of motoristaElements) {
-                                        const id = parseInt(input.dataset.id);
-                                        const container = input.closest('.p-3');
-                                        const nome = input.value;
-                                        const cpf = container.querySelector('.cadastro-motorista-cpf')?.value || '';
-                                        const telefone = container.querySelector('.cadastro-motorista-telefone')?.value || '';
-                                        const email = container.querySelector('.cadastro-motorista-email')?.value || '';
-                                        const endereco = container.querySelector('.cadastro-motorista-endereco')?.value || '';
-                                        const bairro = container.querySelector('.cadastro-motorista-bairro')?.value || '';
-                                        const cidade = container.querySelector('.cadastro-motorista-cidade')?.value || '';
-                                        const uf = container.querySelector('.cadastro-motorista-uf')?.value || '';
-                                        const cep = container.querySelector('.cadastro-motorista-cep')?.value || '';
-                                        if (!nome) { Swal.showValidationMessage('Nome do motorista é obrigatório'); return false; }
-                                        motoristasParaCadastrar.push({
-                                            erp_id: id,
-                                            nome: nome,
-                                            cpf: cpf || null,
-                                            telefone: telefone || null,
-                                            email: email || null,
-                                            endereco: endereco || null,
-                                            bairro: bairro || null,
-                                            cidade: cidade || null,
-                                            uf: uf || null,
-                                            cep: cep || null,
-                                            status: 'ativo'
-                                        });
-                                    }
-
-                                    const veiculosParaCadastrar = [];
-                                    const veiculoElements = document.querySelectorAll('.cadastro-veiculo-placa');
-                                    for (const input of veiculoElements) {
-                                        const placa = input.value;
-                                        const container = input.closest('.p-3');
-                                        const modelo = container.querySelector('.cadastro-veiculo-modelo')?.value || '';
-                                        const marca = container.querySelector('.cadastro-veiculo-marca')?.value || '';
-                                        const tipo = container.querySelector('.cadastro-veiculo-tipo')?.value || 'bau';
-                                        const ano = container.querySelector('.cadastro-veiculo-ano')?.value || null;
-                                        const capacidade = container.querySelector('.cadastro-veiculo-capacidade')?.value || null;
-                                        const cor = container.querySelector('.cadastro-veiculo-cor')?.value || '';
-                                        if (!modelo) { Swal.showValidationMessage('Modelo do veículo ' + placa + ' é obrigatório'); return false; }
-                                        if (!marca) { Swal.showValidationMessage('Marca do veículo ' + placa + ' é obrigatória'); return false; }
-                                        veiculosParaCadastrar.push({
-                                            placa: placa,
-                                            modelo: modelo || 'Veículo ERP',
-                                            marca: marca || 'Não Informada',
-                                            tipo: tipo,
-                                            ano: ano || null,
-                                            capacidade_peso: capacidade || null,
-                                            cor: cor || null,
-                                            status: 'disponivel'
-                                        });
-                                    }
-
-                                    try {
-                                        const token = getAuthToken();
-                                        const resultados = [];
-                                        for (const m of motoristasParaCadastrar) {
-                                            const r = await fetch('/v1/frota/motoristas', {
-                                                method: 'POST',
-                                                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(m)
-                                            });
-                                            resultados.push(await r.json());
-                                        }
-                                        for (const v of veiculosParaCadastrar) {
-                                            const r = await fetch('/v1/frota/veiculos', {
-                                                method: 'POST',
-                                                headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-                                                body: JSON.stringify(v)
-                                            });
-                                            resultados.push(await r.json());
-                                        }
-                                        const todosSucesso = resultados.every(function(r) { return r.success !== false; });
-                                        if (!todosSucesso) {
-                                            const erros = resultados.filter(function(r) { return r.success === false; }).map(function(r) { return r.error; }).join('\n');
-                                            Swal.showValidationMessage('Erro ao cadastrar: ' + erros);
-                                            return false;
-                                        }
-                                        return true;
-                                    } catch (error) {
-                                        Swal.showValidationMessage('Erro ao cadastrar: ' + error.message);
-                                        return false;
-                                    }
-                                }
-                            }).then(function(result) {
-                                resolve(result.isConfirmed ? true : false);
-                            });
-                        });
+    if (result.isConfirmed) {
+        sessionStorage.setItem('cadfrota_pendencias_erp', JSON.stringify({
+            motoristas: motoristasNaoExistentes,
+            veiculos: veiculosNaoExistentes
+        }));
+        window.open('/portal/modules/frota/cadastro-frota.php', '_blank');
+    }
+    return false;
 }
 
 // ======================================================================

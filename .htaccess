@@ -7,13 +7,12 @@
 # --- CONFIGURAÇÕES DA API NUTRICIONAL ---
 Options -Indexes
 RewriteEngine On
-RewriteBase /
 
 # Encaminha as rotas virtuais da API no projeto publicado em /API.
 RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^v1(?:/(.*))?$ index.php?api_route=/$1 [QSA,END]
+RewriteRule ^(?:API/)?v1(?:/(.*))?$ index.php?api_route=/$1 [QSA,L]
 RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule ^v2(?:/(.*))?$ index.php?api_route=/v2/$1 [QSA,END]
+RewriteRule ^(?:API/)?v2(?:/(.*))?$ index.php?api_route=/v2/$1 [QSA,L]
 
 # Repassar Header de Autorização (Bearer Token)
 RewriteCond %{HTTP:Authorization} ^(.*)

@@ -28,6 +28,20 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-success); }
 .connection-state.is-offline .connection-dot { background: var(--driver-danger); }
 .driver-theme-toggle { border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); color: var(--driver-ink); padding: 8px 11px; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.truck-card { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 14px 16px; }
+.truck-card[hidden] { display: none; }
+.truck-card-icon { display: grid; flex-shrink: 0; width: 46px; height: 46px; place-items: center; border-radius: 12px; background: var(--driver-ink); color: #fff; font-size: 1.2rem; }
+.truck-card-body { flex: 1; min-width: 0; }
+.truck-card-body h3 { margin: 2px 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.truck-card-body p { margin: 0; color: var(--driver-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.truck-card-tracking { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid var(--driver-border); border-radius: 999px; padding: 6px 10px; font-size: .72rem; font-weight: 800; color: var(--driver-muted); white-space: nowrap; }
+.truck-tracking-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-muted); }
+.truck-card-tracking.is-live .truck-tracking-dot { background: var(--driver-success); box-shadow: 0 0 0 3px rgba(22,132,94,.2); }
+.truck-card-tracking.is-live { color: var(--driver-success); border-color: rgba(22,132,94,.35); }
+.truck-card-tracking.is-cache .truck-tracking-dot { background: var(--driver-accent); }
+.truck-card-tracking.is-cache { color: var(--driver-accent); border-color: rgba(213,168,75,.4); }
+@media (max-width: 460px) { .truck-card { flex-wrap: wrap; } .truck-card-tracking { width: 100%; justify-content: center; } }
+
 .route-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
 .route-summary div { border: 1px solid var(--driver-border); border-radius: 14px; background: var(--driver-card); padding: 14px 12px; }
 .route-summary strong, .route-summary span { display: block; }
@@ -35,6 +49,13 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .route-summary span { color: var(--driver-muted); font-size: .75rem; }
 .offline-notice { margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
 [data-driver-theme="dark"] .offline-notice { background: #332b16; color: #f6d98b; }
+.route-conflict { display: grid; gap: 8px; margin-bottom: 16px; border: 1px solid #e8b84a; border-radius: 12px; background: #fff8e8; padding: 14px; color: #6d5725; font-size: .84rem; }
+.route-conflict[hidden] { display: none; }
+.route-conflict strong { color: #8b5e0b; }
+.route-conflict div { display: flex; flex-wrap: wrap; gap: 8px; }
+.route-conflict button { border: 1px solid #c89522; border-radius: 8px; background: transparent; color: #6d5725; padding: 8px 10px; font-weight: 800; cursor: pointer; }
+.route-conflict button:first-child { background: #c89522; color: #fff; }
+[data-driver-theme="dark"] .route-conflict { background: #332b16; color: #f6d98b; }
 .driver-alert { margin-bottom: 16px; border: 1px solid #b9dfcf; border-radius: 12px; background: #eaf7f0; padding: 12px 14px; color: var(--driver-ink); font-size: .85rem; }
 .route-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
 .route-tool { border: 1px solid var(--driver-ink); border-radius: 10px; background: var(--driver-ink); color: white; padding: 10px 14px; font-weight: 800; cursor: pointer; }
@@ -61,4 +82,88 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 [data-driver-theme="dark"] .order-actions button { background: rgba(255, 255, 255, .06); }
 .order-actions button:disabled { opacity: .35; cursor: not-allowed; }
 .empty-state { padding: 48px 16px; text-align: center; color: var(--driver-muted); }
+.driver-modal { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(8, 20, 15, .68); padding: 16px; }
+.driver-modal[hidden] { display: none; }
+.driver-modal-card { width: min(100%, 560px); max-height: 92vh; overflow: auto; border-radius: 20px; background: var(--driver-card); color: var(--driver-ink); padding: 20px; box-shadow: 0 24px 80px rgba(0,0,0,.3); }
+.driver-modal-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
+.driver-modal h2 { margin: 4px 0 0; }
+.modal-close, .signature-clear { border: 1px solid var(--driver-border); border-radius: 8px; background: transparent; color: var(--driver-ink); padding: 8px 10px; font-weight: 700; }
+.driver-modal label, .field-label { display: grid; gap: 7px; margin: 14px 0; color: var(--driver-muted); font-size: .82rem; font-weight: 700; }
+.driver-modal input { width: 100%; border: 1px solid var(--driver-border); border-radius: 8px; background: var(--driver-bg); color: var(--driver-ink); padding: 11px; }
+.checklist-item { display: grid; grid-template-columns: 1fr 90px; gap: 8px; align-items: end; border-top: 1px solid var(--driver-border); padding: 12px 0; }
+.checklist-item small { color: var(--driver-muted); }
+#signature-pad { width: 100%; height: 150px; touch-action: none; border: 1px dashed var(--driver-border); border-radius: 10px; background: #fff; }
+.checkout-submit { width: 100%; margin-top: 18px; border: 0; border-radius: 10px; background: var(--driver-success); color: #fff; padding: 13px; font-weight: 800; }
 @media (max-width: 460px) { .motorista-header { display: block; } .connection-state { margin-top: 12px; } .delivery-actions { grid-template-columns: 1fr; } }
+
+/* ================================================================
+   MAPA DA ROTA (MapLibre + OpenFreeMap)
+================================================================ */
+.route-map-wrap { margin-bottom: 16px; border: 1px solid var(--driver-border); border-radius: 16px; overflow: hidden; background: var(--driver-card); }
+.route-map-wrap[hidden] { display: none; }
+.route-map-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 14px; font-weight: 800; font-size: .82rem; color: var(--driver-ink); }
+.route-map-hint { font-weight: 600; color: var(--driver-muted); font-size: .74rem; }
+.route-map { width: 100%; height: 260px; }
+.route-map-offline { margin-bottom: 16px; border-left: 4px solid var(--driver-muted); border-radius: 8px; background: #eef2ef; padding: 12px; color: var(--driver-muted); font-size: .82rem; }
+.route-map-offline[hidden] { display: none; }
+[data-driver-theme="dark"] .route-map-offline { background: rgba(255,255,255,.05); }
+.delivery-distance { border-radius: 999px; background: #eef4ef; padding: 5px 8px; font-weight: 700; }
+[data-driver-theme="dark"] .delivery-distance { background: rgba(66, 211, 154, .12); }
+/* Marcador do motorista (posição GPS do celular) */
+.driver-me-marker { width: 22px; height: 22px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 4px rgba(37,99,235,.25), 0 2px 8px rgba(0,0,0,.3); }
+/* Marcador do caminhão (posição Cobli) */
+.driver-truck-marker { display: flex; flex-direction: column; align-items: center; }
+.driver-truck-balloon { background: #1a3c34; color: #fff; font-size: 10px; font-weight: 800; padding: 2px 7px; border-radius: 6px; margin-bottom: 2px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.driver-truck-icon { width: 28px; height: 28px; border-radius: 50%; background: var(--driver-accent); display: flex; align-items: center; justify-content: center; color: #1a3c34; font-size: 13px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+/* Marcadores das paradas (entregas) */
+.stop-marker { width: 26px; height: 26px; border-radius: 50%; background: #fff; border: 3px solid #1a3c34; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #1a3c34; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.stop-marker.is-complete { background: #16845e; border-color: #16845e; color: #fff; }
+
+.driver-progress-card { margin-bottom: 16px; border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 16px; }
+.driver-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.driver-progress-head strong { display: block; margin-top: 3px; font-size: .95rem; }
+.driver-progress-head > span { color: var(--driver-muted); font-size: .76rem; font-weight: 800; }
+.driver-progress-track { height: 8px; overflow: hidden; border-radius: 999px; background: var(--driver-border); }
+.driver-progress-track span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--driver-success), var(--driver-accent)); transition: width .35s ease; }
+.next-stop-card { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 12px; margin-bottom: 16px; border: 1px solid #b9dfcf; border-radius: 16px; background: linear-gradient(135deg, #eaf7f0, var(--driver-card)); padding: 14px; }
+.next-stop-card[hidden] { display: none; }
+[data-driver-theme="dark"] .next-stop-card { background: linear-gradient(135deg, rgba(66,211,154,.13), var(--driver-card)); }
+.next-stop-icon { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 12px; background: var(--driver-success); color: #fff; font-size: 1.1rem; }
+.next-stop-content h2 { margin: 3px 0 2px; font-size: 1rem; }
+.next-stop-content p { margin: 0; overflow: hidden; color: var(--driver-muted); font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.next-stop-distance { display: inline-block; margin-top: 5px; color: var(--driver-success); font-size: .74rem; font-weight: 800; }
+
+/* Grupo de Ações da Próxima Parada */
+.next-stop-actions-group { display: flex; flex-wrap: wrap; items-center: center; gap: 6px; }
+.next-stop-nav-btn { border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-card); color: var(--driver-ink); padding: 8px 10px; font-size: .75rem; font-weight: 800; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; transition: all .2s ease; }
+.next-stop-nav-btn:hover { border-color: var(--driver-success); transform: translateY(-1px); }
+.waze-btn { color: #33ccff; }
+.gmaps-btn { color: #ea4335; }
+.next-stop-action { border: 0; border-radius: 10px; background: var(--driver-ink); color: #fff; padding: 10px 14px; font-size: .78rem; font-weight: 800; cursor: pointer; }
+
+/* Selector Card */
+.driver-selector-card { margin-bottom: 20px; border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 16px; box-shadow: 0 4px 16px rgba(0,0,0,.05); }
+.driver-selector-inner { display: flex; flex-direction: column; gap: 12px; }
+.driver-selector-controls { display: flex; gap: 10px; }
+.driver-select-input { flex: 1; border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-bg); color: var(--driver-ink); padding: 10px 12px; font-weight: 600; font-size: .88rem; }
+.driver-confirm-btn { border: 0; border-radius: 10px; background: var(--driver-success); color: #fff; padding: 10px 16px; font-weight: 800; font-size: .85rem; cursor: pointer; white-space: nowrap; }
+
+/* Dynamic Header Actions */
+.header-right-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Notice Banner */
+.offline-notice { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 16px; border-left: 4px solid var(--driver-accent); border-radius: 8px; background: #fff8e8; padding: 12px; color: #6d5725; font-size: .85rem; }
+.offline-notice-text { display: flex; align-items: center; gap: 8px; }
+.btn-sync-now { border: 0; border-radius: 8px; background: var(--driver-accent); color: #1a3c34; padding: 6px 12px; font-size: .75rem; font-weight: 800; cursor: pointer; white-space: nowrap; }
+
+/* Nav Buttons na entrega */
+.nav-actions-row { display: flex; gap: 6px; margin-bottom: 10px; }
+.nav-btn { flex: 1; border: 1px solid var(--driver-border); border-radius: 8px; background: var(--driver-bg); color: var(--driver-ink); padding: 7px; font-size: .74rem; font-weight: 700; cursor: pointer; text-align: center; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.nav-btn:hover { text-decoration: none; background: var(--driver-border); }
+
+/* Photo Preview */
+.photo-preview-container { margin-top: 8px; max-width: 100%; max-height: 140px; overflow: hidden; border-radius: 10px; border: 1px solid var(--driver-border); }
+.photo-preview-container img { width: 100%; height: 100%; object-fit: cover; }
+
+.gps-status { display: inline-flex; align-items: center; gap: 5px; }
+@media (max-width: 460px) { .next-stop-card { grid-template-columns: auto 1fr; } .next-stop-actions-group { grid-column: 1 / -1; width: 100%; justify-content: flex-end; } .driver-selector-controls { flex-direction: column; } }

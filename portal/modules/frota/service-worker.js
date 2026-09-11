@@ -1,4 +1,4 @@
-const CACHE_NAME = 'frota-motorista-v1';
+const CACHE_NAME = 'frota-motorista-v2';
 const APP_SHELL = [
     new URL('motorista-offline.php', self.registration.scope).pathname,
     new URL('assets/motorista-offline.css', self.registration.scope).pathname,
@@ -13,4 +13,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
     event.respondWith(fetch(event.request).catch(() => caches.match(event.request).then((cached) => cached || caches.match(new URL('motorista-offline.php', self.registration.scope).pathname))));
+});
+self.addEventListener('sync', (event) => {
+    if (event.tag !== 'frota-offline-sync') return;
+    event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => clients.forEach((client) => client.postMessage({ type: 'frota-offline-sync' }))));
 });

@@ -207,14 +207,18 @@ function getCsrfToken() {
 // Interceptar fetch para adicionar CSRF token (apenas para métodos que modificam dados)
 const originalFetch = window.fetch;
 window.fetch = function(url, options = {}) {
+    // Normaliza a URL para string (bibliotecas como MapLibre podem chamar
+    // fetch() passando um objeto Request ou URL em vez de string)
+    const urlStr = (typeof url === 'string') ? url : (url && url.url) ? url.url : String(url);
+
     // Verificar se é uma requisição que precisa de CSRF
     const method = options.method || 'GET';
     const needsCsrf = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
     
     // Verificar se não é uma rota pública que não precisa de CSRF
-    const isPublicRoute = url.includes('/auth/login') || 
-                          url.includes('/ping') || 
-                          url.includes('/sistema/modulos-setores');
+    const isPublicRoute = urlStr.includes('/auth/login') || 
+                          urlStr.includes('/ping') || 
+                          urlStr.includes('/sistema/modulos-setores');
     
     if (needsCsrf && !isPublicRoute) {
         const csrfToken = getCsrfToken();

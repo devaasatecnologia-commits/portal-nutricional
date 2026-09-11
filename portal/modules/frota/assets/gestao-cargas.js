@@ -5,8 +5,10 @@
 // ================================================================
 // CONFIGURAÇÕES
 // ================================================================
+// Respeita window.API_URL definido em /portal/assets/js/config.js,
+// que já trata corretamente ambiente local (pasta /API) vs produção.
 const CONFIG = {
-    API_BASE: '/v1/frota',
+    API_BASE: (window.API_URL || '/') + 'frota',
     CACHE_VALIDADE: 60000,
     LIMITE_PADRAO: 25,
     DEBOUNCE_DELAY: 400
@@ -472,6 +474,36 @@ function aplicarFiltro(status, btnEl) {
     carregarDados();
 }
 
+function aplicarPrioridade(prioridade) {
+    state.filtroPrioridade = prioridade;
+    state.paginaAtual = 1;
+    cache.dados = null;
+    cache.timestamp = null;
+    atualizarAcaoLimparFiltros();
+    carregarDados();
+}
+
+function atualizarAcaoLimparFiltros() {
+    const button = document.getElementById('limpar-filtros');
+    if (button) button.hidden = state.filtroStatus === 'todos' && state.filtroPrioridade === 'todas' && !state.filtroBusca;
+}
+
+function limparFiltros() {
+    state.filtroStatus = 'todos';
+    state.filtroPrioridade = 'todas';
+    state.filtroBusca = '';
+    state.paginaAtual = 1;
+    cache.dados = null;
+    cache.timestamp = null;
+    const input = document.getElementById('filtro-busca');
+    const select = document.getElementById('filtro-prioridade');
+    if (input) input.value = '';
+    if (select) select.value = 'todas';
+    document.querySelectorAll('.quick-filter-pill').forEach(pill => pill.classList.toggle('active', pill.dataset.filtro === 'todos'));
+    atualizarAcaoLimparFiltros();
+    carregarDados();
+}
+
 function mudarPagina(direcao) {
     if (direcao === 'anterior' && state.paginaAtual > 1) state.paginaAtual--;
     else if (direcao === 'proximo' && state.paginaAtual < state.totalPaginas) state.paginaAtual++;
@@ -524,8 +556,31 @@ async function verAnalise(entregaId) {
 }
 
 function montarHtmlAnalise(entrega) {
+    const checklist = Array.isArray(entrega.checklist) ? entrega.checklist : [];
+    const problemas = Array.isArray(entrega.problemas) ? entrega.problemas : [];
+    const fotos = Array.isArray(entrega.fotos) ? entrega.fotos : [];
+    const itensComProblema = checklist.filter(item => item.status && item.status !== 'entregue').length;
+    const valorAfetado = problemas.reduce((total, problema) => total + Number(problema.valor_afetado || 0), 0);
+    const resumoHtml = `
+        <div class="analise-summary">
+            <div class="analise-summary-main">
+                <span class="analise-eyebrow"><i class="fa-solid fa-route"></i> Ficha operacional</span>
+                <strong>${entrega.cliente_nome || 'Entrega sem cliente identificado'}</strong>
+                <span>${entrega.cidade || ''}${entrega.uf ? ', ' + entrega.uf : ''}${entrega.veiculo_placa ? ' · ' + entrega.veiculo_placa : ''}</span>
+            </div>
+            <div class="analise-summary-stats">
+                <div><strong>${checklist.length}</strong><span>itens</span></div>
+                <div class="${itensComProblema ? 'is-alert' : ''}"><strong>${itensComProblema}</strong><span>com divergência</span></div>
+                <div class="${problemas.length ? 'is-alert' : ''}"><strong>${problemas.length}</strong><span>ocorrências</span></div>
+                <div><strong>${fotos.length}</strong><span>evidências</span></div>
+            </div>
+        </div>
+        ${problemas.length ? `<div class="analise-impact"><i class="fa-solid fa-chart-line"></i><span>Impacto registrado</span><strong>${formatarMoeda(valorAfetado)}</strong><small>valor afetado</small></div>` : ''}
+    `;
+
     // Info da entrega
     const infoHtml = `
+        ${resumoHtml}
         <div class="detalhes-grid">
             <div class="detalhes-card">
                 <div class="label"><i class="fa-solid fa-hashtag"></i> ID Entrega</div>
@@ -562,15 +617,15 @@ function montarHtmlAnalise(entrega) {
 
     // Checklist de itens
     let checklistHtml = '';
-    if (entrega.checklist && entrega.checklist.length > 0) {
+    if (checklist.length > 0) {
         checklistHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-solid fa-clipboard-list mr-2" style="color:var(--nutri-accent);"></i>
-                    Checklist de Itens (${entrega.checklist.length})
+                    Checklist de Itens (${checklist.length})
                 </h6>
                 <div class="analise-checklist">
-                    ${entrega.checklist.map(item => {
+                    ${checklist.map(item => {
                         const isProblema = item.status !== 'entregue';
                         const statusClass = item.status || 'entregue';
                         return `
@@ -600,15 +655,15 @@ function montarHtmlAnalise(entrega) {
 
     // Problemas registrados
     let problemasHtml = '';
-    if (entrega.problemas && entrega.problemas.length > 0) {
+    if (problemas.length > 0) {
         problemasHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-solid fa-triangle-exclamation mr-2" style="color:#f59e0b;"></i>
-                    Problemas Registrados (${entrega.problemas.length})
+                    Problemas Registrados (${problemas.length})
                 </h6>
                 <div class="analise-checklist">
-                    ${entrega.problemas.map(p => `
+                    ${problemas.map(p => `
                         <div class="checklist-item" style="border-left: 3px solid ${p.prioridade === 'critica' ? '#dc2626' : p.prioridade === 'alta' ? '#f59e0b' : '#3b82f6'};">
                             <div class="info">
                                 <div class="ref">${getTipoLabel(p.tipo_problema)}</div>
@@ -686,15 +741,15 @@ function montarHtmlAnalise(entrega) {
 
     // Fotos
     let fotosHtml = '';
-    if (entrega.fotos && entrega.fotos.length > 0) {
+    if (fotos.length > 0) {
         fotosHtml = `
             <div class="mt-4">
                 <h6 class="font-bold text-[#1a3c34] text-sm mb-3">
                     <i class="fa-regular fa-images mr-2" style="color:var(--nutri-accent);"></i>
-                    Fotos (${entrega.fotos.length})
+                    Fotos (${fotos.length})
                 </h6>
                 <div class="flex flex-wrap gap-3">
-                    ${entrega.fotos.map(foto => `
+                    ${fotos.map(foto => `
                         <div class="foto-thumbnail" style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid var(--nutri-border);" 
                              onclick="abrirZoomFoto('${foto.url_foto}', '${foto.tipo_foto || 'Foto'}')">
                             <img src="${foto.url_foto}" style="width: 100%; height: 100%; object-fit: cover;" 
@@ -1067,6 +1122,1002 @@ function exportarCSV() {
 }
 
 // ================================================================
+// ABAS PRINCIPAIS (Visão Geral / Motoristas / Histórico)
+// ================================================================
+let abaCargasAtiva = 'visao-geral';
+let motoristasCarregados = false;
+let veiculosCarregados = false;
+let graficosCarregados = false;
+let cobliCarregado = false;
+let rankingMotoristasData = [];
+let rankingVeiculosData = [];
+let chartInstances = {};
+let historicoState = {
+    pagina: 1,
+    totalPaginas: 1,
+    busca: '',
+    status: 'todos',
+    dataInicio: '',
+    dataFim: ''
+};
+
+function mudarAbaCargas(aba, btn) {
+    abaCargasAtiva = aba;
+
+    document.querySelectorAll('.cargas-tab').forEach(t => {
+        t.classList.toggle('active', t === btn);
+        t.setAttribute('aria-selected', t === btn ? 'true' : 'false');
+    });
+    document.querySelectorAll('.cargas-tab-panel').forEach(p => {
+        p.hidden = p.id !== `tab-${aba}`;
+    });
+
+    if (aba === 'motoristas' && !motoristasCarregados) {
+        carregarRankingMotoristas();
+    }
+    if (aba === 'veiculos' && !veiculosCarregados) {
+        carregarRankingVeiculos();
+    }
+    if (aba === 'graficos' && !graficosCarregados) {
+        carregarGraficosCargas();
+    }
+    if (aba === 'historico') {
+        carregarHistoricoEmbarques();
+    }
+    if (aba === 'cobli' && !cobliCarregado) {
+        carregarStatusCobli();
+        carregarMapaCobli();
+        cobliCarregado = true;
+    } else if (aba === 'cobli') {
+        // Reabrir a aba: garante que o mapa recalcula o tamanho corretamente
+        setTimeout(() => { if (cobliMapa) cobliMapa.invalidateSize(); }, 100);
+    }
+}
+
+// ================================================================
+// ABA: DESEMPENHO DE MOTORISTAS
+// ================================================================
+async function carregarRankingMotoristas() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-motoristas-dias')?.value || 30;
+    const infoPeriodo = document.getElementById('info-motoristas-periodo');
+    if (infoPeriodo) {
+        const labels = { '7': 'Últimos 7 dias', '30': 'Últimos 30 dias', '90': 'Últimos 90 dias', '365': 'Últimos 12 meses' };
+        infoPeriodo.textContent = labels[dias] || `Últimos ${dias} dias`;
+    }
+
+    const tbody = document.getElementById('lista-motoristas');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8">Carregando...</td></tr>';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/ranking-motoristas?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar ranking');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        motoristasCarregados = true;
+        rankingMotoristasData = payload.data || [];
+        renderizarDestaquesMotoristas(rankingMotoristasData);
+        renderizarTabelaMotoristas(rankingMotoristasData);
+    } catch (error) {
+        console.error('Erro ao carregar ranking de motoristas:', error);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-500">Erro ao carregar ranking de motoristas</td></tr>';
+    }
+}
+
+function renderizarDestaquesMotoristas(dados) {
+    const container = document.getElementById('motoristas-destaques');
+    if (!container) return;
+
+    if (!dados.length) {
+        container.innerHTML = '<div class="empty-state-cargas">Nenhum dado de motorista no período selecionado.</div>';
+        return;
+    }
+
+    const maisDivergencia = [...dados].sort((a, b) => b.taxa_divergencia - a.taxa_divergencia)[0];
+    const maisAtrasos = [...dados].sort((a, b) => (b.entregas_atrasadas || 0) - (a.entregas_atrasadas || 0))[0];
+    const melhorDesempenho = [...dados].sort((a, b) => a.indice_ineficiencia - b.indice_ineficiencia)[0];
+
+    container.innerHTML = `
+        <div class="motoristas-destaques-grid">
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-solid fa-triangle-exclamation"></i> Maior taxa de divergência</div>
+                <div class="destaque-nome">${escapeHtml(maisDivergencia?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${(maisDivergencia?.taxa_divergencia ?? 0).toFixed(1)}%</div>
+            </div>
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-regular fa-clock"></i> Mais entregas atrasadas</div>
+                <div class="destaque-nome">${escapeHtml(maisAtrasos?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${maisAtrasos?.entregas_atrasadas ?? 0}</div>
+            </div>
+            <div class="motorista-destaque-card sucesso">
+                <div class="destaque-label"><i class="fa-solid fa-medal"></i> Melhor desempenho</div>
+                <div class="destaque-nome">${escapeHtml(melhorDesempenho?.motorista_nome || '-')}</div>
+                <div class="destaque-valor">${(melhorDesempenho?.indice_ineficiencia ?? 0).toFixed(1)} pts</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderizarTabelaMotoristas(dados) {
+    const tbody = document.getElementById('lista-motoristas');
+    if (!tbody) return;
+
+    if (!dados.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8">Nenhum motorista com embarques no período.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = dados.map((m, idx) => {
+        const indice = Number(m.indice_ineficiencia || 0);
+        const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+        const taxaDivClass = m.taxa_divergencia >= 15 ? 'critico' : (m.taxa_divergencia >= 5 ? 'alerta' : 'ok');
+        const taxaPrazoClass = m.taxa_no_prazo >= 90 ? 'ok' : (m.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+        const score = Number(m.score_desempenho || 0);
+        const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
+
+        return `
+        <tr class="tabela-motoristas-linha" onclick="abrirDetalheMotorista(${m.id})">
+            <td class="text-center">${idx + 1}</td>
+            <td>
+                <div class="motorista-nome-cell">
+                    <strong>${escapeHtml(m.motorista_nome || '-')}</strong>
+                    <span>${escapeHtml(m.motorista_telefone || '')}</span>
+                </div>
+            </td>
+            <td class="text-center">${m.total_embarques ?? 0}</td>
+            <td class="text-center">${m.total_entregas ?? 0}</td>
+            <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(m.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(m.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center">${Math.round(m.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${m.total_problemas ?? 0}</td>
+            <td class="text-center"><span class="score-mini-badge nivel-${scoreNivel}">${score.toFixed(1)}</span></td>
+            <td>
+                <div class="indice-ineficiencia-bar">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">${indice.toFixed(1)}</div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function abrirDetalheMotorista(id) {
+    const m = rankingMotoristasData.find(x => String(x.id) === String(id));
+    if (!m) return;
+
+    const titulo = document.getElementById('detalhe-ranking-titulo');
+    const conteudo = document.getElementById('detalhe-ranking-conteudo');
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-id-badge mr-2"></i> ${escapeHtml(m.motorista_nome || '-')}`;
+    if (conteudo) conteudo.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando perfil completo...</div>';
+
+    const modal = new bootstrap.Modal(document.getElementById('modalDetalheRanking'));
+    modal.show();
+
+    const token = getAuthToken();
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/motorista/${id}/perfil?dias=90`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao buscar perfil do motorista');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        if (conteudo) conteudo.innerHTML = montarHtmlPerfilMotorista(payload.data || {});
+    } catch (error) {
+        console.error('Erro ao abrir perfil do motorista:', error);
+        if (conteudo) conteudo.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar perfil do motorista</div>';
+    }
+}
+
+function montarHtmlPerfilMotorista(data) {
+    const mot = data.motorista || {};
+    const met = data.metricas || {};
+    const veiculos = data.veiculos_utilizados || [];
+    const embarques = data.embarques || [];
+    const positivos = data.pontos_positivos || [];
+    const negativos = data.pontos_negativos || [];
+
+    const indice = Number(met.indice_ineficiencia || 0);
+    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+    const score = Number(met.score_desempenho || 0);
+    const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
+
+    const header = `
+        <div class="detalhe-ranking-header">
+            <div>
+                <strong style="font-size:1.1rem;">${escapeHtml(mot.nome || '-')}</strong>
+                <div class="text-sm text-slate-500">${escapeHtml(mot.telefone || 'Sem telefone')} • Status: ${escapeHtml(mot.status || '-')}</div>
+            </div>
+            <div class="perfil-score-badges">
+                <div class="score-motorista-badge nivel-${scoreNivel}">
+                    <span class="score-valor">${score.toFixed(1)}</span>
+                    <span class="score-label">Score de Desempenho</span>
+                </div>
+                <div class="indice-ineficiencia-bar" style="max-width:220px;">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">Índice de Ineficiência: ${indice.toFixed(1)}</div>
+                </div>
+            </div>
+            <div class="detalhe-ranking-stats">
+                <div class="stat"><strong>${met.total_embarques ?? 0}</strong><span>Embarques</span></div>
+                <div class="stat"><strong>${met.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                <div class="stat"><strong>${met.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
+                <div class="stat"><strong>${met.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
+                <div class="stat"><strong>${(met.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
+                <div class="stat"><strong>${(met.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
+                <div class="stat"><strong>${Math.round(met.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                <div class="stat"><strong>${met.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                <div class="stat"><strong>${formatarMoeda(met.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+            </div>
+        </div>
+    `;
+
+    const pontosHtml = `
+        <div class="perfil-pontos-grid">
+            <div class="perfil-pontos-coluna positivos">
+                <h4><i class="fa-solid fa-circle-check mr-1"></i> Pontos Positivos</h4>
+                ${positivos.length ? '<ul>' + positivos.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>' : '<p class="text-slate-500 text-sm">Nenhum destaque no período.</p>'}
+            </div>
+            <div class="perfil-pontos-coluna negativos">
+                <h4><i class="fa-solid fa-circle-exclamation mr-1"></i> Pontos de Atenção</h4>
+                ${negativos.length ? '<ul>' + negativos.map(p => `<li>${escapeHtml(p)}</li>`).join('') + '</ul>' : '<p class="text-slate-500 text-sm">Nenhum ponto de atenção identificado.</p>'}
+            </div>
+        </div>
+    `;
+
+    const veiculosHtml = veiculos.length ? `
+        <div class="perfil-secao">
+            <h4><i class="fa-solid fa-truck mr-1"></i> Veículos Utilizados</h4>
+            <div class="perfil-veiculos-lista">
+                ${veiculos.map(v => `
+                    <div class="perfil-veiculo-card">
+                        <strong>${escapeHtml(v.placa || '-')}</strong>
+                        <span>${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')}</span>
+                        <span class="text-xs text-slate-500">${v.total_embarques} embarques • Último uso: ${formatarData(v.ultimo_uso)}</span>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    const embarquesHtml = embarques.length ? `
+        <div class="perfil-secao">
+            <h4><i class="fa-solid fa-clock-rotate-left mr-1"></i> Histórico de Embarques (rastreável)</h4>
+            <div class="perfil-embarques-lista">
+                ${embarques.map(e => `
+                    <div class="perfil-embarque-item" onclick="fecharModalRankingEAbrirEmbarque(${e.id})">
+                        <div>
+                            <strong>${escapeHtml(e.numero_embarque || ('#' + e.id))}</strong>
+                            <span class="text-xs text-slate-500">${escapeHtml(e.veiculo_placa || '-')} • ${formatarData(e.data_saida)}</span>
+                        </div>
+                        <div class="perfil-embarque-badges">
+                            <span class="hist-status-badge ${e.embarque_status || ''}">${escapeHtml(e.embarque_status || '-')}</span>
+                            ${e.acerto_status ? `<span class="hist-status-badge ${e.acerto_status}">${escapeHtml(e.acerto_status)}</span>` : ''}
+                            <span class="text-xs">${e.entregas_concluidas ?? 0}/${e.total_entregas ?? 0} entregas</span>
+                            ${(e.total_problemas ?? 0) > 0 ? `<span class="text-xs text-red-500">${e.total_problemas} problema(s)</span>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    return header + pontosHtml + veiculosHtml + embarquesHtml;
+}
+
+function fecharModalRankingEAbrirEmbarque(embarqueId) {
+    const rankingModalEl = document.getElementById('modalDetalheRanking');
+    const rankingModal = bootstrap.Modal.getInstance(rankingModalEl);
+    if (rankingModal) rankingModal.hide();
+    setTimeout(() => abrirDetalheEmbarque(embarqueId), 300);
+}
+
+
+// ================================================================
+// ABA: POR CAMINHÃO (VEÍCULOS)
+// ================================================================
+async function carregarRankingVeiculos() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-veiculos-dias')?.value || 30;
+    const infoPeriodo = document.getElementById('info-veiculos-periodo');
+    if (infoPeriodo) {
+        const labels = { '7': 'Últimos 7 dias', '30': 'Últimos 30 dias', '90': 'Últimos 90 dias', '365': 'Últimos 12 meses' };
+        infoPeriodo.textContent = labels[dias] || `Últimos ${dias} dias`;
+    }
+
+    const tbody = document.getElementById('lista-veiculos');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/ranking-veiculos?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar ranking de veículos');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        veiculosCarregados = true;
+        rankingVeiculosData = payload.data || [];
+        renderizarDestaquesVeiculos(rankingVeiculosData);
+        renderizarTabelaVeiculos(rankingVeiculosData);
+    } catch (error) {
+        console.error('Erro ao carregar ranking de veículos:', error);
+        if (tbody) tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-red-500">Erro ao carregar ranking de veículos</td></tr>';
+    }
+}
+
+function renderizarDestaquesVeiculos(dados) {
+    const container = document.getElementById('veiculos-destaques');
+    if (!container) return;
+
+    if (!dados.length) {
+        container.innerHTML = '<div class="empty-state-cargas">Nenhum dado de veículo no período selecionado.</div>';
+        return;
+    }
+
+    const maisDivergencia = [...dados].sort((a, b) => b.taxa_divergencia - a.taxa_divergencia)[0];
+    const maisAtrasos = [...dados].sort((a, b) => (b.entregas_atrasadas || 0) - (a.entregas_atrasadas || 0))[0];
+    const melhorDesempenho = [...dados].sort((a, b) => a.indice_ineficiencia - b.indice_ineficiencia)[0];
+
+    container.innerHTML = `
+        <div class="motoristas-destaques-grid">
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-solid fa-triangle-exclamation"></i> Maior taxa de divergência</div>
+                <div class="destaque-nome">${escapeHtml(maisDivergencia?.placa || '-')}</div>
+                <div class="destaque-valor">${(maisDivergencia?.taxa_divergencia ?? 0).toFixed(1)}%</div>
+            </div>
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label"><i class="fa-regular fa-clock"></i> Mais entregas atrasadas</div>
+                <div class="destaque-nome">${escapeHtml(maisAtrasos?.placa || '-')}</div>
+                <div class="destaque-valor">${maisAtrasos?.entregas_atrasadas ?? 0}</div>
+            </div>
+            <div class="motorista-destaque-card sucesso">
+                <div class="destaque-label"><i class="fa-solid fa-medal"></i> Melhor desempenho</div>
+                <div class="destaque-nome">${escapeHtml(melhorDesempenho?.placa || '-')}</div>
+                <div class="destaque-valor">${(melhorDesempenho?.indice_ineficiencia ?? 0).toFixed(1)} pts</div>
+            </div>
+        </div>
+    `;
+}
+
+function renderizarTabelaVeiculos(dados) {
+    const tbody = document.getElementById('lista-veiculos');
+    if (!tbody) return;
+
+    if (!dados.length) {
+        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Nenhum veículo com embarques no período.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = dados.map((v, idx) => {
+        const indice = Number(v.indice_ineficiencia || 0);
+        const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+        const taxaDivClass = v.taxa_divergencia >= 15 ? 'critico' : (v.taxa_divergencia >= 5 ? 'alerta' : 'ok');
+        const taxaPrazoClass = v.taxa_no_prazo >= 90 ? 'ok' : (v.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+
+        return `
+        <tr class="tabela-veiculos-linha" onclick="abrirDetalheVeiculo(${v.id})">
+            <td class="text-center">${idx + 1}</td>
+            <td>
+                <div class="motorista-nome-cell">
+                    <strong>${escapeHtml(v.placa || '-')}</strong>
+                    <span>${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')}</span>
+                </div>
+            </td>
+            <td class="text-center">${v.total_embarques ?? 0}</td>
+            <td class="text-center">${v.total_entregas ?? 0}</td>
+            <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(v.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(v.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
+            <td class="text-center">${Math.round(v.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${v.total_problemas ?? 0}</td>
+            <td>
+                <div class="indice-ineficiencia-bar">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">${indice.toFixed(1)}</div>
+                </div>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function abrirDetalheVeiculo(id) {
+    const v = rankingVeiculosData.find(x => String(x.id) === String(id));
+    if (!v) return;
+
+    const titulo = document.getElementById('detalhe-ranking-titulo');
+    const conteudo = document.getElementById('detalhe-ranking-conteudo');
+    if (titulo) titulo.innerHTML = `<i class="fa-solid fa-truck mr-2"></i> ${escapeHtml(v.placa || '-')}`;
+
+    const indice = Number(v.indice_ineficiencia || 0);
+    const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+
+    if (conteudo) {
+        conteudo.innerHTML = `
+            <div class="detalhe-ranking-header">
+                <div>
+                    <strong style="font-size:1.1rem;">${escapeHtml(v.placa || '-')}</strong>
+                    <div class="text-sm text-slate-500">${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')} • ${escapeHtml(v.tipo || '-')} • Status: ${escapeHtml(v.veiculo_status || '-')}</div>
+                </div>
+                <div class="indice-ineficiencia-bar" style="max-width:220px;">
+                    <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                    <div class="indice-ineficiencia-bar-label">Índice: ${indice.toFixed(1)}</div>
+                </div>
+                <div class="detalhe-ranking-stats">
+                    <div class="stat"><strong>${v.total_embarques ?? 0}</strong><span>Embarques</span></div>
+                    <div class="stat"><strong>${v.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                    <div class="stat"><strong>${v.entregas_concluidas ?? 0}</strong><span>Concluídas</span></div>
+                    <div class="stat"><strong>${v.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
+                    <div class="stat"><strong>${(v.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
+                    <div class="stat"><strong>${(v.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
+                    <div class="stat"><strong>${Math.round(v.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                    <div class="stat"><strong>${v.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                    <div class="stat"><strong>${v.faltantes ?? 0}</strong><span>Faltantes</span></div>
+                    <div class="stat"><strong>${v.devolucoes ?? 0}</strong><span>Devoluções</span></div>
+                    <div class="stat"><strong>${Math.round(v.peso_total_transportado ?? 0)} kg</strong><span>Peso Transportado</span></div>
+                    <div class="stat"><strong>${formatarMoeda(v.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+                </div>
+            </div>
+        `;
+    }
+
+    const modal = new bootstrap.Modal(document.getElementById('modalDetalheRanking'));
+    modal.show();
+}
+
+function formatarMoeda(valor) {
+    return 'R$ ' + Number(valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ================================================================
+// ABA: GRÁFICOS PREMIUM (Chart.js)
+// ================================================================
+const CORES_GRAFICO = {
+    primaria: '#1a3c34',
+    dourado: '#c9a227',
+    sucesso: '#10b981',
+    alerta: '#f59e0b',
+    perigo: '#dc2626',
+    info: '#3b82f6',
+    roxo: '#8b5cf6',
+    palette: ['#1a3c34', '#c9a227', '#3b82f6', '#dc2626', '#8b5cf6', '#10b981', '#f59e0b']
+};
+
+async function carregarGraficosCargas() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dias = document.getElementById('filtro-graficos-dias')?.value || 14;
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/graficos?dias=${dias}`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao carregar gráficos');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        graficosCarregados = true;
+        renderizarGraficosCargas(payload.data || {});
+    } catch (error) {
+        console.error('Erro ao carregar gráficos de gestão de cargas:', error);
+        mostrarNotificacao('Erro ao carregar gráficos', 'error');
+    }
+}
+
+function destruirChart(id) {
+    if (chartInstances[id]) {
+        chartInstances[id].destroy();
+        delete chartInstances[id];
+    }
+}
+
+function renderizarGraficosCargas(data) {
+    if (typeof Chart === 'undefined') return;
+
+    // 1. Evolução diária (linha)
+    destruirChart('evolucao');
+    const ctxEvolucao = document.getElementById('chart-evolucao');
+    if (ctxEvolucao) {
+        const evolucao = data.evolucao_diaria || [];
+        chartInstances.evolucao = new Chart(ctxEvolucao, {
+            type: 'line',
+            data: {
+                labels: evolucao.map(e => e.label),
+                datasets: [
+                    {
+                        label: 'Problemas Criados',
+                        data: evolucao.map(e => e.criados),
+                        borderColor: CORES_GRAFICO.perigo,
+                        backgroundColor: 'rgba(220, 38, 38, .08)',
+                        tension: .35,
+                        fill: true,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Problemas Resolvidos',
+                        data: evolucao.map(e => e.resolvidos),
+                        borderColor: CORES_GRAFICO.sucesso,
+                        backgroundColor: 'rgba(16, 185, 129, .08)',
+                        tension: .35,
+                        fill: true,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'bottom' } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 2. Distribuição por tipo (doughnut)
+    destruirChart('tipo');
+    const ctxTipo = document.getElementById('chart-tipo');
+    if (ctxTipo) {
+        const porTipo = data.por_tipo || [];
+        chartInstances.tipo = new Chart(ctxTipo, {
+            type: 'doughnut',
+            data: {
+                labels: porTipo.map(t => (t.tipo_problema || '-').replace(/_/g, ' ')),
+                datasets: [{
+                    data: porTipo.map(t => t.total),
+                    backgroundColor: CORES_GRAFICO.palette,
+                    borderWidth: 2,
+                    borderColor: '#fff'
+                }]
+            },
+            options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '62%' }
+        });
+    }
+
+    // 3. Distribuição por prioridade (barra horizontal)
+    destruirChart('prioridade');
+    const ctxPrioridade = document.getElementById('chart-prioridade');
+    if (ctxPrioridade) {
+        const porPrioridade = data.por_prioridade || [];
+        const ordem = ['critica', 'alta', 'media', 'baixa'];
+        const ordenado = [...porPrioridade].sort((a, b) => ordem.indexOf(a.prioridade) - ordem.indexOf(b.prioridade));
+        const coresPrioridade = { critica: CORES_GRAFICO.perigo, alta: CORES_GRAFICO.alerta, media: CORES_GRAFICO.info, baixa: CORES_GRAFICO.sucesso };
+        chartInstances.prioridade = new Chart(ctxPrioridade, {
+            type: 'bar',
+            data: {
+                labels: ordenado.map(p => (p.prioridade || '-').toUpperCase()),
+                datasets: [{
+                    label: 'Problemas ativos',
+                    data: ordenado.map(p => p.total),
+                    backgroundColor: ordenado.map(p => coresPrioridade[p.prioridade] || CORES_GRAFICO.primaria),
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { x: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 4. Top motoristas com mais problemas (barra)
+    destruirChart('topMotoristas');
+    const ctxTopMotoristas = document.getElementById('chart-top-motoristas');
+    if (ctxTopMotoristas) {
+        const topM = data.top_motoristas_problemas || [];
+        chartInstances.topMotoristas = new Chart(ctxTopMotoristas, {
+            type: 'bar',
+            data: {
+                labels: topM.map(m => m.motorista_nome),
+                datasets: [{
+                    label: 'Problemas',
+                    data: topM.map(m => m.total_problemas),
+                    backgroundColor: CORES_GRAFICO.dourado,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+
+    // 5. Top veículos com mais problemas (barra)
+    destruirChart('topVeiculos');
+    const ctxTopVeiculos = document.getElementById('chart-top-veiculos');
+    if (ctxTopVeiculos) {
+        const topV = data.top_veiculos_problemas || [];
+        chartInstances.topVeiculos = new Chart(ctxTopVeiculos, {
+            type: 'bar',
+            data: {
+                labels: topV.map(v => v.placa),
+                datasets: [{
+                    label: 'Problemas',
+                    data: topV.map(v => v.total_problemas),
+                    backgroundColor: CORES_GRAFICO.primaria,
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: { y: { beginAtZero: true, ticks: { precision: 0 } } }
+            }
+        });
+    }
+}
+
+
+async function carregarHistoricoEmbarques() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    const lista = document.getElementById('hist-lista-embarques');
+    if (lista) lista.innerHTML = '<div class="text-center py-8">Carregando...</div>';
+
+    let url = `${CONFIG.API_BASE}/gestao-cargas/historico-embarques?pagina=${historicoState.pagina}&limite=15`;
+    if (historicoState.busca) url += `&busca=${encodeURIComponent(historicoState.busca)}`;
+    if (historicoState.status && historicoState.status !== 'todos') url += `&status=${historicoState.status}`;
+    if (historicoState.dataInicio) url += `&data_inicio=${historicoState.dataInicio}`;
+    if (historicoState.dataFim) url += `&data_fim=${historicoState.dataFim}`;
+
+    try {
+        const response = await fetch(url, { headers: { 'Authorization': 'Bearer ' + token } });
+        if (!response.ok) throw new Error('Falha ao carregar histórico');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        renderizarHistoricoEmbarques(payload.data || [], payload.pagination || {});
+    } catch (error) {
+        console.error('Erro ao carregar histórico de embarques:', error);
+        if (lista) lista.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar histórico de embarques</div>';
+    }
+}
+
+function renderizarHistoricoEmbarques(dados, pagination) {
+    const lista = document.getElementById('hist-lista-embarques');
+    const info = document.getElementById('hist-info-registros');
+    const infoPag = document.getElementById('hist-info-paginacao');
+
+    historicoState.totalPaginas = pagination.total_paginas || 1;
+    if (info) info.textContent = `${pagination.total ?? 0} embarque(s) encontrado(s)`;
+    if (infoPag) infoPag.textContent = `Página ${historicoState.pagina} de ${historicoState.totalPaginas}`;
+
+    document.getElementById('hist-pagina-atual').textContent = historicoState.pagina;
+    document.getElementById('hist-btn-anterior').disabled = historicoState.pagina <= 1;
+    document.getElementById('hist-btn-proximo').disabled = historicoState.pagina >= historicoState.totalPaginas;
+
+    if (!lista) return;
+
+    if (!dados.length) {
+        lista.innerHTML = '<div class="empty-state-cargas">Nenhum embarque encontrado com os filtros atuais.</div>';
+        return;
+    }
+
+    const statusLabels = {
+        planejado: 'Planejado', em_andamento: 'Em andamento',
+        finalizado: 'Finalizado', cancelado: 'Cancelado', problema: 'Com problema'
+    };
+
+    lista.innerHTML = dados.map(e => {
+        const status = e.embarque_status || 'planejado';
+        let acertoLabel = 'Sem acerto';
+        let acertoClass = 'pendente';
+        if (e.acerto_status === 'finalizado') { acertoLabel = 'Conferido total'; acertoClass = ''; }
+        else if (e.acerto_id) { acertoLabel = 'Conferido parcial'; acertoClass = 'parcial'; }
+
+        return `
+        <div class="hist-embarque-card" onclick="abrirDetalheEmbarque(${e.id})">
+            <div class="hist-embarque-main">
+                <div class="hist-embarque-icon"><i class="fa-solid fa-truck-fast"></i></div>
+                <div class="hist-embarque-info">
+                    <strong>${escapeHtml(e.numero_embarque || ('#' + e.id))}</strong>
+                    <span>${escapeHtml(e.motorista_nome || 'Sem motorista')} • ${escapeHtml(e.veiculo_placa || '-')} • ${formatarData(e.data_saida)}</span>
+                </div>
+            </div>
+            <div class="hist-embarque-meta">
+                <div class="meta-item"><strong>${e.entregas_concluidas ?? 0}/${e.total_entregas ?? 0}</strong><span>Entregas</span></div>
+                <div class="meta-item"><strong>${e.total_problemas ?? 0}</strong><span>Problemas</span></div>
+                <span class="hist-acerto-badge ${acertoClass}">${acertoLabel}</span>
+                <span class="hist-status-badge ${status}">${statusLabels[status] || status}</span>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+function mudarPaginaHistorico(direcao) {
+    if (direcao === 'anterior' && historicoState.pagina > 1) historicoState.pagina--;
+    if (direcao === 'proximo' && historicoState.pagina < historicoState.totalPaginas) historicoState.pagina++;
+    carregarHistoricoEmbarques();
+}
+
+async function abrirDetalheEmbarque(embarqueId) {
+    const modalEl = document.getElementById('modalDetalheEmbarque');
+    const conteudo = document.getElementById('detalhe-embarque-conteudo');
+    const numeroEl = document.getElementById('detalhe-embarque-numero');
+    if (conteudo) conteudo.innerHTML = '<div class="text-center py-8"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...</div>';
+
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+
+    const token = getAuthToken();
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/gestao-cargas/embarque/${embarqueId}/detalhes-completos`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!response.ok) throw new Error('Falha ao buscar embarque');
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        const dados = payload.data || {};
+        if (numeroEl) numeroEl.textContent = dados.numero_embarque || ('#' + embarqueId);
+        if (conteudo) conteudo.innerHTML = montarHtmlDetalheEmbarque(dados);
+    } catch (error) {
+        console.error('Erro ao abrir detalhe do embarque:', error);
+        if (conteudo) conteudo.innerHTML = '<div class="text-center py-8 text-red-500">Erro ao carregar detalhes do embarque</div>';
+    }
+}
+
+function montarHtmlDetalheEmbarque(dados) {
+    const entregas = dados.entregas || [];
+    const resumo = dados.resumo || {};
+    const totalEntregas = resumo.total_entregas ?? entregas.length;
+    const concluidas = resumo.entregas_concluidas ?? entregas.filter(e => e.status === 'entregue' || e.status === 'entregue_com_problema').length;
+    const totalProblemas = resumo.total_problemas ?? 0;
+
+    const header = `
+        <div class="detalhe-embarque-header">
+            <div>
+                <strong>${escapeHtml(dados.motorista_nome || 'Sem motorista')}</strong>
+                <div class="text-sm text-slate-500">${escapeHtml(dados.veiculo_placa || '-')} • ${formatarData(dados.data_saida)}${dados.acerto ? ' • Conferência: ' + escapeHtml(dados.acerto.status || '-') : ''}</div>
+            </div>
+            <div class="detalhe-embarque-stats">
+                <div class="stat"><strong>${totalEntregas}</strong><span>Entregas</span></div>
+                <div class="stat"><strong>${concluidas}</strong><span>Concluídas</span></div>
+                <div class="stat"><strong>${totalProblemas}</strong><span>Problemas</span></div>
+                <div class="stat"><strong>${resumo.percentual_concluido ?? 0}%</strong><span>Progresso</span></div>
+            </div>
+        </div>
+    `;
+
+    // Timeline geral do embarque (logs)
+    const logs = dados.timeline_embarque || [];
+    const timelineHtml = logs.length ? `
+        <div class="detalhe-embarque-timeline">
+            <h4><i class="fa-solid fa-timeline mr-1"></i> Timeline do Embarque</h4>
+            <div class="timeline-embarque-lista">
+                ${logs.map(l => `
+                    <div class="timeline-embarque-item">
+                        <div class="timeline-embarque-ponto"></div>
+                        <div class="timeline-embarque-conteudo">
+                            <strong>${escapeHtml(l.acao || '-')}</strong>
+                            <span class="text-xs text-slate-500">${formatarDataHora(l.created_at)} • ${escapeHtml(l.usuario_nome || 'Sistema')}</span>
+                            ${l.descricao ? `<div class="text-sm">${escapeHtml(l.descricao)}</div>` : ''}
+                        </div>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    ` : '';
+
+    if (!entregas.length) {
+        return header + timelineHtml + '<div class="empty-state-cargas">Nenhuma entrega registrada neste embarque.</div>';
+    }
+
+    const lista = entregas.map(e => {
+        const comProb = e.status === 'entregue_com_problema' || e.status === 'falha' || (e.problemas && e.problemas.length);
+        const fotos = (e.checklist || []).filter(c => c.foto_url);
+        const clienteNome = e.cliente_nome || e.cliente_nome_cadastro || 'Cliente não identificado';
+
+        const itensHtml = (e.checklist || []).length ? `
+            <div class="entrega-item-itens-grid">
+                ${e.checklist.map(item => {
+                    const divergente = item.status && item.status !== 'ok' && item.status !== 'conforme';
+                    return `
+                    <div class="entrega-item-card ${divergente ? 'item-divergente' : ''}">
+                        ${item.foto_url ? `<img src="${escapeHtml(item.foto_url)}" onclick="abrirZoomFoto('${escapeHtml(item.foto_url)}', '${escapeHtml(clienteNome)}')" alt="Foto item">` : '<div class="item-sem-foto"><i class="fa-solid fa-image"></i></div>'}
+                        <div class="entrega-item-card-info">
+                            <strong>${escapeHtml(item.descricao || item.referencia || '-')}</strong>
+                            <span>Prev: ${item.quantidade_prevista ?? '-'} • Entregue: ${item.quantidade_entregue ?? '-'}</span>
+                            ${item.motivo ? `<span class="text-red-500">${escapeHtml(item.motivo)}</span>` : ''}
+                        </div>
+                    </div>`;
+                }).join('')}
+            </div>
+        ` : '';
+
+        const problemasHtml = (e.problemas || []).length ? `
+            <div class="entrega-item-problemas">
+                ${e.problemas.map(p => `
+                    <span class="problema-badge ${p.status_problema || ''}">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        ${escapeHtml(p.tipo_problema || '-')}: ${escapeHtml(p.descricao_problema || '-')} (${escapeHtml(p.status_problema || '-')})
+                    </span>
+                `).join('')}
+            </div>
+        ` : '';
+
+        return `
+        <div class="detalhe-entrega-item ${comProb ? 'com-problema' : ''}">
+            <div class="entrega-item-head">
+                <strong>${escapeHtml(clienteNome)}</strong>
+                <span class="hist-status-badge ${e.status || ''}">${escapeHtml(e.status || '-')}</span>
+            </div>
+            <div class="text-xs text-slate-500 mt-1">${escapeHtml(e.cliente_cidade || '')}/${escapeHtml(e.cliente_uf || '')} • Pedido(s): ${escapeHtml(e.pedidos_ids || '-')}</div>
+            ${itensHtml}
+            ${problemasHtml}
+        </div>`;
+    }).join('');
+
+    return header + timelineHtml + `<div class="detalhe-entregas-lista">${lista}</div>`;
+}
+
+
+function escapeHtml(str) {
+    if (str === null || str === undefined) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// ================================================================
+// ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
+// ================================================================
+async function carregarStatusCobli() {
+    const token = getAuthToken();
+    const badge = document.getElementById('cobli-status-badge');
+    const detalhe = document.getElementById('cobli-status-detalhe');
+    if (badge) badge.textContent = 'Verificando...';
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/status`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        const dados = payload.data || {};
+
+        if (badge) {
+            badge.textContent = dados.conexao_ok ? 'Conectado' : (dados.configurado ? 'Falha na conexão' : 'Não configurado');
+            badge.className = 'hist-status-badge ' + (dados.conexao_ok ? 'finalizado' : (dados.configurado ? 'cancelado' : 'planejado'));
+        }
+        if (detalhe) {
+            detalhe.innerHTML = `<i class="fa-solid ${dados.conexao_ok ? 'fa-circle-check text-green-600' : 'fa-circle-exclamation text-amber-500'} mr-1"></i> ${escapeHtml(dados.detalhe || '')}`;
+        }
+
+        if (dados.conexao_ok) {
+            carregarMapaCobli();
+        }
+    } catch (error) {
+        console.error('Erro ao verificar status da Cobli:', error);
+        if (badge) { badge.textContent = 'Erro'; badge.className = 'hist-status-badge cancelado'; }
+        if (detalhe) detalhe.textContent = 'Não foi possível verificar o status da integração.';
+    }
+}
+
+
+// ----------------------------------------------------------------
+// Mapa ao vivo (MapLibre GL + OpenFreeMap) com a posição dos veículos vinculados
+// ----------------------------------------------------------------
+let cobliMapa = null;
+let cobliMapaMarcadores = {};
+
+function inicializarMapaCobli() {
+    if (cobliMapa) return cobliMapa;
+    const el = document.getElementById('cobli-mapa');
+    if (!el || typeof maplibregl === 'undefined') return null;
+
+    cobliMapa = new maplibregl.Map({
+        container: el,
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [-51.925, -14.235], // centro do Brasil por padrão
+        zoom: 4,
+        attributionControl: true
+    });
+    cobliMapa.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    return cobliMapa;
+}
+
+async function carregarMapaCobli() {
+    const token = getAuthToken();
+    const vazio = document.getElementById('cobli-mapa-vazio');
+    const mapaEl = document.getElementById('cobli-mapa');
+    const atualizadoEl = document.getElementById('cobli-mapa-atualizado');
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/frota/posicoes`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao buscar posições');
+
+        const veiculos = payload.data || [];
+
+        if (!veiculos.length) {
+            if (vazio) vazio.style.display = 'block';
+            if (mapaEl) mapaEl.style.display = 'none';
+            return;
+        }
+
+        if (vazio) vazio.style.display = 'none';
+        if (mapaEl) mapaEl.style.display = 'block';
+
+        const mapa = inicializarMapaCobli();
+        if (!mapa) return;
+
+        // Remove marcadores antigos que não existem mais
+        Object.keys(cobliMapaMarcadores).forEach(id => {
+            if (!veiculos.some(v => String(v.veiculo_id) === id)) {
+                cobliMapaMarcadores[id].remove();
+                delete cobliMapaMarcadores[id];
+            }
+        });
+
+        const bounds = new maplibregl.LngLatBounds();
+        veiculos.forEach(v => {
+            const id = String(v.veiculo_id);
+            const lngLat = [v.longitude, v.latitude];
+            bounds.extend(lngLat);
+
+            const popupHtml = `
+                <strong>${escapeHtml(v.placa || 'Veículo')} ${v.modelo ? '- ' + escapeHtml(v.modelo) : ''}</strong><br>
+                ${v.motorista ? 'Motorista: ' + escapeHtml(v.motorista) + '<br>' : ''}
+                Velocidade: ${v.velocidade ?? '-'} km/h<br>
+                Ignição: ${v.ignicao_ligada ? 'Ligada' : 'Desligada'}<br>
+                <span class="text-xs text-slate-400">Atualizado: ${v.atualizado_em ? new Date(v.atualizado_em).toLocaleString('pt-BR') : '-'}</span>
+            `;
+
+            if (cobliMapaMarcadores[id]) {
+                cobliMapaMarcadores[id].setLngLat(lngLat);
+                cobliMapaMarcadores[id].getPopup().setHTML(popupHtml);
+            } else {
+                const el = document.createElement('div');
+                el.className = 'cadfrota-mapa-marcador';
+                const emMovimento = (v.velocidade || 0) > 0;
+                el.innerHTML = `
+                    <div class="cadfrota-mapa-placa">${escapeHtml(v.placa || '-')}</div>
+                    <div class="cadfrota-mapa-icone ${emMovimento ? '' : 'parado'}"><i class="fa-solid fa-truck"></i></div>
+                `;
+
+                cobliMapaMarcadores[id] = new maplibregl.Marker({ element: el })
+                    .setLngLat(lngLat)
+                    .setPopup(new maplibregl.Popup({ offset: 30 }).setHTML(popupHtml))
+                    .addTo(mapa);
+            }
+        });
+
+        if (veiculos.length > 1) {
+            mapa.fitBounds(bounds, { padding: 40, maxZoom: 14 });
+        } else if (veiculos.length === 1) {
+            mapa.flyTo({ center: [veiculos[0].longitude, veiculos[0].latitude], zoom: 14 });
+        }
+
+        if (atualizadoEl) {
+            atualizadoEl.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar mapa da Cobli:', error);
+        if (vazio) {
+            vazio.style.display = 'block';
+            vazio.textContent = 'Erro ao carregar posições dos veículos.';
+        }
+        if (mapaEl) mapaEl.style.display = 'none';
+    }
+}
+
+// ================================================================
 // INICIALIZAÇÃO
 // ================================================================
 document.addEventListener('DOMContentLoaded', function() {
@@ -1090,9 +2141,70 @@ document.addEventListener('DOMContentLoaded', function() {
             state.paginaAtual = 1;
             cache.dados = null;
             cache.timestamp = null;
+            atualizarAcaoLimparFiltros();
             carregarDados();
         }, 400));
     }
+
+    const prioridadeSelect = document.getElementById('filtro-prioridade');
+    if (prioridadeSelect) prioridadeSelect.addEventListener('change', function() { aplicarPrioridade(this.value); });
+    const limparButton = document.getElementById('limpar-filtros');
+    if (limparButton) limparButton.addEventListener('click', limparFiltros);
+
+    // Filtros da aba Desempenho de Motoristas
+    const motoristasDias = document.getElementById('filtro-motoristas-dias');
+    if (motoristasDias) motoristasDias.addEventListener('change', carregarRankingMotoristas);
+
+    // Filtros da aba Por Caminhão
+    const veiculosDias = document.getElementById('filtro-veiculos-dias');
+    if (veiculosDias) veiculosDias.addEventListener('change', carregarRankingVeiculos);
+
+    // Filtro da aba Gráficos
+    const graficosDias = document.getElementById('filtro-graficos-dias');
+    if (graficosDias) graficosDias.addEventListener('change', carregarGraficosCargas);
+
+    // Filtros da aba Histórico de Embarques
+    const histBusca = document.getElementById('hist-busca');
+    if (histBusca) histBusca.addEventListener('input', debounce(function() {
+        historicoState.busca = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    }, 400));
+
+    const histStatus = document.getElementById('hist-status');
+    if (histStatus) histStatus.addEventListener('change', function() {
+        historicoState.status = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histDataInicio = document.getElementById('hist-data-inicio');
+    if (histDataInicio) histDataInicio.addEventListener('change', function() {
+        historicoState.dataInicio = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histDataFim = document.getElementById('hist-data-fim');
+    if (histDataFim) histDataFim.addEventListener('change', function() {
+        historicoState.dataFim = this.value;
+        historicoState.pagina = 1;
+        carregarHistoricoEmbarques();
+    });
+
+    const histLimpar = document.getElementById('hist-limpar-filtros');
+    if (histLimpar) histLimpar.addEventListener('click', function() {
+        historicoState = { pagina: 1, totalPaginas: 1, busca: '', status: 'todos', dataInicio: '', dataFim: '' };
+        if (histBusca) histBusca.value = '';
+        if (histStatus) histStatus.value = 'todos';
+        if (histDataInicio) histDataInicio.value = '';
+        if (histDataFim) histDataFim.value = '';
+        carregarHistoricoEmbarques();
+    });
+
+    // Aba Rastreio (Cobli)
+    const cobliAtualizarMapa = document.getElementById('cobli-atualizar-mapa');
+    if (cobliAtualizarMapa) cobliAtualizarMapa.addEventListener('click', carregarMapaCobli);
 
     // Limpar cache ao mudar página
     window.addEventListener('beforeunload', function() {
@@ -1129,3 +2241,11 @@ window.verFotoItem = verFotoItem;
 window.toggleTheme = toggleTheme;
 window.mostrarNotificacao = mostrarNotificacao;
 window.fecharModalAnalise = fecharModalAnalise;
+window.mudarAbaCargas = mudarAbaCargas;
+window.carregarRankingMotoristas = carregarRankingMotoristas;
+window.carregarRankingVeiculos = carregarRankingVeiculos;
+window.carregarGraficosCargas = carregarGraficosCargas;
+window.abrirDetalheMotorista = abrirDetalheMotorista;
+window.abrirDetalheVeiculo = abrirDetalheVeiculo;
+window.mudarPaginaHistorico = mudarPaginaHistorico;
+window.abrirDetalheEmbarque = abrirDetalheEmbarque;
