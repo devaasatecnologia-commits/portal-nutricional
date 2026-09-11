@@ -28,6 +28,20 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-success); }
 .connection-state.is-offline .connection-dot { background: var(--driver-danger); }
 .driver-theme-toggle { border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); color: var(--driver-ink); padding: 8px 11px; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.truck-card { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; border: 1px solid var(--driver-border); border-radius: 16px; background: var(--driver-card); padding: 14px 16px; }
+.truck-card[hidden] { display: none; }
+.truck-card-icon { display: grid; flex-shrink: 0; width: 46px; height: 46px; place-items: center; border-radius: 12px; background: var(--driver-ink); color: #fff; font-size: 1.2rem; }
+.truck-card-body { flex: 1; min-width: 0; }
+.truck-card-body h3 { margin: 2px 0; font-size: 1.05rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.truck-card-body p { margin: 0; color: var(--driver-muted); font-size: .8rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.truck-card-tracking { display: flex; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid var(--driver-border); border-radius: 999px; padding: 6px 10px; font-size: .72rem; font-weight: 800; color: var(--driver-muted); white-space: nowrap; }
+.truck-tracking-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--driver-muted); }
+.truck-card-tracking.is-live .truck-tracking-dot { background: var(--driver-success); box-shadow: 0 0 0 3px rgba(22,132,94,.2); }
+.truck-card-tracking.is-live { color: var(--driver-success); border-color: rgba(22,132,94,.35); }
+.truck-card-tracking.is-cache .truck-tracking-dot { background: var(--driver-accent); }
+.truck-card-tracking.is-cache { color: var(--driver-accent); border-color: rgba(213,168,75,.4); }
+@media (max-width: 460px) { .truck-card { flex-wrap: wrap; } .truck-card-tracking { width: 100%; justify-content: center; } }
+
 .route-summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
 .route-summary div { border: 1px solid var(--driver-border); border-radius: 14px; background: var(--driver-card); padding: 14px 12px; }
 .route-summary strong, .route-summary span { display: block; }

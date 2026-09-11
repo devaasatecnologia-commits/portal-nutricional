@@ -84,15 +84,60 @@
       }, () => { $('gps-status').textContent = 'GPS indisponível'; resolve({}); }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
     });
   }
+  // Posição rápida para ações de campo (checkin/checkout): usa a última posição
+  // conhecida em cache imediatamente e só busca uma nova leitura de GPS com um
+  // tempo limite curto, para não travar a ação em locais com sinal fraco.
+  function getPositionFast(timeoutMs = 4000) {
+    return new Promise((resolve) => {
+      const cached = driverPosition || safeParse(localStorage.getItem(positionKey) || 'null', null);
+      if (!navigator.geolocation) return resolve(cached || {});
+      let resolved = false;
+      const finish = (value) => { if (resolved) return; resolved = true; resolve(value); };
+      const timer = setTimeout(() => finish(cached || {}), timeoutMs);
+      navigator.geolocation.getCurrentPosition((position) => {
+        clearTimeout(timer);
+        driverPosition = { latitude: position.coords.latitude, longitude: position.coords.longitude, precisao: position.coords.accuracy };
+        localStorage.setItem(positionKey, JSON.stringify(driverPosition));
+        finish(driverPosition);
+      }, () => { clearTimeout(timer); finish(cached || {}); }, { enableHighAccuracy: true, timeout: timeoutMs, maximumAge: 60000 });
+    });
+  }
   function setConnectionState() {
     const state = $('connection-state'); if (!state) return;
     state.classList.toggle('is-offline', !online()); state.querySelector('span:last-child').textContent = online() ? 'Online' : 'Offline';
     if ($('offline-notice')) $('offline-notice').hidden = online();
     if ($('route-map-offline')) $('route-map-offline').hidden = online();
     if ($('route-map-wrap')) $('route-map-wrap').hidden = !online();
+    atualizarCardCaminhao();
   }
   function atualizarConflitoRota() { $('route-conflict').hidden = !getQueue().some((item) => item.type === 'reordenar' && item.conflict); }
-  
+
+  // ================================================================
+  // CARD DO VEÍCULO/CAMINHÃO DO MOTORISTA
+  // ================================================================
+  function atualizarCardCaminhao() {
+    const card = $('truck-card');
+    if (!card) return;
+    const primeira = entregas.find((item) => item.placa || item.veiculo_id);
+    if (!primeira) { card.hidden = true; return; }
+    card.hidden = false;
+    $('truck-card-placa').textContent = primeira.placa || 'Veículo não vinculado';
+    $('truck-card-modelo').textContent = primeira.modelo || '—';
+    const tracking = $('truck-card-tracking');
+    const label = $('truck-tracking-label');
+    if (!tracking || !label) return;
+    if (online() && truckPosition && truckPosition.fonte === 'cobli') {
+      tracking.className = 'truck-card-tracking is-live';
+      label.textContent = 'Rastreio ao vivo (Cobli)';
+    } else if (truckPosition) {
+      tracking.className = 'truck-card-tracking is-cache';
+      label.textContent = online() ? 'Aguardando Cobli...' : 'Última posição salva (offline)';
+    } else {
+      tracking.className = 'truck-card-tracking';
+      label.textContent = online() ? 'Sem rastreio Cobli' : 'Rastreio indisponível offline';
+    }
+  }
+
   function abrirNavegacao(item, appTarget) {
     if (!item) return;
     const lat = item.latitude;
@@ -172,6 +217,7 @@
 
   function render() {
     const list = $('delivery-list');
+    atualizarCardCaminhao();
     if (!entregas.length) { list.innerHTML = '<div class="empty-state">Nenhuma entrega encontrada para hoje.</div>'; atualizarPainelRota(); atualizarMapaRota(); return; }
     list.innerHTML = entregas.map((item, index) => {
       const complete = ['entregue', 'entregue_com_problema'].includes(item.status);
@@ -229,22 +275,32 @@
     if (!bounds.isEmpty()) routeMap.fitBounds(bounds, { padding: 50, maxZoom: 14 });
   }
   async function atualizarMapaComCobli() {
-    inicializarMapa(); if (!online()) { atualizarMapaRota(); return; }
+    inicializarMapa(); if (!online()) { atualizarMapaRota(); atualizarCardCaminhao(); return; }
     const primeira = entregas.find((item) => typeof item.veiculo_id === 'number');
     if (primeira?.veiculo_id) {
       try {
         const response = await fetch(`${apiBase}/cobli/veiculo/${primeira.veiculo_id}/posicao`, { headers: authHeaders(), credentials: 'include' });
         if (response.ok) {
           const payload = await response.json(); const loc = payload.data?.localizacao; const veiculo = payload.data?.veiculo;
-          if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') salvarPosicaoCaminhao({ latitude: loc.latitude, longitude: loc.longitude, placa: veiculo?.plate || veiculo?.placa || primeira.placa, modelo: veiculo?.model || primeira.modelo });
-          else if (typeof primeira.veiculo_lat === 'number' && typeof primeira.veiculo_lng === 'number') salvarPosicaoCaminhao({ latitude: primeira.veiculo_lat, longitude: primeira.veiculo_lng, placa: primeira.placa, modelo: primeira.modelo });
+          if (loc && typeof loc.latitude === 'number' && typeof loc.longitude === 'number') salvarPosicaoCaminhao({ latitude: loc.latitude, longitude: loc.longitude, placa: veiculo?.plate || veiculo?.placa || primeira.placa, modelo: veiculo?.model || primeira.modelo, fonte: 'cobli' });
+          else if (typeof primeira.veiculo_lat === 'number' && typeof primeira.veiculo_lng === 'number') salvarPosicaoCaminhao({ latitude: primeira.veiculo_lat, longitude: primeira.veiculo_lng, placa: primeira.placa, modelo: primeira.modelo, fonte: 'cadastro' });
         }
       } catch {
-        if (typeof primeira.veiculo_lat === 'number' && typeof primeira.veiculo_lng === 'number') salvarPosicaoCaminhao({ latitude: primeira.veiculo_lat, longitude: primeira.veiculo_lng, placa: primeira.placa, modelo: primeira.modelo });
+        if (typeof primeira.veiculo_lat === 'number' && typeof primeira.veiculo_lng === 'number') salvarPosicaoCaminhao({ latitude: primeira.veiculo_lat, longitude: primeira.veiculo_lng, placa: primeira.placa, modelo: primeira.modelo, fonte: 'cadastro' });
       }
     }
     atualizarMapaRota();
+    atualizarCardCaminhao();
   }
+  // Mantém a posição do caminhão sincronizada com o Cobli enquanto o app
+  // estiver online; quando offline, o intervalo é ignorado e a última
+  // posição em cache continua sendo exibida (ver atualizarCardCaminhao).
+  let cobliPollTimer = null;
+  function iniciarPollingCobli() {
+    if (cobliPollTimer) clearInterval(cobliPollTimer);
+    cobliPollTimer = setInterval(() => { if (online()) atualizarMapaComCobli(); }, 45000);
+  }
+
 
   async function carregarEntregas() {
     if (!motoristaId) { $('motorista-status').textContent = 'Informe o motorista para carregar a rota'; $('delivery-list').innerHTML = '<div class="empty-state">A rota ainda não foi vinculada a um motorista.</div>'; return; }
@@ -263,7 +319,7 @@
       rotaVersion = entregas[0]?.embarque_updated_at || null;
       driverPosition = safeParse(localStorage.getItem(positionKey) || 'null', null);
       truckPosition = safeParse(localStorage.getItem(truckKey) || 'null', null);
-      render(); updateSummary();
+      render(); updateSummary(); atualizarCardCaminhao();
       $('motorista-status').textContent = entregas.length ? 'Usando a última rota salva neste aparelho' : 'Não foi possível carregar a rota';
     }
   }
@@ -301,7 +357,7 @@
   }
   async function obterDadosDaAcao(action) { if (action === 'checkout') return dadosCheckout(); if (action === 'falha') { const motivo = window.prompt('Motivo: cliente_ausente, endereco_incorreto, recusado, nao_localizado ou outro'); const validos = ['cliente_ausente', 'endereco_incorreto', 'recusado', 'nao_localizado', 'outro']; if (!validos.includes(motivo)) return null; return { motorista_id: motoristaId, motivo, observacao: motivo, data_hora: new Date().toISOString() }; } return { motorista_id: motoristaId, desktop: false, data_hora: new Date().toISOString() }; }
   async function executarAcao(id, action) {
-    const position = await getPosition(); const body = { ...(await obterDadosDaAcao(action)), ...position }; if (!body) return;
+    const position = await getPositionFast(); const body = { ...(await obterDadosDaAcao(action)), ...position }; if (!body) return;
     const request = { id, endpoint: `${apiBase}/entregas/${id}/${action}`, action, body, operation_id: operationId(id, action, body) }; request.body.operation_id = request.operation_id;
     if (!online()) { const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]); aplicarStatusLocal(id, action); return; }
     try { const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) }); if (!response.ok) throw new Error('Ação não aceita'); aplicarStatusLocal(id, action); }
@@ -349,12 +405,30 @@
   $('signature-clear')?.addEventListener('click', limparAssinatura);
   $('checkout-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    const id = $('checkout-form').dataset.deliveryId;
+    let request = null;
     try {
-      const id = $('checkout-form').dataset.deliveryId; $('checkout-modal').hidden = true; const position = await getPosition(); const body = { ...(await obterDadosDaAcao('checkout')), ...position };
-      const request = { id, endpoint: `${apiBase}/entregas/${id}/checkout`, action: 'checkout', body, operation_id: operationId(id, 'checkout', body) }; request.body.operation_id = request.operation_id;
-      if (!online()) { saveQueue([...getQueue(), request]); aplicarStatusLocal(id, 'checkout'); return; }
-      const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) }); if (!response.ok) throw new Error('Checkout não aceito'); aplicarStatusLocal(id, 'checkout');
-    } catch (error) { window.alert(error.message); $('checkout-modal').hidden = false; }
+      const dados = await obterDadosDaAcao('checkout');
+      // Feedback imediato: fecha o modal e aplica o status local assim que os
+      // dados (fotos/assinatura, já lidos localmente) estiverem prontos, sem
+      // esperar a rede ou o GPS de alta precisão.
+      $('checkout-modal').hidden = true;
+      aplicarStatusLocal(id, 'checkout');
+      const position = await getPositionFast();
+      const body = { ...dados, ...position };
+      request = { id, endpoint: `${apiBase}/entregas/${id}/checkout`, action: 'checkout', body, operation_id: operationId(id, 'checkout', body) }; request.body.operation_id = request.operation_id;
+      if (!online()) { saveQueue([...getQueue(), request]); return; }
+      const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+      if (!response.ok) throw new Error('Checkout não aceito');
+    } catch (error) {
+      if (request) {
+        // Falha ao validar dados: modal ainda não fechou, avisa o motorista.
+        const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]);
+        window.alert('Não foi possível concluir o checkout online. Ele foi salvo e será sincronizado automaticamente.');
+      } else {
+        window.alert(error.message);
+      }
+    }
   });
   const signatureCanvas = $('signature-pad'); let drawing = false;
   signatureCanvas?.addEventListener('pointerdown', (event) => { drawing = true; signatureCanvas.setPointerCapture(event.pointerId); const rect = signatureCanvas.getBoundingClientRect(); const ctx = signatureCanvas.getContext('2d'); ctx.beginPath(); ctx.moveTo((event.clientX - rect.left) * signatureCanvas.width / rect.width, (event.clientY - rect.top) * signatureCanvas.height / rect.height); });
@@ -416,10 +490,10 @@
   });
 
   $('driver-theme-toggle')?.addEventListener('click', alternarTema);
-  window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); carregarNotificacoes(); });
-  window.addEventListener('offline', () => { setConnectionState(); atualizarMapaRota(); });
+  window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); carregarNotificacoes(); iniciarPollingCobli(); });
+  window.addEventListener('offline', () => { setConnectionState(); atualizarMapaRota(); atualizarCardCaminhao(); });
   navigator.serviceWorker?.addEventListener('message', (event) => { if (event.data?.type === 'frota-offline-sync') sincronizarFila(); });
   if ('serviceWorker' in navigator) { const appBase = window.location.pathname.split('/portal/')[0]; navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {}); }
   if (navigator.geolocation && online()) watchId = navigator.geolocation.watchPosition((position) => salvarPosicaoMotorista({ latitude: position.coords.latitude, longitude: position.coords.longitude, precisao: position.coords.accuracy }), () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 });
-  aplicarTema(); setConnectionState(); carregarListaMotoristas(); inicializarMapa(); carregarEntregas(); carregarNotificacoes(); sincronizarFila(); abrirPendenciasSeExistirem();
+  aplicarTema(); setConnectionState(); carregarListaMotoristas(); inicializarMapa(); carregarEntregas(); carregarNotificacoes(); sincronizarFila(); abrirPendenciasSeExistirem(); iniciarPollingCobli();
 }());

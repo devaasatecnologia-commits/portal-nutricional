@@ -46,6 +46,19 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </header>
 
+    <section class="truck-card" id="truck-card" hidden aria-label="Meu veículo">
+        <div class="truck-card-icon"><i class="fa-solid fa-truck"></i></div>
+        <div class="truck-card-body">
+            <span class="eyebrow">Meu veículo</span>
+            <h3 id="truck-card-placa">-</h3>
+            <p id="truck-card-modelo">-</p>
+        </div>
+        <div class="truck-card-tracking" id="truck-card-tracking">
+            <span class="truck-tracking-dot" id="truck-tracking-dot"></span>
+            <span id="truck-tracking-label">Rastreio indisponível</span>
+        </div>
+    </section>
+
     <section class="route-summary" aria-label="Resumo da rota">
         <div><strong id="total-entregas">0</strong><span>entregas</span></div>
         <div><strong id="entregas-concluidas">0</strong><span>concluídas</span></div>
