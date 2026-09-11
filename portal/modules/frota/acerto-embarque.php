@@ -9,13 +9,15 @@ $version = time();
 // ================================================================
 // HEADER E CSS
 // ================================================================
+$assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
+
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/acerto-embarque.css?v=' . $version . '">
 ';
 
 $extraJs = '
@@ -374,8 +376,8 @@ function getToken() {
     return token || '';
 }
 </script>
-<script src="/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
-<script src="/portal/modules/frota/assets/acerto-embarque.js?v=<?= $version ?>"></script>
+<script src="<?= $assetBase ?>/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
+<script src="<?= $assetBase ?>/portal/modules/frota/assets/acerto-embarque.js?v=<?= $version ?>"></script>
 
 <?php
 require_once __DIR__ . '/../../estrutura/footer.php';

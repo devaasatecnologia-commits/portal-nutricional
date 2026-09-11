@@ -2,6 +2,10 @@
 // MODULO FROTA - FUNCOES COMPARTILHADAS
 // ======================================================================
 
+// Base dinamica da API (/API/v1 ou /v1 dependendo do ambiente)
+var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
+window.API_BASE = API_BASE;
+
 /**
  * Obtem o token de autenticacao do localStorage
  */

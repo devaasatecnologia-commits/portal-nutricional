@@ -1,3 +1,4 @@
+var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
 // ================================================================
 // ACERTO DE EMBARQUE - JAVASCRIPT COMPLETO (CORRIGIDO)
 // ================================================================
@@ -122,7 +123,7 @@ function fetchAuth(url, options = {}) {
 
 async function tentarRenovarToken() {
     try {
-        const response = await fetch('/v1/auth/refresh', {
+        const response = await fetch(API_BASE + '/auth/refresh', {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -195,7 +196,7 @@ function carregarEmbarquesParaAcerto(forcar = false) {
     
     showLoading('lista-embarques');
     
-    const url = '/v1/frota/acerto/embarques?' + params.toString();
+    const url = API_BASE + '/frota/acerto/embarques?' + params.toString();
     console.log('📡 Buscando: GET ' + url);
     
     fetchAuth(url)
@@ -563,7 +564,7 @@ function abrirAcerto(embarqueId) {
     // ============================================================
     // 🔥 CARREGAR DADOS
     // ============================================================
-    const url = '/v1/frota/acerto/' + embarqueId + '/detalhes';
+    const url = API_BASE + '/frota/acerto/' + embarqueId + '/detalhes';
     console.log('📡 Buscando: GET ' + url);
     
     fetchAuth(url)
@@ -1326,7 +1327,7 @@ function iniciarAcerto() {
         cancelButtonText: 'Cancelar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/iniciar';
+            const url = API_BASE + '/frota/acerto/iniciar';
             const data = { embarque_id: acertoAtual.embarque_id };
             
             console.log('📡 Enviando: POST ' + url, data);
@@ -1386,7 +1387,7 @@ function finalizarAcerto() {
         cancelButtonText: 'Cancelar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/' + acertoAtual.id + '/finalizar';
+            const url = API_BASE + '/frota/acerto/' + acertoAtual.id + '/finalizar';
             
             console.log('📡 Enviando: POST ' + url);
             
@@ -1449,7 +1450,7 @@ function cancelarAcerto() {
         cancelButtonText: 'Voltar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/' + acertoAtual.id + '/cancelar';
+            const url = API_BASE + '/frota/acerto/' + acertoAtual.id + '/cancelar';
             
             console.log('📡 Enviando: POST ' + url);
             
@@ -1572,7 +1573,7 @@ function adicionarItemProblema() {
     }).then(result => {
         if (result.isConfirmed && result.value) {
             const busca = result.value;
-            const url = '/v1/frota/acerto/itens/buscar?q=' + encodeURIComponent(busca) + '&limite=10';
+            const url = API_BASE + '/frota/acerto/itens/buscar?q=' + encodeURIComponent(busca) + '&limite=10';
             
             Swal.fire({
                 title: 'Buscando...',
@@ -1792,7 +1793,7 @@ function salvarPedidoProblema() {
                 itens: itens
             };
             
-            const url = '/v1/frota/acerto/pedido-problema';
+            const url = API_BASE + '/frota/acerto/pedido-problema';
             
             console.log('📡 Enviando: POST ' + url, data);
             
@@ -1928,7 +1929,7 @@ function verDetalhesEntrega(entregaId) {
         didOpen: () => { Swal.showLoading(); }
     });
     
-    fetch(`/v1/frota/entregas/${entregaId}`, {
+    fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -2137,7 +2138,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
         didOpen: () => { Swal.showLoading(); }
     });
     
-    fetch(`/v1/frota/entregas/${entregaId}`, {
+    fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -2304,7 +2305,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     didOpen: () => { Swal.showLoading(); }
                 });
                 
-                fetch('/v1/frota/acerto/pedido-problema', {
+                fetch(API_BASE + '/frota/acerto/pedido-problema', {
                     method: 'POST',
                     headers: {
                         'Authorization': 'Bearer ' + token,
@@ -2394,7 +2395,7 @@ function gerarPedidoERP(pedidoAcertoId) {
         didOpen: () => { Swal.showLoading(); }
     });
     
-    fetch(`/v1/frota/acerto/pedido/${pedidoAcertoId}`, {
+    fetch(`${API_BASE}/frota/acerto/pedido/${pedidoAcertoId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -2486,7 +2487,7 @@ function gerarPedidoERP(pedidoAcertoId) {
             cancelButtonColor: '#dc2626',
             didOpen: async () => {
                 try {
-                    const response = await fetch('/v1/frota/acerto/transacoes', {
+                    const response = await fetch(API_BASE + '/frota/acerto/transacoes', {
                         headers: {
                             'Authorization': 'Bearer ' + token,
                             'Content-Type': 'application/json'
@@ -2553,7 +2554,7 @@ function gerarPedidoERP(pedidoAcertoId) {
                     didOpen: () => { Swal.showLoading(); }
                 });
                 
-                fetch(`/v1/frota/acerto/pedido/${pedidoAcertoId}/criar-erp`, {
+                fetch(`${API_BASE}/frota/acerto/pedido/${pedidoAcertoId}/criar-erp`, {
                     method: 'POST',
                     headers: {
                         'Authorization': 'Bearer ' + token,
@@ -3303,7 +3304,7 @@ function finalizarAposComprovanteImpresso() {
     }
 
     const finalizarNoServidor = acertoAtual.id
-        ? fetchAuth('/v1/frota/acerto/' + acertoAtual.id + '/finalizar', {
+        ? fetchAuth(API_BASE + '/frota/acerto/' + acertoAtual.id + '/finalizar', {
             method: 'POST',
             body: JSON.stringify({ assinatura_gestor: null })
         }).catch(err => {
