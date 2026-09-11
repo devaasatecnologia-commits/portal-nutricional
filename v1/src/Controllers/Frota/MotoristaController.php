@@ -19,9 +19,38 @@ class MotoristaController
      * GET /v1/frota/motoristas
      * Listar motoristas com filtros
      */
+    /**
+     * Garante que o usuário autenticado só acesse dados do próprio motorista,
+     * a menos que seja admin ou tenha permissão de gestão de frota.
+     */
+    private function usuarioPodeAcessarMotorista(Request $request, int $motoristaId): bool
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        if ($isAdmin || in_array('frota', $permissoes, true) || in_array('gestao-cargas', $permissoes, true)) {
+            return true;
+        }
+        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
+        return $motoristaAutenticado > 0 && $motoristaAutenticado === $motoristaId;
+    }
+
     public function listar(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        $temAcessoGestao = $isAdmin || in_array('frota', $permissoes, true) || in_array('gestao-cargas', $permissoes, true);
+        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
+
+        // Motorista comum: só enxerga o próprio cadastro, nunca a lista completa.
+        if (!$temAcessoGestao) {
+            if ($motoristaAutenticado <= 0) {
+                return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+            }
+            $params['id_unico'] = $motoristaAutenticado;
+        }
         
         $filtros = [];
         $bindParams = [];
@@ -41,6 +70,11 @@ class MotoristaController
         if (!empty($params['veiculo_id'])) {
             $filtros[] = "m.veiculo_atual_id = :veiculo_id";
             $bindParams['veiculo_id'] = (int)$params['veiculo_id'];
+        }
+
+        if (!empty($params['id_unico'])) {
+            $filtros[] = "m.id = :id_unico";
+            $bindParams['id_unico'] = (int)$params['id_unico'];
         }
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
@@ -107,6 +141,9 @@ class MotoristaController
     public function buscar(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
@@ -345,6 +382,9 @@ class MotoristaController
     public function entregas(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $params = $request->getQueryParams();
         
         $filtros = ["eb.motorista_id = :motorista_id"];
@@ -419,6 +459,9 @@ class MotoristaController
     public function entregasHoje(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
@@ -544,6 +587,9 @@ class MotoristaController
     public function rotaAtiva(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         $sql = "
             SELECT 
@@ -1041,6 +1087,9 @@ class MotoristaController
     public function getNotificacoes(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $limite = (int)($request->getQueryParams()['limite'] ?? 20);
         
         $stmt = $this->pdo->prepare("

@@ -3,7 +3,16 @@
   const app = document.querySelector('.motorista-app');
   if (!app) return;
 
+  const safeParse = (value, fallback = null) => { try { return JSON.parse(value); } catch { return fallback; } };
+  const userData = safeParse(localStorage.getItem('userData') || 'null', null);
+  const userPermissoes = userData?.permissoes || [];
+  // Motorista comum (sem permissao de gestao de frota) fica travado no proprio
+  // cadastro: nao pode ver nem trocar para outro motorista/usuario.
+  const podeTrocarMotorista = Boolean(userData?.is_admin) || userPermissoes.includes('admin') || userPermissoes.includes('frota') || userPermissoes.includes('gestao-cargas');
+  const motoristaVinculado = Number(userData?.motorista_id || 0);
+
   let motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || localStorage.getItem('motoristaId') || 0);
+  if (motoristaVinculado > 0 && !podeTrocarMotorista) motoristaId = motoristaVinculado;
   let cacheKey = `frota.motorista.${motoristaId}.entregas`;
   let queueKey = `frota.motorista.${motoristaId}.offline.queue`;
   let positionKey = `frota.motorista.${motoristaId}.posicao`;
@@ -22,7 +31,6 @@
   let watchId = null;
 
   const $ = (id) => document.getElementById(id);
-  const safeParse = (value, fallback = null) => { try { return JSON.parse(value); } catch { return fallback; } };
   const online = () => navigator.onLine;
   const authHeaders = () => {
     const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
@@ -157,6 +165,20 @@
   }
 
   async function carregarListaMotoristas() {
+    const selectorCard = $('driver-selector-card');
+    // Motorista comum: nunca exibe a lista de outros motoristas/usuários,
+    // apenas identifica o próprio nome e esconde o seletor.
+    if (motoristaVinculado > 0 && !podeTrocarMotorista) {
+      if (selectorCard) selectorCard.hidden = true;
+      try {
+        const response = await fetch(`${apiBase}/motoristas/${motoristaId}`, { headers: authHeaders(), credentials: 'include' });
+        if (response.ok) {
+          const payload = await response.json(); const atual = payload.data;
+          if (atual && $('driver-current-name')) $('driver-current-name').textContent = 'Motorista: ' + atual.nome + (atual.veiculo_placa ? ' | Veículo: ' + atual.veiculo_placa : '');
+        }
+      } catch (e) { console.warn('Erro ao identificar motorista:', e); }
+      return;
+    }
     const select = $('driver-select-input');
     if (!select) return;
     try {
@@ -254,7 +276,6 @@
     if (!online()) { if ($('route-map-wrap')) $('route-map-wrap').hidden = true; if ($('route-map-offline')) $('route-map-offline').hidden = false; return; }
     if ($('route-map-wrap')) $('route-map-wrap').hidden = false; if ($('route-map-offline')) $('route-map-offline').hidden = true;
     const rota = entregas.filter((item) => typeof item.latitude === 'number' && typeof item.longitude === 'number');
-    if (!rota.length) return;
     limparMarcadoresMapa(); const coords = []; const bounds = new maplibregl.LngLatBounds();
     rota.forEach((stop, index) => {
       coords.push([stop.longitude, stop.latitude]); bounds.extend([stop.longitude, stop.latitude]);
@@ -264,7 +285,7 @@
     atualizarLinhaRota(coords);
     if (truckPosition && typeof truckPosition.longitude === 'number' && typeof truckPosition.latitude === 'number') {
       const el = document.createElement('div'); el.className = 'driver-truck-marker'; el.innerHTML = `<div class="driver-truck-balloon">${escapeHtml(truckPosition.placa || 'Caminhão')}</div><div class="driver-truck-icon"><i class="fa-solid fa-truck"></i></div>`;
-      routeMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([truckPosition.longitude, truckPosition.latitude]).setPopup(new maplibregl.Popup({ offset: 24 }).setHTML(`<strong>${escapeHtml(truckPosition.placa || 'Caminhão')}</strong><br>${escapeHtml(truckPosition.modelo || '')}<br>Fonte: Cobli`)).addTo(routeMap));
+      routeMarkers.push(new maplibregl.Marker({ element: el }).setLngLat([truckPosition.longitude, truckPosition.latitude]).setPopup(new maplibregl.Popup({ offset: 24 }).setHTML(`<strong>${escapeHtml(truckPosition.placa || 'Caminhão')}</strong><br>${escapeHtml(truckPosition.modelo || '')}<br>Fonte: ${truckPosition.fonte === 'cobli' ? 'Cobli (ao vivo)' : 'Cadastro'}`)).addTo(routeMap));
       bounds.extend([truckPosition.longitude, truckPosition.latitude]);
     }
     if (driverPosition && typeof driverPosition.longitude === 'number' && typeof driverPosition.latitude === 'number') {
@@ -439,6 +460,7 @@
   $('route-conflict-discard')?.addEventListener('click', async () => { await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict))); $('route-conflict').hidden = true; $('motorista-status').textContent = 'Ordenação local descartada; rota do gestor preservada.'; await carregarEntregas(); });
   
   $('btn-confirm-driver')?.addEventListener('click', async () => {
+    if (motoristaVinculado > 0 && !podeTrocarMotorista) return; // motorista comum não pode trocar
     const val = Number($('driver-select-input')?.value || 0);
     if (!val) {
       if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: 'Selecione um motorista', confirmButtonText: 'OK' });
