@@ -76,7 +76,7 @@
       const db = await abrirBancoOffline(); const tx = db.transaction('fila', 'readwrite'); const store = tx.objectStore('fila'); store.clear(); queue.forEach((item) => store.put(item));
     } catch { localStorage.setItem(queueKey, JSON.stringify(queue)); }
   }
-  function saveQueue(queue) { void salvarFila(queue); atualizarConflitoRota(); void navigator.serviceWorker?.ready.then((r) => r.sync?.register('frota-offline-sync')); }
+  function saveQueue(queue) { void salvarFila(queue); atualizarConflitoRota(); void navigator.serviceWorker?.ready.then((r) => r.sync?.register('frota-offline-sync')).catch(() => {}); }
   queueReady = carregarFila();
   function operationId(id, action, body) { return `${motoristaId}:${id}:${action}:${body.data_hora}`; }
   function getPosition() {
@@ -354,7 +354,7 @@
       if (notification) { $('driver-alert').hidden = false; $('driver-alert').textContent = `${notification.titulo}: ${notification.mensagem}`; }
     } catch {}
   }
-  function aplicarStatusLocal(id, action) { const item = entregas.find((delivery) => Number(delivery.id) === Number(id)); if (!item) return; item.status = action === 'checkout' ? 'entregue' : action === 'falha' ? 'pendente' : 'em_entrega'; persist(); }
+  function aplicarStatusLocal(id, action) { const item = entregas.find((delivery) => Number(delivery.id) === Number(id)); if (!item) return; item.status = action === 'reverter-pendente' ? 'em_entrega' : action === 'checkout' ? 'entregue' : action === 'falha' ? 'pendente' : 'em_entrega'; persist(); }
   function lerArquivo(file) { return new Promise((resolve) => { if (!file) return resolve(null); const reader = new FileReader(); reader.onload = () => resolve(reader.result); reader.onerror = () => resolve(null); reader.readAsDataURL(file); }); }
   function abrirCheckout(item) {
     $('checkout-modal').hidden = false; $('checkout-form').dataset.deliveryId = item.id; $('receiver-name').value = ''; $('romaneio-photo').value = '';
@@ -376,13 +376,39 @@
     }
     return { motorista_id: motoristaId, desktop: false, nome_recebedor: nomeRecebedor, foto_romaneio: romaneio, assinatura_base64: capturarAssinatura(), checklist, tem_faltante: checklist.some((entry) => entry.status === 'faltante'), data_hora: new Date().toISOString() };
   }
-  async function obterDadosDaAcao(action) { if (action === 'checkout') return dadosCheckout(); if (action === 'falha') { const motivo = window.prompt('Motivo: cliente_ausente, endereco_incorreto, recusado, nao_localizado ou outro'); const validos = ['cliente_ausente', 'endereco_incorreto', 'recusado', 'nao_localizado', 'outro']; if (!validos.includes(motivo)) return null; return { motorista_id: motoristaId, motivo, observacao: motivo, data_hora: new Date().toISOString() }; } return { motorista_id: motoristaId, desktop: false, data_hora: new Date().toISOString() }; }
+  async function selecionarMotivoFalha() {
+    const opcoes = { cliente_ausente: 'Cliente ausente', endereco_incorreto: 'Endereço incorreto', recusado: 'Recebimento recusado', nao_localizado: 'Local não localizado', outro: 'Outro motivo' };
+    if (window.Swal) {
+      const { value: motivo } = await Swal.fire({ icon: 'question', title: 'Qual foi o problema?', input: 'select', inputOptions: opcoes, inputPlaceholder: 'Selecione um motivo', showCancelButton: true, confirmButtonText: 'Confirmar', cancelButtonText: 'Cancelar' });
+      return motivo || null;
+    }
+    const motivo = window.prompt('Motivo: cliente_ausente, endereco_incorreto, recusado, nao_localizado ou outro');
+    return Object.keys(opcoes).includes(motivo) ? motivo : null;
+  }
+  async function obterDadosDaAcao(action) { if (action === 'checkout') return dadosCheckout(); if (action === 'falha') { const motivo = await selecionarMotivoFalha(); if (!motivo) return null; return { motorista_id: motoristaId, motivo, observacao: motivo, data_hora: new Date().toISOString() }; } return { motorista_id: motoristaId, desktop: false, data_hora: new Date().toISOString() }; }
   async function executarAcao(id, action) {
     const position = await getPositionFast(); const body = { ...(await obterDadosDaAcao(action)), ...position }; if (!body) return;
     const request = { id, endpoint: `${apiBase}/entregas/${id}/${action}`, action, body, operation_id: operationId(id, action, body) }; request.body.operation_id = request.operation_id;
     if (!online()) { const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]); aplicarStatusLocal(id, action); return; }
-    try { const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) }); if (!response.ok) throw new Error('Ação não aceita'); aplicarStatusLocal(id, action); }
-    catch { const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]); aplicarStatusLocal(id, action); }
+    try {
+      const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) });
+      if (response.status >= 400 && response.status < 500) {
+        // Erro de validação do servidor (ex.: sem GPS, distância excedida, sem
+        // autorização): NÃO enfileira nem marca como concluído — o motorista
+        // precisa ser avisado e corrigir antes de tentar novamente.
+        let mensagem = 'Ação não aceita pelo servidor.';
+        try { const payload = await response.json(); mensagem = payload.error || mensagem; } catch {}
+        if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: 'Não foi possível confirmar', text: mensagem, confirmButtonText: 'OK' });
+        else window.alert(mensagem);
+        return;
+      }
+      if (!response.ok) throw new Error('Ação não aceita');
+      aplicarStatusLocal(id, action);
+    } catch {
+      // Falha de rede (sem resposta do servidor): mantém o comportamento
+      // offline-first, enfileirando para sincronizar quando a conexão voltar.
+      const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]); aplicarStatusLocal(id, action);
+    }
   }
   async function salvarOrdem() {
     const embarqueId = entregas[0]?.embarque_id; if (!embarqueId) return;
@@ -394,14 +420,27 @@
   }
   async function mover(index, delta) { const target = index + delta; if (target < 0 || target >= entregas.length) return; [entregas[index], entregas[target]] = [entregas[target], entregas[index]]; persist(); try { await salvarOrdem(); } catch { $('motorista-status').textContent = 'Ordem alterada localmente; será salva quando houver conexão'; } }
   async function sincronizarFila() {
-    if (!online()) return; await queueReady; const remaining = [];
+    if (!online()) return; await queueReady; const remaining = []; const falhas = [];
     for (const request of [...getQueue()]) {
       try {
         const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(request.body) });
-        if (response.status === 409) { request.conflict = true; remaining.push(request); $('motorista-status').textContent = 'Há uma alteração de rota pendente de revisão.'; } else if (!response.ok) remaining.push(request);
+        if (response.status === 409) { request.conflict = true; remaining.push(request); $('motorista-status').textContent = 'Há uma alteração de rota pendente de revisão.'; } else if (!response.ok) {
+          if (response.status >= 400 && response.status < 500) {
+            // Erro de validação/permissão do servidor: não adianta retentar, descarta e informa o motorista.
+            let mensagem = 'Uma ação pendente não pôde ser confirmada e foi descartada.';
+            try { const dados = await response.json(); if (dados?.message) mensagem = dados.message; } catch {}
+            falhas.push({ id: request.id, action: request.action, mensagem });
+          } else remaining.push(request);
+        }
       } catch { remaining.push(request); }
     }
     await salvarFila(remaining); atualizarConflitoRota();
+    if (falhas.length) {
+      await carregarEntregas();
+      const resumo = falhas.map((falha) => `Parada (${falha.action}): ${falha.mensagem}`).join('\n');
+      if (window.Swal) await Swal.fire({ icon: 'warning', title: 'Ações pendentes não confirmadas', html: resumo.replace(/\n/g, '<br>'), confirmButtonText: 'OK' });
+      else window.alert(resumo);
+    }
   }
   async function abrirPendenciasSeExistirem() {
     const pendencias = safeParse(sessionStorage.getItem('cadfrota_pendencias_erp') || 'null', null); if (!pendencias) return;
@@ -440,10 +479,21 @@
       request = { id, endpoint: `${apiBase}/entregas/${id}/checkout`, action: 'checkout', body, operation_id: operationId(id, 'checkout', body) }; request.body.operation_id = request.operation_id;
       if (!online()) { saveQueue([...getQueue(), request]); return; }
       const response = await fetch(request.endpoint, { method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(body) });
+      if (response.status >= 400 && response.status < 500) {
+        // Erro de validação do servidor (ex.: distância, autorização): não
+        // enfileira para retry (voltaria a falhar sempre) e desfaz o status
+        // aplicado localmente, avisando o motorista com o motivo real.
+        let mensagem = 'Checkout não aceito pelo servidor.';
+        try { const payload = await response.json(); mensagem = payload.error || mensagem; } catch {}
+        aplicarStatusLocal(id, 'reverter-pendente');
+        if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: 'Não foi possível confirmar', text: mensagem, confirmButtonText: 'OK' });
+        else window.alert(mensagem);
+        return;
+      }
       if (!response.ok) throw new Error('Checkout não aceito');
     } catch (error) {
       if (request) {
-        // Falha ao validar dados: modal ainda não fechou, avisa o motorista.
+        // Falha de rede: modal ainda não fechou, avisa o motorista.
         const queue = getQueue(); if (!queue.some((item) => item.operation_id === request.operation_id)) saveQueue([...queue, request]);
         window.alert('Não foi possível concluir o checkout online. Ele foi salvo e será sincronizado automaticamente.');
       } else {
@@ -519,3 +569,5 @@
   if (navigator.geolocation && online()) watchId = navigator.geolocation.watchPosition((position) => salvarPosicaoMotorista({ latitude: position.coords.latitude, longitude: position.coords.longitude, precisao: position.coords.accuracy }), () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 });
   aplicarTema(); setConnectionState(); carregarListaMotoristas(); inicializarMapa(); carregarEntregas(); carregarNotificacoes(); sincronizarFila(); abrirPendenciasSeExistirem(); iniciarPollingCobli();
 }());
+
+// MARKER_UNIQUE_12345
