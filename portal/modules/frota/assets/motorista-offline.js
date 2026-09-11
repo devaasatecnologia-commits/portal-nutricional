@@ -3,7 +3,7 @@
   const app = document.querySelector('.motorista-app');
   if (!app) return;
 
-  const motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || localStorage.getItem('motoristaId') || 0);
+  let motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || localStorage.getItem('motoristaId') || 0);
   const cacheKey = `frota.motorista.${motoristaId}.entregas`;
   const queueKey = `frota.motorista.${motoristaId}.offline.queue`;
   const positionKey = `frota.motorista.${motoristaId}.posicao`;
@@ -92,6 +92,46 @@
     if ($('route-map-wrap')) $('route-map-wrap').hidden = !online();
   }
   function atualizarConflitoRota() { $('route-conflict').hidden = !getQueue().some((item) => item.type === 'reordenar' && item.conflict); }
+  
+  function abrirNavegacao(item, appTarget) {
+    if (!item) return;
+    const lat = item.latitude;
+    const lng = item.longitude;
+    const addr = formatAddress(item);
+    let url = '';
+    if (appTarget === 'waze') {
+      url = (typeof lat === 'number' && typeof lng === 'number') 
+        ? 'https://waze.com/ul?ll=' + lat + ',' + lng + '&navigate=yes'
+        : 'https://waze.com/ul?q=' + encodeURIComponent(addr);
+    } else {
+      url = (typeof lat === 'number' && typeof lng === 'number')
+        ? 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng
+        : 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(addr);
+    }
+    window.open(url, '_blank');
+  }
+
+  async function carregarListaMotoristas() {
+    const select = $('driver-select-input');
+    if (!select) return;
+    try {
+      const response = await fetch(apiBase + '/motoristas?status=ativo&limite=100', { headers: authHeaders(), credentials: 'include' });
+      if (!response.ok) return;
+      const payload = await response.json();
+      const list = payload.data || [];
+      select.innerHTML = '<option value="">-- Selecione seu nome --</option>' + 
+        list.map((m) => '<option value="' + m.id + '" ' + (Number(m.id) === motoristaId ? 'selected' : '') + '>' + escapeHtml(m.nome) + ' (' + escapeHtml(m.veiculo_placa || 'Sem veículo') + ')</option>').join('');
+      if (motoristaId) {
+        const atual = list.find((m) => Number(m.id) === motoristaId);
+        if (atual && $('driver-current-name')) {
+          $('driver-current-name').textContent = 'Motorista: ' + atual.nome + (atual.veiculo_placa ? ' | Veículo: ' + atual.veiculo_placa : '');
+        }
+      }
+    } catch (e) {
+      console.warn('Erro ao carregar lista de motoristas:', e);
+    }
+  }
+
   function formatAddress(item) { return [item.endereco, item.numero, item.bairro, item.cidade, item.uf].filter(Boolean).join(', ') || 'Endereço não informado'; }
   function escapeHtml(value) { return String(value).replace(/[&<>'"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c])); }
   function haversineKm(aLat, aLng, bLat, bLng) {
@@ -323,11 +363,63 @@
   $('btn-refresh-route')?.addEventListener('click', carregarEntregas);
   $('route-conflict-refresh')?.addEventListener('click', async () => { await carregarEntregas(); $('route-conflict').hidden = true; });
   $('route-conflict-discard')?.addEventListener('click', async () => { await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict))); $('route-conflict').hidden = true; $('motorista-status').textContent = 'Ordenação local descartada; rota do gestor preservada.'; await carregarEntregas(); });
+  
+  $('btn-confirm-driver')?.addEventListener('click', async () => {
+    const val = Number($('driver-select-input')?.value || 0);
+    if (!val) {
+      if (typeof Swal !== 'undefined') Swal.fire({ icon: 'warning', title: 'Selecione um motorista', confirmButtonText: 'OK' });
+      else alert('Selecione um motorista');
+      return;
+    }
+    motoristaId = val;
+    localStorage.setItem('motoristaId', val);
+    app.dataset.motoristaId = val;
+    cacheKey = 'frota.motorista.' + motoristaId + '.entregas';
+    queueKey = 'frota.motorista.' + motoristaId + '.offline.queue';
+    positionKey = 'frota.motorista.' + motoristaId + '.posicao';
+    truckKey = 'frota.motorista.' + motoristaId + '.truck';
+    await carregarEntregas();
+    await carregarListaMotoristas();
+  });
+
+  $('next-stop-waze')?.addEventListener('click', () => {
+    const proxima = entregas.find((item) => !['entregue', 'entregue_com_problema'].includes(item.status));
+    if (proxima) abrirNavegacao(proxima, 'waze');
+  });
+
+  $('next-stop-gmaps')?.addEventListener('click', () => {
+    const proxima = entregas.find((item) => !['entregue', 'entregue_com_problema'].includes(item.status));
+    if (proxima) abrirNavegacao(proxima, 'gmaps');
+  });
+
+  $('btn-sync-now')?.addEventListener('click', async () => {
+    $('btn-sync-now').disabled = true;
+    $('btn-sync-now').innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sincronizando...';
+    await sincronizarFila();
+    await carregarEntregas();
+    $('btn-sync-now').disabled = false;
+    $('btn-sync-now').innerHTML = '<i class="fa-solid fa-rotate"></i> Sincronizar Agora';
+  });
+
+  $('romaneio-photo')?.addEventListener('change', (event) => {
+    const file = event.target.files[0];
+    const previewContainer = $('romaneio-preview');
+    const previewImg = $('romaneio-preview-img');
+    if (file && previewContainer && previewImg) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewContainer.hidden = false;
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+
   $('driver-theme-toggle')?.addEventListener('click', alternarTema);
   window.addEventListener('online', () => { setConnectionState(); sincronizarFila(); carregarEntregas(); carregarNotificacoes(); });
   window.addEventListener('offline', () => { setConnectionState(); atualizarMapaRota(); });
   navigator.serviceWorker?.addEventListener('message', (event) => { if (event.data?.type === 'frota-offline-sync') sincronizarFila(); });
   if ('serviceWorker' in navigator) { const appBase = window.location.pathname.split('/portal/')[0]; navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {}); }
   if (navigator.geolocation && online()) watchId = navigator.geolocation.watchPosition((position) => salvarPosicaoMotorista({ latitude: position.coords.latitude, longitude: position.coords.longitude, precisao: position.coords.accuracy }), () => {}, { enableHighAccuracy: true, maximumAge: 30000, timeout: 10000 });
-  aplicarTema(); setConnectionState(); inicializarMapa(); carregarEntregas(); carregarNotificacoes(); sincronizarFila(); abrirPendenciasSeExistirem();
+  aplicarTema(); setConnectionState(); carregarListaMotoristas(); inicializarMapa(); carregarEntregas(); carregarNotificacoes(); sincronizarFila(); abrirPendenciasSeExistirem();
 }());

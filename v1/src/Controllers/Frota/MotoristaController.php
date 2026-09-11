@@ -444,6 +444,34 @@ class MotoristaController
         $stmt->execute(['motorista_id' => $id]);
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        if (empty($entregas)) {
+            $stmtLast = $this->pdo->prepare("
+                SELECT 
+                    e.*,
+                    eb.numero_embarque,
+                    eb.data_saida,
+                    eb.veiculo_id,
+                    v.placa,
+                    v.modelo,
+                    v.latitude as veiculo_lat,
+                    v.longitude as veiculo_lng,
+                    eb.id as embarque_id,
+                    eb.updated_at as embarque_updated_at
+                FROM frota_entrega e
+                LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
+                LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
+                WHERE eb.motorista_id = :motorista_id
+                  AND eb.id = (
+                      SELECT id FROM frota_embarque 
+                      WHERE motorista_id = :motorista_id 
+                      ORDER BY created_at DESC LIMIT 1
+                  )
+                ORDER BY e.ordem_entrega ASC
+            ");
+            $stmtLast->execute(['motorista_id' => $id]);
+            $entregas = $stmtLast->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
         $entregaIds = array_column($entregas, 'id');
         if ($entregaIds) {
             $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
