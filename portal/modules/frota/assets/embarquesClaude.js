@@ -3667,10 +3667,17 @@ async function criarRotasSelecionadas() {
         return;
     }
 
-    const totalSelecionados = embarquesSelecionados.length;
+    // 🔥 CORREÇÃO: capturar um snapshot imutável dos IDs selecionados no início.
+    // Isso evita que a lista global `embarquesSelecionados` seja esvaziada ou
+    // alterada (por exemplo, ao trocar de aba ou recarregar a lista) enquanto
+    // esta função assíncrona ainda está buscando dados do ERP, causando o erro
+    // "Informe pelo menos um ID de embarque" ao montar o payload final.
+    const idsSelecionados = [...embarquesSelecionados];
+
+    const totalSelecionados = idsSelecionados.length;
     const isMultiplo = totalSelecionados > 1;
 
-    console.log('📌 Embarques selecionados:', embarquesSelecionados);
+    console.log('📌 Embarques selecionados:', idsSelecionados);
     console.log('📌 É múltiplo?', isMultiplo);
 
     let motoristasERP = [];
@@ -3684,7 +3691,7 @@ async function criarRotasSelecionadas() {
             allowOutsideClick: false
         });
 
-        for (const id of embarquesSelecionados) {
+        for (const id of idsSelecionados) {
             const response = await fetch(`${API_BASE}/frota/importar/embarque-detalhes/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
@@ -3919,11 +3926,11 @@ async function criarRotasSelecionadas() {
     // 🔥 CORREÇÃO: Usar o campo correto para a API
     if (isMultiplo) {
         // Para múltiplos embarques, usar ids_agrupados
-        payload.ids_agrupados = embarquesSelecionados;
+        payload.ids_agrupados = idsSelecionados;
         // 🔥 IMPORTANTE: NÃO enviar id_embarque_erp quando for múltiplo
     } else {
         // Para um único embarque, usar id_embarque_erp
-        payload.id_embarque_erp = embarquesSelecionados[0];
+        payload.id_embarque_erp = idsSelecionados[0];
     }
 
     console.log('📤 Payload enviado:', payload);
@@ -3977,6 +3984,7 @@ async function criarRotasSelecionadas() {
                 timer: 4000,
                 showConfirmButton: false
             });
+            embarquesSelecionados = [];
             carregarDisponiveis();
             carregarEmbarques();
 
