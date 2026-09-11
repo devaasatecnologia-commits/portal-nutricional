@@ -4,10 +4,10 @@
   if (!app) return;
 
   let motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || localStorage.getItem('motoristaId') || 0);
-  const cacheKey = `frota.motorista.${motoristaId}.entregas`;
-  const queueKey = `frota.motorista.${motoristaId}.offline.queue`;
-  const positionKey = `frota.motorista.${motoristaId}.posicao`;
-  const truckKey = `frota.motorista.${motoristaId}.truck`;
+  let cacheKey = `frota.motorista.${motoristaId}.entregas`;
+  let queueKey = `frota.motorista.${motoristaId}.offline.queue`;
+  let positionKey = `frota.motorista.${motoristaId}.posicao`;
+  let truckKey = `frota.motorista.${motoristaId}.truck`;
   const apiBase = `${window.API_URL || '/v1'}/frota`;
 
   let entregas = [];
