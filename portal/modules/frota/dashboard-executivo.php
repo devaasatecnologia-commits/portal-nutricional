@@ -3,6 +3,7 @@ $pageTitle = 'Dashboard Executivo | Frota | Nutricional';
 $version = time();
 $extraCss = '
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="/portal/modules/frota/assets/componentes-base.css?v=' . $version . '">
 <link rel="stylesheet" href="/portal/modules/frota/assets/dashboard-executivo.css?v=' . $version . '">
 ';
 $extraJs = '

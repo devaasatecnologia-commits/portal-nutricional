@@ -316,28 +316,113 @@ class VeiculoController extends BaseController
         }
     }
     
-    /**
+       /**
      * DELETE /v1/frota/veiculos/{id}
-     * Deletar veículo
+     * Remover veículo — usa soft delete se houver histórico.
+     *
+     * Regra:
+     *  - Se houver embarques ativos (planejado / em_andamento): BLOQUEIA com 400.
+     *  - Se houver qualquer histórico (embarques, entregas, acertos): SOFT DELETE (status = 'inativo').
+     *  - Se não houver nada: DELETE físico.
      */
     public function deletar(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
-        
-        try {
-            $stmt = $this->pdo->prepare("DELETE FROM frota_veiculo WHERE id = :id");
-            $stmt->execute(['id' => $id]);
-            
-            return $this->json($response, [
-                'success' => true,
-                'message' => 'Veículo deletado com sucesso'
-            ]);
-            
-        } catch (\Exception $e) {
-            error_log('Erro em deletar veiculo: ' . $e->getMessage());
+
+        if ($id <= 0) {
             return $this->json($response, [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => 'ID inválido'
+            ], 400);
+        }
+
+        try {
+            // Confirma que o veículo existe
+            $stmt = $this->pdo->prepare("SELECT id, placa FROM frota_veiculo WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+            $veiculo = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$veiculo) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Veículo não encontrado'
+                ], 404);
+            }
+
+            // Conta dependências
+            $stmt = $this->pdo->prepare("
+                SELECT
+                    (SELECT COUNT(*) FROM frota_embarque
+                        WHERE veiculo_id = :id
+                          AND status IN ('planejado', 'em_andamento'))         AS embarques_ativos,
+                    (SELECT COUNT(*) FROM frota_embarque
+                        WHERE veiculo_id = :id2)                                AS embarques_total,
+                    (SELECT COUNT(*) FROM frota_entrega e
+                        INNER JOIN frota_embarque em ON em.id = e.embarque_id
+                        WHERE em.veiculo_id = :id3)                             AS entregas_total,
+                    (SELECT COUNT(*) FROM frota_acerto_embarque ae
+                        INNER JOIN frota_embarque em ON em.id = ae.embarque_id
+                        WHERE em.veiculo_id = :id4)                             AS acertos_total
+            ");
+            $stmt->execute(['id' => $id, 'id2' => $id, 'id3' => $id, 'id4' => $id]);
+            $deps = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ((int)$deps['embarques_ativos'] > 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Veículo possui embarques ativos (planejado ou em andamento). Finalize ou cancele antes de remover.'
+                ], 400);
+            }
+
+            $temHistorico = ((int)$deps['embarques_total'] > 0)
+                         || ((int)$deps['entregas_total'] > 0)
+                         || ((int)$deps['acertos_total'] > 0);
+
+            if ($temHistorico) {
+                // SOFT DELETE — preserva histórico
+                $stmt = $this->pdo->prepare("
+                    UPDATE frota_veiculo
+                    SET status = 'inativo',
+                        updated_at = NOW()
+                    WHERE id = :id
+                ");
+                $stmt->execute(['id' => $id]);
+
+                return $this->json($response, [
+                    'success' => true,
+                    'message' => 'Veículo inativado (possui histórico — não foi deletado fisicamente)',
+                    'data' => [
+                        'id' => $id,
+                        'placa' => $veiculo['placa'],
+                        'acao' => 'soft_delete',
+                        'historico' => [
+                            'embarques' => (int)$deps['embarques_total'],
+                            'entregas' => (int)$deps['entregas_total'],
+                            'acertos' => (int)$deps['acertos_total']
+                        ]
+                    ]
+                ]);
+            }
+
+            // Sem histórico: pode apagar fisicamente
+            $stmt = $this->pdo->prepare("DELETE FROM frota_veiculo WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Veículo removido',
+                'data' => [
+                    'id' => $id,
+                    'placa' => $veiculo['placa'],
+                    'acao' => 'delete'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            error_log('[VeiculoController] Erro ao remover veiculo #' . $id . ': ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao remover veículo'
             ], 500);
         }
     }

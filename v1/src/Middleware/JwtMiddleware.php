@@ -72,6 +72,7 @@ class JwtMiddleware
         $idusuario = $decoded->idusuario ?? 0;
         $username = $decoded->username ?? '';
         $permissoes = $decoded->permissoes ?? [];
+        $motoristaId = (int)($decoded->motorista_id ?? 0);
         
         if ($uid === 0) {
             return $this->unauthorized('Token inválido: usuário não identificado');
@@ -104,6 +105,7 @@ class JwtMiddleware
             'username' => $username,
             'permissoes' => $permissoes,
             'is_admin' => $isAdmin,
+            'motorista_id' => $motoristaId,
                 'jti' => $jti  // ✅ Adicionar JTI nos atributos
             ]);
         

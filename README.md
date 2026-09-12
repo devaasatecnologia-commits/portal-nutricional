@@ -44,11 +44,25 @@ repositorio, na documentacao ou em scripts de teste.
 - [Arquitetura e operacao](docs/ARCHITECTURE.md)
 - [Guia completo do portal](docs/PORTAL_GUIDE.md)
 - [Token de continuidade](docs/CONTINUATION_TOKEN.md)
+- [Deploy por FTP/cPanel](docs/DEPLOY_FTP_CPANEL.md)
+- [Valhalla self-hosted](docs/VALHALLA_SETUP.md)
+- [Idempotencia offline](docs/frota_offline_idempotencia.sql)
 
 ## Banco
 
 O banco e externo ao repositorio e usa PostgreSQL. As alteracoes estruturais
 devem ser entregues como SQL revisavel e executadas com backup previo.
+
+## Frota e motorista
+
+O módulo Frota inclui Embarques, Gestão de Cargas, Acerto de Embarque e o PWA
+do motorista. O PWA suporta rota cacheada, GPS, ordenação local, Google Maps e
+Waze, check-in, checkout com romaneio e fotos por item, problemas de faltante ou
+devolução e sincronização manual/automática.
+
+O fluxo recomendado é: finalizar o embarque pelo motorista, iniciar o acerto,
+conferir pedidos e evidências, criar pedidos ERP quando necessário e finalizar
+o acerto. Consulte o guia de deploy antes de publicar via FTP.
 
 ## Versionamento da API
 

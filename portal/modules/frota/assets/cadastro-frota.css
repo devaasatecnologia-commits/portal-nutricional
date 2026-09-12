@@ -1,0 +1,69 @@
+/* ================================================================
+   CADASTRO DE FROTA - VEÍCULOS + MOTORISTAS + MAPA (MapLibre)
+   ================================================================ */
+
+.cadfrota-tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; border-bottom: 1px solid var(--nutri-border); padding-bottom: 10px; }
+.cadfrota-tab { display: inline-flex; align-items: center; gap: 8px; padding: 10px 18px; border-radius: 12px; border: 1px solid transparent; background: transparent; color: var(--nutri-text-secondary); font-size: .84rem; font-weight: 700; cursor: pointer; transition: var(--transition); }
+.cadfrota-tab:hover { color: var(--nutri-primary); }
+.cadfrota-tab.active { background: var(--nutri-primary); color: #fff; border-color: var(--nutri-primary); }
+.cadfrota-tab-panel[hidden] { display: none; }
+
+/* Barra de busca + ações */
+.cadfrota-toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+.cadfrota-toolbar .cargas-search { flex: 1 1 260px; }
+
+/* Grid de cards de veículo/motorista */
+.cadfrota-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; padding: 16px; }
+.cadfrota-card { border: 1px solid var(--nutri-border); border-radius: 14px; padding: 14px 16px; background: var(--nutri-card-bg); transition: var(--transition); display: flex; flex-direction: column; gap: 6px; position: relative; }
+.cadfrota-card:hover { box-shadow: var(--nutri-shadow-lg); transform: translateY(-2px); }
+.cadfrota-card-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.cadfrota-card-title { font-size: 1rem; font-weight: 800; color: var(--nutri-primary); }
+[data-theme="dark"] .cadfrota-card-title { color: var(--nutri-gold-light); }
+.cadfrota-card-sub { font-size: .76rem; color: var(--nutri-text-secondary); }
+.cadfrota-card-info { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.cadfrota-chip { font-size: .68rem; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(100, 116, 139, .12); color: #475569; }
+.cadfrota-chip.cobli-on { background: rgba(16, 185, 129, .14); color: #059669; }
+.cadfrota-chip.cobli-off { background: rgba(220, 38, 38, .1); color: #dc2626; }
+.cadfrota-chip.erp { background: rgba(59, 130, 246, .12); color: #2563eb; }
+.cadfrota-card-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.cadfrota-card-actions button { flex: 1 1 auto; min-height: 34px; padding: 0 10px; font-size: .74rem; }
+
+/* Formulário modal */
+.cadfrota-form-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.cadfrota-form-grid .full { grid-column: 1 / -1; }
+.cadfrota-field { display: flex; flex-direction: column; gap: 4px; }
+.cadfrota-field label { font-size: .72rem; font-weight: 800; color: var(--nutri-text-secondary); }
+.cadfrota-field input, .cadfrota-field select { border: 1px solid var(--nutri-border); border-radius: 10px; padding: 9px 12px; font-size: .84rem; background: var(--nutri-card-bg); color: var(--nutri-text); }
+.cadfrota-field input:focus, .cadfrota-field select:focus { outline: none; border-color: var(--nutri-primary); box-shadow: 0 0 0 3px rgba(var(--nutri-primary-rgb), .1); }
+
+/* Mapa (MapLibre GL) */
+/* Mapa (MapLibre GL) */
+#cadfrota-mapa { width: 100%; height: 520px; border-radius: 0 0 16px 16px; }
+@media (max-width: 768px) { #cadfrota-mapa { height: 320px; } }
+@media (max-width: 480px) { #cadfrota-mapa { height: 260px; } }
+.cadfrota-mapa-placa {
+    background: #1a3c34;
+    color: #fff;
+    font-weight: 800;
+    font-size: 11px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0,0,0,.35);
+    border: 1px solid rgba(255,255,255,.25);
+    margin-bottom: 2px;
+    text-align: center;
+}
+.cadfrota-mapa-marcador { display: flex; flex-direction: column; align-items: center; cursor: pointer; }
+.cadfrota-mapa-icone {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, #1a3c34, #2d5a4e);
+    color: #d4a017;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,.3);
+    border: 2px solid #d4a017;
+    font-size: 15px;
+}
+.cadfrota-mapa-icone.parado { background: linear-gradient(135deg, #64748b, #94a3b8); border-color: #cbd5e1; color: #fff; }
+
+.cadfrota-empty { text-align: center; padding: 40px 16px; color: var(--nutri-text-secondary); }

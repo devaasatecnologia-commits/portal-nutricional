@@ -62,8 +62,8 @@ class EmbarqueController
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
         
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         $sql = "
@@ -127,50 +127,134 @@ class EmbarqueController
 /**
  * GET /v1/frota/embarques/{id}
  * Buscar embarque específico com entregas, histórico e checklist
+ * 🔥 SUPORTA: ID do sistema, erp_embarque_id E erp_ids_agrupados
  */
 public function buscar(Request $request, Response $response, array $args): Response
 {
+        error_log('🔥🔥🔥 buscar() EXECUTANDO - ID recebido: ' . ($args['id'] ?? 'N/A'));
     $id = (int)$args['id'];
-
+    
     // ================================================================
-    // 1. DADOS PRINCIPAIS DO EMBARQUE
+    // 1. TENTAR BUSCAR POR ID DO SISTEMA
     // ================================================================
     $sql = "
         SELECT 
-            e.*,
+            e.id,
+            e.numero_embarque,
+            e.erp_embarque_id,
+            e.erp_ids_agrupados,
+            e.total_embarques_agrupados,
+            e.veiculo_id,
+            e.motorista_id,
+            e.nome_embarque,
+            e.status,
+            e.data_saida,
+            e.data_retorno,
+            e.horario_saida,
+            e.horario_retorno,
+            e.observacoes,
+            e.created_at,
+            e.updated_at,
             v.placa as veiculo_placa,
             v.modelo as veiculo_modelo,
             v.marca as veiculo_marca,
             v.cor as veiculo_cor,
             v.tipo as veiculo_tipo,
-            m.id as motorista_id,
+            m.id as motorista_id_real,
             m.nome as motorista_nome,
             m.telefone as motorista_telefone,
             m.cpf as motorista_cpf,
             COUNT(DISTINCT ent.id) as total_entregas,
-            COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) as entregas_concluidas,
+            COUNT(DISTINCT CASE WHEN ent.status IN ('entregue', 'entregue_com_problema') THEN ent.id END) as entregas_concluidas,
             COUNT(DISTINCT CASE WHEN ent.status = 'pendente' THEN ent.id END) as entregas_pendentes,
             COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) as entregas_falha,
             COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0)), 0) as valor_total_entregas,
-            COALESCE(SUM(CASE WHEN ent.status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0) END), 0) as valor_entregue
+            COALESCE(SUM(CASE WHEN ent.status IN ('entregue', 'entregue_com_problema') THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0) END), 0) as valor_entregue,
+            COALESCE(SUM(ent.peso_total), 0) as peso_total_entregas
         FROM frota_embarque e
         LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
         LEFT JOIN frota_motorista m ON m.id = e.motorista_id
         LEFT JOIN frota_entrega ent ON ent.embarque_id = e.id
         WHERE e.id = :id
-        GROUP BY e.id, v.placa, v.modelo, v.marca, v.cor, v.tipo, m.id, m.nome, m.telefone, m.cpf
+        GROUP BY 
+            e.id, 
+            v.placa, v.modelo, v.marca, v.cor, v.tipo, 
+            m.id, m.nome, m.telefone, m.cpf
     ";
-
+    
     $stmt = $this->pdo->prepare($sql);
     $stmt->execute(['id' => $id]);
     $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-    if (!$embarque) {
-        return $this->json($response, ['success' => false, 'error' => 'Embarque não encontrado'], 404);
-    }
-
+    
     // ================================================================
-    // 2. BUSCAR ENTREGAS
+    // 2. 🔥 FALLBACK: Buscar por erp_embarque_id
+    // ================================================================
+    if (!$embarque) {
+        error_log("[Embarque-buscar] Não encontrado por ID sistema: {$id}. Tentando por erp_embarque_id...");
+        
+        $stmtFallback = $this->pdo->prepare("
+            SELECT id FROM frota_embarque 
+            WHERE erp_embarque_id = :erp_id 
+            LIMIT 1
+        ");
+        $stmtFallback->execute(['erp_id' => $id]);
+        $idSistema = $stmtFallback->fetchColumn();
+        
+        if ($idSistema) {
+            error_log("[Embarque-buscar] ✅ Encontrado via erp_embarque_id: {$id} → sistema ID {$idSistema}");
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['id' => $idSistema]);
+            $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($embarque) {
+                $id = (int)$idSistema;
+            }
+        }
+    }
+    
+    // ================================================================
+    // 3. 🔥 FALLBACK: Buscar por erp_ids_agrupados
+    // ================================================================
+    if (!$embarque) {
+        error_log("[Embarque-buscar] Não encontrado por erp_embarque_id: {$id}. Tentando por erp_ids_agrupados...");
+        
+        $stmtFallback = $this->pdo->prepare("
+            SELECT e.id 
+            FROM frota_embarque e 
+            WHERE e.erp_ids_agrupados IS NOT NULL 
+              AND e.erp_ids_agrupados != ''
+              AND :erp_id = ANY(string_to_array(e.erp_ids_agrupados, ',')::int[])
+            LIMIT 1
+        ");
+        $stmtFallback->execute(['erp_id' => $id]);
+        $idSistema = $stmtFallback->fetchColumn();
+        
+        if ($idSistema) {
+            error_log("[Embarque-buscar] ✅ Encontrado via erp_ids_agrupados: {$id} → sistema ID {$idSistema}");
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['id' => $idSistema]);
+            $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($embarque) {
+                $id = (int)$idSistema;
+            }
+        }
+    }
+    
+    // ================================================================
+    // 4. SE AINDA NÃO ENCONTROU → 404
+    // ================================================================
+    if (!$embarque) {
+        error_log("[Embarque-buscar] ❌ Não encontrado de nenhuma forma: {$id}");
+        return $this->json($response, [
+            'success' => false, 
+            'error' => 'Embarque não encontrado'
+        ], 404);
+    }
+    
+    // ID do sistema garantido a partir daqui
+    $embarqueId = (int)$embarque['id'];
+    
+    // ================================================================
+    // 5. BUSCAR ENTREGAS
     // ================================================================
     $stmtEntregas = $this->pdo->prepare("
         SELECT 
@@ -183,19 +267,20 @@ public function buscar(Request $request, Response $response, array $args): Respo
         FROM frota_entrega e
         LEFT JOIN frota_cliente c ON c.id = e.cliente_id
         WHERE e.embarque_id = :embarque_id
-        ORDER BY e.ordem_entrega ASC
+        ORDER BY e.ordem_entrega ASC, e.id ASC
     ");
-    $stmtEntregas->execute(['embarque_id' => $id]);
+    $stmtEntregas->execute(['embarque_id' => $embarqueId]);
     $entregas = $stmtEntregas->fetchAll(\PDO::FETCH_ASSOC);
     $embarque['entregas'] = $entregas;
-
+    
     // ================================================================
-    // 3. BUSCAR CHECKLIST (com fotos dos itens) para cada entrega
+    // 6. BUSCAR CHECKLIST, PROBLEMAS E TIMELINE POR ENTREGA
     // ================================================================
     if (!empty($entregas)) {
         $entregaIds = array_column($entregas, 'id');
         $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
-
+        
+        // 6.1 CHECKLIST
         $stmtChecklist = $this->pdo->prepare("
             SELECT 
                 entrega_id,
@@ -209,27 +294,79 @@ public function buscar(Request $request, Response $response, array $args): Respo
                 motivo
             FROM frota_checklist_entrega
             WHERE entrega_id IN ({$placeholders})
+            ORDER BY item_id ASC
         ");
         $stmtChecklist->execute($entregaIds);
         $checklistItems = $stmtChecklist->fetchAll(\PDO::FETCH_ASSOC);
-
-        // Agrupar checklist por entrega
+        
         $checklistPorEntrega = [];
         foreach ($checklistItems as $item) {
             $checklistPorEntrega[$item['entrega_id']][] = $item;
         }
-
-        // Adicionar checklist a cada entrega
+        
+        // 6.2 PROBLEMAS
+        $stmtProblemas = $this->pdo->prepare("
+            SELECT
+                entrega_id, id, tipo_problema, referencia, descricao_problema,
+                quantidade_afetada, valor_afetado, status_problema, prioridade,
+                created_at, data_resolucao
+            FROM frota_entrega_problema
+            WHERE entrega_id IN ({$placeholders})
+            ORDER BY created_at DESC
+        ");
+        $stmtProblemas->execute($entregaIds);
+        $problemasItems = $stmtProblemas->fetchAll(\PDO::FETCH_ASSOC);
+        
+        $problemasPorEntrega = [];
+        foreach ($problemasItems as $p) {
+            $problemasPorEntrega[$p['entrega_id']][] = $p;
+        }
+        
+        // 6.3 TIMELINE
+        $timelinePorEntrega = [];
+        try {
+            $stmtTimeline = $this->pdo->prepare("
+                SELECT entrega_id, acao, descricao, usuario_nome, dados_novos, created_at
+                FROM frota_entrega_timeline
+                WHERE entrega_id IN ({$placeholders})
+                ORDER BY created_at ASC
+            ");
+            $stmtTimeline->execute($entregaIds);
+            $timelineItems = $stmtTimeline->fetchAll(\PDO::FETCH_ASSOC);
+            
+            foreach ($timelineItems as $t) {
+                $timelinePorEntrega[$t['entrega_id']][] = $t;
+            }
+        } catch (\Exception $e) {
+            error_log('[Embarque-buscar] Timeline indisponível: ' . $e->getMessage());
+        }
+        
+        // Adicionar ao array de entregas
         foreach ($embarque['entregas'] as &$entrega) {
             $entrega['checklist'] = $checklistPorEntrega[$entrega['id']] ?? [];
+            $entrega['problemas'] = $problemasPorEntrega[$entrega['id']] ?? [];
+            $entrega['timeline'] = $timelinePorEntrega[$entrega['id']] ?? [];
         }
         unset($entrega);
     }
-
+    
     // ================================================================
-    // 4. BUSCAR HISTÓRICO (logs do embarque)
+    // 7. BUSCAR ACERTO
     // ================================================================
-    $stmtHistorico = $this->pdo->prepare("       
+    $stmtAcerto = $this->pdo->prepare("
+        SELECT id, status, data_inicio_acerto, data_fim_acerto
+        FROM frota_acerto_embarque
+        WHERE embarque_id = :embarque_id
+        ORDER BY id DESC
+        LIMIT 1
+    ");
+    $stmtAcerto->execute(['embarque_id' => $embarqueId]);
+    $embarque['acerto'] = $stmtAcerto->fetch(\PDO::FETCH_ASSOC) ?: null;
+    
+    // ================================================================
+    // 8. BUSCAR HISTÓRICO (logs do embarque)
+    // ================================================================
+    $stmtHistorico = $this->pdo->prepare("
         SELECT 
             l.*,
             u.username as usuario_nome
@@ -238,35 +375,34 @@ public function buscar(Request $request, Response $response, array $args): Respo
         WHERE l.embarque_id = :embarque_id
         ORDER BY l.data_hora DESC
     ");
-    $stmtHistorico->execute(['embarque_id' => $id]);
+    $stmtHistorico->execute(['embarque_id' => $embarqueId]);
     $embarque['historico'] = $stmtHistorico->fetchAll(\PDO::FETCH_ASSOC);
-
+    
     // ================================================================
-    // 5. HISTÓRICO DE POSIÇÕES (opcional)
+    // 9. HISTÓRICO DE POSIÇÕES (últimas 1h)
     // ================================================================
-    $stmtPosicoes = $this->pdo->prepare("
-        SELECT 
-            latitude,
-            longitude,
-            velocidade,
-            data_hora
-        FROM frota_historico_posicao
-        WHERE embarque_id = :embarque_id
-          AND data_hora >= NOW() - INTERVAL '1 hour'
-        ORDER BY data_hora ASC
-    ");
-    $stmtPosicoes->execute(['embarque_id' => $id]);
-    $embarque['historico_posicoes'] = $stmtPosicoes->fetchAll(\PDO::FETCH_ASSOC);
-
+    try {
+        $stmtPosicoes = $this->pdo->prepare("
+            SELECT latitude, longitude, velocidade, data_hora
+            FROM frota_historico_posicao
+            WHERE embarque_id = :embarque_id
+              AND data_hora >= NOW() - INTERVAL '1 hour'
+            ORDER BY data_hora ASC
+        ");
+        $stmtPosicoes->execute(['embarque_id' => $embarqueId]);
+        $embarque['historico_posicoes'] = $stmtPosicoes->fetchAll(\PDO::FETCH_ASSOC);
+    } catch (\Exception $e) {
+        $embarque['historico_posicoes'] = [];
+    }
+    
     // ================================================================
-    // 6. RESPOSTA
+    // 10. RESPOSTA
     // ================================================================
     return $this->json($response, [
         'success' => true,
         'data' => $embarque
     ]);
 }
-
 
     
     public function otimizarRota(Request $request, Response $response, array $args): Response

@@ -11,15 +11,20 @@ class RateLimitMiddleware
     private $pdo;
     private $maxRequests;
     private $timeWindow; // em segundos
-    private $whitelist = [
-        '/v1/auth/login' => 5,      // 5 tentativas
-        '/v1/auth/alterar-senha' => 3,
-        '/v1/marketing/clientes' => 100,
-        '/v1/financeiro/dashboard' => 50,
-        'default' => 60              // 60 requisições por padrão
+
+    /**
+     * Limites específicos por rota.
+     * A chave é o path exato. O default é aplicado a qualquer rota não listada.
+     */
+    private $limitesPorRota = [
+        '/v1/auth/login'            => 5,
+        '/v1/auth/alterar-senha'    => 3,
+        '/v1/marketing/clientes'    => 100,
+        '/v1/financeiro/dashboard'  => 50,
+        'default'                   => 300,   // 300 req/min por padrão (antes era 60)
     ];
 
-    public function __construct(int $maxRequests = 60, int $timeWindow = 60)
+    public function __construct(int $maxRequests = 300, int $timeWindow = 60)
     {
         $this->maxRequests = $maxRequests;
         $this->timeWindow = $timeWindow;
@@ -29,64 +34,61 @@ class RateLimitMiddleware
     public function __invoke(Request $request, RequestHandler $handler): Response
     {
         $path = $request->getUri()->getPath();
-        $method = $request->getMethod();
-        
-        // Obter IP do cliente
         $ip = $this->getClientIp($request);
-        
-        // Obter usuário logado (se existir)
         $user = $request->getAttribute('user');
-        $userId = $user['uid'] ?? 0;
-        
-        // Identificador único do cliente (IP + rota + método + userId)
-        $identifier = md5($ip . ':' . $path . ':' . $method . ':' . $userId);
-        
-        // Verificar se há limite específico para esta rota
-        $limit = $this->whitelist[$path] ?? $this->whitelist['default'];
-        
-        // Limpar registros antigos (mais de 1 hora)
+        $userId = (int)($user['uid'] ?? $user['idusuario'] ?? 0);
+
+        // ================================================================
+        // Chave do rate limit:
+        //   - Usuário autenticado → por user_id (não compartilha com colegas)
+        //   - Anônimo            → por IP       (protege contra DDoS)
+        // Não inclui a rota — o limite é por cliente, não por endpoint.
+        // ================================================================
+        $chaveBase = $userId > 0 ? "user:{$userId}" : "ip:{$ip}";
+        $identifier = md5($chaveBase);
+
+        // Limite específico por rota, senão usa o padrão
+        $limit = $this->limitesPorRota[$path] ?? $this->limitesPorRota['default'];
+
+        // Limpa registros antigos em ~1% das requests
         $this->cleanOldRecords();
-        
-        // Contar requisições
+
         $current = $this->getRequestCount($identifier, $this->timeWindow);
-        
+
         if ($current >= $limit) {
-            // Limite excedido
             $retryAfter = $this->getRetryAfter($identifier);
-            return $this->rateLimitExceeded($response ?? new \Slim\Psr7\Response(), $retryAfter);
+            $response = new \Slim\Psr7\Response();
+            return $this->rateLimitExceeded($response, $retryAfter);
         }
-        
-        // Registrar requisição
+
         $this->incrementRequestCount($identifier);
-        
-        // Processar requisição
+
         $response = $handler->handle($request);
-        
-        // Adicionar headers de rate limit
+
         return $response
-            ->withHeader('X-RateLimit-Limit', $limit)
-            ->withHeader('X-RateLimit-Remaining', max(0, $limit - $current - 1))
-            ->withHeader('X-RateLimit-Reset', time() + $this->getResetTime($identifier));
+            ->withHeader('X-RateLimit-Limit', (string)$limit)
+            ->withHeader('X-RateLimit-Remaining', (string)max(0, $limit - $current - 1))
+            ->withHeader('X-RateLimit-Reset', (string)(time() + $this->getResetTime($identifier)));
     }
 
     private function getClientIp(Request $request): string
     {
         $serverParams = $request->getServerParams();
-        
+
         $headers = [
-            'HTTP_CF_CONNECTING_IP', // Cloudflare
+            'HTTP_CF_CONNECTING_IP',
             'HTTP_X_FORWARDED_FOR',
             'HTTP_X_REAL_IP',
             'REMOTE_ADDR'
         ];
-        
+
         foreach ($headers as $header) {
             if (isset($serverParams[$header]) && !empty($serverParams[$header])) {
                 $ips = explode(',', $serverParams[$header]);
                 return trim($ips[0]);
             }
         }
-        
+
         return $serverParams['REMOTE_ADDR'] ?? '0.0.0.0';
     }
 
@@ -97,13 +99,13 @@ class RateLimitMiddleware
                 SELECT SUM(requests) as total
                 FROM rate_limit
                 WHERE identifier = :identifier
-                AND last_request > NOW() - INTERVAL '{$timeWindow} seconds'
+                AND last_request > NOW() - make_interval(secs => :tw)
             ");
-            $stmt->execute(['identifier' => $identifier]);
+            $stmt->execute(['identifier' => $identifier, 'tw' => $timeWindow]);
             $result = $stmt->fetch(\PDO::FETCH_ASSOC);
             return (int)($result['total'] ?? 0);
         } catch (\Exception $e) {
-            error_log('Erro ao contar requisições: ' . $e->getMessage());
+            error_log('[RateLimit] Erro ao contar: ' . $e->getMessage());
             return 0;
         }
     }
@@ -111,9 +113,8 @@ class RateLimitMiddleware
     private function incrementRequestCount(string $identifier): void
     {
         try {
-            // Verificar se já existe registro recente
             $stmt = $this->pdo->prepare("
-                SELECT id, requests FROM rate_limit
+                SELECT id FROM rate_limit
                 WHERE identifier = :identifier
                 AND last_request > NOW() - INTERVAL '1 minute'
                 ORDER BY last_request DESC
@@ -121,9 +122,8 @@ class RateLimitMiddleware
             ");
             $stmt->execute(['identifier' => $identifier]);
             $existing = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+
             if ($existing) {
-                // Atualizar existente
                 $stmt = $this->pdo->prepare("
                     UPDATE rate_limit 
                     SET requests = requests + 1,
@@ -133,7 +133,6 @@ class RateLimitMiddleware
                 ");
                 $stmt->execute(['id' => $existing['id']]);
             } else {
-                // Criar novo registro
                 $stmt = $this->pdo->prepare("
                     INSERT INTO rate_limit (identifier, requests, first_request, last_request)
                     VALUES (:identifier, 1, NOW(), NOW())
@@ -141,7 +140,7 @@ class RateLimitMiddleware
                 $stmt->execute(['identifier' => $identifier]);
             }
         } catch (\Exception $e) {
-            error_log('Erro ao registrar requisição: ' . $e->getMessage());
+            error_log('[RateLimit] Erro ao registrar: ' . $e->getMessage());
         }
     }
 
@@ -183,14 +182,18 @@ class RateLimitMiddleware
 
     private function cleanOldRecords(): void
     {
+        // Roda em ~1% das requests para não virar gargalo em cada hit
+        if (random_int(1, 100) > 1) {
+            return;
+        }
+
         try {
-            // Limpar registros com mais de 1 hora
             $this->pdo->exec("
                 DELETE FROM rate_limit 
                 WHERE last_request < NOW() - INTERVAL '1 hour'
             ");
         } catch (\Exception $e) {
-            error_log('Erro ao limpar rate_limit: ' . $e->getMessage());
+            error_log('[RateLimit] Erro ao limpar: ' . $e->getMessage());
         }
     }
 
@@ -201,11 +204,11 @@ class RateLimitMiddleware
             'retry_after' => $retryAfter,
             'code' => 429
         ]);
-        
+
         $response->getBody()->write($payload);
         return $response
             ->withStatus(429)
             ->withHeader('Content-Type', 'application/json')
-            ->withHeader('Retry-After', $retryAfter);
+            ->withHeader('Retry-After', (string)$retryAfter);
     }
 }

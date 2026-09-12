@@ -9,6 +9,7 @@ $version = time();
 // ================================================================
 // CONFIGURAÇÕES DA DISTRIBUIDORA
 // ================================================================
+$assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 define('DISTRIBUIDORA_LAT', -28.979438954992666);
 define('DISTRIBUIDORA_LNG', -49.53561648427039);
 define('DISTRIBUIDORA_ENDERECO', 'R. Alameda Ascendino Moraes de Sá, 6151, Araranguá - SC, 88902-490');
@@ -21,9 +22,9 @@ $extraCss = '
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/frota.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/embarquesClaude.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/embarquesClaude.css?v=' . $version . '">
 
 <!-- PWA MANIFEST -->
 <link rel="manifest" href="/portal/modules/frota/manifest.json">
@@ -59,7 +60,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="hero-embarques bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/modules/frota/gestao-frota.php" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30">
+                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -257,6 +258,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
 </div>
 </div>
 </div>
+<div class="embarques-overview" id="embarques-overview" aria-live="polite">
+    <div class="overview-loading"><i class="fa-solid fa-chart-line"></i> Calculando visão operacional...</div>
+</div>
 <div class="section-body p-0 overflow-x-auto">
     <table class="table-frota w-full">
         <thead>
@@ -322,8 +326,8 @@ require_once __DIR__ . '/../../estrutura/header.php';
    ================================================================ -->
    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-   <script src="/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
-   <script src="/portal/modules/frota/assets/embarquesClaude.js?v=<?= $version ?>"></script>
+   <script src="<?= $assetBase ?>/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
+   <script src="<?= $assetBase ?>/portal/modules/frota/assets/embarquesClaude.js?v=<?= $version ?>"></script>
 <?php
 require_once __DIR__ . '/../../estrutura/footer.php';
 ?>

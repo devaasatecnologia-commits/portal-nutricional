@@ -6,7 +6,21 @@ const API_BASE = `${window.location.origin}/index.php?api_route=`;
 
 // Obter token JWT
 function getAuthToken() {
-    return localStorage.getItem('authToken');
+    return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+}
+
+function getCsrfToken(token = getAuthToken()) {
+    try {
+        if (!token) return '';
+        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        const uid = Number(payload.uid || 0);
+        const today = new Date();
+        const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        const value = uid ? `${uid}${date}` : '';
+        return value && window.CryptoJS ? CryptoJS.MD5(value).toString() : (value ? btoa(value).substring(0, 32) : '');
+    } catch (error) {
+        return '';
+    }
 }
 
 // Fetch autenticado
@@ -21,7 +35,8 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
         method: method,
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + token
+            'Authorization': 'Bearer ' + token,
+            'X-CSRF-Token': getCsrfToken(token)
         }
     };
     

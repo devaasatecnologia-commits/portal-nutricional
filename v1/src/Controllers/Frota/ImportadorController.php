@@ -763,6 +763,10 @@ public function criarEmbarqueDoERP(Request $request, Response $response): Respon
     // ================================================================
     $idEmbarqueERP = (int)($input['id_embarque_erp'] ?? 0);
     $idsAgrupados = $input['ids_agrupados'] ?? [];
+    if (is_string($idsAgrupados)) {
+        $decodedIds = json_decode($idsAgrupados, true);
+        $idsAgrupados = is_array($decodedIds) ? $decodedIds : preg_split('/[,;\s]+/', $idsAgrupados, -1, PREG_SPLIT_NO_EMPTY);
+    }
     if (!is_array($idsAgrupados)) {
         $idsAgrupados = [];
     }
@@ -1874,31 +1878,41 @@ public function getItensPedidos(Request $request, Response $response): Response
                 $stmtPedidos->execute(['idembarque' => $emb['idembarque']]);
                 $pedidos = $stmtPedidos->fetchAll(\PDO::FETCH_ASSOC);
                 
-                // Buscar itens de cada pedido
-                foreach ($pedidos as &$pedido) {
+                // Buscar os itens de todos os pedidos deste embarque em uma consulta
+                $itensPorPedido = [];
+                if (!empty($pedidos)) {
+                    $pedidoIds = array_column($pedidos, 'idpedido');
+                    $placeholdersItens = implode(',', array_fill(0, count($pedidoIds), '?'));
                     $stmtItens = $pdo->prepare("
-                        SELECT 
-                        pi.iditem,
-                        i.referencia,
-                        i.descricao,
-                        pi.qt as quantidade,
-                        pi.valorunitarioimpressao as valor_unitario,
-                        pi.valortotal as valor_total,
-                        i.pesobruto as peso_bruto
+                        SELECT
+                            pi.idpedido,
+                            pi.iditem,
+                            i.referencia,
+                            i.descricao,
+                            pi.qt as quantidade,
+                            pi.valorunitarioimpressao as valor_unitario,
+                            pi.valortotal as valor_total,
+                            i.pesobruto as peso_bruto
                         FROM pedido_item pi
                         JOIN item i ON i.iditem = pi.iditem
-                        WHERE pi.idpedido = :idpedido
+                        WHERE pi.idpedido IN ({$placeholdersItens})
                         AND pi.ativo = 'S'
-                        ");
-                    $stmtItens->execute(['idpedido' => $pedido['idpedido']]);
-                    $pedido['itens'] = $stmtItens->fetchAll(\PDO::FETCH_ASSOC);
-                    
-                    // Calcular peso do pedido
+                        ORDER BY pi.idpedido, pi.iditem
+                    ");
+                    $stmtItens->execute($pedidoIds);
+                    foreach ($stmtItens->fetchAll(\PDO::FETCH_ASSOC) as $item) {
+                        $itensPorPedido[$item['idpedido']][] = $item;
+                    }
+                }
+
+                foreach ($pedidos as &$pedido) {
+                    $pedido['itens'] = $itensPorPedido[$pedido['idpedido']] ?? [];
                     $pedido['peso_total'] = 0;
                     foreach ($pedido['itens'] as $item) {
                         $pedido['peso_total'] += ($item['quantidade'] * $item['peso_bruto']);
                     }
                 }
+                unset($pedido);
                 
                 $emb['clientes'] = $clientes;
                 $emb['pedidos'] = $pedidos;

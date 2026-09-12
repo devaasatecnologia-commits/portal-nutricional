@@ -9,6 +9,15 @@
 .quick-filter-pill { border: 1px solid var(--nutri-border); border-radius: 999px; background: var(--nutri-card-bg); color: var(--nutri-text-secondary); padding: 9px 14px; font-size: .8rem; font-weight: 700; cursor: pointer; transition: var(--transition); }
 .quick-filter-pill:hover, .quick-filter-pill.active { background: var(--nutri-primary); border-color: var(--nutri-primary); color: #fff; }
 .quick-filter-pill i { margin-right: 5px; }
+.cargas-filter-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -6px 0 20px; }
+.cargas-search { display: flex; align-items: center; gap: 9px; flex: 1 1 280px; min-height: 42px; border: 1px solid var(--nutri-border); border-radius: 12px; background: var(--nutri-card-bg); padding: 0 13px; color: var(--nutri-text-secondary); }
+.cargas-search:focus-within, .cargas-priority:focus-within { border-color: var(--nutri-primary); box-shadow: 0 0 0 3px rgba(var(--nutri-primary-rgb), .1); }
+.cargas-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--nutri-text); font: inherit; font-size: .84rem; }
+.cargas-priority { display: flex; align-items: center; gap: 8px; min-height: 42px; border: 1px solid var(--nutri-border); border-radius: 12px; background: var(--nutri-card-bg); padding: 0 10px 0 13px; color: var(--nutri-text-secondary); font-size: .76rem; font-weight: 700; }
+.cargas-priority select { border: 0; outline: 0; background: transparent; color: var(--nutri-text); font: inherit; cursor: pointer; }
+.cargas-clear-filter { min-height: 42px; border: 1px solid var(--nutri-border); border-radius: 12px; background: transparent; color: var(--nutri-text-secondary); padding: 0 13px; font-size: .78rem; font-weight: 700; cursor: pointer; }
+.cargas-clear-filter:hover { border-color: var(--nutri-primary); color: var(--nutri-primary); }
+.cargas-clear-filter[hidden] { display: none; }
 .empty-state-cargas { padding: 56px 20px; text-align: center; color: var(--nutri-text-secondary); }
 .operational-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 18px 20px 20px; }
 .operational-kpi { border: 1px solid var(--nutri-border); border-radius: 12px; padding: 14px; background: rgba(var(--nutri-primary-rgb), .025); }
@@ -19,6 +28,7 @@
 .operational-loading { grid-column: 1 / -1; color: var(--nutri-text-secondary); font-size: .85rem; }
 @media (max-width: 1100px) { .operational-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .operational-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 14px; } }
+@media (max-width: 600px) { .cargas-filter-bar > * { width: 100%; } .cargas-priority { justify-content: space-between; } }
 .kpi-card {
     background: var(--nutri-card-bg);
     border-radius: var(--nutri-radius);
@@ -226,6 +236,22 @@
 /* ================================================================
    MODAL DE ANÁLISE
    ================================================================ */
+.analise-summary { display: flex; align-items: stretch; justify-content: space-between; gap: 18px; margin-bottom: 14px; border: 1px solid var(--nutri-border); border-radius: 16px; background: linear-gradient(135deg, rgba(var(--nutri-primary-rgb), .08), var(--nutri-card-bg)); padding: 18px; }
+.analise-summary-main { display: flex; flex: 1; flex-direction: column; justify-content: center; gap: 4px; min-width: 180px; }
+.analise-eyebrow { color: var(--nutri-accent); font-size: .68rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.analise-summary-main strong { color: var(--nutri-text); font-size: 1.15rem; line-height: 1.25; }
+.analise-summary-main > span:last-child { color: var(--nutri-text-secondary); font-size: .78rem; }
+.analise-summary-stats { display: grid; grid-template-columns: repeat(4, minmax(58px, 1fr)); gap: 8px; }
+.analise-summary-stats div { display: flex; min-width: 62px; flex-direction: column; justify-content: center; border-left: 1px solid var(--nutri-border); padding: 0 10px; }
+.analise-summary-stats strong { color: var(--nutri-text); font-size: 1.2rem; }
+.analise-summary-stats span { color: var(--nutri-text-secondary); font-size: .62rem; font-weight: 700; line-height: 1.2; text-transform: uppercase; }
+.analise-summary-stats .is-alert strong { color: #dc2626; }
+.analise-impact { display: flex; align-items: center; gap: 8px; margin-bottom: 14px; border-radius: 10px; background: rgba(220, 38, 38, .08); padding: 10px 13px; color: #991b1b; font-size: .78rem; }
+.analise-impact i { color: #dc2626; }
+.analise-impact strong { margin-left: auto; font-size: .9rem; }
+.analise-impact small { color: inherit; opacity: .75; }
+[data-theme="dark"] .analise-summary { background: linear-gradient(135deg, rgba(255,255,255,.05), var(--nutri-card-bg)); }
+[data-theme="dark"] .analise-impact { background: rgba(239, 68, 68, .14); color: #fca5a5; }
 .analise-timeline {
     padding: 16px;
     background: var(--nutri-card-bg);
@@ -378,6 +404,11 @@
    RESPONSIVO
    ================================================================ */
 @media (max-width: 768px) {
+    .analise-summary { flex-direction: column; }
+    .analise-summary-stats { grid-template-columns: repeat(4, 1fr); }
+    .analise-summary-stats div { border-top: 1px solid var(--nutri-border); border-left: 0; padding: 8px 4px 0; }
+    .analise-impact { flex-wrap: wrap; }
+    .analise-impact strong { margin-left: auto; }
     .kpi-card { padding: 16px; }
     .kpi-card .kpi-value { font-size: 1.4rem; }
     .kpi-card .kpi-icon { width: 40px; height: 40px; font-size: 1rem; }
@@ -389,3 +420,173 @@
     .kpi-card { padding: 12px 16px; }
     .kpi-card .kpi-value { font-size: 1.2rem; }
 }
+
+/* ================================================================
+   ABAS PRINCIPAIS - GESTAO DE CARGAS PREMIUM
+   ================================================================ */
+.cargas-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 20px; border-bottom: 2px solid var(--nutri-border); padding-bottom: 2px; }
+.cargas-tab { display: flex; align-items: center; gap: 8px; border: none; background: transparent; color: var(--nutri-text-secondary); font-weight: 800; font-size: .85rem; padding: 11px 18px; border-radius: 12px 12px 0 0; cursor: pointer; transition: var(--transition); position: relative; }
+.cargas-tab:hover { color: var(--nutri-primary); background: rgba(var(--nutri-primary-rgb), .06); }
+.cargas-tab.active { color: var(--nutri-primary); background: rgba(var(--nutri-primary-rgb), .1); }
+.cargas-tab.active::after { content: ""; position: absolute; left: 8px; right: 8px; bottom: -2px; height: 3px; border-radius: 3px; background: var(--nutri-gradient-gold); }
+.cargas-tab-panel[hidden] { display: none; }
+
+/* ================================================================
+   ABA: DESEMPENHO DE MOTORISTAS
+   ================================================================ */
+.motoristas-destaques-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; padding: 18px 20px; }
+.motorista-destaque-card { border: 1px solid var(--nutri-border); border-radius: 14px; padding: 16px 18px; background: rgba(var(--nutri-primary-rgb), .03); position: relative; overflow: hidden; }
+.motorista-destaque-card .destaque-label { font-size: .68rem; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: var(--nutri-text-secondary); display: flex; align-items: center; gap: 6px; margin-bottom: 8px; }
+.motorista-destaque-card .destaque-nome { font-size: 1.05rem; font-weight: 800; color: var(--nutri-text); margin-bottom: 4px; }
+.motorista-destaque-card .destaque-valor { font-size: 1.5rem; font-weight: 900; color: var(--nutri-primary); }
+.motorista-destaque-card.critico { border-color: rgba(220, 38, 38, .35); background: rgba(220, 38, 38, .05); }
+.motorista-destaque-card.critico .destaque-valor { color: #dc2626; }
+.motorista-destaque-card.sucesso { border-color: rgba(16, 185, 129, .35); background: rgba(16, 185, 129, .05); }
+.motorista-destaque-card.sucesso .destaque-valor { color: #10b981; }
+@media (max-width: 900px) { .motoristas-destaques-grid { grid-template-columns: 1fr; } }
+
+.tabela-motoristas-linha td { vertical-align: middle; }
+.motorista-nome-cell { display: flex; flex-direction: column; }
+.motorista-nome-cell strong { color: var(--nutri-text); font-weight: 800; }
+.motorista-nome-cell span { font-size: .7rem; color: var(--nutri-text-secondary); }
+.indice-ineficiencia-bar { position: relative; width: 100%; min-width: 110px; height: 20px; border-radius: 999px; background: rgba(148, 163, 184, .2); overflow: hidden; }
+.indice-ineficiencia-bar-fill { position: absolute; inset: 0 auto 0 0; height: 100%; border-radius: 999px; transition: width .3s ease; }
+.indice-ineficiencia-bar-fill.baixo { background: linear-gradient(90deg, #10b981, #34d399); }
+.indice-ineficiencia-bar-fill.medio { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+.indice-ineficiencia-bar-fill.alto { background: linear-gradient(90deg, #dc2626, #ef4444); }
+.indice-ineficiencia-bar-label { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: .68rem; font-weight: 800; color: #0f172a; }
+.badge-taxa { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; border-radius: 999px; font-size: .72rem; font-weight: 800; }
+.badge-taxa.ok { background: rgba(16, 185, 129, .12); color: #059669; }
+.badge-taxa.alerta { background: rgba(245, 158, 11, .12); color: #b45309; }
+.badge-taxa.critico { background: rgba(220, 38, 38, .12); color: #dc2626; }
+
+/* ================================================================
+   ABA: HIST�RICO DE EMBARQUES
+   ================================================================ */
+.hist-embarque-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--nutri-border); cursor: pointer; transition: var(--transition); flex-wrap: wrap; }
+.hist-embarque-card:hover { background: rgba(var(--nutri-primary-rgb), .04); }
+.hist-embarque-card:last-child { border-bottom: none; }
+.hist-embarque-main { display: flex; align-items: center; gap: 14px; flex: 1 1 320px; min-width: 0; }
+.hist-embarque-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; background: rgba(var(--nutri-primary-rgb), .1); color: var(--nutri-primary); flex-shrink: 0; }
+.hist-embarque-info strong { display: block; color: var(--nutri-text); font-weight: 800; font-size: .92rem; }
+.hist-embarque-info span { display: block; color: var(--nutri-text-secondary); font-size: .74rem; margin-top: 2px; }
+.hist-embarque-meta { display: flex; gap: 20px; flex-wrap: wrap; align-items: center; }
+.hist-embarque-meta .meta-item { text-align: center; }
+.hist-embarque-meta .meta-item strong { display: block; font-size: 1.05rem; color: var(--nutri-text); font-weight: 700; }
+
+@media (max-width: 640px) {
+    .hist-embarque-meta .meta-item strong { font-size: 1.1rem; }
+    .hist-embarque-meta { gap: 12px; }
+}
+.hist-embarque-meta .meta-item span { display: block; font-size: .65rem; color: var(--nutri-text-secondary); font-weight: 700; text-transform: uppercase; }
+.hist-status-badge { padding: 4px 12px; border-radius: 999px; font-size: .7rem; font-weight: 800; white-space: nowrap; }
+.hist-status-badge.planejado { background: rgba(100, 116, 139, .12); color: #475569; }
+.hist-status-badge.em_andamento { background: rgba(59, 130, 246, .12); color: #2563eb; }
+.hist-status-badge.finalizado { background: rgba(16, 185, 129, .12); color: #059669; }
+.hist-status-badge.cancelado { background: rgba(220, 38, 38, .12); color: #dc2626; }
+.hist-status-badge.problema { background: rgba(245, 158, 11, .12); color: #b45309; }
+.hist-acerto-badge { padding: 3px 10px; border-radius: 999px; font-size: .65rem; font-weight: 800; background: rgba(16, 185, 129, .1); color: #059669; }
+.hist-acerto-badge.parcial { background: rgba(245, 158, 11, .1); color: #b45309; }
+.hist-acerto-badge.pendente { background: rgba(100, 116, 139, .1); color: #475569; }
+@media (max-width: 700px) { .hist-embarque-card { flex-direction: column; align-items: flex-start; } .hist-embarque-meta { width: 100%; justify-content: space-between; } }
+
+/* ================================================================
+   MODAL: DETALHE DO EMBARQUE (timeline/fotos)
+   ================================================================ */
+.detalhe-embarque-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; padding: 16px 18px; border-radius: 14px; background: rgba(var(--nutri-primary-rgb), .05); border: 1px solid var(--nutri-border); margin-bottom: 18px; }
+.detalhe-embarque-stats { display: flex; gap: 22px; flex-wrap: wrap; }
+.detalhe-embarque-stats .stat strong { display: block; font-size: 1.1rem; color: var(--nutri-text); }
+.detalhe-embarque-stats .stat span { display: block; font-size: .68rem; color: var(--nutri-text-secondary); font-weight: 700; text-transform: uppercase; }
+.detalhe-entregas-lista { display: flex; flex-direction: column; gap: 10px; }
+.detalhe-entrega-item { border: 1px solid var(--nutri-border); border-radius: 12px; padding: 12px 16px; }
+.detalhe-entrega-item.com-problema { border-color: rgba(220, 38, 38, .35); background: rgba(220, 38, 38, .03); }
+.detalhe-entrega-item .entrega-item-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.detalhe-entrega-item .entrega-item-fotos { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.detalhe-entrega-item .entrega-item-fotos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; cursor: zoom-in; border: 1px solid var(--nutri-border); }
+
+
+/* ================================================================
+   ABA: GR�FICOS PREMIUM
+   ================================================================ */
+.graficos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.grafico-card { padding: 0; overflow: hidden; }
+.grafico-card.grafico-full { grid-column: 1 / -1; }
+.grafico-card .section-body { padding: 18px 20px 22px; }
+.grafico-card canvas { max-width: 100%; }
+@media (max-width: 900px) { .graficos-grid { grid-template-columns: 1fr; } }
+
+/* ================================================================
+   RANKING CLIC�VEL (MOTORISTAS/VE�CULOS)
+   ================================================================ */
+.tabela-motoristas-linha, .tabela-veiculos-linha { cursor: pointer; }
+.tabela-motoristas-linha:hover, .tabela-veiculos-linha:hover { background: rgba(var(--nutri-primary-rgb), .05); }
+
+.detalhe-ranking-header { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; align-items: center; padding: 16px 18px; border-radius: 14px; background: rgba(var(--nutri-primary-rgb), .05); border: 1px solid var(--nutri-border); margin-bottom: 18px; }
+.detalhe-ranking-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 16px; width: 100%; margin-top: 14px; }
+.detalhe-ranking-stats .stat { text-align: center; }
+.detalhe-ranking-stats .stat strong { display: block; font-size: 1.2rem; color: var(--nutri-text); }
+.detalhe-ranking-stats .stat span { display: block; font-size: .66rem; color: var(--nutri-text-secondary); font-weight: 800; text-transform: uppercase; margin-top: 3px; }
+.detalhe-ranking-chart-wrap { padding: 10px 4px 4px; }
+
+/* ================================================================
+   RASTREABILIDADE TOTAL: TIMELINE DE EMBARQUE, ITENS E PERFIL DO MOTORISTA
+   ================================================================ */
+.detalhe-embarque-timeline { margin-bottom: 18px; }
+.detalhe-embarque-timeline h4 { font-size: .85rem; font-weight: 800; color: var(--nutri-text); margin-bottom: 10px; }
+.timeline-embarque-lista { display: flex; flex-direction: column; gap: 0; border-left: 2px solid var(--nutri-border); padding-left: 16px; max-height: 220px; overflow-y: auto; }
+.timeline-embarque-item { position: relative; padding-bottom: 14px; }
+.timeline-embarque-ponto { position: absolute; left: -21px; top: 3px; width: 10px; height: 10px; border-radius: 50%; background: var(--nutri-primary); border: 2px solid #fff; }
+.timeline-embarque-conteudo { display: flex; flex-direction: column; gap: 2px; }
+
+.entrega-item-itens-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px; margin-top: 10px; }
+.entrega-item-card { border: 1px solid var(--nutri-border); border-radius: 10px; padding: 8px; display: flex; gap: 8px; align-items: center; background: rgba(148, 163, 184, .04); }
+.entrega-item-card.item-divergente { border-color: rgba(220, 38, 38, .45); background: rgba(220, 38, 38, .06); }
+.entrega-item-card img { width: 48px; height: 48px; object-fit: cover; border-radius: 8px; cursor: zoom-in; flex-shrink: 0; }
+.entrega-item-card .item-sem-foto { width: 48px; height: 48px; border-radius: 8px; display: flex; align-items: center; justify-content: center; background: rgba(148, 163, 184, .15); color: var(--nutri-text-secondary); flex-shrink: 0; }
+.entrega-item-card-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.entrega-item-card-info strong { font-size: .78rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.entrega-item-card-info span { font-size: .68rem; color: var(--nutri-text-secondary); }
+
+.entrega-item-problemas { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.problema-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: .68rem; font-weight: 700; background: rgba(220, 38, 38, .1); color: #b91c1c; }
+.problema-badge.resolvido { background: rgba(16, 185, 129, .12); color: #047857; }
+
+.perfil-score-badges { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+.score-motorista-badge { display: flex; flex-direction: column; align-items: center; justify-content: center; width: 92px; height: 92px; border-radius: 50%; border: 4px solid; background: #fff; }
+.score-motorista-badge .score-valor { font-size: 1.3rem; font-weight: 900; line-height: 1; }
+.score-motorista-badge .score-label { font-size: .55rem; font-weight: 700; text-transform: uppercase; text-align: center; margin-top: 2px; color: var(--nutri-text-secondary); }
+.score-motorista-badge.nivel-alto { border-color: #10b981; }
+.score-motorista-badge.nivel-alto .score-valor { color: #10b981; }
+.score-motorista-badge.nivel-medio { border-color: #f59e0b; }
+.score-motorista-badge.nivel-medio .score-valor { color: #f59e0b; }
+.score-motorista-badge.nivel-baixo { border-color: #dc2626; }
+.score-motorista-badge.nivel-baixo .score-valor { color: #dc2626; }
+
+.score-mini-badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-weight: 800; font-size: .72rem; }
+.score-mini-badge.nivel-alto { background: rgba(16, 185, 129, .12); color: #047857; }
+.score-mini-badge.nivel-medio { background: rgba(245, 158, 11, .14); color: #b45309; }
+.score-mini-badge.nivel-baixo { background: rgba(220, 38, 38, .12); color: #b91c1c; }
+
+.perfil-pontos-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; margin-bottom: 18px; }
+.perfil-pontos-coluna { border: 1px solid var(--nutri-border); border-radius: 12px; padding: 14px 16px; }
+.perfil-pontos-coluna h4 { font-size: .8rem; font-weight: 800; margin-bottom: 8px; }
+.perfil-pontos-coluna.positivos h4 { color: #047857; }
+.perfil-pontos-coluna.negativos h4 { color: #b91c1c; }
+.perfil-pontos-coluna ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: .78rem; color: var(--nutri-text); }
+
+.perfil-secao { margin-bottom: 18px; }
+.perfil-secao h4 { font-size: .8rem; font-weight: 800; color: var(--nutri-text); margin-bottom: 10px; }
+.perfil-veiculos-lista { display: flex; flex-wrap: wrap; gap: 10px; }
+.perfil-veiculo-card { display: flex; flex-direction: column; gap: 2px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; min-width: 160px; }
+.perfil-veiculo-card strong { font-size: .85rem; }
+.perfil-veiculo-card span { font-size: .68rem; color: var(--nutri-text-secondary); }
+
+.btn-premium { display: inline-flex; align-items: center; gap: 8px; min-height: 42px; padding: 0 18px; border: 0; border-radius: 12px; background: var(--nutri-gradient-gold, linear-gradient(135deg, #d4a017, #f0c33c)); color: #1a3c34; font-size: .82rem; font-weight: 800; cursor: pointer; transition: var(--transition); box-shadow: 0 4px 14px rgba(212, 160, 23, .25); }
+.btn-premium:hover { transform: translateY(-1px); box-shadow: 0 6px 18px rgba(212, 160, 23, .35); }
+.btn-premium:disabled { opacity: .6; cursor: not-allowed; transform: none; }
+
+.perfil-embarques-lista { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.perfil-embarque-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
+.perfil-embarque-item:hover { background: rgba(var(--nutri-primary-rgb), .05); }
+.perfil-embarque-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+

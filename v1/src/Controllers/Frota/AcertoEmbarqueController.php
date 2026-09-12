@@ -32,19 +32,14 @@ public function listarParaAcerto(Request $request, Response $response): Response
     $filtros = [];
     $bindParams = [];
     
-    // 🔥 CORRIGIDO: Mostrar apenas embarques que têm acerto
-    $filtros[] = "EXISTS (
-        SELECT 1 FROM frota_acerto_embarque ae 
-        WHERE ae.embarque_id = e.id 
-    )";
+    // Embarques ativos também aparecem antes do primeiro acerto ser iniciado.
+    $filtros[] = "(ae.id IS NOT NULL OR e.status IN ('em_andamento', 'problema', 'finalizado'))";
     
     // 🔥 ADICIONADO: Filtrar por status do acerto
     if (!empty($params['status_acerto'])) {
-        $filtros[] = "EXISTS (
-            SELECT 1 FROM frota_acerto_embarque ae 
-            WHERE ae.embarque_id = e.id 
-              AND ae.status = :status_acerto
-        )";
+        $filtros[] = $params['status_acerto'] === 'em_andamento'
+            ? "(ae.status = :status_acerto OR (ae.id IS NULL AND e.status = 'em_andamento'))"
+            : "ae.status = :status_acerto";
         $bindParams['status_acerto'] = $params['status_acerto'];
     }
     
@@ -90,16 +85,23 @@ public function listarParaAcerto(Request $request, Response $response): Response
             m.nome as motorista_nome,
             m.telefone as motorista_telefone,
             ae.id as acerto_id,
-            ae.status as acerto_status,
+            COALESCE(ae.status, 'pendente') as acerto_status,
             ae.data_inicio_acerto,
             ae.data_fim_acerto,
             (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) as total_entregas,
             (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) as entregas_concluidas,
+              (SELECT COUNT(DISTINCT value::integer)
+               FROM frota_entrega ent,
+                   regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value
+               WHERE ent.embarque_id = e.id AND value ~ '^[0-9]+$') as total_pedidos,
+              (SELECT COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(ent.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), ent.valor_total, 0)), 0)
+               FROM frota_entrega ent WHERE ent.embarque_id = e.id) as valor_total,
+              (SELECT COALESCE(SUM(ent.peso_total), 0) FROM frota_entrega ent WHERE ent.embarque_id = e.id) as peso_total,
             (SELECT COUNT(*) FROM frota_entrega_problema WHERE embarque_id = e.id AND status_problema IN ('pendente', 'em_analise')) as total_problemas
         FROM frota_embarque e
         LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
         LEFT JOIN frota_motorista m ON m.id = e.motorista_id
-        INNER JOIN frota_acerto_embarque ae ON ae.embarque_id = e.id
+        LEFT JOIN frota_acerto_embarque ae ON ae.embarque_id = e.id
         {$where}
         ORDER BY 
             ae.id DESC,
@@ -118,7 +120,7 @@ public function listarParaAcerto(Request $request, Response $response): Response
     $embarques = $stmt->fetchAll(\PDO::FETCH_ASSOC);
     
     // Total
-    $sqlCount = "SELECT COUNT(DISTINCT e.id) FROM frota_embarque e {$where}";
+    $sqlCount = "SELECT COUNT(DISTINCT e.id) FROM frota_embarque e LEFT JOIN frota_acerto_embarque ae ON ae.embarque_id = e.id {$where}";
     $stmtCount = $this->pdo->prepare($sqlCount);
     foreach ($bindParams as $key => $val) {
         $stmtCount->bindValue($key, $val);
@@ -519,6 +521,7 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
             ");
             $stmt->execute(['embarque_id' => $embarqueId]);
             if ($stmt->fetch()) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 return $this->json($response, [
                     'success' => false,
                     'error' => 'Já existe um acerto em andamento para este embarque'
@@ -528,6 +531,7 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
             // Buscar dados do embarque
             $stmt = $pdo->prepare("
                 SELECT 
+                    e.status as embarque_status,
                     e.motorista_id,
                     e.veiculo_id,
                     e.numero_embarque,
@@ -544,10 +548,19 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
             $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
             
             if (!$embarque) {
+                if ($pdo->inTransaction()) $pdo->rollBack();
                 return $this->json($response, [
                     'success' => false,
                     'error' => 'Embarque não encontrado'
                 ], 404);
+            }
+
+            if ($embarque['embarque_status'] !== 'finalizado') {
+                if ($pdo->inTransaction()) $pdo->rollBack();
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'O acerto só pode ser iniciado após a finalização do embarque pelo motorista.'
+                ], 400);
             }
             
             // Criar acerto
@@ -615,7 +628,47 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
             ], 500);
         }
     }
- /**
+    public function buscarPedidoERP(Request $request, Response $response): Response
+    {
+        $numero = trim($request->getQueryParams()['numero'] ?? '');
+        if ($numero === '') return $this->json($response, ['success' => false, 'error' => 'Informe o número do pedido'], 400);
+        $embarqueId = (int)($request->getQueryParams()['embarque_id'] ?? 0);
+        if ($embarqueId <= 0) return $this->json($response, ['success' => false, 'error' => 'Embarque atual não informado'], 400);
+        try {
+            $digits = preg_replace('/\D+/', '', $numero);
+            $stmt = $this->pdo->prepare("SELECT DISTINCT e.id as embarque_id, e.numero_embarque, ent.id as entrega_id, ent.cliente_nome, ent.status as entrega_status, p.idpedido, c.idcliforemp as cliente_erp_id, CASE WHEN TRIM(COALESCE(p.numero, '')) ~ '^[0-9]+$' AND TRIM(p.numero) <> '0' THEN TRIM(p.numero) ELSE p.idpedido::text END as numero_pedido, p.valortotalpedido FROM pedido p LEFT JOIN cliforemp c ON c.idcliforemp = p.idcliforemp JOIN frota_embarque e ON e.id = :embarque_id LEFT JOIN frota_entrega ent ON ent.embarque_id = e.id AND (ent.pedido_id = p.idpedido OR ((',' || COALESCE(ent.pedidos_ids, '') || ',') LIKE ('%,' || p.idpedido::text || ',%'))) WHERE (p.numero::text ILIKE :numero_numero OR p.idpedido::text = :idpedido OR c.fantasia ILIKE :cliente_fantasia OR c.razao ILIKE :cliente_razao OR c.idcliforemp::text = :cliente_id) AND (p.idembarque = e.erp_embarque_id OR ent.id IS NOT NULL) ORDER BY p.idpedido LIMIT 50");
+            $like = '%' . $numero . '%';
+            $stmt->execute(['embarque_id' => $embarqueId, 'numero_numero' => $like, 'idpedido' => $digits ?: '-1', 'cliente_fantasia' => $like, 'cliente_razao' => $like, 'cliente_id' => $digits ?: '-1']);
+            $pedidos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (!$pedidos) return $this->json($response, ['success' => false, 'error' => 'Pedido ou cliente não encontrado neste embarque'], 404);
+            $ids = array_map('intval', array_column($pedidos, 'idpedido'));
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmtItens = $this->pdo->prepare("SELECT pi.idpedido, pi.iditem, i.referencia, i.descricao, pi.qt as quantidade, pi.valortotal as valor_total FROM pedido_item pi JOIN item i ON i.iditem = pi.iditem WHERE pi.idpedido IN ({$placeholders}) AND pi.ativo = 'S' ORDER BY pi.idpedido, i.referencia");
+            $stmtItens->execute($ids);
+            $itensPorPedido = [];
+            foreach ($stmtItens->fetchAll(\PDO::FETCH_ASSOC) as $item) $itensPorPedido[(int)$item['idpedido']][] = $item;
+            foreach ($pedidos as &$pedido) {
+                $pedido['itens'] = $itensPorPedido[(int)$pedido['idpedido']] ?? [];
+                $pedido['checklist'] = [];
+                $pedido['fotos'] = [];
+                if (!empty($pedido['entrega_id'])) {
+                    $stmtChecklist = $this->pdo->prepare('SELECT referencia, descricao, quantidade_prevista, quantidade_entregue, status, motivo, foto_url FROM frota_checklist_entrega WHERE entrega_id = :id ORDER BY id');
+                    $stmtChecklist->execute(['id' => $pedido['entrega_id']]);
+                    $pedido['checklist'] = $stmtChecklist->fetchAll(\PDO::FETCH_ASSOC);
+                    $stmtFotos = $this->pdo->prepare('SELECT tipo_foto, url_foto, descricao, created_at FROM frota_entrega_foto WHERE entrega_id = :id ORDER BY created_at');
+                    $stmtFotos->execute(['id' => $pedido['entrega_id']]);
+                    $pedido['fotos'] = $stmtFotos->fetchAll(\PDO::FETCH_ASSOC);
+                }
+            }
+            unset($pedido);
+            return $this->json($response, ['success' => true, 'data' => ['pedidos' => $pedidos, 'total' => count($pedidos)]]);
+        } catch (\Exception $e) {
+            error_log('Erro ao buscar pedido ERP no acerto: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Não foi possível buscar o pedido'], 500);
+        }
+    }
+
+    /**
  * POST /v1/frota/acerto/pedido-problema
  * Cria um pedido de acerto a partir de um problema identificado
  * 🔥 CORRIGIDO - ERRO DE PARÂMETROS MISTURADOS
@@ -724,48 +777,71 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         // ============================================================
         // 3. BUSCAR VALOR UNITÁRIO DOS ITENS
         // ============================================================
-        $itensFormatados = [];
-        $valorTotal = 0;
-        $itensIds = array_column($itens, 'iditem');
-        $itensMap = [];
+$itensFormatados = [];
+$valorTotal = 0;
+$itensIds = array_column($itens, 'iditem');
+$itensInfoMap = [];
+
+if (!empty($itensIds)) {
+    // 🔥 CORRIGIDO: usar APENAS parâmetros posicionais (?)
+    $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
+    $idFilial = (int)($input['id_filial'] ?? 1);
+    $stmtItem = $pdo->prepare("
+    SELECT DISTINCT
+        i.iditem,
+        i.referencia,
+        i.descricao,
+        i.complemento,
+        i.pesobruto,
+        i.pesoliquido,
+        i.idunidadebasica AS idunidade,
+        i.perccomissao,
+        e.valorprecovenda AS valor_unitario,
+        e.valorcustocontabil,
+        e.valorcustomediounitario,
+        e.percmargem,
+        e.custogerencial,
+        e.percicmscompra,
+        e.idimposto,
+        COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
+        COALESCE(ie.perc_ipi, 0) AS perc_ipi
+    FROM item i
+    JOIN estoque_filial e ON e.iditem = i.iditem
+    JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
+    LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
+    LEFT JOIN imposto_estado ie ON (
+        ie.idimposto = imposto.idimposto 
+        AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
+        AND ie.uf = f.uf
+    )
+    WHERE i.iditem IN ({$placeholders})
+    AND e.idfilial = ?
+");
+    
+    // 🔥 CORRIGIDO: todos os params são posicionais
+    $params = array_merge($itensIds, [$idFilial]);
+    $stmtItem->execute($params);
+    $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
+    
+    foreach ($itensInfo as $info) {
+        $itensInfoMap[$info['iditem']] = $info;
+    }
+}
         
-        if (!empty($itensIds)) {
-            // 🔥 CORRIGIDO: Usar placeholders posicionais com array_merge
-            $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
-            $sql = "
-                SELECT 
-                    i.iditem,
-                    i.referencia,
-                    i.descricao,
-                    i.idunidadebasica as idunidade,
-                    e.valorprecovenda as valor_unitario
-                FROM item i
-                JOIN estoque_filial e ON e.iditem = i.iditem
-                WHERE i.iditem IN ({$placeholders})
-                AND e.idfilial = ?
-            ";
-            
-            $stmtItem = $pdo->prepare($sql);
-            
-            // 🔥 CORRIGIDO: Mesclar parâmetros corretamente
-            $params = array_merge($itensIds, [$embarqueId]);
-            $stmtItem->execute($params);
-            $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
-            
-            foreach ($itensInfo as $info) {
-                $itensMap[$info['iditem']] = $info;
-            }
-        }
-        
-        // ============================================================
+            // ============================================================
         // 4. MONTAR ITENS COM VALORES
         // ============================================================
         $itensDetalhes = [];
         foreach ($itens as $item) {
             $iditem = (int)($item['iditem'] ?? 0);
             $quantidade = (float)($item['quantidade'] ?? 0);
+
+            // Se o front não mandou valor_unitario, buscar do mapa populado no bloco 3
             $valorUnitario = (float)($item['valor_unitario'] ?? 0);
-            
+            if ($valorUnitario == 0 && isset($itensInfoMap[$iditem])) {
+                $valorUnitario = (float)($itensInfoMap[$iditem]['valor_unitario'] ?? 0);
+            }
+
             if ($iditem <= 0) {
                 $pdo->rollBack();
                 return $this->json($response, [
@@ -773,7 +849,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                     'error' => 'ID do item inválido'
                 ], 400);
             }
-            
+
             if ($quantidade <= 0) {
                 $pdo->rollBack();
                 return $this->json($response, [
@@ -781,27 +857,23 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                     'error' => "Quantidade inválida para o item {$iditem}"
                 ], 400);
             }
-            
-            if ($valorUnitario == 0 && isset($itensMap[$iditem])) {
-                $valorUnitario = (float)($itensMap[$iditem]['valor_unitario'] ?? 0);
-            }
-            
+
             $totalItem = $quantidade * $valorUnitario;
             $valorTotal += $totalItem;
-            
+
             $itensFormatados[] = [
                 'iditem' => $iditem,
-                'referencia' => $item['referencia'] ?? ($itensMap[$iditem]['referencia'] ?? ''),
-                'descricao' => $item['descricao'] ?? ($itensMap[$iditem]['descricao'] ?? ''),
-                'unidade' => $item['unidade'] ?? ($itensMap[$iditem]['idunidade'] ?? 'UN'),
+                'referencia' => $item['referencia'] ?? ($itensInfoMap[$iditem]['referencia'] ?? ''),
+                'descricao' => $item['descricao'] ?? ($itensInfoMap[$iditem]['descricao'] ?? ''),
+                'unidade' => $item['unidade'] ?? ($itensInfoMap[$iditem]['idunidade'] ?? 'UN'),
                 'quantidade' => $quantidade,
                 'valor_unitario' => $valorUnitario,
                 'valor_total' => $totalItem
             ];
-            
-            $itensDetalhes[] = "{$item['referencia']}: {$quantidade} un";
+
+            $itensDetalhes[] = ($item['referencia'] ?? $itensInfoMap[$iditem]['referencia'] ?? 'Item') . ": {$quantidade} un";
         }
-        
+
         if (empty($itensFormatados)) {
             $pdo->rollBack();
             return $this->json($response, [
@@ -1161,31 +1233,38 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         
         if (!empty($itensIds)) {
             $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
-            $stmtItem = $pdo->prepare("
-                SELECT DISTINCT
-                    i.iditem,
-                    i.referencia,
-                    i.descricao,
-                    i.complemento,
-                    i.pesobruto,
-                    i.pesoliquido,
-                    i.idunidadebasica as idunidade,
-                    i.perccomissao,
-                    e.valorprecovenda as valor_unitario,
-                    e.valorcustocontabil,
-                    e.valorcustomediounitario,
-                    e.percmargem,
-                    e.custogerencial,
-                    e.idimposto,
-                    imp.idsituacaotributaria,
-                    imp.perc_ipi
-                FROM item i
-                JOIN estoque_filial e ON e.iditem = i.iditem
-                LEFT JOIN imposto imp ON imp.idimposto = e.idimposto
-                WHERE i.iditem IN ({$placeholders})
-                AND e.idfilial = :idfilial
-            ");
-            $params = array_merge($itensIds, ['idfilial' => $idFilial]);
+           $stmtItem = $pdo->prepare("
+    SELECT DISTINCT
+        i.iditem,
+        i.referencia,
+        i.descricao,
+        i.complemento,
+        i.pesobruto,
+        i.pesoliquido,
+        i.idunidadebasica AS idunidade,
+        i.perccomissao,
+        e.valorprecovenda AS valor_unitario,
+        e.valorcustocontabil,
+        e.valorcustomediounitario,
+        e.percmargem,
+        e.custogerencial,
+        e.percicmscompra,
+        e.idimposto,
+        COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
+        COALESCE(ie.perc_ipi, 0) AS perc_ipi
+    FROM item i
+    JOIN estoque_filial e ON e.iditem = i.iditem
+    JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
+    LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
+    LEFT JOIN imposto_estado ie ON (
+        ie.idimposto = imposto.idimposto 
+        AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
+        AND ie.uf = f.uf
+    )
+    WHERE i.iditem IN ({$placeholders})
+    AND e.idfilial = ?
+");
+            $params = array_merge($itensIds, [$idFilial]);
             $stmtItem->execute($params);
             $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
             
@@ -1307,8 +1386,8 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         
         // 🔥 MONTAR OBSERVAÇÃO COM TODOS OS DADOS
         $tipoLabel = $tipoProblema === 'faltante' ? 'FALTANTE' : 'DEVOLUÇÃO';
-        $tipoEmoji = $tipoProblema === 'faltante' ? '⚠️' : '🔄';
-        
+      $tipoEmoji = '';
+
         $dataEntrega = !empty($pedidoAcerto['horario_entrega']) 
             ? date('d/m/Y H:i:s', strtotime($pedidoAcerto['horario_entrega'])) 
             : 'N/A';
@@ -1317,24 +1396,24 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             ? date('d/m/Y H:i:s', strtotime($pedidoAcerto['horario_checkin'])) 
             : 'N/A';
         
-        $observacaoERP = sprintf(
-            "[%s] %s - PEDIDO DE %s\n" .
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" .
-            "📋 ACERTO: #%d | EMBARQUE: #%d | ENTREGA: #%d\n" .
-            "🏷️ CÓDIGO: %s\n" .
-            "👤 CLIENTE: %s\n" .
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" .
-            "🚚 MOTORISTA: %s | CPF: %s\n" .
-            "🚛 VEÍCULO: %s | %s %s\n" .
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" .
-            "📅 CHECK-IN: %s\n" .
-            "📅 ENTREGA: %s\n" .
-            "👤 RECEBEDOR: %s\n" .
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" .
-            "📝 MOTIVO: %s\n" .
-            "📦 ITENS: %s\n" .
-            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" .
-            "👤 USUÁRIO: %s | DATA: %s",
+   $observacaoERP = sprintf(
+    "[%s] %s - PEDIDO DE %s\n" .
+    "----------------------------------------------------------\n" .
+    "ACERTO: #%d | EMBARQUE: #%d | ENTREGA: #%d\n" .
+    "CODIGO: %s\n" .
+    "CLIENTE: %s\n" .
+    "----------------------------------------------------------\n" .
+    "MOTORISTA: %s | CPF: %s\n" .
+    "VEICULO: %s | %s %s\n" .
+    "----------------------------------------------------------\n" .
+    "CHECK-IN: %s\n" .
+    "ENTREGA: %s\n" .
+    "RECEBEDOR: %s\n" .
+    "----------------------------------------------------------\n" .
+    "MOTIVO: %s\n" .
+    "ITENS: %s\n" .
+    "----------------------------------------------------------\n" .
+    "USUARIO: %s | DATA: %s",
             $tipoEmoji,
             $tipoLabel,
             $tipoLabel,
@@ -1417,12 +1496,35 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             ], 500);
         }
         
-        // ============================================================
+              // ============================================================
         // 11. RESPOSTA
         // ============================================================
         if (!$sandboxSolicitado) {
-            $stmtStatus = $pdo->prepare("UPDATE frota_acerto_pedido SET status = 'processado', updated_at = NOW() WHERE id = :id AND status IN ('pendente', 'processando')");
-            $stmtStatus->execute(['id' => $pedidoAcertoId]);
+            $pdo->beginTransaction();
+            try {
+                $stmtStatus = $pdo->prepare("
+                    UPDATE frota_acerto_pedido 
+                    SET status = 'criado_erp', 
+                        pedido_erp_criado_id = :idpedidopda,
+                        numero_pedido_criado = :numeropedido,
+                        data_criacao_erp = NOW(),
+                        updated_at = NOW() 
+                    WHERE id = :id 
+                      AND status IN ('pendente', 'processando')
+                ");
+                $stmtStatus->execute([
+                    'id' => $pedidoAcertoId,
+                    'idpedidopda' => $idPedidoPDA,
+                    'numeropedido' => (string)$idPedidoPDA
+                ]);
+                $pdo->commit();
+            } catch (\Exception $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log('[Acerto] Falha ao marcar pedido como criado_erp: ' . $e->getMessage());
+                throw $e;
+            }
         }
 
         return $this->json($response, [
@@ -1443,13 +1545,16 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             'sql' => $resultado['sql'] ?? [],
             'dados_completos' => $dadosPedido
         ]);
-        
+
     } catch (\Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
         error_log('[Acerto] Erro ao criar pedido ERP: ' . $e->getMessage());
         error_log('[Acerto] Stack trace: ' . $e->getTraceAsString());
         return $this->json($response, [
             'success' => false,
-            'error' => $e->getMessage()
+            'error' => 'Erro ao criar pedido no ERP: ' . $e->getMessage()
         ], 500);
     }
 }
@@ -1605,6 +1710,7 @@ WHERE idpedidopda = {$dados['idpedidopda']};";
 /**
  * GET /v1/frota/acerto/transacoes
  * Lista as transações disponíveis para criação de pedidos
+ * 🔥 CORRIGIDO: usa coluna `inativo = 'N'` em vez de `ativo = 'S'`
  */
 public function listarTransacoes(Request $request, Response $response): Response
 {
@@ -1616,25 +1722,29 @@ public function listarTransacoes(Request $request, Response $response): Response
                 idserie,
                 tipo
             FROM pedido_transacao
-            WHERE ativo = 'S' AND idtransacao IN (19, 20)
+            WHERE inativo = 'N' 
+              AND idtransacao IN (19, 20)
             ORDER BY descricao ASC
         ");
         $stmt->execute();
         $transacoes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         
+        error_log('[Acerto-transacoes] Retornando ' . count($transacoes) . ' transações');
+        
         return $this->json($response, [
             'success' => true,
-            'data' => $transacoes
+            'data' => $transacoes,
+            'total' => count($transacoes)
         ]);
         
     } catch (\Exception $e) {
+        error_log('[Acerto-transacoes] ERRO: ' . $e->getMessage());
         return $this->json($response, [
             'success' => false,
             'error' => $e->getMessage()
         ], 500);
     }
 }
-  
     /**
      * POST /v1/frota/acerto/{id}/finalizar
      * Finaliza o acerto

@@ -261,6 +261,29 @@ FILTROS RÁPIDOS (PILLS) - INTERATIVO
 }
 .quick-filter-pill.active i { color: var(--nutri-gold-light) !important; }
 
+.embarques-overview { margin: -4px 0 16px; border: 1px solid var(--nutri-border); border-radius: var(--nutri-radius); background: var(--nutri-card-bg); padding: 16px 18px; box-shadow: var(--nutri-shadow); }
+.overview-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.overview-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.overview-eyebrow { color: var(--nutri-accent); font-size: .65rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.overview-heading strong { color: var(--nutri-text); font-size: .95rem; }
+.overview-caption { color: var(--nutri-text-secondary); font-size: .72rem; }
+.overview-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.overview-card { display: flex; align-items: center; gap: 10px; border: 1px solid var(--nutri-border); border-radius: 12px; padding: 11px 12px; }
+.overview-card > i { color: var(--nutri-text-secondary); font-size: .95rem; }
+.overview-card strong, .overview-card span { display: block; }
+.overview-card strong { color: var(--nutri-text); font-size: 1.15rem; line-height: 1.1; }
+.overview-card span { margin-top: 3px; color: var(--nutri-text-secondary); font-size: .64rem; font-weight: 700; text-transform: uppercase; }
+.overview-card.active > i { color: var(--nutri-gold); }
+.overview-card.success > i { color: var(--nutri-accent); }
+.overview-card.danger > i, .overview-card.danger strong { color: #dc2626; }
+.overview-progress { margin-top: 14px; }
+.overview-progress > div:first-child { display: flex; justify-content: space-between; color: var(--nutri-text-secondary); font-size: .7rem; font-weight: 700; }
+.overview-progress strong { color: var(--nutri-text); }
+.overview-progress-track { height: 7px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: var(--nutri-border); }
+.overview-progress-track span { display: block; height: 100%; border-radius: inherit; background: var(--nutri-gradient-accent); transition: width .5s ease; }
+.overview-loading { color: var(--nutri-text-secondary); font-size: .8rem; }
+.overview-loading i { margin-right: 6px; color: var(--nutri-accent); }
+
 /* ================================================================
 BARRA DE FERRAMENTAS UNIFICADA
 ================================================================ */
@@ -586,6 +609,7 @@ TABELA - PREMIUM
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--nutri-text-secondary) !important;
+    background: var(--nutri-card-bg);
     border-bottom: 2px solid var(--nutri-border);
     padding: 12px 14px;
     text-align: left;
@@ -593,6 +617,9 @@ TABELA - PREMIUM
     position: sticky;
     top: 0;
     z-index: 2;
+}
+[data-theme="dark"] .table-frota th {
+    background: var(--nutri-card-bg);
 }
 .table-frota td {
     padding: 12px 14px;
@@ -2338,7 +2365,8 @@ Aplica-se automaticamente a todos os modais do sistema
     top: 0; left: 0; right: 0;
     height: 5px;
     background: var(--nutri-gradient-gold);
-    z-index: 2;
+    z-index: 0;
+    pointer-events: none;
 }
 
 .swal2-title {
@@ -2815,6 +2843,8 @@ RESPONSIVO - PREMIUM
 }
 
 @media (max-width: 768px) {
+    .overview-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .overview-heading { align-items: flex-start; flex-direction: column; }
     .table-frota { font-size: 0.7rem; }
     .table-frota th,
     .table-frota td { padding: 6px 8px; }

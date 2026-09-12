@@ -21,12 +21,15 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
-    <!-- Alpine.js com Collapse - VERSÃO CORRETA (SEM DUPLICAÇÃO) -->
-  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
-<script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- SweetAlert2 (única ocorrência — carregamento duplicado removido) -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Alpine.js com Collapse -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script src="<?= asset('/portal/assets/js/config.js') ?>"></script>
     <script>
-       
         (function() {
             const token = localStorage.getItem('authToken');
             if (!token) return;
@@ -50,20 +53,17 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
             }
         })();
         
-       // Registra o plugin collapse - VERSÃO CORRETA
-document.addEventListener('alpine:init', () => {
-   
-});
+        // Registra o plugin collapse
+        document.addEventListener('alpine:init', () => {
+            // Hooks Alpine podem ser adicionados aqui no futuro
+        });
     </script>
-    
-    <!-- SweetAlert2 -->
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
-<!-- Fonts + Icons -->
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-   
+
+    <!-- Fonts + Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/brands.min.css">
+
     <!-- Custom CSS -->
     <link href="<?= asset('/portal/assets/css/style.css') ?>" rel="stylesheet">
     
@@ -84,7 +84,8 @@ document.addEventListener('alpine:init', () => {
             overflow-x: hidden;
         }
      
-[x-cloak] { display: none !important; }
+        [x-cloak] { display: none !important; }
+
         /* Scrollbar */
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #f1f5f9; }

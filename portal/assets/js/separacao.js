@@ -2,8 +2,8 @@
 // MÓDULO DE SEPARAÇÃO (COLETOR OFICIAL)
 // ==========================================================================
 
-// API_TOKEN legado (será usado apenas se não houver JWT)
-var API_TOKEN = 'xoUM?va.JNG93v)@#i9FyH@B6n0}H4.yst%s8zV8M}xc+ZrFAz5:y6T07HxyYGE~';
+// Tokens devem existir somente no ambiente do servidor; o portal usa JWT.
+var API_TOKEN = '';
 
 // Estado específico da separação (usa AppState global)
 const state = AppState;

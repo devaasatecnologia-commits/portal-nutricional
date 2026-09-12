@@ -92,8 +92,8 @@ class ERPPedidoService
             // ================================================================
             // 3. GERAR SEQUENCIAIS
             // ================================================================
-            $sequencialPortal = $this->gerarSequencialPortal();
-            $idPedidoPDA = $this->gerarIdPedidoPDA();
+          $idPedidoPDA = $this->gerarIdPedidoPDA();
+            $sequencialPortal = $idPedidoPDA;
             
             // ================================================================
             // 4. PROCESSAR ITENS
@@ -247,22 +247,24 @@ class ERPPedidoService
      */
     private function buscarCliente(int $idCliente)
     {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                idcliforemp,
-                fantasia,
-                razao,
-                cpf,
-                fone,
-                email,
-                endereco,
-                bairro,
-                cidade,
-                uf,
-                cep,
-                idvendedor
-            FROM cliforemp
-            WHERE idcliforemp = :id
+               $stmt = $this->pdo->prepare("
+            SELECT
+                c.idcliforemp,
+                c.fantasia,
+                c.razao,
+                c.cpf,
+                c.fone,
+                c.email,
+                c.endereco,
+                c.bairro,
+                c.idcidade,
+                cid.descricao AS cidade,
+                c.uf,
+                c.cep,
+                c.idvendedor
+            FROM cliforemp c
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            WHERE c.idcliforemp = :id
         ");
         $stmt->execute(['id' => $idCliente]);
         return $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -282,40 +284,57 @@ class ERPPedidoService
         return $stmt->fetch(\PDO::FETCH_ASSOC);
     }
     
-    /**
+      /**
      * Busca informações do item no estoque
+     * 🔥 CORRIGIDO: usa IMPOSTO_ESTADO (não IMPOSTO) para situação tributária e IPI
      */
     private function buscarInfoItem(int $idItem, int $idFilial)
     {
         $stmt = $this->pdo->prepare("
             SELECT DISTINCT
                 i.iditem,
-                i.referencia,
+                i.referencia AS referencia,
                 i.descricao,
                 i.complemento,
                 i.pesobruto,
                 i.pesoliquido,
                 i.idunidadebasica,
                 i.perccomissao,
+                i.fator_conversao,
+                i.tipo_conversao,
+                i.quant_na_caixa,
+                i.idclassfiscal,
                 e.valorprecovenda,
                 e.valorcustocontabil,
                 e.valorcustomediounitario,
                 e.percmargem,
                 e.custogerencial,
+                e.percicmscompra,
+                e.valorprecominimo,
                 e.idimposto,
-                imp.idsituacaotributaria,
-                imp.perc_ipi
+                lfd.iddeposito,
+                COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
+                COALESCE(ie.idsittrib_cofins, 0) AS idsittrib_cofins,
+                COALESCE(ie.idsittrib_ipi, 0) AS idsittrib_ipi,
+                COALESCE(ie.idsittrib_pis, 0) AS idsittrib_pis,
+                COALESCE(ie.perc_ipi, 0) AS perc_ipi
             FROM estoque_filial e
             JOIN item i ON i.iditem = e.iditem
-            LEFT JOIN imposto imp ON imp.idimposto = e.idimposto
-            LEFT JOIN imposto_estado ie ON ie.idimposto = imp.idimposto
+            JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
+            LEFT JOIN lote_filial_deposito lfd ON lfd.iditem = e.iditem AND lfd.idfilial = e.idfilial
+            LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
+            LEFT JOIN imposto_estado ie ON (
+                ie.idimposto = imposto.idimposto 
+                AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
+                AND ie.uf = f.uf
+            )
             WHERE e.iditem = :iditem
               AND e.idfilial = :idfilial
+            LIMIT 1
         ");
         $stmt->execute(['iditem' => $idItem, 'idfilial' => $idFilial]);
         return $stmt->fetch(\PDO::FETCH_ASSOC);
     }
-    
     /**
      * Verifica saldo em estoque
      */
@@ -331,23 +350,6 @@ class ERPPedidoService
         $result = $stmt->fetch(\PDO::FETCH_ASSOC);
         return (float)($result['saldo'] ?? 0);
     }
-    
-    /**
-     * Gera sequencial para o portal
-     */
-    private function gerarSequencialPortal(): int
-    {
-        try {
-            $stmt = $this->pdo->query("SELECT nextval('pedido_portal') as sequencial");
-            return (int)$stmt->fetchColumn();
-        } catch (\Exception $e) {
-            // Se a sequence não existir, criar
-            $this->pdo->exec("CREATE SEQUENCE IF NOT EXISTS pedido_portal START 1");
-            $stmt = $this->pdo->query("SELECT nextval('pedido_portal') as sequencial");
-            return (int)$stmt->fetchColumn();
-        }
-    }
-    
     /**
      * Gera ID para palmtop_pedido
      */
@@ -377,7 +379,7 @@ private function montarObservacao(array $dados): string
     // ============================================================
     if (!empty($dados['tipo_problema'])) {
         $tipoLabel = strtoupper($dados['tipo_problema']);
-        $tipoEmoji = $dados['tipo_problema'] === 'faltante' ? '⚠️' : '🔄';
+         $tipoEmoji = ''; 
         $parts[] = "{$tipoEmoji} TIPO: {$tipoLabel}";
     }
     
@@ -521,7 +523,7 @@ private function montarObservacao(array $dados): string
                 {$dados['idpedidopda']}, 
                 {$dados['idempresa']}, 
                 {$dados['idfilial']}, 
-                {$dados['sequencial_portal']}, 
+               {$dados['idpedidopda']},
                 {$dados['idcliente']},
                 {$dados['idcondicao']}, 
                 {$dados['idmetodo']}, 
@@ -561,7 +563,7 @@ private function montarObservacao(array $dados): string
         ";
     }
     
-    /**
+        /**
      * Gera SQL para inserir um item
      */
     private function gerarSQLItem(array $dados, array $item, int $index): string
@@ -586,44 +588,55 @@ private function montarObservacao(array $dados): string
                 valorpromocaocondicaozero, valorpromocaocondicao,
                 corpromocao, idpedidocompranf_e, iditempedidocompranf_e
             ) VALUES (
-                {$dados['sequencial_portal']}, 
-                {$sequencial}, 
-                {$dados['idpedidopda']}, 
-                0, 
+                {$dados['idpedidopda']},
+                {$sequencial},
+                {$dados['idpedidopda']},
+                0,
                 {$item['iditem']},
-                {$item['idunidade']}, 
-                {$item['quantidade']}, 
-                {$item['valor_unitario']}, 
-                0, 
-                {$item['valor_total']},
-                {$item['valorcustocontabil']}, 
-                0, 
-                0, 
-                0,
-                0, 
-                {$item['percipi']}, 
-                {$item['perc_comissao']}, 
-                {$item['perc_margem']},
-                {$this->esc(substr($item['complemento'] ?? '.', 0, 100))}, 
-                {$this->esc(substr($item['descricao'] ?? '.', 0, 80))}, 
-                {$this->esc($item['referencia'] ?? '.')}, 
-                0,
-                0, 
-                {$item['valorcustogerencial']}, 
-                {$item['valorcustomedio']},
-                {$item['valor_unitario']}, 
-                {$item['idunidade']}, 
+                {$item['idunidade']},
                 {$item['quantidade']},
-                {$item['valor_unitario']}, 
-                'N', 
+                {$item['valor_unitario']},
                 0,
-                0, 0, 0,
-                0, 0, 0,
-                0, 0, 0,
-                0, {$item['quantidade']},
-                0, 0, 0,
-                0, 0,
-                '.', '.', 0
+                {$item['valor_total']},
+                {$item['valorcustocontabil']},
+                0,
+                0,
+                0,
+                0,
+                {$item['percipi']},
+                {$item['perc_comissao']},
+                {$item['perc_margem']},
+                {$this->esc(substr($item['complemento'] ?? '.', 0, 100))},
+                {$this->esc(substr($item['descricao'] ?? '.', 0, 80))},
+                {$this->esc($item['referencia'] ?? '.')},
+                0,
+                0,
+                {$item['valorcustogerencial']},
+                {$item['valorcustomedio']},
+                {$item['valor_unitario']},
+                {$item['idunidade']},
+                {$item['quantidade']},
+                {$item['valor_unitario']},
+                'N',
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                {$item['quantidade']},
+                0,
+                0,
+                0,
+                0,
+                0,
+                '.',
+                '.',
+                0
             )
         ";
     }

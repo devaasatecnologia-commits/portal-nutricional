@@ -10,7 +10,7 @@ class DashboardController
 {
     private $pdo;
     private $cacheTime = 60; // segundos para cache
-    
+
     public function __construct()
     {
         try {
@@ -25,7 +25,7 @@ class DashboardController
             $this->pdo = null;
         }
     }
-    
+
     /**
      * GET /v1/frota/dashboard/kpis
      * Retorna KPIs reais do sistema
@@ -55,7 +55,7 @@ class DashboardController
                 'percentual_entrega_no_prazo' => 0,
                 'total_peso_transportado_hoje' => 0
             ];
-            
+
             if ($this->pdo) {
                 // ============================================================
                 // 1. VEÍCULOS
@@ -74,7 +74,7 @@ class DashboardController
                 $data['veiculos_em_rota'] = (int)$veiculos['em_rota'];
                 $data['veiculos_disponiveis'] = (int)$veiculos['disponivel'];
                 $data['veiculos_manutencao'] = (int)$veiculos['manutencao'];
-                
+
                 // ============================================================
                 // 2. ENTREGAS DE HOJE
                 // ============================================================
@@ -92,10 +92,10 @@ class DashboardController
                 $data['entregas_hoje'] = (int)$entregas['total'];
                 $data['entregas_concluidas_hoje'] = (int)$entregas['concluidas'];
                 $data['entregas_pendentes_hoje'] = (int)$entregas['pendentes'];
-                $data['taxa_entrega_hoje'] = $data['entregas_hoje'] > 0 
-                    ? round(($data['entregas_concluidas_hoje'] / $data['entregas_hoje']) * 100, 1) 
+                $data['taxa_entrega_hoje'] = $data['entregas_hoje'] > 0
+                    ? round(($data['entregas_concluidas_hoje'] / $data['entregas_hoje']) * 100, 1)
                     : 0;
-                
+
                 // ============================================================
                 // 3. MOTORISTAS
                 // ============================================================
@@ -111,7 +111,7 @@ class DashboardController
                 $data['motoristas_ativos'] = (int)$motoristas['total'];
                 $data['motoristas_em_rota'] = (int)$motoristas['em_rota'];
                 $data['motoristas_disponiveis'] = (int)$motoristas['disponivel'];
-                
+
                 // ============================================================
                 // 4. EMBARQUES
                 // ============================================================
@@ -124,23 +124,22 @@ class DashboardController
                 $embarques = $stmt->fetch(PDO::FETCH_ASSOC);
                 $data['embarques_ativos'] = (int)$embarques['ativos'];
                 $data['embarques_finalizados_hoje'] = (int)$embarques['finalizados_hoje'];
-                
+
                 // ============================================================
                 // 5. ENTREGAS DO MÊS
                 // ============================================================
                 $stmt = $this->pdo->query("
-                    SELECT 
-                        COUNT(*) as total,
-                        COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as faturamento
-                    FROM frota_entrega e
-                    WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE)
-                    AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
-                    AND status = 'entregue'
-                ");
+    SELECT 
+        COUNT(*) as total,
+        COALESCE(SUM(valor_total), 0) as faturamento
+    FROM frota_entrega
+    WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE)
+      AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
+      AND status = 'entregue'
+");
                 $mes = $stmt->fetch(PDO::FETCH_ASSOC);
                 $data['total_entregas_mes'] = (int)$mes['total'];
                 $data['faturamento_mes'] = (float)$mes['faturamento'];
-                
                 // ============================================================
                 // 6. MÉTRICAS DE ROTA (PESO + KM)
                 // ============================================================
@@ -156,7 +155,7 @@ class DashboardController
                 $metricas = $stmt->fetch(PDO::FETCH_ASSOC);
                 $data['total_km_rodados_hoje'] = (float)$metricas['total_km'];
                 $data['total_peso_transportado_hoje'] = (float)$metricas['total_peso'];
-                
+
                 // ============================================================
                 // 7. TEMPO MÉDIO DE ENTREGA
                 // ============================================================
@@ -172,7 +171,7 @@ class DashboardController
                 $stmt->execute();
                 $tempo = $stmt->fetch(PDO::FETCH_ASSOC);
                 $data['tempo_medio_entrega'] = (float)($tempo['tempo_medio'] ?? 0);
-                
+
                 // ============================================================
                 // 8. ENTREGAS ATRASADAS E PERCENTUAL NO PRAZO
                 // ============================================================
@@ -192,13 +191,12 @@ class DashboardController
                     ? round((($prazos['no_prazo'] ?? 0) / ($prazos['total_entregues'] ?? 1)) * 100, 1)
                     : 0;
             }
-            
+
             return $this->json($response, [
                 'success' => true,
                 'data' => $data,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
-            
         } catch (\Exception $e) {
             error_log('Erro no kpis: ' . $e->getMessage());
             return $this->json($response, [
@@ -208,7 +206,7 @@ class DashboardController
             ]);
         }
     }
-    
+
     /**
      * GET /v1/frota/dashboard/graficos
      * Retorna dados para os gráficos
@@ -237,7 +235,7 @@ class DashboardController
                     'manutencao' => 0
                 ]
             ];
-            
+
             if ($this->pdo) {
                 // ============================================================
                 // 1. ENTREGAS ÚLTIMOS 7 DIAS
@@ -245,24 +243,24 @@ class DashboardController
                 for ($i = 6; $i >= 0; $i--) {
                     $data = date('Y-m-d', strtotime("-$i days"));
                     $result['dias'][6 - $i] = date('D', strtotime($data));
-                    
+
                     $stmt = $this->pdo->prepare("
-                        SELECT 
-                            COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
-                            COUNT(CASE WHEN status IN ('pendente', 'em_andamento') THEN 1 END) as pendentes,
-                            COALESCE(SUM(CASE WHEN status = 'entregue' THEN COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0) ELSE 0 END), 0) as faturamento
-                        FROM frota_entrega e
-                        WHERE DATE(e.created_at) = :data
-                        AND e.status != 'cancelada'
+                      SELECT 
+    COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
+    COUNT(CASE WHEN status IN ('pendente', 'em_andamento') THEN 1 END) as pendentes,
+    COALESCE(SUM(CASE WHEN status = 'entregue' THEN valor_total ELSE 0 END), 0) as faturamento
+FROM frota_entrega
+WHERE DATE(created_at) = :data
+AND status != 'cancelada'
                     ");
                     $stmt->execute(['data' => $data]);
                     $row = $stmt->fetch(PDO::FETCH_ASSOC);
-                    
+
                     $result['concluidas'][6 - $i] = (int)($row['concluidas'] ?? 0);
                     $result['pendentes'][6 - $i] = (int)($row['pendentes'] ?? 0);
                     $result['faturamento_diario'][6 - $i] = (float)($row['faturamento'] ?? 0);
                 }
-                
+
                 // ============================================================
                 // 2. STATUS DAS ENTREGAS (ÚLTIMOS 30 DIAS)
                 // ============================================================
@@ -284,18 +282,18 @@ class DashboardController
                     'falha' => (int)($status['falha'] ?? 0),
                     'canceladas' => (int)($status['canceladas'] ?? 0)
                 ];
-                
+
                 // ============================================================
                 // 3. TOP MOTORISTAS (ENTREGUES)
                 // ============================================================
                 $stmt = $this->pdo->query("
                     SELECT 
-                        m.id,
-                        m.nome,
-                        COUNT(e.id) as total_entregas,
-                        COALESCE(SUM(COALESCE((SELECT SUM(pi.valortotal) FROM pedido_item pi WHERE pi.idpedido IN (SELECT value::integer FROM regexp_split_to_table(COALESCE(e.pedidos_ids, ''), ',') value WHERE value ~ '^[0-9]+$')), e.valor_total, 0)), 0) as total_faturado
-                    FROM frota_motorista m
-                    JOIN frota_entrega e ON e.motorista_id = m.id
+    m.id,
+    m.nome,
+    COUNT(e.id) as total_entregas,
+    COALESCE(SUM(e.valor_total), 0) as total_faturado
+FROM frota_motorista m
+JOIN frota_entrega e ON e.motorista_id = m.id
                     WHERE DATE(e.created_at) >= CURRENT_DATE - INTERVAL '30 days'
                     AND e.status = 'entregue'
                     GROUP BY m.id, m.nome
@@ -303,7 +301,7 @@ class DashboardController
                     LIMIT 5
                 ");
                 $result['top_motoristas'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
+
                 // ============================================================
                 // 4. VEÍCULOS POR STATUS
                 // ============================================================
@@ -320,7 +318,7 @@ class DashboardController
                     'em_rota' => (int)($veiculos['em_rota'] ?? 0),
                     'manutencao' => (int)($veiculos['manutencao'] ?? 0)
                 ];
-                
+
                 // ============================================================
                 // 5. ENTREGAS POR HORA (HOJE)
                 // ============================================================
@@ -336,13 +334,12 @@ class DashboardController
                     $result['entregas_por_hora'][$h] = (int)$stmt->fetchColumn();
                 }
             }
-            
+
             return $this->json($response, [
                 'success' => true,
                 'data' => $result,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
-            
         } catch (\Exception $e) {
             error_log('Erro no graficos: ' . $e->getMessage());
             return $this->json($response, [
@@ -352,7 +349,7 @@ class DashboardController
             ]);
         }
     }
-    
+
     /**
      * GET /v1/frota/dashboard/alertas
      * Retorna alertas do sistema
@@ -361,7 +358,7 @@ class DashboardController
     {
         try {
             $alertas = [];
-            
+
             if ($this->pdo) {
                 // 1. Veículos em manutenção há mais de 7 dias
                 $stmt = $this->pdo->query("
@@ -382,7 +379,7 @@ class DashboardController
                         'created_at' => date('Y-m-d H:i:s')
                     ];
                 }
-                
+
                 // 2. Entregas atrasadas (pendentes com data prevista vencida)
                 $stmt = $this->pdo->query("
                     SELECT COUNT(*) as total
@@ -401,12 +398,11 @@ class DashboardController
                     ];
                 }
             }
-            
+
             return $this->json($response, [
                 'success' => true,
                 'data' => $alertas
             ]);
-            
         } catch (\Exception $e) {
             return $this->json($response, [
                 'success' => true,
@@ -414,7 +410,7 @@ class DashboardController
             ]);
         }
     }
-    
+
     /**
      * GET /v1/frota/dashboard/entregas-hoje
      * Retorna entregas de hoje
@@ -423,7 +419,7 @@ class DashboardController
     {
         try {
             $entregas = [];
-            
+
             if ($this->pdo) {
                 $stmt = $this->pdo->prepare("
                     SELECT 
@@ -443,12 +439,11 @@ class DashboardController
                 $stmt->execute();
                 $entregas = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
-            
+
             return $this->json($response, [
                 'success' => true,
                 'data' => $entregas
             ]);
-            
         } catch (\Exception $e) {
             return $this->json($response, [
                 'success' => true,
@@ -456,7 +451,7 @@ class DashboardController
             ]);
         }
     }
-    
+
     /**
      * GET /v1/frota/dashboard/mapa
      * Retorna posições dos veículos para o mapa
@@ -465,7 +460,7 @@ class DashboardController
     {
         try {
             $veiculos = [];
-            
+
             if ($this->pdo) {
                 $stmt = $this->pdo->prepare("
                     SELECT 
@@ -496,12 +491,11 @@ class DashboardController
                 $stmt->execute();
                 $veiculos = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
-            
+
             return $this->json($response, [
                 'success' => true,
                 'data' => $veiculos
             ]);
-            
         } catch (\Exception $e) {
             return $this->json($response, [
                 'success' => true,
@@ -509,7 +503,7 @@ class DashboardController
             ]);
         }
     }
-    
+
     /**
      * Dados padrão para fallback
      */
@@ -538,7 +532,7 @@ class DashboardController
             'total_peso_transportado_hoje' => 0
         ];
     }
-    
+
     private function getDefaultGraficos(): array
     {
         return [
@@ -567,38 +561,38 @@ class DashboardController
 // ADICIONAR NO FINAL DO DASHBOARDCONTROLLER.PHP
 // ================================================================
 
-/**
- * GET /v1/frota/dashboard/kpis-problemas
- * Retorna KPIs específicos para análise de problemas
- */
-public function kpisProblemas(Request $request, Response $response): Response
-{
-    try {
-        $data = [
-            'total_problemas' => 0,
-            'pendentes' => 0,
-            'em_analise' => 0,
-            'resolvidos' => 0,
-            'cancelados' => 0,
-            'faltantes' => 0,
-            'devolucoes' => 0,
-            'avarias' => 0,
-            'extraviados' => 0,
-            'valor_total_afetado' => 0,
-            'quantidade_total_afetada' => 0,
-            'problemas_criticos' => 0,
-            'problemas_alta' => 0,
-            'problemas_media' => 0,
-            'problemas_baixa' => 0,
-            'taxa_resolucao' => 0,
-            'tempo_medio_resolucao' => 0 // horas
-        ];
+    /**
+     * GET /v1/frota/dashboard/kpis-problemas
+     * Retorna KPIs específicos para análise de problemas
+     */
+    public function kpisProblemas(Request $request, Response $response): Response
+    {
+        try {
+            $data = [
+                'total_problemas' => 0,
+                'pendentes' => 0,
+                'em_analise' => 0,
+                'resolvidos' => 0,
+                'cancelados' => 0,
+                'faltantes' => 0,
+                'devolucoes' => 0,
+                'avarias' => 0,
+                'extraviados' => 0,
+                'valor_total_afetado' => 0,
+                'quantidade_total_afetada' => 0,
+                'problemas_criticos' => 0,
+                'problemas_alta' => 0,
+                'problemas_media' => 0,
+                'problemas_baixa' => 0,
+                'taxa_resolucao' => 0,
+                'tempo_medio_resolucao' => 0 // horas
+            ];
 
-        if ($this->pdo) {
-            // ============================================================
-            // 1. STATUS DOS PROBLEMAS
-            // ============================================================
-            $stmt = $this->pdo->query("
+            if ($this->pdo) {
+                // ============================================================
+                // 1. STATUS DOS PROBLEMAS
+                // ============================================================
+                $stmt = $this->pdo->query("
                 SELECT 
                     COUNT(*) as total,
                     COUNT(CASE WHEN status_problema = 'pendente' THEN 1 END) as pendentes,
@@ -607,22 +601,22 @@ public function kpisProblemas(Request $request, Response $response): Response
                     COUNT(CASE WHEN status_problema = 'cancelado' THEN 1 END) as cancelados
                 FROM frota_entrega_problema
             ");
-            $status = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            $data['total_problemas'] = (int)($status['total'] ?? 0);
-            $data['pendentes'] = (int)($status['pendentes'] ?? 0);
-            $data['em_analise'] = (int)($status['em_analise'] ?? 0);
-            $data['resolvidos'] = (int)($status['resolvidos'] ?? 0);
-            $data['cancelados'] = (int)($status['cancelados'] ?? 0);
-            
-            $data['taxa_resolucao'] = $data['total_problemas'] > 0 
-                ? round(($data['resolvidos'] / $data['total_problemas']) * 100, 1) 
-                : 0;
+                $status = $stmt->fetch(PDO::FETCH_ASSOC);
 
-            // ============================================================
-            // 2. TIPOS DE PROBLEMA
-            // ============================================================
-            $stmt = $this->pdo->query("
+                $data['total_problemas'] = (int)($status['total'] ?? 0);
+                $data['pendentes'] = (int)($status['pendentes'] ?? 0);
+                $data['em_analise'] = (int)($status['em_analise'] ?? 0);
+                $data['resolvidos'] = (int)($status['resolvidos'] ?? 0);
+                $data['cancelados'] = (int)($status['cancelados'] ?? 0);
+
+                $data['taxa_resolucao'] = $data['total_problemas'] > 0
+                    ? round(($data['resolvidos'] / $data['total_problemas']) * 100, 1)
+                    : 0;
+
+                // ============================================================
+                // 2. TIPOS DE PROBLEMA
+                // ============================================================
+                $stmt = $this->pdo->query("
                 SELECT 
                     tipo_problema,
                     COUNT(*) as total,
@@ -631,21 +625,21 @@ public function kpisProblemas(Request $request, Response $response): Response
                 FROM frota_entrega_problema
                 GROUP BY tipo_problema
             ");
-            $tipos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            foreach ($tipos as $tipo) {
-                $key = $tipo['tipo_problema'] . 's'; // faltante -> faltantes
-                if (isset($data[$key])) {
-                    $data[$key] = (int)$tipo['total'];
-                }
-                $data['quantidade_total_afetada'] += (float)$tipo['quantidade'];
-                $data['valor_total_afetado'] += (float)$tipo['valor'];
-            }
+                $tipos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // ============================================================
-            // 3. PRIORIDADES
-            // ============================================================
-            $stmt = $this->pdo->query("
+                foreach ($tipos as $tipo) {
+                    $key = $tipo['tipo_problema'] . 's'; // faltante -> faltantes
+                    if (isset($data[$key])) {
+                        $data[$key] = (int)$tipo['total'];
+                    }
+                    $data['quantidade_total_afetada'] += (float)$tipo['quantidade'];
+                    $data['valor_total_afetado'] += (float)$tipo['valor'];
+                }
+
+                // ============================================================
+                // 3. PRIORIDADES
+                // ============================================================
+                $stmt = $this->pdo->query("
                 SELECT 
                     prioridade,
                     COUNT(*) as total
@@ -653,91 +647,90 @@ public function kpisProblemas(Request $request, Response $response): Response
                 WHERE status_problema != 'resolvido' AND status_problema != 'cancelado'
                 GROUP BY prioridade
             ");
-            $prioridades = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
-            foreach ($prioridades as $p) {
-                $key = 'problemas_' . $p['prioridade'];
-                if (isset($data[$key])) {
-                    $data[$key] = (int)$p['total'];
-                }
-            }
+                $prioridades = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            // ============================================================
-            // 4. TEMPO MÉDIO DE RESOLUÇÃO (em horas)
-            // ============================================================
-            $stmt = $this->pdo->query("
+                foreach ($prioridades as $p) {
+                    $key = 'problemas_' . $p['prioridade'];
+                    if (isset($data[$key])) {
+                        $data[$key] = (int)$p['total'];
+                    }
+                }
+
+                // ============================================================
+                // 4. TEMPO MÉDIO DE RESOLUÇÃO (em horas)
+                // ============================================================
+                $stmt = $this->pdo->query("
                 SELECT 
                     AVG(EXTRACT(EPOCH FROM (data_resolucao - created_at))/3600) as tempo_medio
                 FROM frota_entrega_problema
                 WHERE status_problema = 'resolvido'
                 AND data_resolucao IS NOT NULL
             ");
-            $tempo = $stmt->fetch(PDO::FETCH_ASSOC);
-            $data['tempo_medio_resolucao'] = round((float)($tempo['tempo_medio'] ?? 0), 1);
+                $tempo = $stmt->fetch(PDO::FETCH_ASSOC);
+                $data['tempo_medio_resolucao'] = round((float)($tempo['tempo_medio'] ?? 0), 1);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $data,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no kpisProblemas: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'total_problemas' => 0,
+                    'pendentes' => 0,
+                    'em_analise' => 0,
+                    'resolvidos' => 0,
+                    'cancelados' => 0,
+                    'taxa_resolucao' => 0,
+                    'tempo_medio_resolucao' => 0
+                ],
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
         }
-
-        return $this->json($response, [
-            'success' => true,
-            'data' => $data,
-            'timestamp' => date('Y-m-d H:i:s')
-        ]);
-
-    } catch (\Exception $e) {
-        error_log('Erro no kpisProblemas: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => true,
-            'data' => [
-                'total_problemas' => 0,
-                'pendentes' => 0,
-                'em_analise' => 0,
-                'resolvidos' => 0,
-                'cancelados' => 0,
-                'taxa_resolucao' => 0,
-                'tempo_medio_resolucao' => 0
-            ],
-            'timestamp' => date('Y-m-d H:i:s')
-        ]);
     }
-}
 
-/**
- * GET /v1/frota/dashboard/problemas
- * Retorna lista de problemas com filtros
- */
-public function problemas(Request $request, Response $response): Response
-{
-    try {
-        $params = $request->getQueryParams();
-        $pagina = (int)($params['pagina'] ?? 1);
-        $limite = (int)($params['limite'] ?? 25);
-        $status = $params['status'] ?? null;
-        $prioridade = $params['prioridade'] ?? null;
-        $busca = $params['busca'] ?? null;
-        
-        $offset = ($pagina - 1) * $limite;
-        
-        $where = [];
-        $bind = [];
-        
-        if ($status && $status !== 'todos') {
-            $where[] = "ep.status_problema = :status";
-            $bind['status'] = $status;
-        }
-        
-        if ($prioridade && $prioridade !== 'todas') {
-            $where[] = "ep.prioridade = :prioridade";
-            $bind['prioridade'] = $prioridade;
-        }
-        
-        if ($busca) {
-            $where[] = "(e.cliente_nome ILIKE :busca OR e.id::text ILIKE :busca OR ep.referencia ILIKE :busca)";
-            $bind['busca'] = "%{$busca}%";
-        }
-        
-        $whereClause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
-        
-        // Query principal
-        $sql = "
+    /**
+     * GET /v1/frota/dashboard/problemas
+     * Retorna lista de problemas com filtros
+     */
+    public function problemas(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $pagina = (int)($params['pagina'] ?? 1);
+            $limite = (int)($params['limite'] ?? 25);
+            $status = $params['status'] ?? null;
+            $prioridade = $params['prioridade'] ?? null;
+            $busca = $params['busca'] ?? null;
+
+            $offset = ($pagina - 1) * $limite;
+
+            $where = [];
+            $bind = [];
+
+            if ($status && $status !== 'todos') {
+                $where[] = "ep.status_problema = :status";
+                $bind['status'] = $status;
+            }
+
+            if ($prioridade && $prioridade !== 'todas') {
+                $where[] = "ep.prioridade = :prioridade";
+                $bind['prioridade'] = $prioridade;
+            }
+
+            if ($busca) {
+                $where[] = "(e.cliente_nome ILIKE :busca OR e.id::text ILIKE :busca OR ep.referencia ILIKE :busca)";
+                $bind['busca'] = "%{$busca}%";
+            }
+
+            $whereClause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+
+            // Query principal
+            $sql = "
             SELECT 
                 ep.id,
                 ep.entrega_id,
@@ -784,68 +777,67 @@ public function problemas(Request $request, Response $response): Response
                 ep.created_at DESC
             LIMIT :limite OFFSET :offset
         ";
-        
-        $stmt = $this->pdo->prepare($sql);
-        foreach ($bind as $key => $value) {
-            $stmt->bindValue($key, $value);
-        }
-        $stmt->bindValue('limite', $limite, \PDO::PARAM_INT);
-        $stmt->bindValue('offset', $offset, \PDO::PARAM_INT);
-        $stmt->execute();
-        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Total de registros
-        $countSql = "
+
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($bind as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->bindValue('limite', $limite, \PDO::PARAM_INT);
+            $stmt->bindValue('offset', $offset, \PDO::PARAM_INT);
+            $stmt->execute();
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Total de registros
+            $countSql = "
             SELECT COUNT(*) as total
             FROM frota_entrega_problema ep
             INNER JOIN frota_entrega e ON e.id = ep.entrega_id
             {$whereClause}
         ";
-        $countStmt = $this->pdo->prepare($countSql);
-        foreach ($bind as $key => $value) {
-            $countStmt->bindValue($key, $value);
-        }
-        $countStmt->execute();
-        $total = (int)$countStmt->fetchColumn();
-        
-        return $this->json($response, [
-            'success' => true,
-            'data' => $dados,
-            'pagination' => [
-                'pagina' => $pagina,
-                'limite' => $limite,
-                'total' => $total,
-                'total_paginas' => ceil($total / $limite)
-            ]
-        ]);
-        
-    } catch (\Exception $e) {
-        error_log('Erro em problemas: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao carregar problemas'
-        ], 500);
-    }
-}
+            $countStmt = $this->pdo->prepare($countSql);
+            foreach ($bind as $key => $value) {
+                $countStmt->bindValue($key, $value);
+            }
+            $countStmt->execute();
+            $total = (int)$countStmt->fetchColumn();
 
-/**
- * GET /v1/frota/entregas/{id}/analise
- * Retorna análise completa de uma entrega
- */
-public function analiseEntrega(Request $request, Response $response, array $args): Response
-{
-    try {
-        $id = (int)($args['id'] ?? 0);
-        
-        if ($id <= 0) {
+            return $this->json($response, [
+                'success' => true,
+                'data' => $dados,
+                'pagination' => [
+                    'pagina' => $pagina,
+                    'limite' => $limite,
+                    'total' => $total,
+                    'total_paginas' => ceil($total / $limite)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em problemas: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'ID inválido'
-            ], 400);
+                'error' => 'Erro ao carregar problemas'
+            ], 500);
         }
-        
-        // Buscar dados da entrega
-        $sql = "
+    }
+
+    /**
+     * GET /v1/frota/entregas/{id}/analise
+     * Retorna análise completa de uma entrega
+     */
+    public function analiseEntrega(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = (int)($args['id'] ?? 0);
+
+            if ($id <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'ID inválido'
+                ], 400);
+            }
+
+            // Buscar dados da entrega
+            $sql = "
             SELECT 
                 e.*,
                 em.numero_embarque,
@@ -859,89 +851,88 @@ public function analiseEntrega(Request $request, Response $response, array $args
             LEFT JOIN frota_veiculo ve ON ve.id = em.veiculo_id
             WHERE e.id = :id
         ";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['id' => $id]);
-        $entrega = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$entrega) {
-            return $this->json($response, [
-                'success' => false,
-                'error' => 'Entrega não encontrada'
-            ], 404);
-        }
-        
-        // Buscar checklist
-        $stmt = $this->pdo->prepare("
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['id' => $id]);
+            $entrega = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$entrega) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Entrega não encontrada'
+                ], 404);
+            }
+
+            // Buscar checklist
+            $stmt = $this->pdo->prepare("
             SELECT * FROM frota_checklist_entrega 
             WHERE entrega_id = :id
             ORDER BY id
         ");
-        $stmt->execute(['id' => $id]);
-        $entrega['checklist'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Buscar problemas
-        $stmt = $this->pdo->prepare("
+            $stmt->execute(['id' => $id]);
+            $entrega['checklist'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Buscar problemas
+            $stmt = $this->pdo->prepare("
             SELECT * FROM frota_entrega_problema 
             WHERE entrega_id = :id
             ORDER BY created_at DESC
         ");
-        $stmt->execute(['id' => $id]);
-        $entrega['problemas'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Buscar timeline
-        $stmt = $this->pdo->prepare("
+            $stmt->execute(['id' => $id]);
+            $entrega['problemas'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Buscar timeline
+            $stmt = $this->pdo->prepare("
             SELECT * FROM frota_entrega_timeline 
             WHERE entrega_id = :id
             ORDER BY created_at DESC
         ");
-        $stmt->execute(['id' => $id]);
-        $entrega['timeline'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Buscar fotos
-        $stmt = $this->pdo->prepare("
+            $stmt->execute(['id' => $id]);
+            $entrega['timeline'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Buscar fotos
+            $stmt = $this->pdo->prepare("
             SELECT * FROM frota_entrega_foto 
             WHERE entrega_id = :id
             ORDER BY created_at DESC
         ");
-        $stmt->execute(['id' => $id]);
-        $entrega['fotos'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        return $this->json($response, [
-            'success' => true,
-            'data' => $entrega
-        ]);
-        
-    } catch (\Exception $e) {
-        error_log('Erro em analiseEntrega: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao carregar análise'
-        ], 500);
-    }
-}
+            $stmt->execute(['id' => $id]);
+            $entrega['fotos'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-/**
- * PUT /v1/frota/problemas/{id}/resolver
- * Resolve um problema
- */
-public function resolverProblema(Request $request, Response $response, array $args): Response
-{
-    try {
-        $id = (int)($args['id'] ?? 0);
-        $body = json_decode($request->getBody()->getContents(), true);
-        $solucao = $body['solucao'] ?? 'Resolvido pelo gestor';
-        $usuarioId = (int)($body['usuario_id'] ?? 0);
-        $usuarioNome = $body['usuario_nome'] ?? 'Sistema';
-        
-        if ($id <= 0) {
+            return $this->json($response, [
+                'success' => true,
+                'data' => $entrega
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em analiseEntrega: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'ID inválido'
-            ], 400);
+                'error' => 'Erro ao carregar análise'
+            ], 500);
         }
-        
-        // Atualizar problema
-        $stmt = $this->pdo->prepare("
+    }
+
+    /**
+     * PUT /v1/frota/problemas/{id}/resolver
+     * Resolve um problema
+     */
+    public function resolverProblema(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = (int)($args['id'] ?? 0);
+            $body = json_decode($request->getBody()->getContents(), true);
+            $solucao = $body['solucao'] ?? 'Resolvido pelo gestor';
+            $usuarioId = (int)($body['usuario_id'] ?? 0);
+            $usuarioNome = $body['usuario_nome'] ?? 'Sistema';
+
+            if ($id <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'ID inválido'
+                ], 400);
+            }
+
+            // Atualizar problema
+            $stmt = $this->pdo->prepare("
             UPDATE frota_entrega_problema 
             SET 
                 status_problema = 'resolvido',
@@ -951,67 +942,67 @@ public function resolverProblema(Request $request, Response $response, array $ar
             WHERE id = :id
             RETURNING entrega_id, embarque_id
         ");
-        $stmt->execute([
-            'solucao' => $solucao,
-            'id' => $id
-        ]);
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$result) {
-            return $this->json($response, [
-                'success' => false,
-                'error' => 'Problema não encontrado'
-            ], 404);
-        }
-        
-        // Registrar na timeline
-        $stmt = $this->pdo->prepare("
+            $stmt->execute([
+                'solucao' => $solucao,
+                'id' => $id
+            ]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$result) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Problema não encontrado'
+                ], 404);
+            }
+
+            // Registrar na timeline
+            $stmt = $this->pdo->prepare("
             INSERT INTO frota_entrega_timeline 
             (entrega_id, acao, descricao, usuario_id, usuario_nome, dados_novos)
             VALUES 
             (:entrega_id, 'resolvido', :descricao, :usuario_id, :usuario_nome, :dados_novos)
         ");
-        $stmt->execute([
-            'entrega_id' => $result['entrega_id'],
-            'descricao' => "Problema resolvido: {$solucao}",
-            'usuario_id' => $usuarioId,
-            'usuario_nome' => $usuarioNome,
-            'dados_novos' => json_encode(['status' => 'resolvido', 'solucao' => $solucao])
-        ]);
-        
-        return $this->json($response, [
-            'success' => true,
-            'message' => 'Problema resolvido com sucesso'
-        ]);
-        
-    } catch (\Exception $e) {
-        error_log('Erro em resolverProblema: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao resolver problema'
-        ], 500);
-    }
-}
+            $stmt->execute([
+                'entrega_id' => $result['entrega_id'],
+                'descricao' => "Problema resolvido: {$solucao}",
+                'usuario_id' => $usuarioId,
+                'usuario_nome' => $usuarioNome,
+                'dados_novos' => json_encode(['status' => 'resolvido', 'solucao' => $solucao])
+            ]);
 
-/**
- * PUT /v1/frota/problemas/{id}/iniciar-analise
- * Inicia análise de um problema
- */
-public function iniciarAnalise(Request $request, Response $response, array $args): Response
-{
-    try {
-        $id = (int)($args['id'] ?? 0);
-        $usuarioId = (int)($body['usuario_id'] ?? 0);
-        $usuarioNome = $body['usuario_nome'] ?? 'Sistema';
-        
-        if ($id <= 0) {
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Problema resolvido com sucesso'
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em resolverProblema: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'ID inválido'
-            ], 400);
+                'error' => 'Erro ao resolver problema'
+            ], 500);
         }
-        
-        $stmt = $this->pdo->prepare("
+    }
+
+    /**
+     * PUT /v1/frota/problemas/{id}/iniciar-analise
+     * Inicia análise de um problema
+     */
+    public function iniciarAnalise(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = (int)($args['id'] ?? 0);
+            $body = json_decode($request->getBody()->getContents(), true) ?? [];
+            $usuarioId = (int)($body['usuario_id'] ?? 0);
+            $usuarioNome = $body['usuario_nome'] ?? 'Sistema';
+
+            if ($id <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'ID inválido'
+                ], 400);
+            }
+
+            $stmt = $this->pdo->prepare("
             UPDATE frota_entrega_problema 
             SET 
                 status_problema = 'em_analise',
@@ -1020,134 +1011,132 @@ public function iniciarAnalise(Request $request, Response $response, array $args
             AND status_problema = 'pendente'
             RETURNING entrega_id
         ");
-        $stmt->execute(['id' => $id]);
-        $result = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
-        if (!$result) {
-            return $this->json($response, [
-                'success' => false,
-                'error' => 'Problema não encontrado ou já está em análise'
-            ], 400);
-        }
-        
-        // Registrar na timeline
-        $stmt = $this->pdo->prepare("
+            $stmt->execute(['id' => $id]);
+            $result = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$result) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Problema não encontrado ou já está em análise'
+                ], 400);
+            }
+
+            // Registrar na timeline
+            $stmt = $this->pdo->prepare("
             INSERT INTO frota_entrega_timeline 
             (entrega_id, acao, descricao, usuario_id, usuario_nome, dados_novos)
             VALUES 
             (:entrega_id, 'problema', 'Análise iniciada', :usuario_id, :usuario_nome, :dados_novos)
         ");
-        $stmt->execute([
-            'entrega_id' => $result['entrega_id'],
-            'usuario_id' => $usuarioId,
-            'usuario_nome' => $usuarioNome,
-            'dados_novos' => json_encode(['status' => 'em_analise'])
-        ]);
-        
-        return $this->json($response, [
-            'success' => true,
-            'message' => 'Análise iniciada com sucesso'
-        ]);
-        
-    } catch (\Exception $e) {
-        error_log('Erro em iniciarAnalise: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao iniciar análise'
-        ], 500);
-    }
-}
+            $stmt->execute([
+                'entrega_id' => $result['entrega_id'],
+                'usuario_id' => $usuarioId,
+                'usuario_nome' => $usuarioNome,
+                'dados_novos' => json_encode(['status' => 'em_analise'])
+            ]);
 
-/**
- * POST /v1/frota/entregas/{id}/analise
- * Adiciona análise do gestor
- */
-public function adicionarAnalise(Request $request, Response $response, array $args): Response
-{
-    try {
-        $entregaId = (int)($args['id'] ?? 0);
-        $body = json_decode($request->getBody()->getContents(), true);
-        
-        if ($entregaId <= 0) {
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Análise iniciada com sucesso'
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em iniciarAnalise: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'ID da entrega inválido'
-            ], 400);
+                'error' => 'Erro ao iniciar análise'
+            ], 500);
         }
-        
-        // Buscar embarque_id
-        $stmt = $this->pdo->prepare("SELECT embarque_id FROM frota_entrega WHERE id = :id");
-        $stmt->execute(['id' => $entregaId]);
-        $embarqueId = (int)$stmt->fetchColumn();
-        
-        if (!$embarqueId) {
-            return $this->json($response, [
-                'success' => false,
-                'error' => 'Entrega não encontrada'
-            ], 404);
-        }
-        
-        $stmt = $this->pdo->prepare("
+    }
+
+    /**
+     * POST /v1/frota/entregas/{id}/analise
+     * Adiciona análise do gestor
+     */
+    public function adicionarAnalise(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $entregaId = (int)($args['id'] ?? 0);
+            $body = json_decode($request->getBody()->getContents(), true);
+
+            if ($entregaId <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'ID da entrega inválido'
+                ], 400);
+            }
+
+            // Buscar embarque_id
+            $stmt = $this->pdo->prepare("SELECT embarque_id FROM frota_entrega WHERE id = :id");
+            $stmt->execute(['id' => $entregaId]);
+            $embarqueId = (int)$stmt->fetchColumn();
+
+            if (!$embarqueId) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Entrega não encontrada'
+                ], 404);
+            }
+
+            $stmt = $this->pdo->prepare("
             INSERT INTO frota_entrega_analise 
             (entrega_id, embarque_id, gestor_id, gestor_nome, tipo_analise, titulo, descricao, nota, recomendacoes)
             VALUES 
             (:entrega_id, :embarque_id, :gestor_id, :gestor_nome, :tipo, :titulo, :descricao, :nota, :recomendacoes)
         ");
-        $stmt->execute([
-            'entrega_id' => $entregaId,
-            'embarque_id' => $embarqueId,
-            'gestor_id' => $body['gestor_id'] ?? 0,
-            'gestor_nome' => $body['gestor_nome'] ?? 'Gestor',
-            'tipo' => $body['tipo'] ?? 'checklist',
-            'titulo' => $body['titulo'] ?? 'Análise da entrega',
-            'descricao' => $body['descricao'] ?? '',
-            'nota' => (int)($body['nota'] ?? 0),
-            'recomendacoes' => $body['recomendacoes'] ?? ''
-        ]);
-        
-        // Registrar na timeline
-        $stmt = $this->pdo->prepare("
+            $stmt->execute([
+                'entrega_id' => $entregaId,
+                'embarque_id' => $embarqueId,
+                'gestor_id' => $body['gestor_id'] ?? 0,
+                'gestor_nome' => $body['gestor_nome'] ?? 'Gestor',
+                'tipo' => $body['tipo'] ?? 'checklist',
+                'titulo' => $body['titulo'] ?? 'Análise da entrega',
+                'descricao' => $body['descricao'] ?? '',
+                'nota' => (int)($body['nota'] ?? 0),
+                'recomendacoes' => $body['recomendacoes'] ?? ''
+            ]);
+
+            // Registrar na timeline
+            $stmt = $this->pdo->prepare("
             INSERT INTO frota_entrega_timeline 
             (entrega_id, acao, descricao, usuario_id, usuario_nome, dados_novos)
             VALUES 
             (:entrega_id, 'analise', :descricao, :usuario_id, :usuario_nome, :dados_novos)
         ");
-        $stmt->execute([
-            'entrega_id' => $entregaId,
-            'descricao' => $body['titulo'] ?? 'Análise adicionada',
-            'usuario_id' => $body['gestor_id'] ?? 0,
-            'usuario_nome' => $body['gestor_nome'] ?? 'Gestor',
-            'dados_novos' => json_encode([
-                'nota' => $body['nota'] ?? 0,
-                'recomendacoes' => $body['recomendacoes'] ?? ''
-            ])
-        ]);
-        
-        return $this->json($response, [
-            'success' => true,
-            'message' => 'Análise adicionada com sucesso'
-        ]);
-        
-    } catch (\Exception $e) {
-        error_log('Erro em adicionarAnalise: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao adicionar análise'
-        ], 500);
+            $stmt->execute([
+                'entrega_id' => $entregaId,
+                'descricao' => $body['titulo'] ?? 'Análise adicionada',
+                'usuario_id' => $body['gestor_id'] ?? 0,
+                'usuario_nome' => $body['gestor_nome'] ?? 'Gestor',
+                'dados_novos' => json_encode([
+                    'nota' => $body['nota'] ?? 0,
+                    'recomendacoes' => $body['recomendacoes'] ?? ''
+                ])
+            ]);
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Análise adicionada com sucesso'
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em adicionarAnalise: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao adicionar análise'
+            ], 500);
+        }
     }
-}
 
-/**
- * GET /v1/frota/gestao-cargas/resumo-motorista
- * Resumo de problemas por motorista
- */
-public function resumoMotorista(Request $request, Response $response): Response
-{
-    try {
-        $params = $request->getQueryParams();
-        $dias = (int)($params['dias'] ?? 30);
+    /**
+     * GET /v1/frota/gestao-cargas/resumo-motorista
+     * Resumo de problemas por motorista
+     */
+    public function resumoMotorista(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias = (int)($params['dias'] ?? 30);
 
-        $sql = "
+            $sql = "
             SELECT 
                 mo.id,
                 mo.nome as motorista_nome,
@@ -1169,36 +1158,35 @@ public function resumoMotorista(Request $request, Response $response): Response
             LIMIT 20
         ";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['dias' => $dias]);
-        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['dias' => $dias]);
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        return $this->json($response, [
-            'success' => true,
-            'data' => $dados,
-            'timestamp' => date('Y-m-d H:i:s')
-        ]);
-
-    } catch (\Exception $e) {
-        error_log('Erro em resumoMotorista: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao carregar resumo por motorista'
-        ], 500);
+            return $this->json($response, [
+                'success' => true,
+                'data' => $dados,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em resumoMotorista: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar resumo por motorista'
+            ], 500);
+        }
     }
-}
 
-/**
- * GET /v1/frota/gestao-cargas/resumo-veiculo
- * Resumo de problemas por veículo
- */
-public function resumoVeiculo(Request $request, Response $response): Response
-{
-    try {
-        $params = $request->getQueryParams();
-        $dias = (int)($params['dias'] ?? 30);
+    /**
+     * GET /v1/frota/gestao-cargas/resumo-veiculo
+     * Resumo de problemas por veículo
+     */
+    public function resumoVeiculo(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias = (int)($params['dias'] ?? 30);
 
-        $sql = "
+            $sql = "
             SELECT 
                 ve.id,
                 ve.placa,
@@ -1221,66 +1209,65 @@ public function resumoVeiculo(Request $request, Response $response): Response
             LIMIT 20
         ";
 
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['dias' => $dias]);
-        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['dias' => $dias]);
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        return $this->json($response, [
-            'success' => true,
-            'data' => $dados,
-            'timestamp' => date('Y-m-d H:i:s')
-        ]);
-
-    } catch (\Exception $e) {
-        error_log('Erro em resumoVeiculo: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao carregar resumo por veículo'
-        ], 500);
+            return $this->json($response, [
+                'success' => true,
+                'data' => $dados,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em resumoVeiculo: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar resumo por veículo'
+            ], 500);
+        }
     }
-}
 
-/**
- * POST /v1/frota/gestao-cargas/exportar
- * Exporta relatório de problemas para CSV
- */
-public function exportarProblemas(Request $request, Response $response): Response
-{
-    try {
-        $body = json_decode($request->getBody()->getContents(), true);
-        $filtros = $body['filtros'] ?? [];
+    /**
+     * POST /v1/frota/gestao-cargas/exportar
+     * Exporta relatório de problemas para CSV
+     */
+    public function exportarProblemas(Request $request, Response $response): Response
+    {
+        try {
+            $body = json_decode($request->getBody()->getContents(), true);
+            $filtros = $body['filtros'] ?? [];
 
-        $where = [];
-        $bind = [];
+            $where = [];
+            $bind = [];
 
-        if (!empty($filtros['status']) && $filtros['status'] !== 'todos') {
-            $where[] = "ep.status_problema = :status";
-            $bind['status'] = $filtros['status'];
-        }
+            if (!empty($filtros['status']) && $filtros['status'] !== 'todos') {
+                $where[] = "ep.status_problema = :status";
+                $bind['status'] = $filtros['status'];
+            }
 
-        if (!empty($filtros['prioridade']) && $filtros['prioridade'] !== 'todas') {
-            $where[] = "ep.prioridade = :prioridade";
-            $bind['prioridade'] = $filtros['prioridade'];
-        }
+            if (!empty($filtros['prioridade']) && $filtros['prioridade'] !== 'todas') {
+                $where[] = "ep.prioridade = :prioridade";
+                $bind['prioridade'] = $filtros['prioridade'];
+            }
 
-        if (!empty($filtros['tipo']) && $filtros['tipo'] !== 'todos') {
-            $where[] = "ep.tipo_problema = :tipo";
-            $bind['tipo'] = $filtros['tipo'];
-        }
+            if (!empty($filtros['tipo']) && $filtros['tipo'] !== 'todos') {
+                $where[] = "ep.tipo_problema = :tipo";
+                $bind['tipo'] = $filtros['tipo'];
+            }
 
-        if (!empty($filtros['data_inicio'])) {
-            $where[] = "DATE(ep.created_at) >= :data_inicio";
-            $bind['data_inicio'] = $filtros['data_inicio'];
-        }
+            if (!empty($filtros['data_inicio'])) {
+                $where[] = "DATE(ep.created_at) >= :data_inicio";
+                $bind['data_inicio'] = $filtros['data_inicio'];
+            }
 
-        if (!empty($filtros['data_fim'])) {
-            $where[] = "DATE(ep.created_at) <= :data_fim";
-            $bind['data_fim'] = $filtros['data_fim'];
-        }
+            if (!empty($filtros['data_fim'])) {
+                $where[] = "DATE(ep.created_at) <= :data_fim";
+                $bind['data_fim'] = $filtros['data_fim'];
+            }
 
-        $whereClause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
+            $whereClause = !empty($where) ? "WHERE " . implode(" AND ", $where) : "";
 
-        $sql = "
+            $sql = "
             SELECT 
                 ep.id,
                 ep.entrega_id,
@@ -1308,62 +1295,818 @@ public function exportarProblemas(Request $request, Response $response): Respons
             ORDER BY ep.created_at DESC
         ";
 
-        $stmt = $this->pdo->prepare($sql);
-        foreach ($bind as $key => $value) {
-            $stmt->bindValue($key, $value);
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($bind as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->execute();
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Gerar CSV
+            $headers = [
+                'ID',
+                'Entrega',
+                'Cliente',
+                'Cidade/UF',
+                'Motorista',
+                'Veículo',
+                'Embarque',
+                'Tipo',
+                'Referência',
+                'Qtd Afetada',
+                'Valor Afetado',
+                'Prioridade',
+                'Status',
+                'Data Problema',
+                'Data Resolução'
+            ];
+
+            $output = fopen('php://temp', 'w');
+            fputcsv($output, $headers, ';');
+
+            foreach ($dados as $row) {
+                fputcsv($output, [
+                    $row['id'],
+                    $row['entrega_id'],
+                    $row['cliente_nome'] ?? '',
+                    ($row['cidade'] ?? '') . '/' . ($row['uf'] ?? ''),
+                    $row['motorista_nome'] ?? '',
+                    $row['veiculo_placa'] ?? '',
+                    $row['numero_embarque'] ?? '',
+                    $row['tipo_problema'] ?? '',
+                    $row['referencia'] ?? '',
+                    $row['quantidade_afetada'] ?? 0,
+                    number_format($row['valor_afetado'] ?? 0, 2, ',', '.'),
+                    $row['prioridade'] ?? '',
+                    $row['status_problema'] ?? '',
+                    date('d/m/Y H:i', strtotime($row['data_problema'])),
+                    $row['data_resolucao'] ? date('d/m/Y H:i', strtotime($row['data_resolucao'])) : ''
+                ], ';');
+            }
+
+            rewind($output);
+            $csv = stream_get_contents($output);
+            fclose($output);
+            return $response
+                ->withHeader('Content-Type', 'text/csv; charset=utf-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="problemas_' . date('Y-m-d') . '.csv"')
+                ->getBody()
+                ->write($csv);
+        } catch (\Exception $e) {
+            error_log('Erro em exportarProblemas: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao exportar relatório'
+            ], 500);
         }
-        $stmt->execute();
-        $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        // Gerar CSV
-        $headers = [
-            'ID', 'Entrega', 'Cliente', 'Cidade/UF', 'Motorista', 'Veículo', 
-            'Embarque', 'Tipo', 'Referência', 'Qtd Afetada', 'Valor Afetado',
-            'Prioridade', 'Status', 'Data Problema', 'Data Resolução'
-        ];
-
-        $output = fopen('php://temp', 'w');
-        fputcsv($output, $headers, ';');
-
-        foreach ($dados as $row) {
-            fputcsv($output, [
-                $row['id'],
-                $row['entrega_id'],
-                $row['cliente_nome'] ?? '',
-                ($row['cidade'] ?? '') . '/' . ($row['uf'] ?? ''),
-                $row['motorista_nome'] ?? '',
-                $row['veiculo_placa'] ?? '',
-                $row['numero_embarque'] ?? '',
-                $row['tipo_problema'] ?? '',
-                $row['referencia'] ?? '',
-                $row['quantidade_afetada'] ?? 0,
-                number_format($row['valor_afetado'] ?? 0, 2, ',', '.'),
-                $row['prioridade'] ?? '',
-                $row['status_problema'] ?? '',
-                date('d/m/Y H:i', strtotime($row['data_problema'])),
-                $row['data_resolucao'] ? date('d/m/Y H:i', strtotime($row['data_resolucao'])) : ''
-            ], ';');
-        }
-
-        rewind($output);
-        $csv = stream_get_contents($output);
-        fclose($output);
-
-        return $response
-            ->withHeader('Content-Type', 'text/csv; charset=utf-8')
-            ->withHeader('Content-Disposition', 'attachment; filename="problemas_' . date('Y-m-d') . '.csv"')
-            ->getBody()
-            ->write($csv);
-
-    } catch (\Exception $e) {
-        error_log('Erro em exportarProblemas: ' . $e->getMessage());
-        return $this->json($response, [
-            'success' => false,
-            'error' => 'Erro ao exportar relatório'
-        ], 500);
     }
-}
-    
+
+    /**
+     * GET /v1/frota/gestao-cargas/ranking-motoristas
+     * Ranking completo de eficiência/ineficiência por motorista
+     */
+    public function rankingMotoristas(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+
+            $sql = "
+            SELECT
+                mo.id,
+                mo.nome AS motorista_nome,
+                mo.telefone AS motorista_telefone,
+                mo.status AS motorista_status,
+                COUNT(DISTINCT em.id) AS total_embarques,
+                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
+                COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
+                COUNT(DISTINCT CASE WHEN ent.status = 'pendente' AND ent.data_prevista < CURRENT_DATE THEN ent.id END) AS entregas_atrasadas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL
+                    AND ent.data_prevista IS NOT NULL AND DATE(ent.horario_entrega) <= ent.data_prevista THEN ent.id END) AS entregas_no_prazo,
+                COUNT(DISTINCT ep.id) AS total_problemas,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
+                COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+            FROM frota_motorista mo
+            LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
+                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+            LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
+            LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            GROUP BY mo.id, mo.nome, mo.telefone, mo.status
+            HAVING COUNT(DISTINCT em.id) > 0
+            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+        ";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['dias' => $dias]);
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($dados as &$m) {
+                $totalEntregas = (int)$m['total_entregas'];
+                $m['taxa_divergencia'] = $totalEntregas > 0
+                    ? round(($m['entregas_com_problema'] + $m['entregas_falha']) / $totalEntregas * 100, 1)
+                    : 0.0;
+                $m['taxa_no_prazo'] = $totalEntregas > 0
+                    ? round($m['entregas_no_prazo'] / $totalEntregas * 100, 1)
+                    : 0.0;
+                $m['tempo_medio_entrega_min'] = round((float)$m['tempo_medio_entrega_min'], 1);
+
+                // Índice de ineficiência (0-100): pondera divergência, atraso e problemas pendentes
+                $indice = ($m['taxa_divergencia'] * 0.5)
+                    + ((100 - $m['taxa_no_prazo']) * 0.3)
+                    + (min($m['problemas_pendentes'] * 5, 100) * 0.2);
+                $m['indice_ineficiencia'] = round(min($indice, 100), 1);
+                $m['score_desempenho'] = $this->calcularScoreMotorista($m);
+            }
+            unset($m);
+
+            // Reordenar pelo índice de ineficiência calculado (piores primeiro)
+            usort($dados, function ($a, $b) {
+                return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
+            });
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $dados,
+                'dias' => $dias,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em rankingMotoristas: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar ranking de motoristas'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/gestao-cargas/historico-embarques
+     * Busca completa de embarques (inclusive finalizados) com filtros avançados
+     */
+    public function historicoEmbarques(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+
+            $where = [];
+            $bind = [];
+
+            if (!empty($params['status']) && $params['status'] !== 'todos') {
+                $where[] = "e.status = :status";
+                $bind['status'] = $params['status'];
+            }
+
+            if (!empty($params['motorista_id'])) {
+                $where[] = "e.motorista_id = :motorista_id";
+                $bind['motorista_id'] = (int)$params['motorista_id'];
+            }
+
+            if (!empty($params['veiculo_id'])) {
+                $where[] = "e.veiculo_id = :veiculo_id";
+                $bind['veiculo_id'] = (int)$params['veiculo_id'];
+            }
+
+            if (!empty($params['data_inicio'])) {
+                $where[] = "e.data_saida >= :data_inicio";
+                $bind['data_inicio'] = $params['data_inicio'];
+            }
+
+            if (!empty($params['data_fim'])) {
+                $where[] = "e.data_saida <= :data_fim";
+                $bind['data_fim'] = $params['data_fim'];
+            }
+
+            if (!empty($params['busca'])) {
+                $where[] = "(e.numero_embarque ILIKE :busca OR e.nome_embarque ILIKE :busca2 
+                OR m.nome ILIKE :busca3 OR v.placa ILIKE :busca4 
+                OR EXISTS (SELECT 1 FROM frota_entrega fe WHERE fe.embarque_id = e.id AND fe.cliente_nome ILIKE :busca5))";
+                $termo = "%{$params['busca']}%";
+                $bind['busca'] = $termo;
+                $bind['busca2'] = $termo;
+                $bind['busca3'] = $termo;
+                $bind['busca4'] = $termo;
+                $bind['busca5'] = $termo;
+            }
+
+            $whereClause = !empty($where) ? 'WHERE ' . implode(' AND ', $where) : '';
+
+            $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+            $pagina = max(1, (int)($params['pagina'] ?? 1));
+            $offset = ($pagina - 1) * $limite;
+
+            $sql = "
+            SELECT
+                e.id,
+                e.numero_embarque,
+                e.nome_embarque,
+                e.status AS embarque_status,
+                e.data_saida,
+                e.data_retorno,
+                e.horario_saida,
+                e.horario_retorno,
+                v.placa AS veiculo_placa,
+                v.modelo AS veiculo_modelo,
+                m.id AS motorista_id,
+                m.nome AS motorista_nome,
+                ae.id AS acerto_id,
+                ae.status AS acerto_status,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) AS total_entregas,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) AS entregas_concluidas,
+                (SELECT COUNT(*) FROM frota_entrega_problema ep2 INNER JOIN frota_entrega fe2 ON fe2.id = ep2.entrega_id WHERE fe2.embarque_id = e.id) AS total_problemas
+            FROM frota_embarque e
+            LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+            LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+            LEFT JOIN frota_acerto_embarque ae ON ae.embarque_id = e.id
+            {$whereClause}
+            ORDER BY e.data_saida DESC, e.id DESC
+            LIMIT :limite OFFSET :offset
+        ";
+
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($bind as $key => $value) {
+                $stmt->bindValue($key, $value);
+            }
+            $stmt->bindValue(':limite', $limite, \PDO::PARAM_INT);
+            $stmt->bindValue(':offset', $offset, \PDO::PARAM_INT);
+            $stmt->execute();
+            $embarques = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $sqlCount = "
+            SELECT COUNT(DISTINCT e.id)
+            FROM frota_embarque e
+            LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+            LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+            {$whereClause}
+        ";
+            $stmtCount = $this->pdo->prepare($sqlCount);
+            foreach ($bind as $key => $value) {
+                $stmtCount->bindValue($key, $value);
+            }
+            $stmtCount->execute();
+            $total = (int)$stmtCount->fetchColumn();
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $embarques,
+                'pagination' => [
+                    'total' => $total,
+                    'pagina' => $pagina,
+                    'limite' => $limite,
+                    'total_paginas' => (int)ceil($total / $limite)
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em historicoEmbarques: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar histórico de embarques'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/gestao-cargas/ranking-veiculos
+     * Ranking completo de eficiência/ineficiência por veículo (caminhão)
+     */
+    public function rankingVeiculos(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+
+            $sql = "
+            SELECT
+                ve.id,
+                ve.placa,
+                ve.modelo,
+                ve.marca,
+                ve.tipo,
+                ve.status AS veiculo_status,
+                COUNT(DISTINCT em.id) AS total_embarques,
+                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
+                COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
+                COUNT(DISTINCT CASE WHEN ent.status = 'pendente' AND ent.data_prevista < CURRENT_DATE THEN ent.id END) AS entregas_atrasadas,
+                COUNT(DISTINCT CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL
+                    AND ent.data_prevista IS NOT NULL AND DATE(ent.horario_entrega) <= ent.data_prevista THEN ent.id END) AS entregas_no_prazo,
+                COUNT(DISTINCT ep.id) AS total_problemas,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
+                COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
+                COALESCE(SUM(ent.peso_total), 0) AS peso_total_transportado,
+                COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+            FROM frota_veiculo ve
+            LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
+                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+            LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
+            LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status
+            HAVING COUNT(DISTINCT em.id) > 0
+            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+        ";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['dias' => $dias]);
+            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($dados as &$v) {
+                $totalEntregas = (int)$v['total_entregas'];
+                $v['taxa_divergencia'] = $totalEntregas > 0
+                    ? round(($v['entregas_com_problema'] + $v['entregas_falha']) / $totalEntregas * 100, 1)
+                    : 0.0;
+                $v['taxa_no_prazo'] = $totalEntregas > 0
+                    ? round($v['entregas_no_prazo'] / $totalEntregas * 100, 1)
+                    : 0.0;
+                $v['tempo_medio_entrega_min'] = round((float)$v['tempo_medio_entrega_min'], 1);
+
+                $indice = ($v['taxa_divergencia'] * 0.5)
+                    + ((100 - $v['taxa_no_prazo']) * 0.3)
+                    + (min($v['problemas_pendentes'] * 5, 100) * 0.2);
+                $v['indice_ineficiencia'] = round(min($indice, 100), 1);
+            }
+            unset($v);
+
+            usort($dados, function ($a, $b) {
+                return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
+            });
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $dados,
+                'dias' => $dias,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em rankingVeiculos: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar ranking de veículos'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/gestao-cargas/graficos
+     * Séries e distribuições para os gráficos do dashboard de Gestão de Cargas
+     */
+    public function graficosCargas(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias = max(1, min((int)($params['dias'] ?? 14), 90));
+
+            // 1. Evolução diária de problemas (criados x resolvidos)
+            $evolucao = [];
+            for ($i = $dias - 1; $i >= 0; $i--) {
+                $data = date('Y-m-d', strtotime("-$i days"));
+                $stmt = $this->pdo->prepare("
+                SELECT
+                    COUNT(CASE WHEN DATE(created_at) = :data THEN 1 END) AS criados,
+                    COUNT(CASE WHEN DATE(data_resolucao) = :data2 THEN 1 END) AS resolvidos
+                FROM frota_entrega_problema
+                WHERE DATE(created_at) = :data3 OR DATE(data_resolucao) = :data4
+            ");
+                $stmt->execute(['data' => $data, 'data2' => $data, 'data3' => $data, 'data4' => $data]);
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                $evolucao[] = [
+                    'data' => $data,
+                    'label' => date('d/m', strtotime($data)),
+                    'criados' => (int)($row['criados'] ?? 0),
+                    'resolvidos' => (int)($row['resolvidos'] ?? 0)
+                ];
+            }
+
+            // 2. Distribuição por tipo de problema
+            $stmt = $this->pdo->query("
+            SELECT tipo_problema, COUNT(*) AS total, COALESCE(SUM(valor_afetado), 0) AS valor
+            FROM frota_entrega_problema
+            GROUP BY tipo_problema
+            ORDER BY total DESC
+        ");
+            $porTipo = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 3. Distribuição por prioridade (ativos)
+            $stmt = $this->pdo->query("
+            SELECT prioridade, COUNT(*) AS total
+            FROM frota_entrega_problema
+            WHERE status_problema NOT IN ('resolvido', 'cancelado')
+            GROUP BY prioridade
+        ");
+            $porPrioridade = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 4. Top 5 motoristas com mais problemas (para o gráfico comparativo)
+            $stmt = $this->pdo->prepare("
+            SELECT mo.nome AS motorista_nome, COUNT(DISTINCT ep.id) AS total_problemas
+            FROM frota_motorista mo
+            INNER JOIN frota_embarque em ON em.motorista_id = mo.id
+            INNER JOIN frota_entrega ent ON ent.embarque_id = em.id
+            INNER JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
+            GROUP BY mo.id, mo.nome
+            ORDER BY total_problemas DESC
+            LIMIT 5
+        ");
+            $stmt->execute(['dias' => $dias]);
+            $topMotoristasProblemas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 5. Top 5 veículos com mais problemas
+            $stmt = $this->pdo->prepare("
+            SELECT ve.placa, COUNT(DISTINCT ep.id) AS total_problemas
+            FROM frota_veiculo ve
+            INNER JOIN frota_embarque em ON em.veiculo_id = ve.id
+            INNER JOIN frota_entrega ent ON ent.embarque_id = em.id
+            INNER JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
+            GROUP BY ve.id, ve.placa
+            ORDER BY total_problemas DESC
+            LIMIT 5
+        ");
+            $stmt->execute(['dias' => $dias]);
+            $topVeiculosProblemas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'evolucao_diaria' => $evolucao,
+                    'por_tipo' => $porTipo,
+                    'por_prioridade' => $porPrioridade,
+                    'top_motoristas_problemas' => $topMotoristasProblemas,
+                    'top_veiculos_problemas' => $topVeiculosProblemas
+                ],
+                'dias' => $dias,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em graficosCargas: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar gráficos de gestão de cargas'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/gestao-cargas/embarque/{id}/detalhes-completos
+     * Rastreabilidade total: timeline, entregas, itens, fotos, problemas e acerto de um embarque
+     */
+    public function embarqueDetalhesCompletos(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = (int)$args['id'];
+
+            $stmt = $this->pdo->prepare("
+                SELECT
+                    e.*,
+                    v.placa AS veiculo_placa,
+                    v.modelo AS veiculo_modelo,
+                    v.marca AS veiculo_marca,
+                    m.id AS motorista_id,
+                    m.nome AS motorista_nome,
+                    m.telefone AS motorista_telefone
+                FROM frota_embarque e
+                LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+                LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+                WHERE e.id = :id
+            ");
+            $stmt->execute(['id' => $id]);
+            $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$embarque) {
+                return $this->json($response, ['success' => false, 'error' => 'Embarque não encontrado'], 404);
+            }
+
+            // Entregas + cliente
+            $stmtEntregas = $this->pdo->prepare("
+                SELECT
+                    ent.*,
+                    c.nome AS cliente_nome_cadastro,
+                    c.telefone AS cliente_telefone,
+                    c.endereco AS cliente_endereco,
+                    c.cidade AS cliente_cidade,
+                    c.uf AS cliente_uf
+                FROM frota_entrega ent
+                LEFT JOIN frota_cliente c ON c.id = ent.cliente_id
+                WHERE ent.embarque_id = :id
+                ORDER BY ent.ordem_entrega ASC, ent.id ASC
+            ");
+            $stmtEntregas->execute(['id' => $id]);
+            $entregas = $stmtEntregas->fetchAll(\PDO::FETCH_ASSOC);
+
+            $entregaIds = array_column($entregas, 'id');
+            $checklistPorEntrega = [];
+            $problemasPorEntrega = [];
+            $timelinePorEntrega = [];
+
+            if (!empty($entregaIds)) {
+                $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
+
+                $stmtChecklist = $this->pdo->prepare("
+                    SELECT entrega_id, item_id, referencia, descricao, foto_url,
+                        quantidade_prevista, quantidade_entregue, status, motivo
+                    FROM frota_checklist_entrega
+                    WHERE entrega_id IN ({$placeholders})
+                    ORDER BY id ASC
+                ");
+                $stmtChecklist->execute($entregaIds);
+                foreach ($stmtChecklist->fetchAll(\PDO::FETCH_ASSOC) as $item) {
+                    $checklistPorEntrega[$item['entrega_id']][] = $item;
+                }
+
+                $stmtProblemas = $this->pdo->prepare("
+                    SELECT entrega_id, id, tipo_problema, referencia, descricao_problema,
+                        quantidade_afetada, valor_afetado, status_problema, prioridade,
+                        created_at, data_resolucao
+                    FROM frota_entrega_problema
+                    WHERE entrega_id IN ({$placeholders})
+                    ORDER BY created_at DESC
+                ");
+                $stmtProblemas->execute($entregaIds);
+                foreach ($stmtProblemas->fetchAll(\PDO::FETCH_ASSOC) as $p) {
+                    $problemasPorEntrega[$p['entrega_id']][] = $p;
+                }
+
+                // Timeline por entrega (se a tabela existir)
+                try {
+                    $stmtTimeline = $this->pdo->prepare("
+                        SELECT entrega_id, acao, descricao, usuario_nome, created_at
+                        FROM frota_entrega_timeline
+                        WHERE entrega_id IN ({$placeholders})
+                        ORDER BY created_at ASC
+                    ");
+                    $stmtTimeline->execute($entregaIds);
+                    foreach ($stmtTimeline->fetchAll(\PDO::FETCH_ASSOC) as $t) {
+                        $timelinePorEntrega[$t['entrega_id']][] = $t;
+                    }
+                } catch (\Exception $ignored) {
+                    // tabela pode não existir em algumas bases
+                }
+            }
+
+            foreach ($entregas as &$ent) {
+                $ent['checklist'] = $checklistPorEntrega[$ent['id']] ?? [];
+                $ent['problemas'] = $problemasPorEntrega[$ent['id']] ?? [];
+                $ent['timeline'] = $timelinePorEntrega[$ent['id']] ?? [];
+            }
+            unset($ent);
+            $embarque['entregas'] = $entregas;
+
+            // Timeline geral do embarque (logs)
+            $stmtLogs = $this->pdo->prepare("
+                SELECT l.acao, l.descricao, l.created_at,
+                    COALESCE(u.nome, 'Sistema') AS usuario_nome
+                FROM frota_log_embarque l
+                LEFT JOIN usuario u ON u.id = l.usuario_id
+                WHERE l.embarque_id = :id
+                ORDER BY l.created_at ASC
+            ");
+            $stmtLogs->execute(['id' => $id]);
+            $embarque['timeline_embarque'] = $stmtLogs->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Histórico de posições GPS (rota completa do embarque)
+            try {
+                $stmtPos = $this->pdo->prepare("
+                    SELECT latitude, longitude, velocidade, created_at
+                    FROM frota_historico_posicao
+                    WHERE embarque_id = :id
+                    ORDER BY created_at ASC
+                ");
+                $stmtPos->execute(['id' => $id]);
+                $embarque['rota_posicoes'] = $stmtPos->fetchAll(\PDO::FETCH_ASSOC);
+            } catch (\Exception $ignored) {
+                $embarque['rota_posicoes'] = [];
+            }
+
+            // Acerto/conferência
+            $stmtAcerto = $this->pdo->prepare("
+                SELECT id, status, data_inicio_acerto, data_fim_acerto
+                FROM frota_acerto_embarque
+                WHERE embarque_id = :id
+                ORDER BY id DESC LIMIT 1
+            ");
+            $stmtAcerto->execute(['id' => $id]);
+            $embarque['acerto'] = $stmtAcerto->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            // Resumo/contadores
+            $total = count($entregas);
+            $concluidas = count(array_filter($entregas, fn($e) => in_array($e['status'], ['entregue', 'entregue_com_problema'])));
+            $totalProblemas = array_sum(array_map(fn($e) => count($e['problemas']), $entregas));
+            $embarque['resumo'] = [
+                'total_entregas' => $total,
+                'entregas_concluidas' => $concluidas,
+                'total_problemas' => $totalProblemas,
+                'percentual_concluido' => $total > 0 ? round($concluidas / $total * 100, 1) : 0
+            ];
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $embarque,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em embarqueDetalhesCompletos: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar detalhes completos do embarque'
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/gestao-cargas/motorista/{id}/perfil
+     * Perfil completo e rastreável do motorista: embarques, veículos usados, pontos
+     * positivos/negativos e score de desempenho.
+     */
+    public function motoristaPerfilCompleto(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $id = (int)$args['id'];
+            $params = $request->getQueryParams();
+            $dias = max(1, min((int)($params['dias'] ?? 90), 365));
+
+            $stmtMotorista = $this->pdo->prepare("
+                SELECT id, nome, telefone, status, email, cnh_numero, cnh_categoria, foto_url
+                FROM frota_motorista
+                WHERE id = :id
+            ");
+            $stmtMotorista->execute(['id' => $id]);
+            $motorista = $stmtMotorista->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$motorista) {
+                return $this->json($response, ['success' => false, 'error' => 'Motorista não encontrado'], 404);
+            }
+
+            // Métricas agregadas (mesma base do ranking, mas focado neste motorista)
+            $sqlMetricas = "
+                SELECT
+                    COUNT(DISTINCT em.id) AS total_embarques,
+                    COUNT(DISTINCT ent.id) AS total_entregas,
+                    COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
+                    COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
+                    COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
+                    COUNT(DISTINCT CASE WHEN ent.status = 'pendente' AND ent.data_prevista < CURRENT_DATE THEN ent.id END) AS entregas_atrasadas,
+                    COUNT(DISTINCT CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL
+                        AND ent.data_prevista IS NOT NULL AND DATE(ent.horario_entrega) <= ent.data_prevista THEN ent.id END) AS entregas_no_prazo,
+                    COUNT(DISTINCT ep.id) AS total_problemas,
+                    COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
+                    COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
+                    COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                    COUNT(DISTINCT CASE WHEN ep.status_problema = 'resolvido' THEN ep.id END) AS problemas_resolvidos,
+                    COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
+                    COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
+                        THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+                FROM frota_embarque em
+                LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
+                LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
+                WHERE em.motorista_id = :id
+                    AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+            ";
+            $stmt = $this->pdo->prepare($sqlMetricas);
+            $stmt->execute(['id' => $id, 'dias' => $dias]);
+            $metricas = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $totalEntregas = (int)$metricas['total_entregas'];
+            $metricas['taxa_divergencia'] = $totalEntregas > 0
+                ? round(($metricas['entregas_com_problema'] + $metricas['entregas_falha']) / $totalEntregas * 100, 1)
+                : 0.0;
+            $metricas['taxa_no_prazo'] = $totalEntregas > 0
+                ? round($metricas['entregas_no_prazo'] / $totalEntregas * 100, 1)
+                : 0.0;
+            $metricas['tempo_medio_entrega_min'] = round((float)$metricas['tempo_medio_entrega_min'], 1);
+
+            $indice = ($metricas['taxa_divergencia'] * 0.5)
+                + ((100 - $metricas['taxa_no_prazo']) * 0.3)
+                + (min($metricas['problemas_pendentes'] * 5, 100) * 0.2);
+            $metricas['indice_ineficiencia'] = round(min($indice, 100), 1);
+            $metricas['score_desempenho'] = $this->calcularScoreMotorista($metricas);
+
+            // Veículos utilizados historicamente
+            $stmtVeiculos = $this->pdo->prepare("
+                SELECT v.id, v.placa, v.modelo, v.marca,
+                    COUNT(DISTINCT em.id) AS total_embarques,
+                    MAX(em.data_saida) AS ultimo_uso
+                FROM frota_embarque em
+                INNER JOIN frota_veiculo v ON v.id = em.veiculo_id
+                WHERE em.motorista_id = :id
+                GROUP BY v.id, v.placa, v.modelo, v.marca
+                ORDER BY total_embarques DESC
+            ");
+            $stmtVeiculos->execute(['id' => $id]);
+            $veiculos = $stmtVeiculos->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Todos os embarques do motorista (rastreável, com link para detalhes-completos)
+            $stmtEmbarques = $this->pdo->prepare("
+                SELECT
+                    em.id, em.numero_embarque, em.nome_embarque, em.status AS embarque_status,
+                    em.data_saida, em.data_retorno,
+                    v.placa AS veiculo_placa,
+                    ae.status AS acerto_status,
+                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = em.id) AS total_entregas,
+                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = em.id AND status IN ('entregue','entregue_com_problema')) AS entregas_concluidas,
+                    (SELECT COUNT(*) FROM frota_entrega_problema ep2 INNER JOIN frota_entrega fe2 ON fe2.id = ep2.entrega_id WHERE fe2.embarque_id = em.id) AS total_problemas
+                FROM frota_embarque em
+                LEFT JOIN frota_veiculo v ON v.id = em.veiculo_id
+                LEFT JOIN frota_acerto_embarque ae ON ae.embarque_id = em.id
+                WHERE em.motorista_id = :id
+                ORDER BY em.data_saida DESC, em.id DESC
+                LIMIT 100
+            ");
+            $stmtEmbarques->execute(['id' => $id]);
+            $embarques = $stmtEmbarques->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Pontos positivos e negativos (destaques automáticos)
+            $pontosPositivos = [];
+            $pontosNegativos = [];
+
+            if ($metricas['entregas_concluidas'] > 0) {
+                $pontosPositivos[] = "{$metricas['entregas_concluidas']} entregas concluídas com sucesso";
+            }
+            if ($metricas['taxa_no_prazo'] >= 90) {
+                $pontosPositivos[] = "Excelente pontualidade: {$metricas['taxa_no_prazo']}% das entregas no prazo";
+            } elseif ($metricas['taxa_no_prazo'] >= 75) {
+                $pontosPositivos[] = "Boa pontualidade: {$metricas['taxa_no_prazo']}% das entregas no prazo";
+            }
+            if ($metricas['taxa_divergencia'] <= 5 && $totalEntregas > 0) {
+                $pontosPositivos[] = "Baixíssima taxa de divergência: {$metricas['taxa_divergencia']}%";
+            }
+            if ($metricas['problemas_resolvidos'] > 0) {
+                $pontosPositivos[] = "{$metricas['problemas_resolvidos']} problemas resolvidos adequadamente";
+            }
+
+            if ($metricas['entregas_atrasadas'] > 0) {
+                $pontosNegativos[] = "{$metricas['entregas_atrasadas']} entregas em atraso";
+            }
+            if ($metricas['taxa_divergencia'] > 15) {
+                $pontosNegativos[] = "Alta taxa de divergência: {$metricas['taxa_divergencia']}%";
+            }
+            if ($metricas['problemas_pendentes'] > 0) {
+                $pontosNegativos[] = "{$metricas['problemas_pendentes']} problemas ainda pendentes de resolução";
+            }
+            if ($metricas['entregas_falha'] > 0) {
+                $pontosNegativos[] = "{$metricas['entregas_falha']} entregas com falha total";
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'motorista' => $motorista,
+                    'metricas' => $metricas,
+                    'veiculos_utilizados' => $veiculos,
+                    'embarques' => $embarques,
+                    'pontos_positivos' => $pontosPositivos,
+                    'pontos_negativos' => $pontosNegativos
+                ],
+                'dias' => $dias,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em motoristaPerfilCompleto: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar perfil completo do motorista'
+            ], 500);
+        }
+    }
+
+    /**
+     * Calcula o score de desempenho (0-100, quanto maior melhor) do motorista
+     * a partir de métricas já apuradas (entregas concluídas, pontualidade,
+     * divergência e resolução de problemas). É o complemento "positivo" do
+     * índice de ineficiência.
+     */
+    private function calcularScoreMotorista(array $m): float
+    {
+        $totalEntregas = (int)($m['total_entregas'] ?? 0);
+        if ($totalEntregas === 0) {
+            return 0.0;
+        }
+
+        $taxaConclusao = round(((int)($m['entregas_concluidas'] ?? 0) + (int)($m['entregas_com_problema'] ?? 0)) / $totalEntregas * 100, 1);
+        $taxaNoPrazo = (float)($m['taxa_no_prazo'] ?? 0);
+        $taxaDivergencia = (float)($m['taxa_divergencia'] ?? 0);
+
+        $problemasPendentes = (int)($m['problemas_pendentes'] ?? 0);
+        $problemasResolvidos = (int)($m['problemas_resolvidos'] ?? 0);
+        $totalProblemas = $problemasPendentes + $problemasResolvidos;
+        $taxaResolucao = $totalProblemas > 0 ? ($problemasResolvidos / $totalProblemas * 100) : 100;
+
+        // Pesos: conclusão (30%), pontualidade (30%), ausência de divergência (25%), resolução de problemas (15%)
+        $score = ($taxaConclusao * 0.30)
+            + ($taxaNoPrazo * 0.30)
+            + ((100 - min($taxaDivergencia, 100)) * 0.25)
+            + ($taxaResolucao * 0.15);
+
+        return round(max(0, min($score, 100)), 1);
+    }
+
     /**
      * Resposta JSON
      */

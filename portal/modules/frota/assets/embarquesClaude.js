@@ -1,3 +1,4 @@
+var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
 // ======================================================================
 // CONFIGURAÇÕES
 // ======================================================================
@@ -143,88 +144,87 @@ function mostrarNotificacao(mensagem, tipo) {
     }, 5000);
 }
 
-// ======================================================================
-// MAPEAR IDS DO ERP PARA IDS DO SISTEMA - FUNÇÃO AUXILIAR
-// ======================================================================
 async function mapearErpIdsParaSistema(erpIds) {
     const token = getAuthToken();
     if (!token) return { sistemaIds: [], erros: ['Token não encontrado'] };
     
     const sistemaIds = [];
     const erros = [];
-    const erpIdsArray = Array.isArray(erpIds) ? erpIds : [erpIds];
+    const erpIdsArray = (Array.isArray(erpIds) ? erpIds : [erpIds])
+        .map(id => parseInt(id))
+        .filter(id => !isNaN(id) && id > 0);
     
-    // Buscar todos os embarques do sistema uma única vez
+    if (erpIdsArray.length === 0) {
+        return { sistemaIds: [], erros: ['Nenhum ID válido fornecido'] };
+    }
+    
     let todosEmbarques = [];
     try {
-        const respLista = await fetch('/v1/frota/embarques?limite=10000', {
+        const respLista = await fetch(API_BASE + '/frota/embarques?limite=10000', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (respLista.ok) {
             const dados = await respLista.json();
             if (dados.success && dados.data) {
                 todosEmbarques = dados.data;
+                console.log('📋 Total de embarques no sistema:', todosEmbarques.length);
             }
         }
     } catch (e) {
-        erros.push('Erro ao buscar lista de embarques: ' + e.message);
+        erros.push('Erro ao buscar lista: ' + e.message);
+        return { sistemaIds: [], erros };
     }
     
-    for (const erpId of erpIdsArray) {
-        try {
-            // 1. Tentar encontrar pelo ID do sistema diretamente
-            const encontradoDireto = todosEmbarques.find(e => e.id == erpId);
-            if (encontradoDireto) {
-                sistemaIds.push(encontradoDireto.id);
-                continue;
+    const mapaErpParaSistema = new Map();
+    
+    for (const emb of todosEmbarques) {
+        const sistemaId = parseInt(emb.id);
+        
+        if (!mapaErpParaSistema.has(sistemaId)) {
+            mapaErpParaSistema.set(sistemaId, sistemaId);
+        }
+        
+        if (emb.erp_embarque_id) {
+            const erpId = parseInt(emb.erp_embarque_id);
+            if (!isNaN(erpId) && !mapaErpParaSistema.has(erpId)) {
+                mapaErpParaSistema.set(erpId, sistemaId);
             }
+        }
+        
+        if (emb.erp_ids_agrupados) {
+            const ids = String(emb.erp_ids_agrupados)
+                .split(',')
+                .map(s => parseInt(s.trim()))
+                .filter(n => !isNaN(n) && n > 0);
             
-            // 2. Tentar encontrar pelo erp_embarque_id
-            const encontradoErp = todosEmbarques.find(e => e.erp_embarque_id == erpId);
-            if (encontradoErp) {
-                sistemaIds.push(encontradoErp.id);
-                continue;
-            }
-            
-            // 3. Tentar encontrar pelo numero_embarque
-            const encontradoNumero = todosEmbarques.find(e => e.numero_embarque == erpId || e.numero_embarque == '#' + erpId);
-            if (encontradoNumero) {
-                sistemaIds.push(encontradoNumero.id);
-                continue;
-            }
-            
-            // 4. Tentar encontrar dentro de erp_ids_agrupados
-            const encontradoAgrupado = todosEmbarques.find(e => 
-                e.erp_ids_agrupados && e.erp_ids_agrupados.split(',').map(Number).includes(erpId)
-            );
-            if (encontradoAgrupado) {
-                sistemaIds.push(encontradoAgrupado.id);
-                continue;
-            }
-            
-            // 5. Tentar buscar diretamente pela API (fallback)
-            const respSistema = await fetch(`/v1/frota/embarques/${erpId}`, {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            
-            if (respSistema.ok) {
-                const data = await respSistema.json();
-                if (data.success && data.data) {
-                    sistemaIds.push(data.data.id);
-                    continue;
+            for (const idAgrupado of ids) {
+                if (!mapaErpParaSistema.has(idAgrupado)) {
+                    mapaErpParaSistema.set(idAgrupado, sistemaId);
                 }
             }
-            
-            // Se chegou aqui, não encontrou
-            erros.push(`ID ${erpId} não encontrado no sistema`);
-            
-        } catch (e) {
-            erros.push(`Erro ao buscar ID ${erpId}: ${e.message}`);
         }
     }
     
-    // Remover duplicatas
+    console.log('🗺️ Mapa ERP→Sistema criado com', mapaErpParaSistema.size, 'entradas');
+    
+    for (const erpId of erpIdsArray) {
+        if (mapaErpParaSistema.has(erpId)) {
+            const sistemaId = mapaErpParaSistema.get(erpId);
+            sistemaIds.push(sistemaId);
+            console.log(`✅ ${erpId} → ${sistemaId}`);
+        } else {
+            erros.push(`ID ${erpId} não encontrado no sistema`);
+            console.warn(`❌ ${erpId} não encontrado`);
+        }
+    }
+    
     const sistemaIdsUnicos = [...new Set(sistemaIds)];
+    
+    console.log('📊 Resultado final:', {
+        entrada: erpIdsArray,
+        saida: sistemaIdsUnicos,
+        erros: erros
+    });
     
     return { sistemaIds: sistemaIdsUnicos, erros };
 }
@@ -347,7 +347,7 @@ async function carregarDisponiveis() {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/importar/embarques-erp', {
+        const response = await fetch(API_BASE + '/frota/importar/embarques-erp', {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const dados = await response.json();
@@ -768,7 +768,7 @@ async function rastrearEntrega() {
     `;
 
     try {
-        const response = await fetch(`/v1/frota/entregas/rastreamento/${encodeURIComponent(codigo)}`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/rastreamento/${encodeURIComponent(codigo)}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
 
@@ -917,7 +917,7 @@ const busca = document.getElementById('filtro-busca').value;
 const dataInicio = document.getElementById('filtro-data-inicio').value;
 const dataFim = document.getElementById('filtro-data-fim').value;
 
-let url = '/v1/frota/embarques?pagina=' + paginaAtual + '&limite=' + limitePorPagina;
+let url = API_BASE + '/frota/embarques?pagina=' + paginaAtual + '&limite=' + limitePorPagina;
 if (status) url += '&status=' + status;
 if (busca) url += '&busca=' + encodeURIComponent(busca);
 if (dataInicio) url += '&data_inicio=' + dataInicio;
@@ -976,92 +976,98 @@ function atualizarIndicadorCache() {
 // Atualizar a cada 5 segundos
 setInterval(atualizarIndicadorCache, 5000);
 
-// ======================================================================
-// RENDERIZAR EMBARQUES NA TABELA - VERSÃO COMPLETA
-// ======================================================================
 function renderizarEmbarques(embarques, pagination) {
     const tbody = document.getElementById('lista-embarques');
+    renderizarVisaoOperacional(embarques || []);
 
     if (!embarques || embarques.length === 0) {
         tbody.innerHTML = `<tr><td colspan="10" class="text-center py-8 text-slate-400">
             <i class="fa-regular fa-truck text-3xl block mb-2"></i>
             Nenhum embarque encontrado
-    </td></tr>`;
-    return;
-}
-
-let html = '';
-embarques.forEach((emb, index) => {
-        // Status com ícones
-    const statusIcon = {
-        'planejado': '📋',
-        'em_andamento': '🚚',
-        'finalizado': '✅',
-        'cancelado': '🚫',
-        'problema': '⚠️'
-    } [emb.status] || '';
-
-    const statusClass = {
-        'planejado': 'planejado',
-        'em_andamento': 'em_andamento',
-        'finalizado': 'finalizado',
-        'cancelado': 'cancelado',
-        'problema': 'problema'
-    } [emb.status] || 'planejado';
-
-    const statusText = {
-        'planejado': 'Planejado',
-        'em_andamento': 'Em Andamento',
-        'finalizado': 'Finalizado',
-        'cancelado': 'Cancelado',
-        'problema': 'Problema'
-    } [emb.status] || emb.status;
-
-    const total = emb.total_entregas || 0;
-    const concluidas = emb.entregas_concluidas || 0;
-    const progresso = total > 0 ? Math.round((concluidas / total) * 100) : 0;
-
-    let barClass = 'em-andamento';
-    if (emb.status === 'problema') {
-        barClass = 'problema';
-    } else if (progresso >= 100) {
-        barClass = 'concluido';
+        </td></tr>`;
+        return;
     }
 
-    const valorTotal = emb.valor_total_entregas || 0;
-    const pesoTotal = emb.peso_total_entregas || emb.peso_total || 0;
+    let html = '';
 
-    const placa = emb.veiculo_placa || '';
-    const modelo = emb.veiculo_modelo || '';
-    const temVeiculo = placa && placa.trim() !== '' && placa !== 'SEM VEÍCULO';
+    embarques.forEach((emb, index) => {
+        const statusIcon = {
+            'planejado': '📋',
+            'em_andamento': '🚚',
+            'finalizado': '✅',
+            'cancelado': '🚫',
+            'problema': '⚠️'
+        }[emb.status] || '';
 
-    const veiculoDisplay = temVeiculo ?
-`<span class="font-medium text-[#1a3c34] dark:text-white">${placa}</span>` :
-'<span class="text-slate-400 text-xs">Não definido</span>';
+        const statusClass = {
+            'planejado': 'planejado',
+            'em_andamento': 'em_andamento',
+            'finalizado': 'finalizado',
+            'cancelado': 'cancelado',
+            'problema': 'problema'
+        }[emb.status] || 'planejado';
 
-const veiculoModelo = temVeiculo && modelo ?
-`<span class="text-xs text-slate-400 block">${modelo}</span>` :
-'';
+        const statusText = {
+            'planejado': 'Planejado',
+            'em_andamento': 'Em Andamento',
+            'finalizado': 'Finalizado',
+            'cancelado': 'Cancelado',
+            'problema': 'Problema'
+        }[emb.status] || emb.status;
 
-const nomeRota = emb.nome_embarque || emb.observacoes || emb.rota || '-';
+        const total = parseInt(emb.total_entregas) || 0;
+        const concluidas = parseInt(emb.entregas_concluidas) || 0;
+        const progresso = total > 0 ? Math.round((concluidas / total) * 100) : 0;
 
-const isGrupo = (emb.total_embarques_agrupados && emb.total_embarques_agrupados > 1) || false;
-const qtdEmbarques = isGrupo ? ` (${emb.total_embarques_agrupados} embarques)` : '';
+        let barClass = 'em-andamento';
+        if (emb.status === 'problema') {
+            barClass = 'problema';
+        } else if (progresso >= 100) {
+            barClass = 'concluido';
+        }
 
-let idsParaAcao = [emb.id];
-if (isGrupo && emb.erp_ids_agrupados) {
-    idsParaAcao = emb.erp_ids_agrupados.split(',').map(Number);
-}
-const idsString = idsParaAcao.join(',');
+        const valorTotal = parseFloat(emb.valor_total_entregas) || 0;
+        const pesoTotal = parseFloat(emb.peso_total_entregas) || 0;
 
-        // 🔥 Botão específico para status problema
-const btnProblema = emb.status === 'problema' ? `
-            <button class="btn-icone amber" onclick="verDetalhes(${emb.id})" title="Ver problemas">
+        const placa = emb.veiculo_placa || '';
+        const modelo = emb.veiculo_modelo || '';
+        const temVeiculo = placa && placa.trim() !== '' && placa !== 'SEM VEÍCULO';
+
+        const veiculoDisplay = temVeiculo
+            ? `<span class="font-medium text-[#1a3c34] dark:text-white">${placa}</span>`
+            : '<span class="text-slate-400 text-xs">Não definido</span>';
+
+        const veiculoModelo = temVeiculo && modelo
+            ? `<span class="text-xs text-slate-400 block">${modelo}</span>`
+            : '';
+
+        const nomeRota = emb.nome_embarque || emb.observacoes || emb.rota || '-';
+
+        // 🔥 DETECTAR GRUPO
+        const totalAgrupados = parseInt(emb.total_embarques_agrupados) || 1;
+        const isGrupo = totalAgrupados > 1;
+        const qtdEmbarques = isGrupo ? ` (${totalAgrupados} embarques)` : '';
+
+        // 🔥 IDs do ERP (para ações em lote)
+        const erpIdsAgrupados = emb.erp_ids_agrupados
+            ? String(emb.erp_ids_agrupados).split(',').map(n => parseInt(n.trim())).filter(n => !isNaN(n) && n > 0)
+            : [];
+
+        // 🔥 SEMPRE o ID do SISTEMA para abrir detalhes
+        const idSistema = parseInt(emb.id);
+
+        // IDs para ações em lote
+        const idsString = erpIdsAgrupados.length > 0
+            ? erpIdsAgrupados.join(',')
+            : String(idSistema);
+
+        const btnProblema = emb.status === 'problema' ? `
+            <button class="btn-icone amber" onclick="verDetalhes(${idSistema})" title="Ver problemas">
                 <i class="fa-solid fa-triangle-exclamation"></i>
             </button>
-` : '';
+        ` : '';
 
-html += `
+        html += `
             <tr class="row-status-${statusClass}">
                 <td class="text-center font-bold text-slate-400" data-label="#">${index + 1}</td>
                 <td data-label="Embarque">
@@ -1070,7 +1076,7 @@ html += `
                         ${qtdEmbarques}
                     </div>
                     <div class="text-xs text-slate-400">${emb.nome_embarque || ''}</div>
-                    ${emb.erp_embarque_id ? '<span class="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded-full">ERP: #' + emb.erp_embarque_id + '</span>' : ''}
+                    ${emb.erp_embarque_id ? `<span class="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 px-1.5 py-0.5 rounded-full">ERP: #${emb.erp_embarque_id}</span>` : ''}
                     ${isGrupo ? '<span class="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 px-1.5 py-0.5 rounded-full">📦 Grupo</span>' : ''}
                 </td>
                 <td data-label="Rota">
@@ -1098,54 +1104,84 @@ html += `
                 </td>
                 <td class="text-center" data-label="Ações">
                     <div class="flex items-center justify-center gap-1 flex-wrap">
-    ${isGrupo ? `
-                            <button class="btn-icone azul" onclick="verDetalhesGrupo([${idsString}])" title="Ver detalhes do grupo">
-                                <i class="fa-solid fa-layer-group"></i>
-                            </button>
-        ` : `
-                            <button class="btn-icone azul" onclick="verDetalhes(${emb.id})" title="Ver detalhes">
-                                <i class="fa-solid fa-eye"></i>
-                            </button>
-        `}
-                        <button class="btn-icone azul" onclick="abrirModalEditarGrupo([${idsString}])" title="Editar grupo">
+                        <!-- 🔥 BOTÃO OLHINHO — SEMPRE USA O ID DO SISTEMA -->
+                        <button class="btn-icone azul" onclick="verDetalhes(${idSistema})" title="Ver detalhes${isGrupo ? ' do grupo' : ''}">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+
+                        <button class="btn-icone azul" onclick="abrirModalEditarGrupo([${idsString}])" title="Editar">
                             <i class="fa-solid fa-pen"></i>
                         </button>
+
                         <button class="btn-icone vermelho" onclick="removerEntregaGrupo([${idsString}])" title="Remover entrega">
                             <i class="fa-solid fa-trash-alt"></i>
                         </button>
-        ${emb.status === 'planejado' ? `
-                            <button class="btn-icone verde" onclick="iniciarGrupo([${idsString}])" title="Iniciar todos">
+
+                        ${emb.status === 'planejado' ? `
+                            <button class="btn-icone verde" onclick="iniciarGrupo([${idsString}])" title="Iniciar${isGrupo ? ' todos' : ''}">
                                 <i class="fa-solid fa-play"></i>
                             </button>
-            ` : ''}
-            ${emb.status === 'em_andamento' || emb.status === 'problema' ? `
-                            <button class="btn-icone amber" onclick="finalizarGrupo([${idsString}])" title="Finalizar todos">
+                        ` : ''}
+
+                        ${(emb.status === 'em_andamento' || emb.status === 'problema') ? `
+                            <button class="btn-icone amber" onclick="finalizarGrupo([${idsString}])" title="Finalizar${isGrupo ? ' todos' : ''}">
                                 <i class="fa-solid fa-flag-checkered"></i>
                             </button>
-                ` : ''}
-                ${emb.status !== 'finalizado' && emb.status !== 'cancelado' ? `
-                            <button class="btn-icone vermelho" onclick="cancelarGrupo([${idsString}])" title="Cancelar todos">
+                        ` : ''}
+
+                        ${(emb.status !== 'finalizado' && emb.status !== 'cancelado') ? `
+                            <button class="btn-icone vermelho" onclick="cancelarGrupo([${idsString}])" title="Cancelar${isGrupo ? ' todos' : ''}">
                                 <i class="fa-solid fa-ban"></i>
                             </button>
-                    ` : ''}
+                        ` : ''}
+
                         ${btnProblema}
                     </div>
                 </td>
             </tr>
-                `;
-            });
+        `;
+    });
 
-tbody.innerHTML = html;
+    tbody.innerHTML = html;
 
-if (pagination) {
-    totalPaginas = pagination.total_paginas || 1;
-    totalRegistros = pagination.total || 0;
-    document.getElementById('info-paginacao').textContent =
-    totalRegistros + ' registros • Página ' + (pagination.pagina || 1) + ' de ' + totalPaginas;
-    document.getElementById('pagina-atual').textContent = pagination.pagina || 1;
-    paginaAtual = pagination.pagina || 1;
-    document.getElementById('total-embarques').textContent = totalRegistros;
+    if (pagination) {
+        totalPaginas = pagination.total_paginas || 1;
+        totalRegistros = pagination.total || 0;
+        document.getElementById('info-paginacao').textContent =
+            totalRegistros + ' registros • Página ' + (pagination.pagina || 1) + ' de ' + totalPaginas;
+        document.getElementById('pagina-atual').textContent = pagination.pagina || 1;
+        paginaAtual = pagination.pagina || 1;
+        document.getElementById('total-embarques').textContent = totalRegistros;
+    }
 }
+
+function renderizarVisaoOperacional(embarques) {
+    const container = document.getElementById('embarques-overview');
+    if (!container) return;
+    const status = embarques.reduce((acc, embarque) => {
+        const chave = embarque.status || 'planejado';
+        acc[chave] = (acc[chave] || 0) + 1;
+        return acc;
+    }, {});
+    const entregas = embarques.reduce((total, embarque) => total + Number(embarque.total_entregas || 0), 0);
+    const concluidas = embarques.reduce((total, embarque) => total + Number(embarque.entregas_concluidas || 0), 0);
+    const progresso = entregas ? Math.round((concluidas / entregas) * 100) : 0;
+    const cards = [
+        ['fa-route', embarques.length, 'rotas na página', 'neutral'],
+        ['fa-truck-fast', status.em_andamento || 0, 'em andamento', 'active'],
+        ['fa-circle-check', `${progresso}%`, `${concluidas}/${entregas} entregas`, 'success'],
+        ['fa-triangle-exclamation', status.problema || 0, 'com problema', status.problema ? 'danger' : 'neutral']
+    ];
+    container.innerHTML = `
+        <div class="overview-heading">
+            <div><span class="overview-eyebrow"><i class="fa-solid fa-signal"></i> Painel operacional</span><strong>Visão da página atual</strong></div>
+            <span class="overview-caption">${entregas} entregas monitoradas</span>
+        </div>
+        <div class="overview-cards">
+            ${cards.map(([icon, value, label, tone]) => `<div class="overview-card ${tone}"><i class="fa-solid ${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('')}
+        </div>
+        <div class="overview-progress"><div><span>Conclusão das entregas</span><strong>${progresso}%</strong></div><div class="overview-progress-track"><span style="width:${progresso}%"></span></div></div>
+    `;
 }
 
 function mudarPagina(direcao) {
@@ -1221,7 +1257,7 @@ async function cancelarGrupo(ids) {
 
     for (const id of sistemaIds) {
         try {
-            const response = await fetch('/v1/frota/embarques/' + id + '/cancelar', {
+            const response = await fetch(API_BASE + '/frota/embarques/' + id + '/cancelar', {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token }
             });
@@ -1319,7 +1355,7 @@ async function verDetalhesGrupo(ids) {
         let totalProblemas = 0;
 
         for (const id of listaIds) {
-            const response = await fetch('/v1/frota/embarques/' + id, {
+            const response = await fetch(API_BASE + '/frota/embarques/' + id, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (response.ok) {
@@ -1460,7 +1496,7 @@ async function iniciarGrupo(ids) {
     for (let i = 0; i < sistemaIds.length; i++) {
         const id = sistemaIds[i];
         try {
-            const response = await fetch(`/v1/frota/embarques/${id}/iniciar`, {
+            const response = await fetch(`${API_BASE}/frota/embarques/${id}/iniciar`, {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token }
             });
@@ -1584,7 +1620,7 @@ async function finalizarGrupo(ids) {
     try {
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const resp = await fetch(`/v1/frota/embarques/${id}`, {
+            const resp = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const data = await resp.json();
@@ -1671,7 +1707,7 @@ async function finalizarGrupo(ids) {
         for (let i = 0; i < sistemaIds.length; i++) {
             const id = sistemaIds[i];
             try {
-                const response = await fetch(`/v1/frota/embarques/${id}/finalizar`, {
+                const response = await fetch(`${API_BASE}/frota/embarques/${id}/finalizar`, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token }
                 });
@@ -1777,7 +1813,7 @@ async function registrarCheckin(entregaId) {
     try {
         const lat = DISTRIBUIDORA_LAT;
         const lng = DISTRIBUIDORA_LNG;
-        const response = await fetch(`/v1/frota/entregas/${entregaId}/checkin`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/checkin`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -1807,7 +1843,7 @@ async function registrarCheckout(entregaId) {
     let itens = [];
 
     try {
-        const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+        const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await resp.json();
@@ -1828,7 +1864,7 @@ async function registrarCheckout(entregaId) {
         const ids = entrega.pedidos_ids.split(',').map(id => parseInt(id.trim())).filter(id => id > 0);
         if (ids.length > 0) {
             try {
-                const resp = await fetch('/v1/frota/importar/itens-pedidos', {
+                const resp = await fetch(API_BASE + '/frota/importar/itens-pedidos', {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                     body: JSON.stringify({ pedidos_ids: ids })
@@ -2166,7 +2202,7 @@ if (!formData) return;
 const { foto_romaneio, nome_recebedor, checklist, tem_faltante, tem_devolucao } = formData;
 
 try {
-    const response = await fetch(`/v1/frota/entregas/${entregaId}/checkout`, {
+    const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/checkout`, {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -2216,7 +2252,7 @@ async function registrarFalha(entregaId) {
 
     const token = getAuthToken();
     try {
-        const response = await fetch(`/v1/frota/entregas/${entregaId}/falha`, {
+        const response = await fetch(`${API_BASE}/frota/entregas/${entregaId}/falha`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
             body: JSON.stringify({ motivo, observacao: 'Registrado pelo gestor' })
@@ -2252,7 +2288,7 @@ async function iniciarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/iniciar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/iniciar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2284,7 +2320,7 @@ async function finalizarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/finalizar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/finalizar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2316,7 +2352,7 @@ async function cancelarEmbarque(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id + '/cancelar', {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id + '/cancelar', {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token }
         });
@@ -2423,7 +2459,7 @@ async function verDetalhes(id) {
     if (!token) return;
 
     try {
-        const response = await fetch('/v1/frota/embarques/' + id, {
+        const response = await fetch(API_BASE + '/frota/embarques/' + id, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         if (!response.ok) throw new Error('HTTP ' + response.status);
@@ -2869,7 +2905,7 @@ async function verDetalhes(id) {
                         async function abrirGaleriaFotos(entregaId) {
                             const token = getAuthToken();
                             try {
-                                const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3363,7 +3399,7 @@ async function verDetalhes(id) {
                         const token = getAuthToken();
                         if (!token) return;
                         try {
-                            await fetch('/v1/frota/embarques/' + embarqueId + '/reordenar', {
+                            await fetch(API_BASE + '/frota/embarques/' + embarqueId + '/reordenar', {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ ordem: novaOrdem })
@@ -3380,7 +3416,7 @@ async function verDetalhes(id) {
                         const token = getAuthToken();
                         if (!token) return;
                         try {
-                            const response = await fetch('/v1/frota/embarques/' + id + '/otimizar-rota', {
+                            const response = await fetch(API_BASE + '/frota/embarques/' + id + '/otimizar-rota', {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token }
                             });
@@ -3415,7 +3451,7 @@ async function verDetalhes(id) {
                             }
 
                             if (!entrega || !entrega.checklist || entrega.checklist.length === 0) {
-                                const resp = await fetch(`/v1/frota/embarques/${embarqueId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/embarques/${embarqueId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3425,7 +3461,7 @@ async function verDetalhes(id) {
                             }
 
                             if (!entrega) {
-                                const resp = await fetch(`/v1/frota/entregas/${entregaId}`, {
+                                const resp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
                                     headers: { 'Authorization': 'Bearer ' + token }
                                 });
                                 const data = await resp.json();
@@ -3636,10 +3672,17 @@ async function criarRotasSelecionadas() {
         return;
     }
 
-    const totalSelecionados = embarquesSelecionados.length;
+    // 🔥 CORREÇÃO: capturar um snapshot imutável dos IDs selecionados no início.
+    // Isso evita que a lista global `embarquesSelecionados` seja esvaziada ou
+    // alterada (por exemplo, ao trocar de aba ou recarregar a lista) enquanto
+    // esta função assíncrona ainda está buscando dados do ERP, causando o erro
+    // "Informe pelo menos um ID de embarque" ao montar o payload final.
+    const idsSelecionados = [...embarquesSelecionados];
+
+    const totalSelecionados = idsSelecionados.length;
     const isMultiplo = totalSelecionados > 1;
 
-    console.log('📌 Embarques selecionados:', embarquesSelecionados);
+    console.log('📌 Embarques selecionados:', idsSelecionados);
     console.log('📌 É múltiplo?', isMultiplo);
 
     let motoristasERP = [];
@@ -3653,8 +3696,8 @@ async function criarRotasSelecionadas() {
             allowOutsideClick: false
         });
 
-        for (const id of embarquesSelecionados) {
-            const response = await fetch(`/v1/frota/importar/embarque-detalhes/${id}`, {
+        for (const id of idsSelecionados) {
+            const response = await fetch(`${API_BASE}/frota/importar/embarque-detalhes/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             if (response.ok) {
@@ -3710,8 +3753,8 @@ async function criarRotasSelecionadas() {
 
     try {
         const [respVeiculos, respMotoristas] = await Promise.all([
-            fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-            fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+            fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
         ]);
 
         if (respVeiculos.ok) {
@@ -3749,8 +3792,8 @@ async function criarRotasSelecionadas() {
             if (!cadastrados) return;
 
             const [rv2, rm2] = await Promise.all([
-                fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-                fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+                fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+                fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
             ]);
             if (rv2.ok) {
                 const d = await rv2.json();
@@ -3888,11 +3931,11 @@ async function criarRotasSelecionadas() {
     // 🔥 CORREÇÃO: Usar o campo correto para a API
     if (isMultiplo) {
         // Para múltiplos embarques, usar ids_agrupados
-        payload.ids_agrupados = embarquesSelecionados;
+        payload.ids_agrupados = idsSelecionados;
         // 🔥 IMPORTANTE: NÃO enviar id_embarque_erp quando for múltiplo
     } else {
         // Para um único embarque, usar id_embarque_erp
-        payload.id_embarque_erp = embarquesSelecionados[0];
+        payload.id_embarque_erp = idsSelecionados[0];
     }
 
     console.log('📤 Payload enviado:', payload);
@@ -3905,7 +3948,7 @@ async function criarRotasSelecionadas() {
     );
 
     try {
-        const response = await fetch('/v1/frota/importar/criar-embarque', {
+        const response = await fetch(API_BASE + '/frota/importar/criar-embarque', {
             method: 'POST',
             headers: {
                 'Authorization': 'Bearer ' + token,
@@ -3946,6 +3989,7 @@ async function criarRotasSelecionadas() {
                 timer: 4000,
                 showConfirmButton: false
             });
+            embarquesSelecionados = [];
             carregarDisponiveis();
             carregarEmbarques();
 
@@ -4154,7 +4198,7 @@ async function criarRotasSelecionadas() {
                                         const token = getAuthToken();
                                         const resultados = [];
                                         for (const m of motoristasParaCadastrar) {
-                                            const r = await fetch('/v1/frota/motoristas', {
+                                            const r = await fetch(API_BASE + '/frota/motoristas', {
                                                 method: 'POST',
                                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(m)
@@ -4162,7 +4206,7 @@ async function criarRotasSelecionadas() {
                                             resultados.push(await r.json());
                                         }
                                         for (const v of veiculosParaCadastrar) {
-                                            const r = await fetch('/v1/frota/veiculos', {
+                                            const r = await fetch(API_BASE + '/frota/veiculos', {
                                                 method: 'POST',
                                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                                 body: JSON.stringify(v)
@@ -4236,7 +4280,7 @@ async function abrirModalEditarGrupo(ids) {
 
     try {
         const primeiroId = sistemaIds[0];
-        const resp = await fetch(`/v1/frota/embarques/${primeiroId}`, {
+        const resp = await fetch(`${API_BASE}/frota/embarques/${primeiroId}`, {
             headers: { 'Authorization': 'Bearer ' + token }
         });
         const data = await resp.json();
@@ -4247,8 +4291,8 @@ async function abrirModalEditarGrupo(ids) {
         const emb = data.data;
 
         const [respVeiculos, respMotoristas] = await Promise.all([
-            fetch('/v1/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
-            fetch('/v1/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
+            fetch(API_BASE + '/frota/veiculos?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } }),
+            fetch(API_BASE + '/frota/motoristas?limite=1000', { headers: { 'Authorization': 'Bearer ' + token } })
         ]);
         const veiculos = (await respVeiculos.json()).data || [];
         const motoristas = (await respMotoristas.json()).data || [];
@@ -4266,7 +4310,7 @@ async function abrirModalEditarGrupo(ids) {
 
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const respEntrega = await fetch(`/v1/frota/embarques/${id}`, {
+            const respEntrega = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const dataEntrega = await respEntrega.json();
@@ -4407,7 +4451,7 @@ async function abrirModalEditarGrupo(ids) {
                     let sucessos = 0;
                     
                     for (const id of sistemaIds) {
-                        const respUpdate = await fetch(`/v1/frota/embarques/${id}`, {
+                        const respUpdate = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                             method: 'PUT',
                             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                             body: JSON.stringify(payload)
@@ -4444,7 +4488,7 @@ async function abrirModalEditarGrupo(ids) {
                         if (!confirm.isConfirmed) return;
 
                         try {
-                            const respDel = await fetch(`/v1/frota/embarques/${embId}/entregas/${entregaId}`, {
+                            const respDel = await fetch(`${API_BASE}/frota/embarques/${embId}/entregas/${entregaId}`, {
                                 method: 'DELETE',
                                 headers: { 'Authorization': 'Bearer ' + token }
                             });
@@ -4472,7 +4516,7 @@ async function abrirModalEditarGrupo(ids) {
                             allowOutsideClick: false
                         });
 
-                        const respErp = await fetch('/v1/frota/importar/embarques-erp', {
+                        const respErp = await fetch(API_BASE + '/frota/importar/embarques-erp', {
                             headers: { 'Authorization': 'Bearer ' + token }
                         });
                         const dadosErp = await respErp.json();
@@ -4514,7 +4558,7 @@ async function abrirModalEditarGrupo(ids) {
 
                         if (!erpId) return;
 
-                        const respAdd = await fetch(`/v1/frota/embarques/${sistemaIds[0]}/adicionar-embarque-erp`, {
+                        const respAdd = await fetch(`${API_BASE}/frota/embarques/${sistemaIds[0]}/adicionar-embarque-erp`, {
                             method: 'POST',
                             headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                             body: JSON.stringify({ erp_embarque_id: erpId })
@@ -4581,7 +4625,7 @@ async function abrirModalEditarGrupo(ids) {
                                     return;
                                 }
                                 try {
-                                    const resp = await fetch(`/v1/frota/importar/buscar-pedidos?q=${encodeURIComponent(termo)}`, {
+                                    const resp = await fetch(`${API_BASE}/frota/importar/buscar-pedidos?q=${encodeURIComponent(termo)}`, {
                                         headers: { 'Authorization': 'Bearer ' + token }
                                     });
                                     const dados = await resp.json();
@@ -4607,7 +4651,7 @@ async function abrirModalEditarGrupo(ids) {
 
                     if (resultado && resultado.pedidos.length > 0) {
                         try {
-                            const respAdd = await fetch(`/v1/frota/embarques/${sistemaIds[0]}/adicionar-pedidos`, {
+                            const respAdd = await fetch(`${API_BASE}/frota/embarques/${sistemaIds[0]}/adicionar-pedidos`, {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                                 body: JSON.stringify({
@@ -4689,7 +4733,7 @@ async function removerEntregaGrupo(ids) {
     try {
         let todasEntregas = [];
         for (const id of sistemaIds) {
-            const resp = await fetch(`/v1/frota/embarques/${id}`, {
+            const resp = await fetch(`${API_BASE}/frota/embarques/${id}`, {
                 headers: { 'Authorization': 'Bearer ' + token }
             });
             const data = await resp.json();
@@ -4744,7 +4788,7 @@ async function removerEntregaGrupo(ids) {
         });
         if (!confirm.isConfirmed) return;
 
-        const respDel = await fetch(`/v1/frota/embarques/${embId}/entregas/${entregaId}`, {
+        const respDel = await fetch(`${API_BASE}/frota/embarques/${embId}/entregas/${entregaId}`, {
             method: 'DELETE',
             headers: { 'Authorization': 'Bearer ' + token }
         });

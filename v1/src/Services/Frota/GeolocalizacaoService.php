@@ -108,18 +108,23 @@ class GeolocalizacaoService
         // Limpar e formatar endereço
         $enderecoFormatado = $this->formatarEndereco($enderecoCompleto);
         
-        error_log("[Geolocalizacao] Buscando no Google Maps: {$enderecoFormatado}");
+                error_log("[Geolocalizacao] Buscando no Google Maps: {$enderecoFormatado}");
         
         $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . 
                urlencode($enderecoFormatado) . 
                "&key={$this->googleApiKey}&region=br&language=pt-BR";
+        
+        // Log mascarado — nunca expõe a API key nos logs
+        $urlParaLog = preg_replace('/([?&]key=)[^&]+/', '$1***', $url);
+        error_log("[Geolocalizacao] GET " . $urlParaLog);
         
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
-            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
         ]);
         $response = curl_exec($ch);
@@ -183,7 +188,7 @@ class GeolocalizacaoService
     /**
      * Tentativa com endereço simplificado (sem número)
      */
-    private function buscarNoGoogleMapsSimplificado($enderecoCompleto)
+    public function buscarNoGoogleMapsSimplificado($enderecoCompleto)
     {
         if (empty($enderecoCompleto)) {
             return ['success' => false, 'mensagem' => 'Endereço vazio'];
@@ -258,16 +263,20 @@ class GeolocalizacaoService
             return ['success' => false];
         }
         
-        $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . 
+               $url = "https://maps.googleapis.com/maps/api/geocode/json?address=" . 
                urlencode($cepLimpo) . 
                "&key={$this->googleApiKey}&region=br&language=pt-BR";
+        
+        $urlParaLog = preg_replace('/([?&]key=)[^&]+/', '$1***', $url);
+        error_log("[Geolocalizacao] GET (CEP) " . $urlParaLog);
         
         $ch = curl_init();
         curl_setopt_array($ch, [
             CURLOPT_URL => $url,
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2
         ]);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

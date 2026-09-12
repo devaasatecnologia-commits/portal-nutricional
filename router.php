@@ -32,6 +32,7 @@ if (is_file($file) && pathinfo($file, PATHINFO_EXTENSION) !== 'php') {
         'ico' => 'image/x-icon'
     ];
     header('Content-Type: ' . ($mimeTypes[$ext] ?? 'application/octet-stream'));
+    header('Cache-Control: no-store, max-age=0');
     readfile($file);
     return;
 }

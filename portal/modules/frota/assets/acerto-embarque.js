@@ -1,3 +1,4 @@
+﻿var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
 // ================================================================
 // ACERTO DE EMBARQUE - JAVASCRIPT COMPLETO (CORRIGIDO)
 // ================================================================
@@ -26,8 +27,6 @@ let acertoAtual = {
     status: null
 };
 
-let modalAcertoInstance = null;
-
 
 // ================================================================
 // DETECÇÃO DE TEMA - FUNÇÃO AUXILIAR
@@ -54,7 +53,6 @@ function getThemeClasses() {
 // ================================================================
 
 function getToken() {
-    // 🔥 CORRIGIDO: usar a mesma chave que o resto do sistema (authToken)
     const token = localStorage.getItem('authToken') || 
                   sessionStorage.getItem('authToken') ||
                   document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
@@ -98,7 +96,6 @@ function fetchAuth(url, options = {}) {
         if (res.status === 401) {
             console.warn('⚠️ Token inválido ou expirado');
             
-            // Tentar renovar token via refresh
             try {
                 const refreshResult = await tentarRenovarToken();
                 if (refreshResult) {
@@ -122,7 +119,7 @@ function fetchAuth(url, options = {}) {
 
 async function tentarRenovarToken() {
     try {
-        const response = await fetch('/v1/auth/refresh', {
+        const response = await fetch(API_BASE + '/auth/refresh', {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -155,7 +152,6 @@ function verificarAutenticacao() {
     if (!token) {
         console.warn('⚠️ Nenhum token encontrado!');
         
-        // Tenta redirecionar para login
         Swal.fire({
             icon: 'warning',
             title: 'Sessão não encontrada',
@@ -195,7 +191,7 @@ function carregarEmbarquesParaAcerto(forcar = false) {
     
     showLoading('lista-embarques');
     
-    const url = '/v1/frota/acerto/embarques?' + params.toString();
+    const url = API_BASE + '/frota/acerto/embarques?' + params.toString();
     console.log('📡 Buscando: GET ' + url);
     
     fetchAuth(url)
@@ -238,6 +234,7 @@ function carregarEmbarquesParaAcerto(forcar = false) {
 function renderizarEmbarques(embarques) {
     const tbody = document.getElementById('lista-embarques');
     if (!tbody) return;
+    renderizarResumoAcertos(embarques || []);
     
     if (!embarques || embarques.length === 0) {
         tbody.innerHTML = `
@@ -259,9 +256,6 @@ function renderizarEmbarques(embarques) {
     
     let html = '';
     embarques.forEach((emb, index) => {
-        // ============================================================
-        // 1. STATUS DO EMBARQUE
-        // ============================================================
         const statusClass = getStatusClass(emb.embarque_status);
         const statusLabel = getStatusLabel(emb.embarque_status);
         
@@ -273,26 +267,21 @@ function renderizarEmbarques(embarques) {
         };
         const statusIcon = statusIconMap[emb.embarque_status] || '📦';
         
-        // ============================================================
-        // 2. STATUS DO ACERTO
-        // ============================================================
         const acertoStatusMap = {
             'pendente': { label: '⏳ Pendente', class: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
             'em_andamento': { label: '🔄 Em Andamento', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
             'finalizado': { label: '✅ Finalizado', class: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
             'cancelado': { label: '🚫 Cancelado', class: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' }
         };
-        const acertoInfo = acertoStatusMap[emb.acerto_status] || { 
-            label: emb.acerto_status || 'N/A', 
-            class: 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-400' 
-        };
         
-        // ============================================================
-        // 3. PROGRESSO
-        // ============================================================
         const totalEntregas = parseInt(emb.total_entregas) || 0;
         const entregasConcluidas = parseInt(emb.entregas_concluidas) || 0;
         const progresso = totalEntregas > 0 ? Math.round((entregasConcluidas / totalEntregas) * 100) : 0;
+        const conferenciaInfo = getConferenciaResumo(emb.id, totalEntregas);
+        const acertoInfo = conferenciaInfo || acertoStatusMap[emb.acerto_status] || {
+            label: emb.acerto_status || 'N/A',
+            class: 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-400'
+        };
         
         let barClass = 'em-andamento';
         if (emb.embarque_status === 'problema') {
@@ -301,24 +290,10 @@ function renderizarEmbarques(embarques) {
             barClass = 'concluido';
         }
         
-        // ============================================================
-        // 4. NÚMERO DA LINHA
-        // ============================================================
         const num = (embarcar.paginacao.pagina - 1) * embarcar.paginacao.limite + index + 1;
-        
-        // ============================================================
-        // 5. DATA DE SAÍDA FORMATADA
-        // ============================================================
         const dataSaida = emb.data_saida ? formatDate(emb.data_saida) : '-';
-        
-        // ============================================================
-        // 6. VALOR TOTAL
-        // ============================================================
         const valorTotal = parseFloat(emb.valor_total) || 0;
         
-        // ============================================================
-        // 7. DETECTAR TEMA PARA CORES ADAPTATIVAS
-        // ============================================================
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const textTitle = isDark ? 'text-white' : 'text-gray-800';
         const textSub = isDark ? 'text-gray-400' : 'text-slate-400';
@@ -329,20 +304,20 @@ function renderizarEmbarques(embarques) {
                 <td class="text-center font-bold ${textSub}" data-label="#">${num}</td>
                 <td data-label="Embarque">
                     <div class="font-bold ${textTitle}">
-                        ${emb.numero_embarque || '#' + emb.id}
+                        ${escapeHtml(emb.numero_embarque || '#' + emb.id)}
                         ${emb.total_embarques_agrupados > 1 ? ` <span class="text-xs text-purple-600 dark:text-purple-400">(Grupo)</span>` : ''}
                     </div>
-                    <div class="text-xs ${textSub}">${emb.nome_embarque || ''}</div>
-                    ${emb.erp_embarque_id ? `<span class="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5 rounded-full">ERP: #${emb.erp_embarque_id}</span>` : ''}
+                    <div class="text-xs ${textSub}">${escapeHtml(emb.nome_embarque || '')}</div>
+                    ${emb.erp_embarque_id ? `<span class="text-xs bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 px-1.5 py-0.5 rounded-full">ERP: #${escapeHtml(emb.erp_embarque_id)}</span>` : ''}
                     ${emb.total_embarques_agrupados > 1 ? `<span class="text-xs bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 px-1.5 py-0.5 rounded-full">📦 ${emb.total_embarques_agrupados} embarques</span>` : ''}
                 </td>
                 <td data-label="Veículo">
-                    <div class="font-medium ${textTitle}">${emb.placa || 'N/A'}</div>
-                    <div class="text-xs ${textSub}">${emb.modelo || ''}</div>
+                    <div class="font-medium ${textTitle}">${escapeHtml(emb.placa || 'N/A')}</div>
+                    <div class="text-xs ${textSub}">${escapeHtml(emb.modelo || '')}</div>
                 </td>
                 <td data-label="Motorista">
-                    <div class="font-medium ${textTitle}">${emb.motorista_nome || 'N/A'}</div>
-                    <div class="text-xs ${textSub}">${emb.motorista_telefone || ''}</div>
+                    <div class="font-medium ${textTitle}">${escapeHtml(emb.motorista_nome || 'N/A')}</div>
+                    <div class="text-xs ${textSub}">${escapeHtml(emb.motorista_telefone || '')}</div>
                 </td>
                 <td class="text-center" data-label="Entregas">
                     <div class="flex items-center justify-center gap-2">
@@ -361,12 +336,12 @@ function renderizarEmbarques(embarques) {
                 <td class="text-center font-semibold text-emerald-600 dark:text-emerald-400" data-label="Valor">${formatMoney(valorTotal)}</td>
                 <td class="text-center" data-label="Status">
                     <span class="status-badge ${statusClass}">
-                        ${statusIcon} ${statusLabel}
+                        ${statusIcon} ${escapeHtml(statusLabel)}
                     </span>
                 </td>
                 <td class="text-center" data-label="Acerto">
                     <span class="px-2 py-1 rounded-full text-xs font-medium ${acertoInfo.class}">
-                        ${acertoInfo.label}
+                        ${escapeHtml(acertoInfo.label)}
                     </span>
                     ${emb.data_fim_acerto ? `<div class="text-xs ${textSub} mt-1">${formatDate(emb.data_fim_acerto)}</div>` : ''}
                 </td>
@@ -381,6 +356,30 @@ function renderizarEmbarques(embarques) {
     });
     
     tbody.innerHTML = html;
+}
+
+function renderizarResumoAcertos(embarques) {
+    const container = document.getElementById('acerto-overview');
+    if (!container) return;
+    const pendentes = embarques.filter(emb => ['pendente', 'em_andamento'].includes(emb.acerto_status)).length;
+    const finalizados = embarques.filter(emb => emb.acerto_status === 'finalizado').length;
+    const problemas = embarques.reduce((total, emb) => total + Number(emb.total_problemas || 0), 0);
+    const valor = embarques.reduce((total, emb) => total + Number(emb.valor_total || 0), 0);
+    const cards = [
+        ['fa-file-signature', pendentes, 'acertos pendentes', 'pending'],
+        ['fa-circle-check', finalizados, 'acertos finalizados', 'success'],
+        ['fa-triangle-exclamation', problemas, 'problemas para revisar', problemas ? 'danger' : 'neutral'],
+        ['fa-sack-dollar', formatMoney(valor), 'valor em conferência', 'money']
+    ];
+    container.innerHTML = `
+        <div class="acerto-overview-heading">
+            <div><span class="overview-eyebrow"><i class="fa-solid fa-clipboard-check"></i> Controle administrativo</span><strong>Resumo dos acertos exibidos</strong></div>
+            <span class="overview-caption">${embarques.length} embarques na página</span>
+        </div>
+        <div class="acerto-overview-cards">
+            ${cards.map(([icon, value, label, tone]) => `<div class="acerto-overview-card ${tone}"><i class="fa-solid ${icon}"></i><div><strong>${value}</strong><span>${label}</span></div></div>`).join('')}
+        </div>
+    `;
 }
 
 // ================================================================
@@ -399,6 +398,8 @@ function abrirAcerto(embarqueId) {
     acertoAtual.status = null;
     
     const conteudo = document.getElementById('acerto-conteudo');
+    const topoModal = document.getElementById('acerto-topo');
+    if (topoModal) topoModal.innerHTML = '';
     if (conteudo) {
         conteudo.innerHTML = `
             <div class="text-center py-8">
@@ -408,7 +409,6 @@ function abrirAcerto(embarqueId) {
         `;
     }
     
-    // Resetar botões
     const btnIniciar = document.getElementById('btn-iniciar-acerto');
     const btnFinalizar = document.getElementById('btn-finalizar-acerto');
     const btnCancelar = document.getElementById('btn-cancelar-acerto');
@@ -435,19 +435,12 @@ function abrirAcerto(embarqueId) {
         return;
     }
     
-    // ============================================================
-    // 🔥 CORREÇÃO: REMOVER BACKDROPS ANTERIORES
-    // ============================================================
     const oldBackdrops = document.querySelectorAll('.modal-backdrop');
     oldBackdrops.forEach(b => b.remove());
     
-    // Remover classe modal-open do body
     document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
     
-    // ============================================================
-    // 🔥 CORREÇÃO: CONFIGURAR O MODAL CORRETAMENTE
-    // ============================================================
     modal.style.display = 'block';
     modal.style.visibility = 'visible';
     modal.style.opacity = '1';
@@ -460,7 +453,6 @@ function abrirAcerto(embarqueId) {
     modal.style.overflow = 'hidden';
     modal.style.outline = '0';
     
-    // Forçar o backdrop
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop fade show';
     backdrop.style.position = 'fixed';
@@ -472,44 +464,39 @@ function abrirAcerto(embarqueId) {
     backdrop.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     document.body.appendChild(backdrop);
     
-    // Bloquear scroll da página
     document.body.style.overflow = 'hidden';
     document.body.classList.add('modal-open');
     
-    // ============================================================
-    // 🔥 CORREÇÃO: GARANTIR QUE O MODAL TENHA SCROLL
-    // ============================================================
     modal.classList.add('show');
     
-    // Forçar que o modal-dialog tenha scroll
     const modalDialog = modal.querySelector('.modal-dialog');
     if (modalDialog) {
-        modalDialog.style.maxHeight = '90vh';
+        modalDialog.style.width = '100vw';
+        modalDialog.style.maxWidth = '100vw';
+        modalDialog.style.height = '100vh';
+        modalDialog.style.maxHeight = '100vh';
+        modalDialog.style.margin = '0';
         modalDialog.style.display = 'flex';
         modalDialog.style.flexDirection = 'column';
     }
     
     const modalContent = modal.querySelector('.modal-content');
     if (modalContent) {
-        modalContent.style.maxHeight = '90vh';
+        modalContent.style.height = '100vh';
+        modalContent.style.maxHeight = '100vh';
+        modalContent.style.borderRadius = '0';
         modalContent.style.display = 'flex';
         modalContent.style.flexDirection = 'column';
     }
     
-    // ============================================================
-    // 🔥 CORREÇÃO: BODY DO MODAL COM SCROLL
-    // ============================================================
     const modalBody = modal.querySelector('.modal-body');
     if (modalBody) {
         modalBody.style.overflowY = 'auto';
         modalBody.style.flex = '1 1 auto';
-        modalBody.style.maxHeight = 'calc(90vh - 130px)';
-        modalBody.style.padding = '24px 28px';
+        modalBody.style.maxHeight = 'none';
+        modalBody.style.padding = '20px 28px';
     }
     
-    // ============================================================
-    // 🔥 EVENTO PARA FECHAR COM ESC
-    // ============================================================
     const handleEsc = function(e) {
         if (e.key === 'Escape') {
             fecharModalAcerto();
@@ -518,19 +505,13 @@ function abrirAcerto(embarqueId) {
     document.addEventListener('keydown', handleEsc);
     modal._handleEsc = handleEsc;
     
-    // ============================================================
-    // 🔥 EVENTO PARA FECHAR AO CLICAR NO BACKDROP
-    // ============================================================
     backdrop.addEventListener('click', function(e) {
         if (e.target === backdrop) {
             fecharModalAcerto();
         }
     });
     
-    // ============================================================
-    // 🔥 CARREGAR DADOS
-    // ============================================================
-    const url = '/v1/frota/acerto/' + embarqueId + '/detalhes';
+    const url = API_BASE + '/frota/acerto/' + embarqueId + '/detalhes';
     console.log('📡 Buscando: GET ' + url);
     
     fetchAuth(url)
@@ -552,7 +533,6 @@ function abrirAcerto(embarqueId) {
                 numeroEl.textContent = data.data.numero_embarque || embarqueId;
             }
             
-            // 🔥 ATUALIZAR STATUS BADGE NO HEADER
             const statusBadge = document.getElementById('acerto-status-badge');
             if (statusBadge && data.data.embarque_status) {
                 const statusMap = {
@@ -575,7 +555,7 @@ function abrirAcerto(embarqueId) {
                 conteudo.innerHTML = `
                     <div class="text-center py-8 text-red-500">
                         <i class="fa-solid fa-triangle-exclamation text-3xl block mb-2"></i>
-                        ${data.error || 'Erro ao carregar detalhes'}
+                        ${escapeHtml(data.error || 'Erro ao carregar detalhes')}
                     </div>
                 `;
             }
@@ -587,15 +567,12 @@ function abrirAcerto(embarqueId) {
             conteudo.innerHTML = `
                 <div class="text-center py-8 text-red-500">
                     <i class="fa-solid fa-circle-exclamation text-3xl block mb-2"></i>
-                    ${err.message}
+                    ${escapeHtml(err.message)}
                 </div>
             `;
         }
     });
     
-    // ============================================================
-    // 🔥 SALVAR REFERÊNCIA PARA FECHAR
-    // ============================================================
     window.modalAcertoRef = {
         modal: modal,
         backdrop: backdrop,
@@ -610,16 +587,13 @@ function fecharModalAcerto() {
     const modal = document.getElementById('modalAcerto');
     const backdrop = document.querySelector('.modal-backdrop');
     
-    // Remover backdrop
     if (backdrop) {
         backdrop.remove();
     }
     
-    // Restaurar scroll
     document.body.style.overflow = '';
     document.body.classList.remove('modal-open');
     
-    // Ocultar modal
     if (modal) {
         modal.style.display = 'none';
         modal.style.visibility = 'hidden';
@@ -627,13 +601,11 @@ function fecharModalAcerto() {
         modal.classList.remove('show');
     }
     
-    // Remover evento ESC
     if (modal && modal._handleEsc) {
         document.removeEventListener('keydown', modal._handleEsc);
         delete modal._handleEsc;
     }
     
-    // Limpar referência
     if (window.modalAcertoRef) {
         window.modalAcertoRef = null;
     }
@@ -643,7 +615,6 @@ function fecharModalAcerto() {
 // BOTÃO FECHAR DO MODAL - EVENT LISTENER
 // ================================================================
 document.addEventListener('DOMContentLoaded', function() {
-    // Botão fechar do modal
     const closeBtn = document.querySelector('#modalAcerto .btn-close');
     if (closeBtn) {
         closeBtn.addEventListener('click', function() {
@@ -651,7 +622,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Botão Fechar do footer
     const closeFooterBtn = document.querySelector('#modalAcerto .btn-secondary-nutri[data-bs-dismiss="modal"]');
     if (closeFooterBtn) {
         closeFooterBtn.addEventListener('click', function(e) {
@@ -662,10 +632,22 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ================================================================
-// RENDERIZAR DETALHES DO ACERTO - VERSÃO COMPLETA
+function alternarDetalhesEntrega(button) {
+    const card = button.closest('.acerto-delivery-card');
+    const body = card ? card.querySelector('.acerto-delivery-body') : null;
+    if (!body) return;
+    const expanded = body.classList.toggle('is-expanded');
+    button.setAttribute('aria-expanded', String(expanded));
+    button.innerHTML = expanded
+        ? '<i class="fa-solid fa-chevron-up"></i> Ocultar detalhes'
+        : '<i class="fa-solid fa-list-check"></i> Conferir itens';
+}
+
+// RENDERIZAR DETALHES DO ACERTO
 // ================================================================
 function renderizarDetalhesAcerto(dados) {
     console.log('📌 renderizarDetalhesAcerto chamado com dados:', dados);
+    window.acertoDadosAtual = dados;
 
     const embarquesVinculados = dados.embarques || dados.embarques_vinculados || [];
     const embarquesErp = embarquesVinculados.length > 0
@@ -687,19 +669,22 @@ function renderizarDetalhesAcerto(dados) {
         console.error('❌ Elemento acerto-conteudo não encontrado');
         return;
     }
+    const topoModal = document.getElementById('acerto-topo');
     
     console.log('✅ Preparando HTML...');
     
     try {
-        // ============================================================
-        // 1. RESUMO DO EMBARQUE - LAYOUT MODERNO
-        // ============================================================
+        const inputBusca = document.getElementById('acerto-busca-pedido');
+        if (inputBusca) inputBusca.value = '';
+        const resultadoBusca = document.getElementById('acerto-pedido-resultado');
+        if (resultadoBusca) {
+            resultadoBusca.hidden = true;
+            resultadoBusca.innerHTML = '';
+        }
+        
         const totalProblemas = dados.resumo_problemas ? 
             dados.resumo_problemas.reduce((acc, p) => acc + parseInt(p.total), 0) : 0;
         
-        // ============================================================
-        // 🔥 DETECTAR TEMA ATUAL PARA ADAPTAR CLASSES
-        // ============================================================
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const bgCard = isDark ? 'bg-gray-800' : 'bg-white';
         const borderCard = isDark ? 'border-gray-700' : 'border-gray-100';
@@ -707,84 +692,42 @@ function renderizarDetalhesAcerto(dados) {
         const textSub = isDark ? 'text-gray-400' : 'text-gray-500';
         const textValue = isDark ? 'text-gray-300' : 'text-gray-800';
         const bgHover = isDark ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50';
-        
-        let html = `
-            <!-- Stats Cards - Layout Moderno -->
-            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-                <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderCard} hover:shadow-md transition-all">
-                    <div class="flex items-center gap-3">
-                        <div class="w-11 h-11 rounded-xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 dark:text-blue-400">
-                            <i class="fa-solid fa-user text-lg"></i>
-                        </div>
-                        <div>
-                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">Motorista</div>
-                            <div class="font-bold ${textTitle} text-base truncate max-w-[140px]">${dados.motorista_nome || 'N/A'}</div>
-                            <div class="text-xs ${textSub}">${dados.motorista_telefone || ''}</div>
-                        </div>
-                    </div>
+        const embarquesVinculadosHtml = embarquesErp.length > 0
+            ? `
+                <div class="acerto-linked-inline">
+                    <span><i class="fa-solid fa-link"></i> Vinculados</span>
+                    ${embarquesErp.map(embarque => {
+                        const numero = embarque.numero_embarque || embarque.erp_embarque_id || embarque.id;
+                        return `<b><i class="fa-solid fa-truck"></i> #${escapeHtml(numero)}</b>`;
+                    }).join('')}
                 </div>
-                <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderCard} hover:shadow-md transition-all">
-                    <div class="flex items-center gap-3">
-                        <div class="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
-                            <i class="fa-solid fa-truck text-lg"></i>
-                        </div>
-                        <div>
-                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">Veículo</div>
-                            <div class="font-bold ${textTitle} text-base">${dados.placa || 'N/A'}</div>
-                            <div class="text-xs ${textSub}">${dados.modelo || ''}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${borderCard} hover:shadow-md transition-all">
-                    <div class="flex items-center gap-3">
-                        <div class="w-11 h-11 rounded-xl bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 dark:text-purple-400">
-                            <i class="fa-solid fa-boxes text-lg"></i>
-                        </div>
-                        <div>
-                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">Entregas</div>
-                            <div class="font-bold ${textTitle} text-base">${dados.total_entregas || 0}</div>
-                            <div class="text-xs ${textSub}">${dados.embarque_status || 'N/A'}</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="${bgCard} rounded-2xl p-5 shadow-sm border ${totalProblemas > 0 ? 'border-red-200 dark:border-red-800' : borderCard} hover:shadow-md transition-all">
-                    <div class="flex items-center gap-3">
-                        <div class="w-11 h-11 rounded-xl ${totalProblemas > 0 ? 'bg-red-50 dark:bg-red-900/30' : 'bg-gray-50 dark:bg-gray-700/30'} flex items-center justify-center ${totalProblemas > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'}">
-                            <i class="fa-solid fa-triangle-exclamation text-lg"></i>
-                        </div>
-                        <div>
-                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">Problemas</div>
-                            <div class="font-bold ${totalProblemas > 0 ? 'text-red-600 dark:text-red-400' : 'text-gray-400 dark:text-gray-500'} text-base">${totalProblemas}</div>
-                            <div class="text-xs ${textSub}">pendentes</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        if (embarquesErp.length > 0) {
-            html += `
-                <div class="mb-6 ${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm">
-                    <div class="flex items-center gap-2 mb-3">
-                        <div class="w-1 h-6 bg-purple-500 rounded-full"></div>
-                        <h6 class="font-bold ${textTitle}">Embarques vinculados</h6>
-                        <span class="text-xs ${textSub}">(${embarquesErp.length})</span>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        ${embarquesErp.map(embarque => {
-                            const numero = embarque.numero_embarque || embarque.erp_embarque_id || embarque.id;
-                            return `<span class="inline-flex items-center gap-1.5 bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold px-3 py-1.5 rounded-lg text-sm font-mono border border-purple-200 dark:border-purple-800">
-                                <i class="fa-solid fa-truck"></i> #${numero}
-                            </span>`;
-                        }).join('')}
-                    </div>
-                </div>
+            `
+            : '';
+        const headerMotorista = document.getElementById('acerto-header-motorista');
+        const headerVeiculo = document.getElementById('acerto-header-veiculo');
+        const headerVinculados = document.getElementById('acerto-header-vinculados');
+        const headerMetrics = document.getElementById('acerto-header-metrics');
+        const statusBadge = document.getElementById('acerto-status-badge');
+        if (headerMotorista) headerMotorista.textContent = dados.motorista_nome || 'Motorista não identificado';
+        if (headerVeiculo) {
+            headerVeiculo.innerHTML = `<i class="fa-solid fa-truck"></i> ${escapeHtml(dados.placa || 'Sem veículo')}${dados.modelo ? ' · ' + escapeHtml(dados.modelo) : ''}${dados.motorista_telefone ? ' · ' + escapeHtml(dados.motorista_telefone) : ''}`;
+        }
+        if (headerVinculados) headerVinculados.innerHTML = embarquesVinculadosHtml;
+        if (headerMetrics) {
+            headerMetrics.innerHTML = `
+                <div><strong>${dados.total_entregas || 0}</strong><span>entregas</span></div>
+                <div class="${totalProblemas ? 'has-alert' : ''}"><strong>${totalProblemas}</strong><span>problemas</span></div>
+                <div><strong>${escapeHtml(dados.embarque_status || 'N/A')}</strong><span>status</span></div>
             `;
         }
+        if (statusBadge) {
+            statusBadge.style.display = 'inline-flex';
+            statusBadge.className = 'acerto-header-status';
+            statusBadge.innerHTML = `<i class="fa-solid fa-check-square"></i> ${escapeHtml(dados.embarque_status || 'Status')}`;
+        }
 
-        // ============================================================
-        // 2. RESUMO DE PROBLEMAS (se houver)
-        // ============================================================
+        let html = '';
+
         if (dados.resumo_problemas && dados.resumo_problemas.length > 0) {
             html += `
             <div class="mb-6">
@@ -796,7 +739,7 @@ function renderizarDetalhesAcerto(dados) {
                     ${dados.resumo_problemas.map(p => `
                         <div class="${bgCard} rounded-xl p-4 text-center border ${borderCard} shadow-sm">
                             <div class="text-2xl font-bold text-red-600 dark:text-red-400">${p.total}</div>
-                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">${p.tipo_problema}</div>
+                            <div class="text-xs font-medium ${textSub} uppercase tracking-wider">${escapeHtml(p.tipo_problema)}</div>
                             <div class="text-sm ${textSub}">${formatMoney(p.total_valor)}</div>
                         </div>
                     `).join('')}
@@ -805,17 +748,15 @@ function renderizarDetalhesAcerto(dados) {
             `;
         }
 
-        // ============================================================
-        // 3. TIMELINE - Moderna
-        // ============================================================
+        const ultimoEvento = dados.timeline && dados.timeline.length > 0 ? dados.timeline[0] : null;
         html += `
-            <div class="mb-6">
-                <div class="flex items-center gap-2 mb-3">
-                    <div class="w-1 h-6 bg-blue-500 rounded-full"></div>
-                    <h6 class="font-bold ${textTitle}">Timeline</h6>
-                    <span class="text-xs ${textSub}">(${dados.timeline?.length || 0} eventos)</span>
-                </div>
-                <div class="${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm max-h-64 overflow-y-auto">
+            <details class="acerto-timeline-collapsible ${bgCard} border ${borderCard}">
+                <summary>
+                    <span><i class="fa-solid fa-clock-rotate-left"></i> Timeline</span>
+                    <small>${dados.timeline?.length || 0} eventos${ultimoEvento ? ` · último: ${escapeHtml(ultimoEvento.acao || 'ação')}` : ''}</small>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </summary>
+                <div class="acerto-timeline-body max-h-64 overflow-y-auto">
         `;
         
         if (dados.timeline && dados.timeline.length > 0) {
@@ -834,11 +775,11 @@ function renderizarDetalhesAcerto(dados) {
                         </div>
                         <div class="flex-1 min-w-0">
                             <div class="flex flex-wrap items-center justify-between gap-1">
-                                <span class="font-semibold ${textTitle} text-sm">${item.acao || 'Ação'}</span>
+                                <span class="font-semibold ${textTitle} text-sm">${escapeHtml(item.acao || 'Ação')}</span>
                                 <span class="text-xs ${textSub} whitespace-nowrap">${formatDateTime(item.data_hora)}</span>
                             </div>
-                            <div class="text-sm ${textSub}">${item.descricao || ''}</div>
-                            ${item.usuario_nome ? `<div class="text-xs ${textSub}">👤 ${item.usuario_nome}</div>` : ''}
+                            <div class="text-sm ${textSub}">${escapeHtml(item.descricao || '')}</div>
+                            ${item.usuario_nome ? `<div class="text-xs ${textSub}">👤 ${escapeHtml(item.usuario_nome)}</div>` : ''}
                         </div>
                     </div>
                 `;
@@ -849,17 +790,18 @@ function renderizarDetalhesAcerto(dados) {
         
         html += `
                 </div>
-            </div>
+            </details>
         `;
+        if (topoModal) {
+            topoModal.innerHTML = html;
+            html = '';
+        }
 
-        // ============================================================
-        // 4. ENTREGAS - LAYOUT MODERNO COM PEDIDOS E EMBARQUES EM DESTAQUE
-        // ============================================================
         html += `
-            <div>
+            <div class="acerto-delivery-list">
                 <div class="flex items-center gap-2 mb-3">
                     <div class="w-1 h-6 bg-emerald-500 rounded-full"></div>
-                    <h6 class="font-bold ${textTitle}">Entregas</h6>
+                    <h6 class="font-bold ${textTitle}">Fila de conferência na ordem da rota</h6>
                     <span class="text-xs ${textSub}">(${dados.entregas?.length || 0})</span>
                 </div>
         `;
@@ -871,7 +813,6 @@ function renderizarDetalhesAcerto(dados) {
                 const temFotos = entrega.fotos && entrega.fotos.length > 0;
                 const temRomaneio = entrega.foto_romaneio_url;
                 
-                // Status
                 const statusMap = {
                     'pendente': { label: 'Pendente', class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
                     'em_entrega': { label: 'Em Rota', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -882,68 +823,56 @@ function renderizarDetalhesAcerto(dados) {
                 };
                 const statusInfo = statusMap[entrega.status] || { label: entrega.status || 'N/A', class: 'bg-gray-100 text-gray-700' };
                 
-                // ============================================================
-                // 🔥 EXTRAIR NÚMEROS DOS PEDIDOS (pedido_id ou pedidos_ids)
-                // ============================================================
                 let pedidosNumeros = [];
-                
-                // 1. Tentar extrair do campo pedidos_ids (principal)
                 if (entrega.pedidos_ids) {
                     const ids = entrega.pedidos_ids.split(',').map(id => id.trim());
                     pedidosNumeros = ids.filter(id => id && id !== '0' && id !== 'null');
                 }
-                
-                // 2. Se não tiver, tentar pegar do pedido_id
                 if (pedidosNumeros.length === 0 && entrega.pedido_id) {
                     pedidosNumeros = [String(entrega.pedido_id)];
                 }
-                
-                // 3. Se ainda não tiver, usar fallback
                 if (pedidosNumeros.length === 0) {
                     pedidosNumeros = [String(entrega.id)];
                 }
                 
-                // ============================================================
-                // 🔥 EXTRAIR NÚMEROS DOS EMBARQUES ERP (erp_embarques_ids)
-                // ============================================================
                 let erpEmbarquesNumeros = [];
-                
-                // Tentar extrair do campo erp_embarques_ids
                 if (entrega.erp_embarques_ids) {
                     const ids = entrega.erp_embarques_ids.split(',').map(id => id.trim());
                     erpEmbarquesNumeros = ids.filter(id => id && id !== '0' && id !== 'null');
                 }
-                
-                // Se não tiver erp_embarques_ids, tentar usar o erp_embarque_id do pai
                 if (erpEmbarquesNumeros.length === 0 && dados.erp_embarque_id) {
                     erpEmbarquesNumeros = [String(dados.erp_embarque_id)];
                 }
                 
-                // Montar display dos pedidos
                 const pedidosDisplay = pedidosNumeros.map(num => 
                     `<span class="pedido-tag inline-flex items-center bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold px-2.5 py-0.5 rounded-lg text-sm font-mono border border-blue-200 dark:border-blue-800">
-                        #${num}
+                        #${escapeHtml(num)}
                     </span>`
                 ).join(' ');
                 
-                // Montar display dos embarques ERP
                 const erpEmbarquesDisplay = erpEmbarquesNumeros.map(num => 
                     `<span class="erp-embarque-tag inline-flex items-center bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold px-2.5 py-0.5 rounded-lg text-sm font-mono border border-purple-200 dark:border-purple-800">
-                        <i class="fa-solid fa-truck mr-1"></i> #${num}
+                        <i class="fa-solid fa-truck mr-1"></i> #${escapeHtml(num)}
                     </span>`
                 ).join(' ');
                 
                 const qtdPedidos = pedidosNumeros.length;
                 const labelPedidos = qtdPedidos > 1 ? `${qtdPedidos} pedidos` : '1 pedido';
+                const termosBusca = [
+                    entrega.id,
+                    entrega.cliente_nome,
+                    entrega.endereco,
+                    entrega.numero,
+                    entrega.cidade,
+                    entrega.uf,
+                    entrega.codigo_rastreamento,
+                    entrega.nome_recebedor,
+                    ...pedidosNumeros,
+                    ...erpEmbarquesNumeros
+                ].filter(Boolean).join(' ');
                 
-                // ============================================================
-                // 🔥 ITENS DO CHECKLIST
-                // ============================================================
                 let itensHtml = '';
                 if (temChecklist) {
-                    const itensExibir = entrega.checklist.slice(0, 5);
-                    const temMais = entrega.checklist.length > 5;
-                    
                     itensHtml = `
                         <div class="mt-3 pt-3 border-t ${isDark ? 'border-gray-700' : 'border-gray-100'}">
                             <div class="flex items-center gap-2 mb-2">
@@ -951,47 +880,44 @@ function renderizarDetalhesAcerto(dados) {
                                 <span class="text-xs font-medium ${textSub}">Itens (${entrega.checklist.length})</span>
                             </div>
                             <div class="space-y-1">
-                                ${itensExibir.map(item => {
+                                ${entrega.checklist.map(item => {
                                     const qtdPrev = parseFloat(item.quantidade_prevista || 0);
                                     const qtdEnt = parseFloat(item.quantidade_entregue || 0);
                                     const isOk = item.status === 'entregue';
                                     const nomeProduto = item.descricao || item.nome_produto || item.produto_nome || item.referencia || 'Item';
-                                    const textColor = isOk ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400';
                                     
                                     return `
-                                        <div class="flex items-center justify-between text-sm py-1.5 px-3 rounded-lg ${bgHover} transition-colors">
-                                            <div class="flex items-center gap-2 flex-1 min-w-0">
-                                                <span class="${textColor}">${isOk ? '✓' : '✗'}</span>
-                                                <span class="font-mono text-xs ${textSub} flex-shrink-0">${item.referencia || ''}</span>
-                                                <span class="${textTitle} truncate">${nomeProduto}</span>
+                                        <div class="acerto-item-grid ${isOk ? 'is-ok' : 'has-divergence'}">
+                                            <button type="button" class="acerto-item-photo" ${item.foto_url ? `data-foto-url="${escapeHtml(item.foto_url)}" data-foto-label="${escapeHtml(nomeProduto)}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"` : ''}>
+                                                ${item.foto_url ? `<img src="${escapeHtml(item.foto_url)}" alt="${escapeHtml(nomeProduto)}">` : '<i class="fa-regular fa-image"></i><span>Sem foto</span>'}
+                                            </button>
+                                            <div class="acerto-item-info">
+                                                <span class="acerto-item-ref">${escapeHtml(item.referencia || 'Sem ref.')}</span>
+                                                <strong>${escapeHtml(nomeProduto)}</strong>
+                                                <small>ID item: ${escapeHtml(item.item_id || '-')} ${item.motivo ? ' · Motivo: ' + escapeHtml(item.motivo) : ''}</small>
                                             </div>
-                                            <div class="flex items-center gap-2 flex-shrink-0">
-                                                <span class="text-xs font-medium ${textColor}">
-                                                    ${qtdEnt}/${qtdPrev}
-                                                </span>
-                                                ${!isOk ? `<span class="text-xs ${textSub}">${item.motivo || ''}</span>` : ''}
+                                            <div class="acerto-item-qty">
+                                                <span>Previsto <strong>${qtdPrev}</strong></span>
+                                                <span>Entregue <strong>${qtdEnt}</strong></span>
+                                                <b>${isOk ? 'OK' : 'Divergência'}</b>
                                             </div>
                                         </div>
                                     `;
                                 }).join('')}
-                                ${temMais ? `<div class="text-xs ${textSub} text-center py-1">+ ${entrega.checklist.length - 5} itens</div>` : ''}
                             </div>
                         </div>
                     `;
                 }
 
-                // ============================================================
-                // 🔥 FOTOS
-                // ============================================================
                 let fotosHtml = '';
                 if (temFotos) {
                     fotosHtml = `
                         <div class="mt-3 flex gap-2 flex-wrap">
                             ${entrega.fotos.slice(0, 4).map(foto => `
-                                <div onclick="abrirZoomFoto('${foto.url_foto}', '${foto.descricao || 'Foto'}')" 
+                                <div data-foto-url="${escapeHtml(foto.url_foto)}" data-foto-label="${escapeHtml(foto.descricao || 'Foto')}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)" 
                                      class="w-12 h-12 rounded-lg overflow-hidden cursor-pointer border-2 ${isDark ? 'border-gray-700 hover:border-emerald-400' : 'border-gray-200 hover:border-emerald-500'} transition-all hover:scale-105"
-                                     title="${foto.descricao || 'Foto'}">
-                                    <img src="${foto.url_foto}" class="w-full h-full object-cover" 
+                                     title="${escapeHtml(foto.descricao || 'Foto')}">
+                                    <img src="${escapeHtml(foto.url_foto)}" class="w-full h-full object-cover" 
                                          onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'w-12 h-12 flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-400\\'><i class=\\'fa-regular fa-image\\'></i></div>'">
                                 </div>
                             `).join('')}
@@ -1000,114 +926,107 @@ function renderizarDetalhesAcerto(dados) {
                     `;
                 }
 
-                // ============================================================
-                // 🔥 ROMANEIO
-                // ============================================================
                 let romaneioHtml = '';
                 if (temRomaneio) {
                     romaneioHtml = `
-                        <button onclick="abrirZoomFoto('${entrega.foto_romaneio_url}', 'Romaneio Assinado')" 
+                        <button data-foto-url="${escapeHtml(entrega.foto_romaneio_url)}" data-foto-label="Romaneio Assinado" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)" 
                                 class="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-lg border border-blue-200 dark:border-blue-800 transition-colors">
                             <i class="fa-regular fa-file-pdf"></i> Romaneio
                         </button>
                     `;
                 }
 
-                // ============================================================
-                // 🔥 VERIFICAR SE TEM PROBLEMAS PARA GERAR PEDIDO
-                // ============================================================
                 const temItensProblema = entrega.checklist && entrega.checklist.some(item => 
                     item.status !== 'entregue' && item.quantidade_entregue < item.quantidade_prevista
                 );
+                const totalItens = temChecklist ? entrega.checklist.length : 0;
+                const itensOk = temChecklist ? entrega.checklist.filter(item => item.status === 'entregue').length : 0;
+                const divergencias = temChecklist ? entrega.checklist.filter(item => item.status && item.status !== 'entregue').length : 0;
+                const totalEvidencias = (temFotos ? entrega.fotos.length : 0) + (temRomaneio ? 1 : 0);
+                const conferenciaStatus = (temProblemas || divergencias > 0) ? 'divergencia' : (entrega.status === 'entregue' ? 'entregue' : 'pendente');
+                const clienteNomeArg = jsStringArg(entrega.cliente_nome || '');
+                const entregaConferida = isEntregaConferida(entrega.id);
+                const detalhesAdministrativosHtml = `
+                    <details class="acerto-entry-more">
+                        <summary>
+                            <span><i class="fa-solid fa-layer-group"></i> Ver tudo</span>
+                            <small>${labelPedidos}${erpEmbarquesNumeros.length ? ` · ${erpEmbarquesNumeros.length} ERP` : ''}</small>
+                            <i class="fa-solid fa-chevron-down"></i>
+                        </summary>
+                        <div class="acerto-entry-more-body">
+                            ${pedidosDisplay ? `
+                                <div class="acerto-entry-info-row is-blue">
+                                    <span><i class="fa-solid fa-file-invoice"></i> Pedidos</span>
+                                    <div>${pedidosDisplay}</div>
+                                </div>
+                            ` : ''}
+                            ${erpEmbarquesDisplay ? `
+                                <div class="acerto-entry-info-row is-purple">
+                                    <span><i class="fa-solid fa-truck"></i> Embarques ERP</span>
+                                    <div>${erpEmbarquesDisplay}</div>
+                                </div>
+                            ` : ''}
+                            <div class="acerto-entry-meta">
+                                ${entrega.nome_recebedor ? `<span><i class="fa-solid fa-user"></i> ${escapeHtml(entrega.nome_recebedor)}</span>` : ''}
+                                ${entrega.horario_entrega ? `<span><i class="fa-regular fa-clock"></i> ${formatDateTime(entrega.horario_entrega)}</span>` : ''}
+                                ${entrega.codigo_rastreamento ? `<span><i class="fa-solid fa-qrcode"></i> ${escapeHtml(entrega.codigo_rastreamento)}</span>` : ''}
+                            </div>
+                        </div>
+                    </details>
+                `;
 
-                // ============================================================
-                // 🔥 CONSTRUIR CARD MODERNO
-                // ============================================================
                 const cardBorderColor = temProblemas ? 'border-orange-200 dark:border-orange-800' : (isDark ? 'border-gray-700' : 'border-gray-200');
                 const cardBg = temProblemas ? (isDark ? 'bg-orange-900/5' : 'bg-orange-50/30') : (isDark ? 'bg-gray-800' : 'bg-white');
                 
                 html += `
-                    <div class="rounded-xl border ${cardBorderColor} ${cardBg} shadow-sm hover:shadow-md transition-all mb-4 overflow-hidden">
-                        <!-- Cabeçalho -->
+                    <div class="acerto-delivery-card ${entregaConferida ? 'is-conferido' : ''} rounded-xl border ${cardBorderColor} ${cardBg} shadow-sm hover:shadow-md transition-all mb-4 overflow-hidden" data-entrega-card data-entrega-id="${entrega.id}" data-conferencia="${conferenciaStatus}" data-conferido="${entregaConferida ? '1' : '0'}" data-order="${index + 1}" data-search="${escapeHtml(termosBusca)}" data-divergencia="${(temProblemas || temItensProblema) ? '1' : '0'}" data-cliente="${escapeHtml(entrega.cliente_nome || '')}" data-pedidos="${escapeHtml(pedidosNumeros.join(', '))}" style="--delivery-order:${index + 1};">
                         <div class="p-4 ${temProblemas ? 'border-b border-orange-200 dark:border-orange-800' : 'border-b ' + (isDark ? 'border-gray-700' : 'border-gray-200')}">
                             <div class="flex flex-wrap items-start justify-between gap-3">
                                 <div class="flex-1 min-w-0">
-                                    <!-- Cliente -->
-                                    <div class="flex flex-wrap items-center gap-2">
+                                    <div class="acerto-client-heading flex flex-wrap items-center gap-2">
+                                        <span class="acerto-stop-badge">#${index + 1}</span>
                                         <span class="font-bold ${textTitle} text-base">
-                                            ${entrega.cliente_nome || 'Cliente não identificado'}
+                                            ${escapeHtml(entrega.cliente_nome || 'Cliente não identificado')}
                                         </span>
                                         <span class="text-xs ${isDark ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'} px-2 py-0.5 rounded-full">
                                             ${labelPedidos}
                                         </span>
                                         <span class="text-xs px-2.5 py-0.5 rounded-full font-medium ${statusInfo.class}">
-                                            ${statusInfo.label}
+                                            ${escapeHtml(statusInfo.label)}
                                         </span>
+                                        ${entregaConferida ? getConferidoTagHtml() : ''}
                                     </div>
-                                    <!-- Endereço -->
                                     <div class="text-sm ${textSub} mt-1">
                                         <i class="fa-solid fa-location-dot text-gray-400 text-xs"></i> 
-                                        ${entrega.endereco || ''} ${entrega.numero || ''} - ${entrega.cidade || ''}/${entrega.uf || ''}
+                                        ${escapeHtml(entrega.endereco || '')} ${escapeHtml(entrega.numero || '')} - ${escapeHtml(entrega.cidade || '')}/${escapeHtml(entrega.uf || '')}
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2 flex-shrink-0">
                                     ${romaneioHtml}
                                     ${temItensProblema ? `
-                                        <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
-                                                onclick="criarPedidoParaItensProblema(${entrega.id}, '${entrega.cliente_nome || ''}')">
-                                            <i class="fa-solid fa-plus"></i> Gerar Pedido
-                                        </button>
-                                    ` : ''}
-                                    ${temProblemas ? `
-                                        <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
-                                                onclick="abrirPedidoProblema(${dados.id || dados.acerto_id}, ${entrega.id}, '${entrega.cliente_nome || ''}')">
-                                            <i class="fa-solid fa-plus"></i> Criar Pedido
-                                        </button>
-                                    ` : ''}
-                                    ${(temChecklist || temFotos || temRomaneio) ? `
-                                        <button class="inline-flex items-center gap-1.5 text-xs font-medium ${isDark ? 'bg-gray-700 text-gray-300 hover:bg-gray-600' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'} px-3 py-1.5 rounded-lg transition-colors" 
-                                                onclick="verDetalhesEntrega(${entrega.id})">
-                                            <i class="fa-solid fa-eye"></i> Detalhes
-                                        </button>
-                                    ` : ''}
+    <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
+            onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
+        <i class="fa-solid fa-plus"></i> Gerar Pedido
+    </button>
+` : ''}
+${(temProblemas && !temItensProblema) ? `
+    <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
+            onclick="abrirPedidoProblema(${acertoAtual.id || 'null'}, ${entrega.id}, ${clienteNomeArg})">
+        <i class="fa-solid fa-plus"></i> Gerar Pedido
+    </button>
+` : ''}
+                                    ${temChecklist ? `<button type="button" class="btn-detalhes-entrega inline-flex items-center gap-1.5 text-xs font-medium ${isDark ? 'bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} px-3 py-1.5 rounded-lg transition-colors" onclick="alternarDetalhesEntrega(this)" aria-expanded="false"><i class="fa-solid fa-list-check"></i> Conferir itens</button>` : ''}
                                 </div>
                             </div>
-                            
-                            <!-- 🔥 PEDIDOS EM DESTAQUE -->
-                            ${pedidosDisplay ? `
-                            <div class="mt-2 flex flex-wrap items-center gap-2 p-2.5 bg-blue-50/60 dark:bg-blue-900/20 rounded-lg border border-blue-100 dark:border-blue-800/50">
-                                <span class="text-xs font-medium ${textSub} flex items-center gap-1">
-                                    <i class="fa-solid fa-file-invoice text-blue-400"></i> Pedidos:
-                                </span>
-                                <div class="flex flex-wrap gap-1.5">
-                                    ${pedidosDisplay}
-                                </div>
-                            </div>
-                            ` : ''}
-                            
-                            <!-- 🔥 EMBARQUES ERP EM DESTAQUE -->
-                            ${erpEmbarquesDisplay ? `
-                            <div class="mt-2 flex flex-wrap items-center gap-2 p-2.5 bg-purple-50/60 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-800/50">
-                                <span class="text-xs font-medium ${textSub} flex items-center gap-1">
-                                    <i class="fa-solid fa-truck text-purple-400"></i> Embarques ERP:
-                                </span>
-                                <div class="flex flex-wrap gap-1.5">
-                                    ${erpEmbarquesDisplay}
-                                </div>
-                            </div>
-                            ` : ''}
-                            
-                            <!-- Recebedor e Data -->
-                            <div class="flex flex-wrap items-center gap-4 mt-2 text-sm ${textSub}">
-                                ${entrega.nome_recebedor ? `<span><i class="fa-solid fa-user text-gray-400"></i> <span class="${textTitle} font-medium">${entrega.nome_recebedor}</span></span>` : ''}
-                                ${entrega.horario_entrega ? `<span><i class="fa-regular fa-clock text-gray-400"></i> <span class="${textTitle}">${formatDateTime(entrega.horario_entrega)}</span></span>` : ''}
-                                ${entrega.codigo_rastreamento ? `<span class="text-xs"><i class="fa-solid fa-qrcode text-gray-400"></i> ${entrega.codigo_rastreamento}</span>` : ''}
+                            <div class="acerto-conferencia-strip">
+                                <span><i class="fa-solid fa-clipboard-check"></i> ${itensOk}/${totalItens} itens OK</span>
+                                <span class="${divergencias ? 'is-danger' : ''}"><i class="fa-solid fa-triangle-exclamation"></i> ${divergencias} divergência(s)</span>
+                                <span><i class="fa-regular fa-images"></i> ${totalEvidencias} evidência(s)</span>
+                                ${detalhesAdministrativosHtml}
                             </div>
                         </div>
                         
-                        <!-- Corpo -->
-                        <div class="p-4">
-                            <!-- Problemas -->
+                        <div class="acerto-delivery-body p-4">
                             ${temProblemas ? `
                                 <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 mb-3 border border-orange-200 dark:border-orange-800">
                                     <div class="flex items-center gap-2 mb-1">
@@ -1116,19 +1035,21 @@ function renderizarDetalhesAcerto(dados) {
                                     </div>
                                     ${entrega.problemas.map(p => `
                                         <div class="flex flex-wrap items-start gap-2 text-sm py-1.5 border-b border-orange-100 dark:border-orange-800 last:border-0">
-                                            <span class="font-medium text-orange-600 dark:text-orange-400 capitalize text-xs">${p.tipo_problema}:</span>
-                                            <span class="${textTitle} flex-1">${p.descricao_problema || 'Sem descrição'}</span>
+                                            <span class="font-medium text-orange-600 dark:text-orange-400 capitalize text-xs">${escapeHtml(p.tipo_problema)}:</span>
+                                            <span class="${textTitle} flex-1">${escapeHtml(p.descricao_problema || 'Sem descrição')}</span>
                                             <span class="text-xs ${textSub} whitespace-nowrap">${formatDateTime(p.created_at)}</span>
                                         </div>
                                     `).join('')}
                                 </div>
                             ` : ''}
                             
-                            <!-- Itens -->
                             ${itensHtml}
                             
-                            <!-- Fotos -->
                             ${fotosHtml}
+                        <div class="acerto-client-footer">
+    ${temItensProblema ? `<button type="button" class="danger" onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"><i class="fa-solid fa-file-circle-plus"></i> Gerar pedido de divergência</button>` : ''}
+    <button type="button" class="success" onclick="marcarEntregaConferida(${entrega.id}, this)"><i class="fa-solid fa-check-double"></i> Pedido conferido</button>
+</div>
                         </div>
                     </div>
                 `;
@@ -1144,9 +1065,6 @@ function renderizarDetalhesAcerto(dados) {
         
         html += '</div>';
 
-        // ============================================================
-        // 5. PEDIDOS DE ACERTO CRIADOS
-        // ============================================================
         if (dados.pedidos_acerto && dados.pedidos_acerto.length > 0) {
             html += `
                 <div class="mt-6">
@@ -1183,11 +1101,11 @@ function renderizarDetalhesAcerto(dados) {
                                                 isCriadoERP ? `
                                                     <span class="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded-full">
                                                         ✅ Criado no ERP
-                                                        ${pedido.numero_pedido_criado ? ` (${pedido.numero_pedido_criado})` : ''}
+                                                        ${pedido.numero_pedido_criado ? ` (${escapeHtml(pedido.numero_pedido_criado)})` : ''}
                                                     </span>
                                                 ` : `
                                                     <span class="text-xs bg-gray-100 text-gray-600 dark:bg-gray-700/30 dark:text-gray-400 px-2 py-1 rounded-full">
-                                                        ${pedido.status || 'Pendente'}
+                                                        ${escapeHtml(pedido.status || 'Pendente')}
                                                     </span>
                                                 `
                                             )}
@@ -1197,7 +1115,7 @@ function renderizarDetalhesAcerto(dados) {
                                         <div class="mt-2 flex flex-wrap gap-1">
                                             ${pedidoItens.slice(0, 5).map(item => `
                                                 <span class="text-xs ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'} px-2 py-0.5 rounded-full">
-                                                    ${item.referencia || 'Item'} (${item.quantidade || 0})
+                                                    ${escapeHtml(item.referencia || 'Item')} (${escapeHtml(item.quantidade || 0)})
                                                 </span>
                                             `).join('')}
                                             ${pedidoItens.length > 5 ? `<span class="text-xs ${textSub}">+${pedidoItens.length - 5} itens</span>` : ''}
@@ -1205,17 +1123,17 @@ function renderizarDetalhesAcerto(dados) {
                                     ` : ''}
                                     ${pedido.observacoes ? `
                                         <div class="mt-2 text-xs ${textSub}">
-                                            <i class="fa-regular fa-message"></i> ${pedido.observacoes}
+                                            <i class="fa-regular fa-message"></i> ${escapeHtml(pedido.observacoes)}
                                         </div>
                                     ` : ''}
                                     ${pedido.motivo ? `
                                         <div class="mt-1 text-xs ${textSub}">
-                                            <i class="fa-solid fa-info-circle"></i> Motivo: ${pedido.motivo}
+                                            <i class="fa-solid fa-info-circle"></i> Motivo: ${escapeHtml(pedido.motivo)}
                                         </div>
                                     ` : ''}
                                     ${pedido.pedido_erp_criado_id ? `
                                         <div class="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                                            <i class="fa-solid fa-link"></i> ERP ID: ${pedido.pedido_erp_criado_id}
+                                            <i class="fa-solid fa-link"></i> ERP ID: ${escapeHtml(pedido.pedido_erp_criado_id)}
                                         </div>
                                     ` : ''}
                                 </div>
@@ -1226,9 +1144,6 @@ function renderizarDetalhesAcerto(dados) {
             `;
         }
 
-        // ============================================================
-        // 6. RESUMO FINAL (se houver acerto finalizado)
-        // ============================================================
         if (dados.acerto_existente && dados.acerto_existente.status === 'finalizado') {
             html += `
                 <div class="mt-6 p-4 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-200 dark:border-emerald-800">
@@ -1237,7 +1152,7 @@ function renderizarDetalhesAcerto(dados) {
                         <div>
                             <p class="font-bold ${textTitle}">Acerto Finalizado</p>
                             <p class="text-sm ${textSub}">
-                                Finalizado por ${dados.acerto_existente.gestor_nome || 'Gestor'} em ${formatDateTime(dados.acerto_existente.data_acerto)}
+                                Finalizado por ${escapeHtml(dados.acerto_existente.gestor_nome || 'Gestor')} em ${formatDateTime(dados.acerto_existente.data_acerto)}
                             </p>
                             ${dados.acerto_existente.total_pedidos_faltantes > 0 || dados.acerto_existente.total_pedidos_devolvidos > 0 ? `
                                 <div class="flex gap-4 mt-2 text-sm">
@@ -1253,6 +1168,7 @@ function renderizarDetalhesAcerto(dados) {
         
         console.log('✅ HTML gerado com sucesso, inserindo no DOM...');
         conteudo.innerHTML = html;
+        filtrarEntregasAcerto();
         console.log('✅ Conteúdo renderizado com sucesso!');
         
     } catch (error) {
@@ -1260,7 +1176,7 @@ function renderizarDetalhesAcerto(dados) {
         conteudo.innerHTML = `
             <div class="text-center py-8 text-red-500">
                 <i class="fa-solid fa-circle-exclamation text-3xl block mb-2"></i>
-                Erro ao renderizar detalhes: ${error.message}
+                Erro ao renderizar detalhes: ${escapeHtml(error.message)}
             </div>
         `;
     }
@@ -1285,7 +1201,7 @@ function iniciarAcerto() {
         cancelButtonText: 'Cancelar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/iniciar';
+            const url = API_BASE + '/frota/acerto/iniciar';
             const data = { embarque_id: acertoAtual.embarque_id };
             
             console.log('📡 Enviando: POST ' + url, data);
@@ -1345,7 +1261,7 @@ function finalizarAcerto() {
         cancelButtonText: 'Cancelar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/' + acertoAtual.id + '/finalizar';
+            const url = API_BASE + '/frota/acerto/' + acertoAtual.id + '/finalizar';
             
             console.log('📡 Enviando: POST ' + url);
             
@@ -1365,9 +1281,7 @@ function finalizarAcerto() {
                     });
                     carregarEmbarquesParaAcerto();
                     setTimeout(() => {
-                        if (modalAcertoInstance) {
-                            modalAcertoInstance.hide();
-                        }
+                        fecharModalAcerto();
                     }, 2000);
                 } else {
                     Swal.fire({
@@ -1408,7 +1322,7 @@ function cancelarAcerto() {
         cancelButtonText: 'Voltar'
     }).then(result => {
         if (result.isConfirmed) {
-            const url = '/v1/frota/acerto/' + acertoAtual.id + '/cancelar';
+            const url = API_BASE + '/frota/acerto/' + acertoAtual.id + '/cancelar';
             
             console.log('📡 Enviando: POST ' + url);
             
@@ -1447,10 +1361,21 @@ function cancelarAcerto() {
 }
 
 // ================================================================
-// ABRIR MODAL DE PEDIDO DE PROBLEMA - CORRIGIDO
+// ABRIR MODAL DE PEDIDO DE PROBLEMA
 // ================================================================
 function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
-    if (!acertoId || !entregaId) {
+    if (!acertoId || isNaN(parseInt(acertoId)) || parseInt(acertoId) <= 0) {
+        Swal.fire({
+            icon: 'warning',
+            title: 'Acerto nao iniciado',
+            text: 'Voce precisa iniciar o acerto deste embarque antes de gerar pedidos de problema.',
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#f59e0b'
+        });
+        return;
+    }
+
+    if (!entregaId) {
         showError('Dados incompletos para criar pedido');
         return;
     }
@@ -1473,13 +1398,11 @@ function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
         return;
     }
     
-    // 🔥 CORRIGIDO: Usar bootstrap.Modal de forma segura
     try {
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             const modalInstance = new bootstrap.Modal(modal);
             modalInstance.show();
         } else {
-            // Fallback manual
             modal.style.display = 'block';
             modal.classList.add('show');
             document.body.classList.add('modal-open');
@@ -1531,7 +1454,7 @@ function adicionarItemProblema() {
     }).then(result => {
         if (result.isConfirmed && result.value) {
             const busca = result.value;
-            const url = '/v1/frota/acerto/itens/buscar?q=' + encodeURIComponent(busca) + '&limite=10';
+            const url = API_BASE + '/frota/acerto/itens/buscar?q=' + encodeURIComponent(busca) + '&limite=10';
             
             Swal.fire({
                 title: 'Buscando...',
@@ -1575,9 +1498,9 @@ function adicionarItemProblema() {
                 itens.forEach(item => {
                     html += `
                         <tr>
-                            <td><strong>${item.referencia || 'N/A'}</strong></td>
-                            <td>${item.descricao || ''}</td>
-                            <td class="text-center">${item.saldo_estoque || 0}</td>
+                            <td><strong>${escapeHtml(item.referencia || 'N/A')}</strong></td>
+                            <td>${escapeHtml(item.descricao || '')}</td>
+                            <td class="text-center">${escapeHtml(item.saldo_estoque || 0)}</td>
                             <td class="text-end">${formatMoney(item.valor_unitario)}</td>
                             <td class="text-center">
                                 <button class="btn btn-sm btn-primary" onclick="selecionarItemProblema(${JSON.stringify(item).replace(/"/g, '&quot;')}); Swal.close();">
@@ -1628,8 +1551,8 @@ function selecionarItemProblema(item) {
     row.dataset.itemId = item.iditem;
     row.dataset.valorUnitario = item.valor_unitario || 0;
     row.innerHTML = `
-        <td>${item.descricao || 'Sem descrição'}</td>
-        <td><strong>${item.referencia || 'N/A'}</strong></td>
+        <td>${escapeHtml(item.descricao || 'Sem descrição')}</td>
+        <td><strong>${escapeHtml(item.referencia || 'N/A')}</strong></td>
         <td>
             <input type="number" class="form-control form-control-sm" value="1" min="0.001" step="0.001" 
                    onchange="calcularTotalItem(this)">
@@ -1751,7 +1674,7 @@ function salvarPedidoProblema() {
                 itens: itens
             };
             
-            const url = '/v1/frota/acerto/pedido-problema';
+            const url = API_BASE + '/frota/acerto/pedido-problema';
             
             console.log('📡 Enviando: POST ' + url, data);
             
@@ -1858,9 +1781,7 @@ function formatMoney(value) {
         currency: 'BRL'
     }).format(value || 0);
 }
-// ================================================================
-// FUNÇÃO AUXILIAR - FORMATAR PESO
-// ================================================================
+
 function formatPeso(peso) {
     const valor = parseFloat(peso);
     if (isNaN(valor) || valor === 0) return '0 kg';
@@ -1871,7 +1792,7 @@ function formatPeso(peso) {
 }
 
 // ================================================================
-// VER DETALHES DA ENTREGA - COM DESTAQUE PARA ITENS PROBLEMA
+// VER DETALHES DA ENTREGA
 // ================================================================
 function verDetalhesEntrega(entregaId) {
     const token = getToken();
@@ -1887,7 +1808,7 @@ function verDetalhesEntrega(entregaId) {
         didOpen: () => { Swal.showLoading(); }
     });
     
-    fetch(`/v1/frota/entregas/${entregaId}`, {
+    fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -1904,7 +1825,6 @@ function verDetalhesEntrega(entregaId) {
         
         const entrega = data.data;
         
-        // Status da entrega
         const statusMap = {
             'pendente': { label: '⏳ Pendente', class: 'bg-yellow-100 text-yellow-700' },
             'em_entrega': { label: '🚚 Em Rota', class: 'bg-blue-100 text-blue-700' },
@@ -1915,34 +1835,31 @@ function verDetalhesEntrega(entregaId) {
         };
         const statusInfo = statusMap[entrega.status] || { label: entrega.status || 'N/A', class: 'bg-gray-100 text-gray-700' };
         
-        // 🔥 VERIFICAR SE TEM PROBLEMAS PARA GERAR PEDIDO
         const temProblemas = entrega.checklist && entrega.checklist.some(item => 
             item.status !== 'entregue' && item.quantidade_entregue < item.quantidade_prevista
         );
         
         let html = `
             <div style="text-align:left;max-height:500px;overflow-y:auto;padding:4px;">
-                <!-- Cabeçalho -->
                 <div style="background: linear-gradient(135deg, #1a3c34, #2d5a4e); color: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px;">
                     <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center;">
                         <div>
-                            <div style="font-size: 1.1rem; font-weight: 700;">${entrega.cliente_nome || 'Cliente'}</div>
-                            <div style="font-size: 0.85rem; opacity: 0.9;">${entrega.endereco || ''} ${entrega.numero || ''} - ${entrega.cidade || ''}/${entrega.uf || ''}</div>
+                            <div style="font-size: 1.1rem; font-weight: 700;">${escapeHtml(entrega.cliente_nome || 'Cliente')}</div>
+                            <div style="font-size: 0.85rem; opacity: 0.9;">${escapeHtml(entrega.endereco || '')} ${escapeHtml(entrega.numero || '')} - ${escapeHtml(entrega.cidade || '')}/${escapeHtml(entrega.uf || '')}</div>
                         </div>
                         <div style="text-align: right;">
                             <span style="background: ${statusInfo.class.replace('text-', '')}; padding: 4px 12px; border-radius: 100px; font-size: 0.75rem; font-weight: 600; display: inline-block;">
-                                ${statusInfo.label}
+                                ${escapeHtml(statusInfo.label)}
                             </span>
-                            ${entrega.codigo_rastreamento ? `<div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">🔍 ${entrega.codigo_rastreamento}</div>` : ''}
+                            ${entrega.codigo_rastreamento ? `<div style="font-size: 0.7rem; opacity: 0.7; margin-top: 4px;">🔍 ${escapeHtml(entrega.codigo_rastreamento)}</div>` : ''}
                         </div>
                     </div>
                 </div>
                 
-                <!-- Info Cards -->
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin-bottom: 16px;">
                     <div style="background: #f0fdf4; border-radius: 8px; padding: 8px 12px; border: 1px solid #bbf7d0;">
                         <div style="font-size: 0.6rem; text-transform: uppercase; color: #64748b;">Recebedor</div>
-                        <div style="font-weight: 600; font-size: 0.85rem;">${entrega.nome_recebedor || 'Não informado'}</div>
+                        <div style="font-weight: 600; font-size: 0.85rem;">${escapeHtml(entrega.nome_recebedor || 'Não informado')}</div>
                     </div>
                     <div style="background: #dbeafe; border-radius: 8px; padding: 8px 12px; border: 1px solid #93c5fd;">
                         <div style="font-size: 0.6rem; text-transform: uppercase; color: #64748b;">Data Entrega</div>
@@ -1959,12 +1876,12 @@ function verDetalhesEntrega(entregaId) {
                 </div>
         `;
         
-        // Checklist - Itens com destaque para problemas
         if (entrega.checklist && entrega.checklist.length > 0) {
             const itensProblema = entrega.checklist.filter(item => 
                 item.status !== 'entregue' && item.quantidade_entregue < item.quantidade_prevista
             );
             const temProblema = itensProblema.length > 0;
+            const clienteNomeArg = jsStringArg(entrega.cliente_nome || '');
             
             html += `
                 <hr style="border: 0; border-top: 2px solid #e5e7eb; margin: 12px 0;">
@@ -1974,7 +1891,7 @@ function verDetalhesEntrega(entregaId) {
                         ${temProblema ? `<span style="background: #fee2e2; color: #dc2626; padding: 2px 10px; border-radius: 100px; font-size: 0.65rem; margin-left: 8px;">⚠️ ${itensProblema.length} com problema</span>` : ''}
                     </h6>
                     ${temProblema ? `
-                        <button onclick="criarPedidoParaItensProblema(${entrega.id}, '${entrega.cliente_nome || ''}')" 
+                        <button onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"
                                 style="background: #f59e0b; color: white; border: none; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; gap: 6px;">
                             <i class="fa-solid fa-plus"></i> Gerar Pedido
                         </button>
@@ -2008,8 +1925,8 @@ function verDetalhesEntrega(entregaId) {
                                 
                                 return `
                                     <tr style="border-bottom: 1px solid #e5e7eb; background: ${bgColor};">
-                                        <td style="padding: 6px 10px; font-weight: 500;">${item.referencia || '-'}</td>
-                                        <td style="padding: 6px 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${item.descricao || '-'}</td>
+                                        <td style="padding: 6px 10px; font-weight: 500;">${escapeHtml(item.referencia || '-')}</td>
+                                        <td style="padding: 6px 10px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${escapeHtml(item.descricao || '-')}</td>
                                         <td style="padding: 6px 10px; text-align: center;">${qtdPrev}</td>
                                         <td style="padding: 6px 10px; text-align: center; font-weight: ${isProblema ? '700' : '400'}; color: ${isProblema ? '#dc2626' : 'inherit'};">${qtdEnt}</td>
                                         <td style="padding: 6px 10px; text-align: center; font-weight: 700; color: #dc2626;">
@@ -2020,7 +1937,7 @@ function verDetalhesEntrega(entregaId) {
                                                 ${statusLabel}
                                             </span>
                                         </td>
-                                        <td style="padding: 6px 10px; font-size: 0.7rem; color: ${item.motivo ? '#dc2626' : '#94a3b8'};">${item.motivo || '—'}</td>
+                                        <td style="padding: 6px 10px; font-size: 0.7rem; color: ${item.motivo ? '#dc2626' : '#94a3b8'};">${escapeHtml(item.motivo || '—')}</td>
                                     </tr>
                                 `;
                             }).join('')}
@@ -2030,7 +1947,6 @@ function verDetalhesEntrega(entregaId) {
             `;
         }
         
-        // Fotos
         if (entrega.fotos && entrega.fotos.length > 0) {
             html += `
                 <hr style="border: 0; border-top: 2px solid #e5e7eb; margin: 12px 0;">
@@ -2039,13 +1955,13 @@ function verDetalhesEntrega(entregaId) {
                 </h6>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     ${entrega.fotos.map(foto => `
-                        <div onclick="abrirZoomFoto('${foto.url_foto}', '${foto.descricao || 'Foto'}')" 
+                        <div data-foto-url="${escapeHtml(foto.url_foto)}" data-foto-label="${escapeHtml(foto.descricao || 'Foto')}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)" 
                              style="width: 80px; height: 80px; border-radius: 8px; overflow: hidden; cursor: pointer; border: 2px solid #e5e7eb; transition: transform 0.2s;"
                              onmouseover="this.style.transform='scale(1.05)'" 
                              onmouseout="this.style.transform='scale(1)'">
-                            <img src="${foto.url_foto}" style="width:100%;height:100%;object-fit:cover;" 
+                            <img src="${escapeHtml(foto.url_foto)}" style="width:100%;height:100%;object-fit:cover;" 
                                  onerror="this.style.display='none';this.parentElement.innerHTML='<div style=\\'width:80px;height:80px;display:flex;align-items:center;justify-content:center;background:#f3f4f6;font-size:1.5rem;color:#9ca3af;\\'><i class=\\'fa-regular fa-image\\'></i></div>'">
-                            <div style="font-size:0.5rem;text-align:center;background:rgba(0,0,0,0.5);color:white;padding:1px 4px;">${foto.descricao || ''}</div>
+                            <div style="font-size:0.5rem;text-align:center;background:rgba(0,0,0,0.5);color:white;padding:1px 4px;">${escapeHtml(foto.descricao || '')}</div>
                         </div>
                     `).join('')}
                 </div>
@@ -2057,7 +1973,7 @@ function verDetalhesEntrega(entregaId) {
         Swal.fire({
             title: `📦 Detalhes da Entrega #${entregaId}`,
             html: html,
-            width: '950px',
+            width: window.innerWidth < 768 ? '95%' : '950px', maxWidth: '95vw',
             confirmButtonText: 'Fechar',
             confirmButtonColor: '#1a3c34',
             customClass: {
@@ -2073,7 +1989,7 @@ function verDetalhesEntrega(entregaId) {
 }
 
 // ================================================================
-// CRIAR PEDIDO APENAS PARA ITENS COM PROBLEMA - VERSÃO COMPLETA CORRIGIDA
+// CRIAR PEDIDO PARA ITENS COM PROBLEMA
 // ================================================================
 function criarPedidoParaItensProblema(entregaId, clienteNome) {
     if (!entregaId) {
@@ -2087,7 +2003,6 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
         return;
     }
     
-    // Buscar os itens com problema
     Swal.fire({
         title: 'Carregando...',
         text: 'Buscando itens com problema',
@@ -2095,7 +2010,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
         didOpen: () => { Swal.showLoading(); }
     });
     
-    fetch(`/v1/frota/entregas/${entregaId}`, {
+    fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -2112,7 +2027,6 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
         
         const entrega = data.data;
         
-        // 🔥 FILTRAR APENAS ITENS COM PROBLEMA (quantidade_entregue < quantidade_prevista)
         const itensProblema = entrega.checklist.filter(item => 
             item.status !== 'entregue' && 
             item.quantidade_entregue < item.quantidade_prevista
@@ -2123,7 +2037,6 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
             return;
         }
         
-        // 🔥 CALCULAR A QUANTIDADE FALTANTE PARA CADA ITEM
         const itensFaltantes = itensProblema.map(item => {
             const qtdPrev = parseFloat(item.quantidade_prevista || 0);
             const qtdEnt = parseFloat(item.quantidade_entregue || 0);
@@ -2135,15 +2048,12 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
             };
         });
         
-        // ============================================================
-        // MONTAR HTML PARA O MODAL DE CONFIRMAÇÃO
-        // ============================================================
         let itensHtml = itensFaltantes.map((item, index) => `
             <div style="background: #fef2f2; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; border: 1px solid #fca5a5;">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;">
                     <div style="flex: 1;">
-                        <span style="font-weight: 600; font-size: 0.9rem;">${item.referencia || 'Item'}</span>
-                        <span style="font-size: 0.8rem; color: #64748b; display: block;">${item.descricao || 'Sem descrição'}</span>
+                        <span style="font-weight: 600; font-size: 0.9rem;">${escapeHtml(item.referencia || 'Item')}</span>
+                        <span style="font-size: 0.8rem; color: #64748b; display: block;">${escapeHtml(item.descricao || 'Sem descrição')}</span>
                     </div>
                     <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
                         <div style="text-align: center;">
@@ -2159,28 +2069,25 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                             <div style="font-weight: 700; font-size: 1.1rem;">${item.quantidade_faltante}</div>
                         </div>
                         <input type="hidden" class="item-faltante-qtd" data-idx="${index}" value="${item.quantidade_faltante}">
-                        <input type="hidden" class="item-faltante-id" value="${item.item_id || 0}">
-                        <input type="hidden" class="item-faltante-ref" value="${item.referencia || ''}">
-                        <input type="hidden" class="item-faltante-desc" value="${item.descricao || ''}">
+                        <input type="hidden" class="item-faltante-id" value="${escapeHtml(item.item_id || 0)}">
+                        <input type="hidden" class="item-faltante-ref" value="${escapeHtml(item.referencia || '')}">
+                        <input type="hidden" class="item-faltante-desc" value="${escapeHtml(item.descricao || '')}">
                     </div>
                 </div>
-                ${item.motivo ? `<div style="font-size: 0.7rem; color: #dc2626; margin-top: 4px;">Motivo: ${item.motivo}</div>` : ''}
+                ${item.motivo ? `<div style="font-size: 0.7rem; color: #dc2626; margin-top: 4px;">Motivo: ${escapeHtml(item.motivo)}</div>` : ''}
             </div>
         `).join('');
         
         const totalFaltante = itensFaltantes.reduce((sum, item) => sum + item.quantidade_faltante, 0);
         const totalItens = itensFaltantes.length;
         
-        // ============================================================
-        // MODAL DE CONFIRMAÇÃO
-        // ============================================================
         Swal.fire({
             title: '📝 Criar Pedido de Faltante',
             html: `
                 <div style="text-align: left; max-width: 100%;">
                     <div style="background: #f0fdf4; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; border: 1px solid #bbf7d0;">
                         <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
-                            <span style="font-weight: 600;">👤 Cliente: ${clienteNome || 'Cliente'}</span>
+                            <span style="font-weight: 600;">👤 Cliente: ${escapeHtml(clienteNome || 'Cliente')}</span>
                             <span style="color: #dc2626; font-weight: 700;">⚠️ ${totalItens} itens faltantes</span>
                             <span style="color: #dc2626; font-weight: 700;">📦 ${totalFaltante} unidades</span>
                         </div>
@@ -2203,7 +2110,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     </div>
                 </div>
             `,
-            width: '750px',
+            width: window.innerWidth < 768 ? '95%' : '750px', maxWidth: '95vw',
             showCancelButton: true,
             confirmButtonText: '✅ Confirmar Pedido',
             cancelButtonText: 'Cancelar',
@@ -2230,7 +2137,6 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     return;
                 }
                 
-                // 🔥 ENVIAR PARA O CONTROLLER
                 const acertoId = acertoAtual.id || document.getElementById('pp-acerto-id')?.value || 0;
                 if (!acertoId) {
                     Swal.fire('Erro', 'ID do acerto não encontrado. Inicie o acerto primeiro.', 'error');
@@ -2248,7 +2154,6 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                         referencia: item.referencia,
                         descricao: item.descricao,
                         quantidade: item.quantidade,
-                        valor_unitario: 0,
                         unidade: item.unidade || 'UN'
                     }))
                 };
@@ -2262,7 +2167,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     didOpen: () => { Swal.showLoading(); }
                 });
                 
-                fetch('/v1/frota/acerto/pedido-problema', {
+                fetch(API_BASE + '/frota/acerto/pedido-problema', {
                     method: 'POST',
                     headers: {
                         'Authorization': 'Bearer ' + token,
@@ -2288,7 +2193,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                             title: '✅ Pedido criado com sucesso!',
                             html: `
                                 <div style="text-align: left; padding: 8px;">
-                                    <p>Pedido de <strong>faltante</strong> criado para a entrega #${entregaId}</p>
+                                    <p>Pedido de <strong>faltante</strong> criado para a entrega #${escapeHtml(entregaId)}</p>
                                     <p style="font-size: 0.85rem; color: #64748b;">
                                         Total: <strong>${itens.length}</strong> itens | 
                                         <strong>${totalFaltante}</strong> unidades
@@ -2329,30 +2234,29 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
     });
 }
 
-/// ================================================================
-// GERAR PEDIDO ERP A PARTIR DO PEDIDO DE ACERTO - VERSÃO COMPLETA
+// ================================================================
+// GERAR PEDIDO ERP DIRETO
 // ================================================================
 function gerarPedidoERP(pedidoAcertoId) {
     if (!pedidoAcertoId) {
         showError('ID do pedido de acerto não informado');
         return;
     }
-    
+
     const token = getToken();
     if (!token) {
         showError('Token não encontrado');
         return;
     }
-    
-    // Primeiro, buscar detalhes do pedido para mostrar resumo
+
     Swal.fire({
         title: 'Carregando...',
         text: 'Buscando dados do pedido',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
     });
-    
-    fetch(`/v1/frota/acerto/pedido/${pedidoAcertoId}`, {
+
+    fetch(`${API_BASE}/frota/acerto/pedido/${pedidoAcertoId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
             'Content-Type': 'application/json'
@@ -2361,266 +2265,143 @@ function gerarPedidoERP(pedidoAcertoId) {
     .then(res => res.json())
     .then(pedidoData => {
         Swal.close();
-        
+
         if (!pedidoData.success) {
             Swal.fire('Erro', pedidoData.error || 'Pedido não encontrado', 'error');
             return;
         }
-        
+
         const pedido = pedidoData.data;
-        
-        // Montar resumo dos itens
+        const tipoProblema = pedido.tipo_problema || 'faltante';
+        const tipoLabel = tipoProblema === 'faltante' ? 'Faltante (Transação 19)' : 'Devolução (Transação 20)';
+        const tipoEmoji = tipoProblema === 'faltante' ? '⚠️' : '🔄';
+
+        const transacaoAutomatica = tipoProblema === 'faltante' ? 19 : 20;
+        const filialPadrao = 1;
+        const sandbox = false;
+
         let itensResumo = '';
-        if (pedido.itens_afetados && pedido.itens_afetados.length > 0) {
-            itensResumo = pedido.itens_afetados.map(item => `
+        const itens = pedido.itens_afetados || [];
+        if (itens.length > 0) {
+            itensResumo = itens.map(item => `
                 <div style="display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #e5e7eb; font-size: 0.85rem;">
-                    <span>${item.referencia || 'Item'} - ${item.descricao || ''}</span>
-                    <span style="font-weight: 600; color: #dc2626;">${item.quantidade} un</span>
+                    <span>${escapeHtml(item.referencia || 'Item')} - ${escapeHtml(item.descricao || '')}</span>
+                    <span style="font-weight: 600; color: #dc2626;">${escapeHtml(item.quantidade)} un</span>
                 </div>
             `).join('');
         }
-        
-        // Modal para selecionar transação
+
         Swal.fire({
             title: '🚀 Gerar Pedido no ERP',
             html: `
                 <div style="text-align: left; max-width: 100%;">
                     <div style="background: #f0fdf4; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; border: 1px solid #bbf7d0;">
-                        <div style="display: flex; justify-content: space-between; flex-wrap: wrap;">
-                            <span style="font-weight: 600;">📋 Pedido #${pedidoAcertoId}</span>
-                            <span style="color: #dc2626; font-weight: 700;">${pedido.tipo_problema || 'Faltante'}</span>
+                        <div style="display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px;">
+                            <span style="font-weight: 600;">📋 Pedido #${escapeHtml(pedidoAcertoId)}</span>
+                            <span style="color: #dc2626; font-weight: 700;">${tipoEmoji} ${escapeHtml(tipoLabel)}</span>
                             <span style="font-weight: 600;">💰 ${formatMoney(pedido.valor_total || 0)}</span>
                         </div>
                     </div>
                     
+                    <div style="background: #dbeafe; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #93c5fd;">
+                        <div style="font-size: 0.8rem; color: #1e40af;">
+                            <strong>🔧 Configuração Automática:</strong>
+                            <ul style="margin: 6px 0 0 20px; padding: 0;">
+                                <li>Transação: <strong>${transacaoAutomatica}</strong> (${escapeHtml(tipoProblema)})</li>
+                                <li>Filial: <strong>${filialPadrao}</strong></li>
+                                <li>Modo: <strong>🚀 Produção</strong></li>
+                            </ul>
+                        </div>
+                    </div>
+                    
                     ${itensResumo ? `
-                        <div style="max-height: 150px; overflow-y: auto; margin-bottom: 12px; background: #f8fafc; border-radius: 8px; padding: 8px 12px;">
-                            <p style="font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">📦 Itens do Pedido:</p>
+                        <div style="max-height: 200px; overflow-y: auto; background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;">
+                            <p style="font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">📦 Itens (${itens.length}):</p>
                             ${itensResumo}
                         </div>
                     ` : ''}
                     
-                    <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 12px;">
-                        <i class="fa-solid fa-info-circle"></i> 
-                        Selecione a transação e o modo para criar o pedido no ERP.
+                    <p style="font-size: 0.8rem; color: #dc2626; margin-top: 8px;">
+                        <i class="fa-solid fa-triangle-exclamation"></i> 
+                        O pedido será inserido diretamente no ERP. Confirme para continuar.
                     </p>
-                    
-                    <div id="transacoes-loading" style="text-align: center; padding: 20px;">
-                        <i class="fa-solid fa-spinner fa-spin"></i> Carregando transações...
-                    </div>
-                    <div id="transacoes-container" style="display: none;">
-                        <div class="mb-3">
-                            <label class="form-label">Tipo de Transação *</label>
-                            <select id="select-transacao" class="form-select">
-                                <option value="">Selecione uma transação...</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Filial</label>
-                            <input type="number" id="filial-id" class="form-control" value="1">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Modo</label>
-                            <select id="modo-erp" class="form-select">
-                                <option value="sandbox" selected>🧪 Sandbox (Teste - apenas visualiza SQL)</option>
-                                <option value="producao">🚀 Produção (Insere no ERP)</option>
-                            </select>
-                        </div>
-                        <div style="background: #fef3c7; border-radius: 8px; padding: 8px 12px; border: 1px solid #fcd34d;">
-                            <span style="font-size: 0.75rem; color: #92400e;">
-                                <i class="fa-solid fa-triangle-exclamation"></i>
-                                Modo <strong>Produção</strong> irá inserir o pedido diretamente no ERP.
-                                Use com cuidado!
-                            </span>
-                        </div>
-                    </div>
                 </div>
             `,
-            width: '650px',
+            width: window.innerWidth < 768 ? '95%' : '650px', maxWidth: '95vw',
             showCancelButton: true,
-            confirmButtonText: '🚀 Gerar Pedido',
+            confirmButtonText: '🚀 Confirmar e Gerar no ERP',
             cancelButtonText: 'Cancelar',
             confirmButtonColor: '#10b981',
-            cancelButtonColor: '#dc2626',
-            didOpen: async () => {
-                try {
-                    const response = await fetch('/v1/frota/acerto/transacoes', {
-                        headers: {
-                            'Authorization': 'Bearer ' + token,
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    const data = await response.json();
-                    
-                    const loading = document.getElementById('transacoes-loading');
-                    const container = document.getElementById('transacoes-container');
-                    const select = document.getElementById('select-transacao');
-                    
-                    if (data.success && data.data && data.data.length > 0) {
-                        data.data.forEach(transacao => {
-                            const option = document.createElement('option');
-                            option.value = transacao.idtransacao;
-                            option.textContent = `${transacao.idtransacao} - ${transacao.idtransacao === 19 ? 'Faltante' : 'Devolução'} - ${transacao.descricao || 'Sem descrição'}`;
-                            select.appendChild(option);
-                        });
-                        loading.style.display = 'none';
-                        container.style.display = 'block';
-                    } else {
-                        loading.innerHTML = `
-                            <span style="color: #dc2626;">
-                                <i class="fa-solid fa-exclamation-circle"></i> 
-                                Nenhuma transação disponível
-                            </span>
-                        `;
-                    }
-                } catch (err) {
-                    document.getElementById('transacoes-loading').innerHTML = 
-                        '<span style="color: #dc2626;">⚠️ Erro ao carregar transações</span>';
-                }
-            },
-            preConfirm: () => {
-                const transacaoId = document.getElementById('select-transacao')?.value;
-                const filialId = document.getElementById('filial-id')?.value || 1;
-                const modo = document.getElementById('modo-erp')?.value || 'sandbox';
-                
-                if (!transacaoId) {
-                    Swal.showValidationMessage('Selecione uma transação');
-                    return false;
-                }
-                
-                return {
-                    transacao_id: parseInt(transacaoId),
-                    filial_id: parseInt(filialId),
-                    sandbox: modo === 'sandbox'
-                };
-            }
+            cancelButtonColor: '#dc2626'
         }).then(result => {
-            if (result.isConfirmed && result.value) {
-                const { transacao_id, filial_id, sandbox } = result.value;
-                
-                const payload = {
-                    id_transacao: transacao_id,
-                    id_filial: filial_id,
-                    sandbox: sandbox
-                };
-                
-                Swal.fire({
-                    title: sandbox ? '🧪 Gerando pedido em modo SANDBOX...' : '🚀 Gerando pedido em PRODUÇÃO...',
-                    text: 'Aguarde enquanto o pedido é processado',
-                    allowOutsideClick: false,
-                    didOpen: () => { Swal.showLoading(); }
-                });
-                
-                fetch(`/v1/frota/acerto/pedido/${pedidoAcertoId}/criar-erp`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                })
-                .then(async res => {
-                    const contentType = res.headers.get('content-type');
-                    if (contentType && contentType.includes('application/json')) {
-                        return res.json();
-                    }
-                    const text = await res.text();
-                    console.error('❌ Resposta não é JSON:', text);
-                    throw new Error('Erro no servidor: ' + res.status);
-                })
-                .then(data => {
-                    Swal.close();
-                    
-                    if (data.success) {
-                        let mensagem = '✅ Pedido criado no ERP com sucesso!';
-                        let icon = 'success';
-                        let cor = '#10b981';
-                        
-                        if (data.sandbox) {
-                            mensagem = '🧪 MODO SANDBOX: Pedido validado. Nenhuma inserção foi feita.';
-                            icon = 'info';
-                            cor = '#3b82f6';
-                        }
-                        
-                        // Montar HTML dos SQLs (se sandbox)
-                        let sqlHtml = '';
-                        if (data.sandbox && data.sql) {
-                            sqlHtml = `
-                                <div style="margin-top: 12px; background: #1e293b; color: #e2e8f0; padding: 12px; border-radius: 8px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 0.7rem; white-space: pre-wrap;">
-                                    <strong style="color: #60a5fa;">📋 SQL gerado (NÃO EXECUTADO - Modo Sandbox):</strong>
-                                    <hr style="border-color: #334155; margin: 4px 0;">
-                                    ${data.sql.pedido ? `<div style="margin-top: 8px;"><span style="color: #34d399;">📄 INSERT pedido:</span>\n${data.sql.pedido}</div>` : ''}
-                                    ${data.sql.itens ? `<div style="margin-top: 8px;"><span style="color: #34d399;">📦 INSERT itens:</span>\n${data.sql.itens}</div>` : ''}
-                                    ${data.sql.update ? `<div style="margin-top: 8px;"><span style="color: #fbbf24;">🔄 UPDATE totais:</span>\n${data.sql.update}</div>` : ''}
-                                </div>
-                            `;
-                        }
-                        
-                        // Montar resumo dos dados
-                        let dadosHtml = '';
-                        if (data.dados_completos) {
-                            const d = data.dados_completos;
-                            dadosHtml = `
-                                <div style="margin-top: 12px; background: ${isDarkTheme() ? '#1e293b' : '#f0fdf4'}; padding: 12px; border-radius: 8px; border: 1px solid ${isDarkTheme() ? '#334155' : '#bbf7d0'};">
-                                    <p><strong>📋 Resumo do Pedido:</strong></p>
-                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px; font-size: 0.8rem;">
-                                        <span><strong>ID Pedido PDA:</strong> ${d.idpedidopda || 'N/A'}</span>
-                                        <span><strong>Sequencial:</strong> ${d.sequencial_portal || 'N/A'}</span>
-                                        <span><strong>Cliente:</strong> ${d.idcliente || 'N/A'}</span>
-                                        <span><strong>Transação:</strong> ${d.idtransacao || 'N/A'}</span>
-                                        <span><strong>Filial:</strong> ${d.idfilial || 'N/A'}</span>
-                                        <span><strong>Total:</strong> ${formatMoney(d.valortotalpedido || 0)}</span>
-                                        <span><strong>Itens:</strong> ${d.itens ? d.itens.length : 0}</span>
-                                        <span><strong>Peso Bruto:</strong> ${(d.pesobruto || 0).toFixed(2)} kg</span>
+            if (!result.isConfirmed) return;
+
+            Swal.fire({
+                title: '🚀 Gerando pedido no ERP...',
+                text: 'Aguarde enquanto o pedido é processado',
+                allowOutsideClick: false,
+                didOpen: () => { Swal.showLoading(); }
+            });
+
+            const payload = {
+                id_transacao: transacaoAutomatica,
+                id_filial: filialPadrao,
+                sandbox: sandbox
+            };
+
+            fetch(`${API_BASE}/frota/acerto/pedido/${pedidoAcertoId}/criar-erp`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': 'Bearer ' + token,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(async res => {
+                const contentType = res.headers.get('content-type');
+                if (contentType && contentType.includes('application/json')) {
+                    return res.json();
+                }
+                const text = await res.text();
+                console.error('❌ Resposta não é JSON:', text);
+                throw new Error('Erro no servidor: ' + res.status);
+            })
+            .then(data => {
+                Swal.close();
+
+                if (data.success) {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '✅ Pedido gerado com sucesso!',
+                        html: `
+                            <div style="text-align: left; padding: 8px;">
+                                <p><strong>Pedido criado no ERP</strong></p>
+                                <div style="background: #f0fdf4; border-radius: 8px; padding: 12px; margin-top: 8px;">
+                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 0.85rem;">
+                                        <span><strong>ID Pedido PDA:</strong> ${escapeHtml(data.data?.idpedidopda || 'N/A')}</span>
+                                        <span><strong>Sequencial:</strong> ${escapeHtml(data.data?.sequencial_portal || 'N/A')}</span>
+                                        <span><strong>Transação:</strong> ${escapeHtml(data.data?.idtransacao || 'N/A')}</span>
+                                        <span><strong>Total:</strong> ${formatMoney(data.data?.valortotalpedido || 0)}</span>
                                     </div>
                                 </div>
-                            `;
-                        }
-                        
-                        Swal.fire({
-                            icon: icon,
-                            title: data.sandbox ? '🧪 Modo Sandbox' : '✅ Sucesso!',
-                            html: `
-                                <div style="text-align: left; padding: 8px; max-height: 600px; overflow-y: auto;">
-                                    <div style="background: ${data.sandbox ? '#fef3c7' : '#d1fae5'}; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid ${data.sandbox ? '#fcd34d' : '#6ee7b7'};">
-                                        <span style="color: ${data.sandbox ? '#92400e' : '#065f46'}; font-weight: 600;">
-                                            <i class="fa-solid ${data.sandbox ? 'fa-flask' : 'fa-check-circle'}"></i> 
-                                            ${mensagem}
-                                        </span>
-                                    </div>
-                                    ${dadosHtml}
-                                    ${sqlHtml}
-                                    ${data.sandbox ? `
-                                        <div style="margin-top: 12px; background: #dbeafe; padding: 8px 12px; border-radius: 8px;">
-                                            <span style="font-size: 0.8rem; color: #1e40af;">
-                                                <i class="fa-solid fa-info-circle"></i> 
-                                                Para ativar a produção, altere o modo para "Produção" no modal.
-                                            </span>
-                                        </div>
-                                    ` : ''}
-                                </div>
-                            `,
-                            width: '850px',
-                            confirmButtonText: 'OK',
-                            confirmButtonColor: cor
-                        });
-                        
-                        // Recarregar o acerto
-                        if (acertoAtual.embarque_id) {
-                            setTimeout(() => {
-                                abrirAcerto(acertoAtual.embarque_id);
-                            }, 1000);
-                        }
-                    } else {
-                        Swal.fire('Erro', data.error || 'Falha ao criar pedido no ERP', 'error');
+                            </div>
+                        `,
+                        confirmButtonText: 'OK',
+                        confirmButtonColor: '#10b981'
+                    });
+
+                    if (acertoAtual.embarque_id) {
+                        setTimeout(() => abrirAcerto(acertoAtual.embarque_id), 500);
                     }
-                })
-                .catch(err => {
-                    Swal.close();
-                    console.error('❌ Erro:', err);
-                    Swal.fire('Erro', err.message || 'Falha ao criar pedido no ERP', 'error');
-                });
-            }
+                } else {
+                    Swal.fire('Erro', data.error || 'Falha ao criar pedido no ERP', 'error');
+                }
+            })
+            .catch(err => {
+                Swal.close();
+                console.error('❌ Erro:', err);
+                Swal.fire('Erro', err.message || 'Falha ao criar pedido no ERP', 'error');
+            });
         });
     })
     .catch(err => {
@@ -2629,6 +2410,7 @@ function gerarPedidoERP(pedidoAcertoId) {
         Swal.fire('Erro', err.message, 'error');
     });
 }
+
 function atualizarBotoesAcerto(status) {
     const btnIniciar = document.getElementById('btn-iniciar-acerto');
     const btnFinalizar = document.getElementById('btn-finalizar-acerto');
@@ -2690,7 +2472,7 @@ function mudarPagina(direcao) {
 }
 
 // ================================================================
-// ABRIR FOTO COM ZOOM - VERSÃO COMPLETA
+// ABRIR FOTO COM ZOOM
 // ================================================================
 function abrirZoomFoto(url, label) {
     if (!url) {
@@ -2698,7 +2480,6 @@ function abrirZoomFoto(url, label) {
         return;
     }
     
-    // Criar backdrop
     const backdrop = document.createElement('div');
     backdrop.id = 'zoom-backdrop';
     backdrop.style.cssText = `
@@ -2754,7 +2535,7 @@ function abrirZoomFoto(url, label) {
         errorMsg.innerHTML = `
             <i class="fa-regular fa-image" style="font-size: 3rem; display: block; margin-bottom: 16px;"></i>
             ❌ Imagem não disponível
-            <br><small style="font-size: 0.8rem; opacity: 0.7;">${label || 'Foto'}</small>
+            <br><small style="font-size: 0.8rem; opacity: 0.7;">${escapeHtml(label || 'Foto')}</small>
         `;
         container.insertBefore(errorMsg, container.firstChild);
     };
@@ -2771,7 +2552,7 @@ function abrirZoomFoto(url, label) {
         gap: 12px;
     `;
     caption.innerHTML = `
-        <span>${label || 'Foto'}</span>
+        <span>${escapeHtml(label || 'Foto')}</span>
         <button onclick="event.stopPropagation(); fecharZoom()" 
                 style="background: rgba(255,255,255,0.2); border: none; color: white; padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 0.85rem; transition: background 0.2s;"
                 onmouseover="this.style.background='rgba(255,255,255,0.3)'" 
@@ -2780,7 +2561,6 @@ function abrirZoomFoto(url, label) {
         </button>
     `;
     
-    // Controles de zoom
     const zoomControls = document.createElement('div');
     zoomControls.style.cssText = `
         position: absolute;
@@ -2872,14 +2652,12 @@ function abrirZoomFoto(url, label) {
     backdrop.appendChild(container);
     document.body.appendChild(backdrop);
     
-    // Fechar ao clicar no backdrop
     backdrop.onclick = (e) => {
         if (e.target === backdrop) {
             fecharZoom();
         }
     };
     
-    // Fechar com ESC
     const handleEsc = (e) => {
         if (e.key === 'Escape') {
             fecharZoom();
@@ -2938,7 +2716,6 @@ function showLoading(elementId) {
 }
 
 function hideLoading(elementId) {
-    // O loading será substituído pelo render
 }
 
 function showError(message) {
@@ -2950,7 +2727,7 @@ function showError(message) {
 }
 
 // ================================================================
-// TEMA CLARO/ESCURO - COM ATUALIZAÇÃO DA UI
+// TEMA CLARO/ESCURO
 // ================================================================
 function toggleTheme() {
     const html = document.documentElement;
@@ -2964,15 +2741,12 @@ function toggleTheme() {
         btn.className = newTheme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
     }
     
-    // 🔥 ATUALIZAR A UI DO ACERTO SE ESTIVER ABERTO
     const acertoContent = document.getElementById('acerto-conteudo');
     if (acertoContent && acertoContent.innerHTML.trim() !== '' && !acertoContent.innerHTML.includes('Carregando')) {
-        // Se o acerto estiver aberto, recarregar os dados
         const acertoNumero = document.getElementById('acerto-numero');
         if (acertoNumero && acertoNumero.textContent !== 'N/A') {
             const embarqueId = window.acertoAtual?.embarque_id;
             if (embarqueId) {
-                // Recarregar o acerto com o novo tema
                 abrirAcerto(embarqueId);
             }
         }
@@ -2994,7 +2768,6 @@ function initTheme() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('🚀 Inicializando Acerto de Embarque');
     
-    // Verificar autenticação
     const autenticado = verificarAutenticacao();
     if (!autenticado) return;
     
@@ -3006,8 +2779,392 @@ document.addEventListener('DOMContentLoaded', function() {
     }, 60000);
 });
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[character]));
+}
+
+function jsStringArg(value) {
+    return escapeHtml(JSON.stringify(String(value ?? '')));
+}
+
+function normalizarBusca(value) {
+    return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+function getConferenciaKey() {
+    return `frota:acerto:conferencia:${acertoAtual.embarque_id || 'sem-embarque'}`;
+}
+
+function getConferencias() {
+    try {
+        return JSON.parse(localStorage.getItem(getConferenciaKey()) || '[]');
+    } catch (error) {
+        return [];
+    }
+}
+
+function salvarConferencias(ids) {
+    localStorage.setItem(getConferenciaKey(), JSON.stringify([...new Set(ids.map(Number).filter(Boolean))]));
+}
+
+function isEntregaConferida(entregaId) {
+    return getConferencias().includes(Number(entregaId));
+}
+
+function getConferenciaResumo(embarqueId, totalEntregas) {
+    try {
+        const finalizadoTotal = localStorage.getItem(`frota:acerto:finalizado:${embarqueId}`) === '1';
+        const ids = JSON.parse(localStorage.getItem(`frota:acerto:conferencia:${embarqueId}`) || '[]');
+        if (finalizadoTotal) {
+            return { label: '✅ Conferido', class: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' };
+        }
+        if (!ids.length) return null;
+        return { label: `🟦 Conferido parcial ${ids.length}/${totalEntregas || '?'}`, class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' };
+    } catch (error) {
+        return null;
+    }
+}
+
+function isEmbarqueFinalizadoTotal(embarqueId) {
+    return localStorage.getItem(`frota:acerto:finalizado:${embarqueId || (acertoAtual.embarque_id || '')}`) === '1';
+}
+
+function atualizarResumoConferenciaModal() {
+    const total = document.querySelectorAll('#acerto-conteudo [data-entrega-card]').length;
+    const conferidos = document.querySelectorAll('#acerto-conteudo [data-entrega-card].is-conferido').length;
+    const badge = document.getElementById('acerto-status-badge');
+    if (badge && total) {
+        badge.style.display = 'inline-flex';
+        badge.className = 'acerto-header-status';
+        if (isEmbarqueFinalizadoTotal()) {
+            badge.textContent = '✅ Conferido';
+        } else {
+            badge.textContent = `Conferido parcial ${conferidos}/${total}`;
+        }
+    }
+}
+
+function marcarEntregaConferida(entregaId, button) {
+    const card = document.querySelector(`#acerto-conteudo [data-entrega-card][data-entrega-id="${entregaId}"]`);
+    const ids = getConferencias();
+    if (!ids.includes(Number(entregaId))) {
+        ids.push(Number(entregaId));
+        salvarConferencias(ids);
+    }
+    if (card) {
+        card.classList.add('is-conferido');
+        card.dataset.conferido = '1';
+        const heading = card.querySelector('.acerto-client-heading');
+        if (heading && !heading.querySelector('.acerto-conferido-tag')) {
+            heading.insertAdjacentHTML('beforeend', getConferidoTagHtml());
+        }
+    }
+    if (button) button.innerHTML = '<i class="fa-solid fa-check"></i> Pedido conferido';
+    atualizarResumoConferenciaModal();
+    filtrarEntregasAcerto();
+}
+
+function marcarEmbarqueConferido() {
+    const cards = Array.from(document.querySelectorAll('#acerto-conteudo [data-entrega-card]'));
+    if (!cards.length) {
+        showError('Nenhuma entrega encontrada para conferir.');
+        return;
+    }
+
+    const naoConferidas = cards.filter(card => card.dataset.conferido !== '1' && !card.classList.contains('is-conferido'));
+
+    const dados = window.acertoDadosAtual || {};
+    const pedidosAcerto = dados.pedidos_acerto || [];
+    const cardsComDivergenciaSemPedido = cards.filter(card => {
+        if (card.dataset.divergencia !== '1') return false;
+        const entregaId = Number(card.dataset.entregaId);
+        return !pedidosAcerto.some(p => Number(p.entrega_id) === entregaId);
+    });
+
+    if (naoConferidas.length > 0) {
+        const nomes = naoConferidas.slice(0, 5).map(c => c.dataset.cliente || '#' + c.dataset.entregaId).join(', ');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Entregas pendentes de conferência',
+            html: `Ainda há <b>${naoConferidas.length}</b> entrega(s) não conferida(s):<br><span style="font-size:13px;">${escapeHtml(nomes)}${naoConferidas.length > 5 ? '…' : ''}</span><br><br>Confira todos os clientes antes de finalizar o embarque.`,
+            confirmButtonText: 'Entendi'
+        });
+        return;
+    }
+
+    if (cardsComDivergenciaSemPedido.length > 0) {
+        const nomes = cardsComDivergenciaSemPedido.slice(0, 5).map(c => c.dataset.cliente || '#' + c.dataset.entregaId).join(', ');
+        Swal.fire({
+            icon: 'warning',
+            title: 'Divergências sem pedido gerado',
+            html: `Existe(m) <b>${cardsComDivergenciaSemPedido.length}</b> entrega(s) com divergência sem pedido de faltante/devolução criado:<br><span style="font-size:13px;">${escapeHtml(nomes)}${cardsComDivergenciaSemPedido.length > 5 ? '…' : ''}</span><br><br>Gere o pedido de acerto antes de concluir o "Conferido Total".`,
+            confirmButtonText: 'Entendi'
+        });
+        return;
+    }
+
+    Swal.fire({
+        icon: 'warning',
+        title: 'Confirmar Conferido Total?',
+        html: 'Todos os clientes deste embarque serão marcados como <b>conferidos</b>.<br><br>Esta ação <b>não possui estorno</b>. Deseja continuar?',
+        showCancelButton: true,
+        confirmButtonColor: '#16a34a',
+        confirmButtonText: 'Sim, concluir conferência',
+        cancelButtonText: 'Cancelar'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+        const ids = cards.map(card => Number(card.dataset.entregaId)).filter(Boolean);
+        salvarConferencias(ids);
+        cards.forEach(card => {
+            card.classList.add('is-conferido');
+            card.dataset.conferido = '1';
+            const heading = card.querySelector('.acerto-client-heading');
+            if (heading && !heading.querySelector('.acerto-conferido-tag')) {
+                heading.insertAdjacentHTML('beforeend', getConferidoTagHtml());
+            }
+        });
+        atualizarResumoConferenciaModal();
+        filtrarEntregasAcerto();
+
+        gerarComprovanteConferenciaTotal(dados, cards);
+    });
+}
+
 // ================================================================
-// EXPORTAÇÕES GLOBAIS (para uso inline no HTML)
+// COMPROVANTE DE CONFERÊNCIA TOTAL
+// ================================================================
+function gerarComprovanteConferenciaTotal(dados, cards) {
+    const dataAtual = new Date();
+    const dataFormatada = dataAtual.toLocaleDateString('pt-BR') + ' ' + dataAtual.toLocaleTimeString('pt-BR');
+    const motorista = dados.motorista_nome || dados.motorista || document.getElementById('acerto-header-motorista')?.textContent?.replace(/^[^A-Za-zÀ-ÿ0-9]*/, '') || 'N/A';
+    const veiculo = dados.veiculo_placa || dados.veiculo || document.getElementById('acerto-header-veiculo')?.textContent?.replace(/^[^A-Za-zÀ-ÿ0-9]*/, '') || 'N/A';
+    const numeroEmbarque = dados.numero_embarque || acertoAtual.embarque_id || 'N/A';
+
+    const linhas = cards.map(card => {
+        const cliente = escapeHtml(card.dataset.cliente || 'Cliente');
+        const pedidos = escapeHtml(card.dataset.pedidos || '');
+        const teveDivergencia = card.dataset.divergencia === '1';
+        return `
+            <tr>
+                <td>${cliente}</td>
+                <td>${pedidos}</td>
+                <td style="text-align:center;">${teveDivergencia ? '⚠️ Divergência' : '✅ OK'}</td>
+            </tr>
+        `;
+    }).join('');
+
+    const divergentes = cards.filter(c => c.dataset.divergencia === '1');
+    const observacoesHtml = divergentes.length > 0 ? `
+        <div class="comprovante-obs">
+            <strong>Observações de divergência:</strong>
+            <ul>
+                ${divergentes.map(c => `<li>${escapeHtml(c.dataset.cliente || '')} — pedido(s) ${escapeHtml(c.dataset.pedidos || '')} com divergência registrada e tratada via pedido de acerto.</li>`).join('')}
+            </ul>
+        </div>
+    ` : '';
+
+    const html = `
+        <div class="comprovante-conferencia">
+            <div class="comprovante-header">
+                <h2>Comprovante de Conferência de Embarque</h2>
+                <p>Embarque #${escapeHtml(String(numeroEmbarque))} — Emitido em ${dataFormatada}</p>
+            </div>
+            <div class="comprovante-dados">
+                <div><strong>Motorista:</strong> ${escapeHtml(motorista)}</div>
+                <div><strong>Veículo:</strong> ${escapeHtml(veiculo)}</div>
+                <div><strong>Total de entregas conferidas:</strong> ${cards.length}</div>
+                <div><strong>Divergências:</strong> ${divergentes.length}</div>
+            </div>
+            <table class="comprovante-tabela">
+                <thead>
+                    <tr><th>Cliente</th><th>Pedido(s)</th><th>Status</th></tr>
+                </thead>
+                <tbody>${linhas}</tbody>
+            </table>
+            ${observacoesHtml}
+            <p class="comprovante-declaracao">
+                Declaro que finalizei a entrega de todos os pedidos deste embarque, estando ciente das divergências
+                apontadas acima (quando houver), as quais foram tratadas por meio de pedido de acerto (faltante/devolução).
+            </p>
+            <div class="comprovante-assinatura">
+                <div class="linha-assinatura"></div>
+                <span>Assinatura do Motorista</span>
+            </div>
+        </div>
+    `;
+
+    const modalEl = document.getElementById('modalComprovanteConferencia');
+    const corpo = document.getElementById('comprovante-conferencia-corpo');
+    if (modalEl && corpo) {
+        corpo.innerHTML = html;
+        const modalInstance = new bootstrap.Modal(modalEl);
+        modalInstance.show();
+    } else {
+        const win = window.open('', '_blank');
+        win.document.write(`<html><head><title>Comprovante</title></head><body>${html}</body></html>`);
+        win.document.close();
+        win.print();
+    }
+}
+
+function imprimirComprovanteConferencia() {
+    const onAfterPrint = () => {
+        window.removeEventListener('afterprint', onAfterPrint);
+        finalizarAposComprovanteImpresso();
+    };
+    window.addEventListener('afterprint', onAfterPrint);
+    window.print();
+}
+
+// ================================================================
+// FINALIZA O EMBARQUE AUTOMATICAMENTE APÓS A IMPRESSÃO
+// ================================================================
+function finalizarAposComprovanteImpresso() {
+    const embarqueId = acertoAtual.embarque_id;
+    if (embarqueId) {
+        localStorage.setItem(`frota:acerto:finalizado:${embarqueId}`, '1');
+    }
+
+    const finalizarNoServidor = acertoAtual.id
+        ? fetchAuth(API_BASE + '/frota/acerto/' + acertoAtual.id + '/finalizar', {
+            method: 'POST',
+            body: JSON.stringify({ assinatura_gestor: null })
+        }).catch(err => {
+            console.warn('⚠️ Erro de rede ao finalizar acerto:', err);
+            return { success: false, error: err.message };
+        })
+        : Promise.resolve({ success: true });
+
+    finalizarNoServidor.then((response) => {
+        if (!response || response.success === false) {
+            const erroMsg = (response && response.error) || 'Não foi possível finalizar o acerto no servidor.';
+
+            if (embarqueId) {
+                localStorage.removeItem(`frota:acerto:finalizado:${embarqueId}`);
+            }
+
+            const modalComprovanteEl = document.getElementById('modalComprovanteConferencia');
+            if (modalComprovanteEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+                const inst = bootstrap.Modal.getInstance(modalComprovanteEl) || new bootstrap.Modal(modalComprovanteEl);
+                inst.hide();
+            }
+
+            Swal.fire({
+                icon: 'error',
+                title: 'Falha ao finalizar no servidor',
+                html: `
+                    <div style="text-align:left;">
+                        <p>O comprovante foi impresso, mas o acerto <b>não foi finalizado</b> no sistema.</p>
+                        <p style="font-size:0.85rem;color:#dc2626;background:#fef2f2;padding:8px;border-radius:8px;margin-top:8px;">
+                            ${escapeHtml(erroMsg)}
+                        </p>
+                        <p style="font-size:0.85rem;color:#64748b;margin-top:8px;">
+                            Resolva a pendência e clique em <b>Finalizar Acerto</b> novamente.
+                        </p>
+                    </div>
+                `,
+                confirmButtonText: 'OK',
+                confirmButtonColor: '#dc2626'
+            });
+
+            atualizarResumoConferenciaModal();
+            return;
+        }
+
+        acertoAtual.status = 'finalizado';
+        atualizarBotoesAcerto('finalizado');
+        atualizarResumoConferenciaModal();
+
+        const badge = document.getElementById('acerto-status-badge');
+        if (badge) {
+            badge.style.display = 'inline-flex';
+            badge.className = 'acerto-header-status';
+            badge.textContent = '✅ Conferido';
+        }
+
+        const modalComprovanteEl = document.getElementById('modalComprovanteConferencia');
+        if (modalComprovanteEl && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const inst = bootstrap.Modal.getInstance(modalComprovanteEl) || new bootstrap.Modal(modalComprovanteEl);
+            inst.hide();
+        }
+
+        Swal.fire({
+            icon: 'success',
+            title: 'Embarque conferido e finalizado!',
+            text: 'Comprovante impresso e status atualizado com sucesso.',
+            timer: 2500
+        });
+
+        fecharModalAcerto();
+        carregarEmbarquesParaAcerto(true);
+    });
+}
+
+function getConferidoTagHtml() {
+    return '<span class="acerto-conferido-tag"><i class="fa-solid fa-circle-check"></i> Conferido</span>';
+}
+
+function getCardOrder(card, termo, bateBusca) {
+    const baseOrder = Number(card.dataset.order || 0);
+    const conferido = card.dataset.conferido === '1' || card.classList.contains('is-conferido');
+    if (termo && bateBusca) {
+        return String((conferido ? 20000 : 0) + baseOrder);
+    }
+    return String((conferido ? 10000 : 0) + baseOrder);
+}
+
+function filtrarEntregasAcerto() {
+    const input = document.getElementById('acerto-busca-pedido');
+    const result = document.getElementById('acerto-pedido-resultado');
+    const termo = normalizarBusca(input?.value || '');
+    const filtroAtivo = document.querySelector('.acerto-conferencia-filters button.active')?.dataset.conferencia || 'todos';
+    const cards = Array.from(document.querySelectorAll('#acerto-conteudo [data-entrega-card]'));
+    if (!termo && filtroAtivo === 'todos') {
+        cards.forEach(card => {
+            card.hidden = false;
+            card.classList.remove('is-search-match');
+            card.classList.remove('is-search-dim');
+            card.style.order = getCardOrder(card, '', false);
+        });
+        if (result) {
+            result.hidden = true;
+            result.innerHTML = '';
+        }
+        return;
+    }
+    let encontrados = 0;
+    cards.forEach(card => {
+        const bateBusca = !termo || normalizarBusca(card.dataset.search || '').includes(termo);
+        const bateFiltro = filtroAtivo === 'todos' || card.dataset.conferencia === filtroAtivo;
+        card.hidden = !bateFiltro;
+        card.classList.toggle('is-search-match', Boolean(termo && bateBusca && bateFiltro));
+        card.classList.toggle('is-search-dim', Boolean(termo && !bateBusca && bateFiltro));
+        card.style.order = getCardOrder(card, termo, bateBusca);
+        if (bateBusca && bateFiltro) encontrados++;
+    });
+    if (result) {
+        result.hidden = false;
+        result.innerHTML = encontrados
+            ? `<div class="acerto-pedido-result-summary">${encontrados} entrega(s) localizada(s) nos dados carregados</div>`
+            : '<div class="acerto-pedido-result-summary">Nenhuma entrega carregada corresponde à busca.</div>';
+    }
+}
+
+function limparBuscaAcerto() {
+    const input = document.getElementById('acerto-busca-pedido');
+    if (input) input.value = '';
+    filtrarEntregasAcerto();
+    input?.focus();
+}
+
+function aplicarFiltroConferencia(tipo, button) {
+    document.querySelectorAll('.acerto-conferencia-filters button').forEach(item => item.classList.toggle('active', item === button));
+    filtrarEntregasAcerto();
+}
+
+// ================================================================
+// EXPORTAÇÕES GLOBAIS
 // ================================================================
 window.verDetalhesEntrega = verDetalhesEntrega;
 window.formatPeso = formatPeso;
@@ -3040,3 +3197,9 @@ window.getTimelineIconClass = getTimelineIconClass;
 window.atualizarBotoesAcerto = atualizarBotoesAcerto;
 window.showError = showError;
 window.fecharModalAcerto = fecharModalAcerto;
+window.filtrarEntregasAcerto = filtrarEntregasAcerto;
+window.limparBuscaAcerto = limparBuscaAcerto;
+window.aplicarFiltroConferencia = aplicarFiltroConferencia;
+window.marcarEntregaConferida = marcarEntregaConferida;
+window.marcarEmbarqueConferido = marcarEmbarqueConferido;
+window.imprimirComprovanteConferencia = imprimirComprovanteConferencia;

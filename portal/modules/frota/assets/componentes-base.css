@@ -1,0 +1,51 @@
+:root {
+    --fleet-brand: #17342c;
+    --fleet-brand-strong: #0f261f;
+    --fleet-accent: #2e8b68;
+    --fleet-accent-soft: #e8f4ef;
+    --fleet-warning: #d5a84b;
+    --fleet-danger: #c94b45;
+    --fleet-surface: #ffffff;
+    --fleet-page: #f4f7f3;
+    --fleet-border: #dfe8e1;
+    --fleet-text: #17342c;
+    --fleet-muted: #66756f;
+    --fleet-shadow: 0 8px 24px rgba(23, 52, 44, .07);
+}
+
+.frota-page-shell,
+.frota-shell,
+.fleet-page {
+    color: var(--fleet-text);
+}
+
+.fleet-section-heading {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.fleet-surface {
+    border: 1px solid var(--fleet-border);
+    border-radius: 12px;
+    background: var(--fleet-surface);
+    box-shadow: var(--fleet-shadow);
+}
+
+.fleet-empty-state,
+.fleet-error-state {
+    display: grid;
+    min-height: 160px;
+    place-items: center;
+    padding: 24px;
+    color: var(--fleet-muted);
+    text-align: center;
+}
+
+.fleet-error-state { color: var(--fleet-danger); }
+
+@media (max-width: 768px) {
+    .fleet-section-heading { display: grid; align-items: start; }
+    .fleet-surface { border-radius: 10px; }
+}

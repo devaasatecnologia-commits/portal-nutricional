@@ -10,6 +10,7 @@ $dotenv->load();
 
 // Timezone
 date_default_timezone_set($_ENV['TIMEZONE'] ?? 'America/Sao_Paulo');
+$environment = $_ENV['APP_ENV'] ?? 'production';
 
 // ======================================================================
 // Segredos obrigatorios: nunca usar valores conhecidos como fallback.

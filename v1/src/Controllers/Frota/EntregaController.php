@@ -46,8 +46,8 @@ class EntregaController
             $bindParams['cliente_id'] = (int)$params['cliente_id'];
         }
         if (!empty($params['data_inicio']) && !empty($params['data_fim'])) {
-            $filtros[] = "DATE(e.created_at) BETWEEN :data_inicio AND :data_fim";
-            $bindParams['data_inicio'] = $params['data_inicio'];
+            $filtros[] = "e.created_at >= :data_inicio AND e.created_at < (:data_fim::date + INTERVAL '1 day')";
+            $bindParams['data_inicio'] = $params['data_inicio'] . ' 00:00:00';
             $bindParams['data_fim'] = $params['data_fim'];
         }
         if (!empty($params['busca'])) {
@@ -103,7 +103,12 @@ class EntregaController
     $stmt->execute();
     $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-    $sqlCount = "SELECT COUNT(*) FROM frota_entrega e {$where}";
+    $sqlCount = "
+        SELECT COUNT(*)
+        FROM frota_entrega e
+        LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
+        {$where}
+    ";
     $stmtCount = $this->pdo->prepare($sqlCount);
     foreach ($bindParams as $key => $val) {
         $stmtCount->bindValue($key, $val);
@@ -338,8 +343,14 @@ class EntregaController
     {
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $operationId = $this->getOfflineOperationId($request, $input);
+        $previousOperation = $this->getOfflineOperation($operationId);
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
+        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
+        $desktop = (bool)($input['desktop'] ?? false);
         
         $entrega = $this->getEntrega($id);
         if (!$entrega) {
@@ -353,7 +364,6 @@ class EntregaController
             return $this->json($response, ['success' => false, 'error' => 'Esta entrega já foi concluída'], 400);
         }
         
-        $desktop = (bool)($input['desktop'] ?? false);
         $lat = (float)($input['latitude'] ?? 0);
         $lng = (float)($input['longitude'] ?? 0);
         
@@ -379,9 +389,12 @@ class EntregaController
             $distanciaMinima = $this->getConfig('distancia_minima_checkin_metros', 100);
             
             if ($distancia > $distanciaMinima) {
+                $distanciaFormatada = $distancia >= 1000
+                    ? number_format($distancia / 1000, 2, ',', '.') . ' km'
+                    : number_format($distancia, 0, ',', '.') . ' m';
                 return $this->json($response, [
                     'success' => false,
-                    'error' => "Você está a {$distancia}m do local de entrega. Distância máxima permitida: {$distanciaMinima}m.",
+                    'error' => "Você está a {$distanciaFormatada} do local de entrega. Distância máxima permitida: {$distanciaMinima} m.",
                     'distancia' => round($distancia, 0)
                 ], 400);
             }
@@ -436,7 +449,7 @@ class EntregaController
         // 🔥 LOG: usando registrarLogEntrega com usuarioId
         $this->registrarLogEntrega($id, 'checkin', "Check-in registrado para entrega #{$id}" . ($desktop ? ' (desktop)' : ''), $usuarioId);
         
-        return $this->json($response, [
+        $payload = [
             'success' => true,
             'message' => 'Check-in registrado com sucesso!',
             'data' => [
@@ -444,7 +457,9 @@ class EntregaController
                 'status' => 'em_entrega',
                 'horario_checkin' => date('Y-m-d H:i:s')
             ]
-        ]);
+        ];
+        $this->saveOfflineOperation($operationId, $id, 'checkin', $payload, 200);
+        return $this->json($response, $payload);
     }
     
   /**
@@ -455,6 +470,11 @@ public function checkout(Request $request, Response $response, array $args): Res
 {
     $id = (int)$args['id'];
     $input = json_decode($request->getBody()->getContents(), true) ?? [];
+    $operationId = $this->getOfflineOperationId($request, $input);
+    $previousOperation = $this->getOfflineOperation($operationId);
+    if ($previousOperation) {
+        return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
+    }
     $user = $request->getAttribute('user');
     $usuarioId = $user['idusuario'] ?? 0;
 
@@ -464,8 +484,30 @@ public function checkout(Request $request, Response $response, array $args): Res
     $nomeRecebedor = trim($input['nome_recebedor'] ?? '');
     $fotoRomaneioBase64 = $input['foto_romaneio'] ?? null;
     $checklist = $input['checklist'] ?? [];
-    $temFaltante = (bool)($input['tem_faltante'] ?? false);
-    $temDevolucao = (bool)($input['tem_devolucao'] ?? false);
+
+    // ================================================================
+    // Derivar $temFaltante / $temDevolucao do checklist — fonte da verdade
+    // é o que o motorista registrou. Não confiar no que o front alega,
+    // para evitar fraude ou bug de JS que mascare faltantes/devoluções.
+    // ================================================================
+    $temFaltante = false;
+    $temDevolucao = false;
+    foreach ($checklist as $itemCheck) {
+        $statusItem = $itemCheck['status'] ?? '';
+        if ($statusItem === 'faltante') $temFaltante = true;
+        if ($statusItem === 'devolvido') $temDevolucao = true;
+    }
+
+    // Log de divergência front/backend (diagnóstico)
+    $temFaltanteFront = (bool)($input['tem_faltante'] ?? false);
+    $temDevolucaoFront = (bool)($input['tem_devolucao'] ?? false);
+    if ($temFaltanteFront !== $temFaltante || $temDevolucaoFront !== $temDevolucao) {
+        error_log('[Checkout] Divergência front/backend: front faltante=' . var_export($temFaltanteFront, true)
+            . ', backend faltante=' . var_export($temFaltante, true)
+            . ' | front devolucao=' . var_export($temDevolucaoFront, true)
+            . ', backend devolucao=' . var_export($temDevolucao, true)
+            . ' | entrega_id=' . $id);
+    }
 
     $entrega = $this->getEntrega($id);
     if (!$entrega) {
@@ -485,6 +527,19 @@ public function checkout(Request $request, Response $response, array $args): Res
     }
     if (empty($nomeRecebedor)) {
         return $this->json($response, ['success' => false, 'error' => 'Nome do recebedor é obrigatório'], 400);
+    }
+    if (!$desktop && ($lat == 0 || $lng == 0)) {
+        return $this->json($response, ['success' => false, 'error' => 'GPS do dispositivo é obrigatório para finalizar a entrega'], 400);
+    }
+    if (!$desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
+        $distanciaCheckout = $this->calcularDistancia($lat, $lng, (float)$entrega['latitude'], (float)$entrega['longitude']);
+        $distanciaMaximaCheckout = (float)$this->getConfig('distancia_maxima_checkout_metros', 200);
+        if ($distanciaCheckout > $distanciaMaximaCheckout) {
+            $distanciaFormatada = $distanciaCheckout >= 1000
+                ? number_format($distanciaCheckout / 1000, 2, ',', '.') . ' km'
+                : number_format($distanciaCheckout, 0, ',', '.') . ' m';
+            return $this->json($response, ['success' => false, 'error' => "Você está a {$distanciaFormatada} do cliente. Aproxime-se para finalizar a entrega."], 400);
+        }
     }
     if (!$desktop && !empty($checklist)) {
         foreach ($checklist as $item) {
@@ -545,7 +600,7 @@ public function checkout(Request $request, Response $response, array $args): Res
         // Salvar foto do romaneio
         $fotoRomaneioUrl = $this->salvarFotoBase64($fotoRomaneioBase64, 'romaneio_' . $id);
 
-        // ATUALIZAR ENTREGA
+        // ATUALIZAR ENTREGA — status derivado do checklist (backend)
         $statusEntrega = ($temFaltante || $temDevolucao) ? 'entregue_com_problema' : 'entregue';
         $stmt = $this->pdo->prepare("
             UPDATE frota_entrega 
@@ -571,7 +626,7 @@ public function checkout(Request $request, Response $response, array $args): Res
         ]);
 
         // ================================================================
-        // SALVAR CHECKLIST - CORRIGIDO (coluna: foto_url)
+        // SALVAR CHECKLIST
         // ================================================================
         if (!empty($checklist)) {
             $stmt = $this->pdo->prepare("
@@ -629,6 +684,7 @@ public function checkout(Request $request, Response $response, array $args): Res
             $stmt->execute(['id' => $id]);
         }
 
+        // Registrar problema em frota_entrega_problema
         if ($temFaltante || $temDevolucao) {
             $tipoProblema = $temFaltante ? 'faltante' : 'devolucao';
             $stmtProblema = $this->pdo->prepare("
@@ -690,7 +746,7 @@ public function checkout(Request $request, Response $response, array $args): Res
 
         $this->pdo->commit();
 
-        return $this->json($response, [
+        $payload = [
             'success' => true,
             'message' => ($temFaltante || $temDevolucao) 
                 ? 'Entrega concluída com pendências (faltantes/devoluções). Embarque marcado como problema.' 
@@ -700,7 +756,9 @@ public function checkout(Request $request, Response $response, array $args): Res
                 'status' => $statusEntrega,
                 'embarque_status' => ($temFaltante || $temDevolucao) ? 'problema' : null
             ]
-        ]);
+        ];
+        $this->saveOfflineOperation($operationId, $id, 'checkout', $payload, 200);
+        return $this->json($response, $payload);
 
     } catch (\Exception $e) {
         $this->pdo->rollBack();
@@ -719,6 +777,11 @@ public function checkout(Request $request, Response $response, array $args): Res
     {
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $operationId = $this->getOfflineOperationId($request, $input);
+        $previousOperation = $this->getOfflineOperation($operationId);
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
+        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         
@@ -802,7 +865,7 @@ public function checkout(Request $request, Response $response, array $args): Res
         // 🔥 LOG: usando registrarLog (para embarque) com usuarioId
         $this->registrarLog($entrega['embarque_id'] ?? 0, 'falha', "Falha na entrega #{$id}: {$motivo}", $usuarioId);
         
-        return $this->json($response, [
+        $payload = [
             'success' => true,
             'message' => 'Falha registrada com sucesso',
             'data' => [
@@ -811,7 +874,9 @@ public function checkout(Request $request, Response $response, array $args): Res
                 'tentativas' => $tentativas,
                 'proxima_tentativa' => $proximaTentativa
             ]
-        ]);
+        ];
+        $this->saveOfflineOperation($operationId, $id, 'falha', $payload, 200);
+        return $this->json($response, $payload);
     }
     
     /**
@@ -1124,6 +1189,76 @@ public function checkout(Request $request, Response $response, array $args): Res
         } catch (\Exception $e) {
             error_log('Erro ao registrar log (entrega): ' . $e->getMessage());
         }
+    }
+
+    private function getOfflineOperationId(Request $request, array $input): ?string
+    {
+        $operationId = trim($input['operation_id'] ?? $request->getHeaderLine('X-Offline-Operation-Id'));
+        return $operationId !== '' ? substr($operationId, 0, 160) : null;
+    }
+
+    private function getOfflineOperation(?string $operationId): ?array
+    {
+        if (!$operationId) return null;
+
+        try {
+            if (!$this->offlineOperationTableExists()) return null;
+            $stmt = $this->pdo->prepare("
+                SELECT response_body, status_code
+                FROM frota_operacao_offline
+                WHERE operation_id = :operation_id
+            ");
+            $stmt->execute(['operation_id' => $operationId]);
+            $operation = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$operation) return null;
+
+            return [
+                'response' => json_decode($operation['response_body'], true) ?? [],
+                'status_code' => (int)$operation['status_code']
+            ];
+        } catch (\Throwable $exception) {
+            error_log('Idempotência offline indisponível: ' . $exception->getMessage());
+            return null;
+        }
+    }
+
+    private function saveOfflineOperation(?string $operationId, int $entregaId, string $acao, array $payload, int $statusCode): void
+    {
+        if (!$operationId) return;
+
+        try {
+            if (!$this->offlineOperationTableExists()) return;
+            $stmt = $this->pdo->prepare("
+                INSERT INTO frota_operacao_offline
+                    (operation_id, entrega_id, acao, response_body, status_code, created_at)
+                VALUES
+                    (:operation_id, :entrega_id, :acao, :response_body, :status_code, NOW())
+                ON CONFLICT (operation_id) DO NOTHING
+            ");
+            $stmt->execute([
+                'operation_id' => $operationId,
+                'entrega_id' => $entregaId,
+                'acao' => $acao,
+                'response_body' => json_encode($payload, JSON_UNESCAPED_UNICODE),
+                'status_code' => $statusCode
+            ]);
+        } catch (\Throwable $exception) {
+            error_log('Não foi possível persistir operação offline: ' . $exception->getMessage());
+        }
+    }
+
+    private function offlineOperationTableExists(): bool
+    {
+        static $available;
+        if ($available !== null) return $available;
+
+        try {
+            $available = (bool)$this->pdo->query("SELECT to_regclass('public.frota_operacao_offline')")->fetchColumn();
+        } catch (\Throwable $exception) {
+            $available = false;
+        }
+
+        return $available;
     }
 
 

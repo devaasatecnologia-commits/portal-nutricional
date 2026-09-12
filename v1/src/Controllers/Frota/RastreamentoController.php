@@ -657,6 +657,29 @@ class RastreamentoController
             'timestamp' => date('Y-m-d H:i:s')
         ]);
     }
+
+        /**
+     * Recupera o JWT_SECRET de forma segura.
+     * Nunca cai em fallback hardcoded — se não estiver configurado, lança exceção.
+     */
+    private function getJwtSecret(): string
+    {
+        $secret = $_ENV['JWT_SECRET']
+            ?? getenv('JWT_SECRET')
+            ?? '';
+
+        $secret = is_string($secret) ? trim($secret) : '';
+
+        if ($secret === '' || $secret === 'chave_super_secreta') {
+            throw new \RuntimeException('JWT_SECRET não configurado ou usando valor padrão inseguro.');
+        }
+
+        if (strlen($secret) < 32) {
+            error_log('[Rastreamento] AVISO: JWT_SECRET tem menos de 32 caracteres. Recomendado >= 32.');
+        }
+
+        return $secret;
+    }
     
     /**
      * GET /v1/frota/rastreamento/websocket/token
@@ -666,23 +689,41 @@ class RastreamentoController
     {
         $user = $request->getAttribute('user');
         $userId = $user['idusuario'] ?? 0;
-        
+
         if (!$userId) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Usuário não autenticado'
             ], 401);
         }
-        
+
+        try {
+            $secret = $this->getJwtSecret();
+        } catch (\RuntimeException $e) {
+            error_log('[Rastreamento] JWT_SECRET ausente: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Configuração de segurança indisponível. Contate o administrador.'
+            ], 500);
+        }
+
         // Gerar token JWT para WebSocket
         $payload = [
             'uid' => $userId,
             'type' => 'websocket',
             'exp' => time() + 3600 // 1 hora
         ];
-        
-        $token = \Firebase\JWT\JWT::encode($payload, $_ENV['JWT_SECRET'] ?? 'chave_super_secreta', 'HS256');
-        
+
+        try {
+            $token = \Firebase\JWT\JWT::encode($payload, $secret, 'HS256');
+        } catch (\Exception $e) {
+            error_log('[Rastreamento] Falha ao gerar JWT: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Não foi possível gerar o token de conexão.'
+            ], 500);
+        }
+
         return $this->json($response, [
             'success' => true,
             'data' => [

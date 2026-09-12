@@ -1,4 +1,7 @@
 <?php
+// 🔥 ERROR CATCHER - carrega ANTES de tudo para capturar qualquer erro
+require_once __DIR__ . '/error-catcher.php';
+
 /**
  * GATEWAY HÍBRIDO NUTRICIONAL
  * 
@@ -81,9 +84,6 @@ if (strpos($routePath, '/portal/') === 0) {
 
 // ------------------------------------------------------------
 // 2. ENCAMINHA PARA A NOVA API (Slim)
-//    - /v1/*  → API REST protegida
-//    - /ping  → Ping público
-//    - /auth  → Autenticação
 // ------------------------------------------------------------
 if (strpos($routePath, '/v1/') === 0 ||
     $routePath === '/ping' ||
@@ -92,7 +92,6 @@ if (strpos($routePath, '/v1/') === 0 ||
     $routePath === '/swagger' ||
     $routePath === '/swagger-ui') {
     
-    // Definir constantes para a API
     define('BASE_PATH', __DIR__);
     define('APP_ENV', $environment);
     
