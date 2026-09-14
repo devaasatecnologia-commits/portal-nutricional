@@ -561,11 +561,11 @@ async function salvarMeta() {
     Swal.fire({ title: 'Salvando...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
     
     try {
-        let url = '/v1/meta-builder/instancias';
-        let method = 'POST';
-        
-        // Se tiver ID, é edição (mas o endpoint atual não suporta PUT para instâncias)
-        // Vamos usar POST mesmo para criar sempre que for novo
+        const url = id
+            ? `/v1/meta-builder/instancias/${encodeURIComponent(id)}`
+            : '/v1/meta-builder/instancias';
+        const method = id ? 'PUT' : 'POST';
+
         const body = {
             id_tipo_meta: idTipoMeta,
             titulo: titulo,
@@ -577,7 +577,7 @@ async function salvarMeta() {
         };
         
         const resp = await fetch(url, {
-            method: 'POST',
+            method: method,
             headers: {
                 'Authorization': 'Bearer ' + token,
                 'Content-Type': 'application/json'

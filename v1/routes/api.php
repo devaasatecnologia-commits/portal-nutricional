@@ -862,6 +862,8 @@ $protected->group('/meta-builder', function ($group) {
     $group->get('/tipos/{id}', [$controller, 'getTipoMeta']);
     $group->put('/tipos/{id}', [$controller, 'atualizarTipoMeta']);
     $group->post('/instancias', [$controller, 'criarInstanciaMeta']);
+    $group->get('/instancias', [$controller, 'getMetas']);
+    $group->put('/instancias/{id}', [$controller, 'atualizarInstanciaMeta']);
     $group->get('/instancias/ativas', [$controller, 'getMetasAtivas']);
     $group->post('/alimentar', [$controller, 'alimentarMeta']);
     $group->get('/alimentacao/{id}', [$controller, 'getAlimentacaoPorMeta']);

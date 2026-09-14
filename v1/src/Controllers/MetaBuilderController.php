@@ -106,6 +106,80 @@ public function criarInstanciaMeta(Request $request, Response $response): Respon
         ], 500);
     }
 }
+
+/**
+ * PUT /v1/meta-builder/instancias/{id}
+ * Atualiza uma instância de meta existente
+ */
+public function atualizarInstanciaMeta(Request $request, Response $response, array $args): Response
+{
+    $id = (int)($args['id'] ?? 0);
+    $input = json_decode($request->getBody()->getContents(), true) ?? [];
+
+    try {
+        $idTipoMeta = (int)($input['id_tipo_meta'] ?? 0);
+        $titulo = trim($input['titulo'] ?? '');
+        $descricao = $input['descricao'] ?? '';
+        $dataInicio = $input['data_inicio'] ?? date('Y-m-d');
+        $dataFim = !empty($input['data_fim']) ? $input['data_fim'] : null;
+        $status = $input['status'] ?? 'ativa';
+        $campos = $input['campos'] ?? [];
+
+        if (!$id || !$idTipoMeta || !$titulo) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'ID, tipo de meta e título são obrigatórios'
+            ], 400);
+        }
+
+        if (!in_array($status, ['ativa', 'pausada', 'concluida', 'cancelada'], true)) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Status da meta inválido'
+            ], 400);
+        }
+
+        $valoresMeta = [];
+        foreach ($campos as $campo) {
+            $nome = $campo['nome'] ?? '';
+            if ($nome) {
+                $valoresMeta[$nome] = $campo['valor'] ?? 0;
+            }
+        }
+
+        $stmt = $this->pdo->prepare("\n            UPDATE mkt_metas_instancias\n            SET id_tipo_meta = :id_tipo,\n                titulo = :titulo,\n                descricao = :descricao,\n                data_inicio = :inicio,\n                data_fim = :fim,\n                status = :status,\n                valores = :valores::jsonb\n            WHERE id = :id\n        ");
+        $stmt->execute([
+            'id' => $id,
+            'id_tipo' => $idTipoMeta,
+            'titulo' => $titulo,
+            'descricao' => $descricao,
+            'inicio' => $dataInicio,
+            'fim' => $dataFim,
+            'status' => $status,
+            'valores' => json_encode($valoresMeta)
+        ]);
+
+        if ($stmt->rowCount() === 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Meta não encontrada'
+            ], 404);
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'id' => $id,
+            'message' => 'Meta atualizada com sucesso!'
+        ]);
+    } catch (\Exception $e) {
+        error_log('Erro em atualizarInstanciaMeta: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => $e->getMessage()
+        ], 500);
+    }
+}
+
 /**
  * DELETE /v1/meta-builder/tipos/{id}
  * Exclui um tipo de meta e seus campos
@@ -388,6 +462,42 @@ public function atualizarTipoMeta(Request $request, Response $response, array $a
             // Em caso de erro, retorna array vazio para não quebrar o front
             error_log('Erro em getMetasAtivas: ' . $e->getMessage());
             return $this->json($response, ['success' => true, 'data' => []]);
+        }
+    }
+
+    /**
+     * GET /v1/meta-builder/instancias
+     * Lista instâncias de meta de todos os status
+     */
+    public function getMetas(Request $request, Response $response): Response
+    {
+        try {
+            $stmt = $this->pdo->query("
+                SELECT mi.*,
+                COALESCE(tm.nome, 'Meta Padrão') as tipo_nome,
+                COALESCE(tm.icone, 'fa-bullseye') as icone,
+                COALESCE(tm.cor, 'emerald') as cor
+                FROM mkt_metas_instancias mi
+                LEFT JOIN mkt_tipos_meta tm ON tm.id = mi.id_tipo_meta
+                ORDER BY mi.data_fim ASC NULLS LAST
+            ");
+            $metas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmtCampos = $this->pdo->prepare("
+                SELECT * FROM mkt_tipos_campos
+                WHERE id_tipo_meta = :id_tipo_meta
+                ORDER BY ordem ASC
+            ");
+
+            foreach ($metas as &$meta) {
+                $stmtCampos->execute(['id_tipo_meta' => $meta['id_tipo_meta']]);
+                $meta['campos'] = $stmtCampos->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            return $this->json($response, ['success' => true, 'data' => $metas]);
+        } catch (\Exception $e) {
+            error_log('Erro em getMetas: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => $e->getMessage()], 500);
         }
     }
     

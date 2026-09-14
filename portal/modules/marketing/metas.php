@@ -684,7 +684,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
 async carregarMetas() {
     try {
-        const resp = await this.fetchWithAuth('/v1/meta-builder/instancias/ativas');
+        const resp = await this.fetchWithAuth('/v1/meta-builder/instancias');
         const data = await resp.json();
 
         if (data.success && data.data) {
