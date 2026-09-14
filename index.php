@@ -1,6 +1,8 @@
 <?php
-// 🔥 ERROR CATCHER - carrega ANTES de tudo para capturar qualquer erro
-require_once __DIR__ . '/error-catcher.php';
+$errorCatcherPath = __DIR__ . '/error-catcher.php';
+if (is_file($errorCatcherPath)) {
+    require_once $errorCatcherPath;
+}
 
 /**
  * GATEWAY HÍBRIDO NUTRICIONAL
