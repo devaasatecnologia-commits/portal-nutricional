@@ -1,12 +1,61 @@
 // ==========================================================================
 // MÓDULO DE SEPARAÇÃO (COLETOR OFICIAL)
 // ==========================================================================
+(function() {
 
 // Tokens devem existir somente no ambiente do servidor; o portal usa JWT.
 var API_TOKEN = '';
 
-// Estado específico da separação (usa AppState global)
-const state = AppState;
+const state = typeof AppState !== 'undefined' ? AppState : {
+    embarque: '',
+    ordem: 'ASC',
+    itens: [],
+    embarquesDisponiveis: [],
+    resumo: {}
+};
+
+let scanner = null;
+let isProcessing = false;
+
+const getUserId = typeof window.getUserId === 'function'
+    ? window.getUserId
+    : function() {
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        return document.getElementById('user_id')?.value || userData.uid || '0';
+    };
+
+const apiFetch = typeof window.apiFetch === 'function'
+    ? window.apiFetch
+    : async function(acao, metodo = 'GET', body = null) {
+        let url = 'https://api.nutricionalbr.com/' + acao.replace(/^\/+/, '');
+        const options = { method: metodo, headers: {} };
+        const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+
+        if (token) options.headers.Authorization = 'Bearer ' + token;
+
+        if (metodo === 'GET' && body) {
+            url += '?' + new URLSearchParams(body).toString();
+        } else if (body) {
+            options.headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+
+        const response = await fetch(url, options);
+        const text = await response.text();
+        let data = {};
+
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch (error) {
+            data = { error: text || 'Resposta inválida do servidor' };
+        }
+
+        if (!response.ok) {
+            throw new Error(data.error || `Erro ${response.status}`);
+        }
+
+        return data;
+    };
 
 
 // ==========================================================================
@@ -436,3 +485,4 @@ window.selecionarEmbarqueManual = selecionarEmbarqueManual;
 window.alterarOrdem = alterarOrdem;
 window.toggleCamera = toggleCamera;
 window.finalizarSeparacao = finalizarSeparacao;
+})();

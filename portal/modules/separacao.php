@@ -11,6 +11,8 @@ $extraCss = '
 require_once __DIR__ . '/../estrutura/header.php';
 ?>
 
+<script src="<?= asset('/portal/assets/js/core.js') ?>"></script>
+
 <input type="hidden" id="user_id" value="<?= $_SESSION['uid'] ?? 0 ?>">
 <input type="hidden" id="user_nome" value="<?= $_SESSION['uname'] ?? 'Operador' ?>">
 

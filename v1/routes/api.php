@@ -1011,7 +1011,10 @@ $protected->group('/admin', function ($group) {
     $group->get('/modulos', [$controller, 'getModulos']);
     $group->post('/modulos', [$controller, 'salvarModulo']);
     $group->get('/usuarios', [$controller, 'getUsuarios']);
+    $group->get('/usuarios/lista-completa', [$controller, 'getListaCompletaUsuarios']);
     $group->get('/usuarios/{id}/permissoes', [$controller, 'getPermissoesUsuario']);
+    $group->get('/usuarios/{id}/visualizacao', [$controller, 'getVisualizacao']);
+    $group->post('/usuarios/visualizacao', [$controller, 'salvarVisualizacao']);
     $group->post('/usuarios/{id}/toggle', [$controller, 'toggleUsuario']);
     $group->post('/usuarios/editar', [$controller, 'editarUsuario']);
     $group->post('/upload-foto', [new AdminController(), 'uploadFotoPerfil']);
