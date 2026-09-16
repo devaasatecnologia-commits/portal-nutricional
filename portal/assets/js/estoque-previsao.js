@@ -24,13 +24,18 @@ const estoquePrevisaoApp = {
     // ==========================================================================
     formatarUrlImagem(path_foto_master) {
         if (!path_foto_master) return null;
-        
-        // Extrai a parte após "Fotos para o Site\"
-        const imgPath = path_foto_master.split('Fotos para o Site\\')[1];
-        if (!imgPath) return null;
-        
-        // Substitui espaços por %20 e concatena com a URL base
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20');
+
+        const normalized = String(path_foto_master).trim().replace(/\\/g, '/');
+        if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return null;
+        if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
+
+        const marker = 'Fotos para o Site/';
+        const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+        if (markerIndex < 0) return null;
+
+        const relativePath = normalized.substring(markerIndex + marker.length)
+            .split('/').map(segment => encodeURIComponent(segment)).join('/');
+        return relativePath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath : null;
     },
     
     async init() {

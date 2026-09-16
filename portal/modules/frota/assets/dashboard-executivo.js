@@ -1,11 +1,12 @@
 (() => {
     const state = { charts: {}, map: null, heat: null };
+    const apiBase = window.API_URL || '/v1';
     const endpoints = {
-        kpis: '/v1/frota/dashboard/kpis',
-        problemas: '/v1/frota/dashboard/kpis-problemas',
-        graficos: '/v1/frota/dashboard/graficos',
-        mapa: '/v1/frota/dashboard/mapa',
-        acertos: '/v1/frota/acerto/embarques?pagina=1&limite=1000'
+        kpis: `${apiBase}/frota/dashboard/kpis`,
+        problemas: `${apiBase}/frota/dashboard/kpis-problemas`,
+        graficos: `${apiBase}/frota/dashboard/graficos`,
+        mapa: `${apiBase}/frota/dashboard/mapa`,
+        acertos: `${apiBase}/frota/acerto/embarques?pagina=1&limite=100`
     };
 
     function token() { return localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || ''; }
@@ -18,6 +19,12 @@
     }
     const number = value => new Intl.NumberFormat('pt-BR').format(Number(value || 0));
     const percent = value => `${Number(value || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+    const escapeHtml = value => String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
 
     function fillKpis(kpis, problemas, acertos) {
         document.getElementById('kpi-entregas').textContent = number(kpis.entregas_hoje);
@@ -48,7 +55,7 @@
     function renderRanking(items) {
         const target = document.getElementById('ranking-motoristas');
         if (!items || !items.length) { target.innerHTML = '<div class="empty-state">Nenhum dado de performance disponível.</div>'; return; }
-        target.innerHTML = items.slice(0, 5).map((item, index) => `<div class="ranking-row"><span class="rank-number">${String(index + 1).padStart(2, '0')}</span><div><div class="ranking-name">${item.nome || 'Motorista'}</div><div class="ranking-meta">${number(item.total_faturado)} em entregas</div></div><strong class="ranking-value">${number(item.total_entregas)}</strong></div>`).join('');
+        target.innerHTML = items.slice(0, 5).map((item, index) => `<div class="ranking-row"><span class="rank-number">${String(index + 1).padStart(2, '0')}</span><div><div class="ranking-name">${escapeHtml(item.nome || 'Motorista')}</div><div class="ranking-meta">${number(item.total_faturado)} em entregas</div></div><strong class="ranking-value">${number(item.total_entregas)}</strong></div>`).join('');
     }
     function renderMap(items) {
         if (!state.map) state.map = L.map('mapa-frota', { zoomControl: true }).setView([-15.78, -47.93], 4);

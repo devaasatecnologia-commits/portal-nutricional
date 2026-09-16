@@ -11,8 +11,32 @@ class SeparacaoController
     public function __construct() {
         $this->pdo = \getPDO();
     }
+
+    private function json(Response $response, array $data, int $status = 200): Response
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
+        return $response
+            ->withStatus($status)
+            ->withHeader('Content-Type', 'application/json; charset=utf-8')
+            ->withHeader('Cache-Control', 'no-store');
+    }
+
+    private function validarAcesso(Request $request, Response $response): ?Response
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $permitido = (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('separacao', $permissoes, true);
+
+        return $permitido
+            ? null
+            : $this->json($response, ['error' => 'Acesso não autorizado ao módulo Separação'], 403);
+    }
     
     public function getEmbarquesPendentes(Request $request, Response $response): Response {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         try {
             $stmt = $this->pdo->prepare("
                 SELECT DISTINCT 
@@ -42,6 +66,8 @@ class SeparacaoController
     
 public function getItens(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = $args['idembarque'] ?? 0;
     $ordem = $request->getQueryParams()['ordem'] ?? 'ASC';
     
@@ -132,13 +158,15 @@ public function getItens(Request $request, Response $response, array $args): Res
 
     public function confirmarItem(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $input = json_decode($request->getBody()->getContents(), true) ?? [];
     $iditem = (int)($input['iditem'] ?? 0);
     $idembarque = (int)($input['idembarque'] ?? 0);
     $qt_lida = round((float)($input['qtd'] ?? 0), 4);
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
 
-    if ($iditem <= 0 || $idembarque <= 0 || $qt_lida <= 0) {
+    if ($iditem <= 0 || $idembarque <= 0 || $qt_lida <= 0 || $idusuario <= 0) {
         $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
         return $response->withStatus(400);
     }
@@ -146,17 +174,23 @@ public function getItens(Request $request, Response $response, array $args): Res
     try {
         $this->pdo->beginTransaction();
 
-        $stmtStatus = $this->pdo->prepare("
-            INSERT INTO embarque_status_log (idembarque, status_atual, data_inicio, idusuario)
-            VALUES (?, 'SEPARACAO', NOW(), ?)
-            ON CONFLICT (idembarque) 
-            DO UPDATE SET status_atual = 'SEPARACAO', idusuario = EXCLUDED.idusuario 
-            WHERE embarque_status_log.status_atual = 'PENDENTE'
+        $stmtEmbarque = $this->pdo->prepare("
+            SELECT idembarque
+            FROM embarque_pedido
+            WHERE idembarque = ?
+              AND pex_conferido = 'N'
+              AND gerou_nf = 'S'
+              AND idfilial IN (1, 6)
+            FOR UPDATE
         ");
-        $stmtStatus->execute([$idembarque, $idusuario]);
+        $stmtEmbarque->execute([$idembarque]);
+        if (!$stmtEmbarque->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não disponível para separação'], 409);
+        }
 
         $stmtPedidos = $this->pdo->prepare("
-            SELECT DISTINCT pi.idpedido, pi.iditempedido, pi.qt, 
+            SELECT pi.idpedido, pi.iditempedido, pi.qt,
                 COALESCE((
                     SELECT SUM(qt_separada) FROM pedido_item_logistica 
                     WHERE idpedido = pi.idpedido 
@@ -168,13 +202,40 @@ public function getItens(Request $request, Response $response, array $args): Res
             JOIN pedido p ON p.idpedido = pi.idpedido
             WHERE p.idembarque = ? AND pi.iditem = ? AND pi.ativo = 'S'
             ORDER BY pi.idpedido ASC
+            FOR UPDATE OF pi
         ");
         $stmtPedidos->execute([$idembarque, $idembarque, $iditem]);
         $pedidos = $stmtPedidos->fetchAll();
 
         if (!$pedidos) {
-            throw new \Exception("Nenhum item pendente encontrado.");
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item não encontrado no embarque'], 404);
         }
+
+        $quantidadePendente = array_reduce($pedidos, function ($total, $pedido) {
+            return $total + max(0, round((float)$pedido['qt'] - (float)$pedido['ja_separado'], 4));
+        }, 0.0);
+
+        if ($quantidadePendente <= 0.0001) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item já foi totalmente separado'], 409);
+        }
+        if ($qt_lida > $quantidadePendente + 0.0001) {
+            $this->pdo->rollBack();
+            return $this->json($response, [
+                'error' => 'Quantidade informada é maior que o saldo pendente',
+                'saldo_pendente' => round($quantidadePendente, 4),
+            ], 422);
+        }
+
+        $stmtStatus = $this->pdo->prepare("
+            INSERT INTO embarque_status_log (idembarque, status_atual, data_inicio, idusuario)
+            VALUES (?, 'SEPARACAO', NOW(), ?)
+            ON CONFLICT (idembarque)
+            DO UPDATE SET status_atual = 'SEPARACAO', idusuario = EXCLUDED.idusuario
+            WHERE embarque_status_log.status_atual = 'PENDENTE'
+        ");
+        $stmtStatus->execute([$idembarque, $idusuario]);
 
         $resto = $qt_lida;
         foreach ($pedidos as $p) {
@@ -214,25 +275,44 @@ public function getItens(Request $request, Response $response, array $args): Res
 
 public function estornarItem(Request $request, Response $response, array $args): Response
 {
-    $iditem = (int)$args['iditem'];
-    $idembarque = (int)$args['idembarque'];
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
+    $iditem = (int)($args['iditem'] ?? 0);
+    $idembarque = (int)($args['idembarque'] ?? 0);
+
+    if ($iditem <= 0 || $idembarque <= 0) {
+        return $this->json($response, ['error' => 'Dados inválidos'], 400);
+    }
 
     try {
         $this->pdo->beginTransaction();
-        $check = $this->pdo->prepare("SELECT SUM(qt_carregada) FROM pedido_item_carregamento WHERE iditem = ? AND idembarque = ?");
+
+        $lock = $this->pdo->prepare("SELECT idembarque FROM embarque_pedido WHERE idembarque = ? FOR UPDATE");
+        $lock->execute([$idembarque]);
+        if (!$lock->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não encontrado'], 404);
+        }
+
+        $check = $this->pdo->prepare("SELECT COALESCE(SUM(qt_carregada), 0) FROM pedido_item_carregamento WHERE iditem = ? AND idembarque = ?");
         $check->execute([$iditem, $idembarque]);
         if ((float)$check->fetchColumn() > 0) {
-            throw new \Exception("Item já carregado, não pode estornar separação.");
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item já carregado, não pode estornar separação'], 409);
         }
 
         $sql = "DELETE FROM pedido_item_logistica WHERE iditem = ? AND idembarque = ? AND iditempedido IN (
                     SELECT pi.iditempedido FROM pedido_item pi JOIN pedido p ON p.idpedido = pi.idpedido WHERE p.idembarque = ? AND pi.iditem = ?
                 )";
-        $this->pdo->prepare($sql)->execute([$iditem, $idembarque, $idembarque, $iditem]);
+        $delete = $this->pdo->prepare($sql);
+        $delete->execute([$iditem, $idembarque, $idembarque, $iditem]);
+        if ($delete->rowCount() === 0) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item separado não encontrado'], 404);
+        }
+
         $this->pdo->commit();
-        $payload = json_encode(['success' => true]);
-        $response->getBody()->write($payload);
-        return $response->withHeader('Content-Type', 'application/json');
+        return $this->json($response, ['success' => true]);
     } catch (\Exception $e) {
         if ($this->pdo->inTransaction()) $this->pdo->rollBack();
         $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
@@ -242,12 +322,73 @@ public function estornarItem(Request $request, Response $response, array $args):
 
 public function finalizarSeparacao(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = (int)$args['idembarque'];
-    $input = json_decode($request->getBody()->getContents(), true) ?? [];
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
+
+    if ($idembarque <= 0 || $idusuario <= 0) {
+        return $this->json($response, ['error' => 'Dados inválidos'], 400);
+    }
     
     try {
         $this->pdo->beginTransaction();
+
+        $stmtEmbarque = $this->pdo->prepare("
+            SELECT idembarque
+            FROM embarque_pedido
+            WHERE idembarque = ?
+              AND pex_conferido = 'N'
+              AND gerou_nf = 'S'
+              AND idfilial IN (1, 6)
+            FOR UPDATE
+        ");
+        $stmtEmbarque->execute([$idembarque]);
+        if (!$stmtEmbarque->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não disponível para finalização'], 409);
+        }
+
+        $stmtLockItens = $this->pdo->prepare("
+            SELECT pi.iditempedido
+            FROM pedido_item pi
+            JOIN pedido p ON p.idpedido = pi.idpedido
+            WHERE p.idembarque = ? AND pi.ativo = 'S'
+            FOR UPDATE OF pi
+        ");
+        $stmtLockItens->execute([$idembarque]);
+        if (!$stmtLockItens->fetchAll()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não possui itens ativos'], 409);
+        }
+
+        $stmtPendencias = $this->pdo->prepare("
+            SELECT COUNT(*)
+            FROM pedido_item pi
+            JOIN pedido p ON p.idpedido = pi.idpedido
+            WHERE p.idembarque = :idembarque
+              AND pi.ativo = 'S'
+              AND COALESCE((
+                  SELECT SUM(logistica.qt_separada)
+                  FROM pedido_item_logistica logistica
+                  WHERE logistica.idpedido = pi.idpedido
+                    AND logistica.iditempedido = pi.iditempedido
+                    AND logistica.iditem = pi.iditem
+                    AND logistica.idembarque = :idembarque_log
+              ), 0) < pi.qt - 0.0001
+        ");
+        $stmtPendencias->execute([
+            'idembarque' => $idembarque,
+            'idembarque_log' => $idembarque,
+        ]);
+        $itensPendentes = (int)$stmtPendencias->fetchColumn();
+        if ($itensPendentes > 0) {
+            $this->pdo->rollBack();
+            return $this->json($response, [
+                'error' => 'Existem itens pendentes de separação',
+                'itens_pendentes' => $itensPendentes,
+            ], 409);
+        }
         
         // ✅ Atualiza status_log para CONCLUIDO
         $stmt = $this->pdo->prepare("
@@ -280,6 +421,8 @@ public function finalizarSeparacao(Request $request, Response $response, array $
  */
 public function getResumo(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = (int)($args['idembarque'] ?? 0);
     
     if ($idembarque <= 0) {

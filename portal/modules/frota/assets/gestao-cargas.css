@@ -589,4 +589,261 @@
 .perfil-embarque-item { display: flex; justify-content: space-between; align-items: center; gap: 12px; border: 1px solid var(--nutri-border); border-radius: 10px; padding: 10px 14px; cursor: pointer; flex-wrap: wrap; }
 .perfil-embarque-item:hover { background: rgba(var(--nutri-primary-rgb), .05); }
 .perfil-embarque-badges { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* Colunas de eficiência de trajeto — larguras equilibradas */
+#tabela-motoristas th:nth-child(8),
+#tabela-motoristas td:nth-child(8),
+#tabela-veiculos th:nth-child(8),
+#tabela-veiculos td:nth-child(8) {
+    min-width: 130px;
+}
 
+#tabela-motoristas th:nth-child(9),
+#tabela-motoristas td:nth-child(9),
+#tabela-veiculos th:nth-child(9),
+#tabela-veiculos td:nth-child(9) {
+    min-width: 140px;
+}
+
+/* Tooltip para dados insuficientes */
+.badge-taxa[title] {
+    cursor: help;
+}
+/* ============================================================
+   Cards de eficiência de trajeto no modal de perfil
+   ============================================================ */
+.detalhe-ranking-stats-eficiencia {
+    margin-top: 8px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--nutri-border);
+}
+
+.eficiencia-card {
+    border-radius: 12px;
+    padding: 10px 14px !important;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    border: 1px solid var(--nutri-border);
+    background: rgba(var(--nutri-primary-rgb, 18, 51, 41), 0.02);
+    transition: var(--transition);
+}
+
+.eficiencia-card strong {
+    font-size: 1.2rem !important;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    justify-content: center;
+}
+
+.eficiencia-card strong i {
+    font-size: 0.9rem;
+    opacity: 0.85;
+}
+
+.eficiencia-card small {
+    text-align: center;
+    display: block;
+    margin-top: 2px;
+    font-size: 0.62rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    opacity: 0.75;
+}
+
+.eficiencia-card.ok {
+    border-color: rgba(16, 185, 129, 0.35);
+    background: rgba(16, 185, 129, 0.08);
+}
+.eficiencia-card.ok strong { color: #059669; }
+
+.eficiencia-card.alerta {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(245, 158, 11, 0.08);
+}
+.eficiencia-card.alerta strong { color: #b45309; }
+
+.eficiencia-card.critico {
+    border-color: rgba(220, 38, 38, 0.35);
+    background: rgba(220, 38, 38, 0.08);
+}
+.eficiencia-card.critico strong { color: #dc2626; }
+
+.eficiencia-card.neutro strong { color: var(--nutri-text-secondary); }
+
+/* Tema escuro */
+[data-theme="dark"] .eficiencia-card.ok {
+    background: rgba(16, 185, 129, 0.12);
+}
+[data-theme="dark"] .eficiencia-card.ok strong { color: #6ee7b7; }
+
+[data-theme="dark"] .eficiencia-card.alerta {
+    background: rgba(242, 201, 76, 0.12);
+}
+[data-theme="dark"] .eficiencia-card.alerta strong { color: var(--nutri-gold-light); }
+
+[data-theme="dark"] .eficiencia-card.critico {
+    background: rgba(239, 68, 68, 0.12);
+}
+[data-theme="dark"] .eficiencia-card.critico strong { color: #fca5a5; }
+
+[data-theme="dark"] .eficiencia-card.neutro strong { color: var(--nutri-text-secondary); }
+/* ============================================================
+   Badge de amostra pequena — aviso de confiabilidade
+   ============================================================ */
+.amostra-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 6px;
+    margin-left: 6px;
+    border-radius: 999px;
+    background: rgba(245, 158, 11, 0.15);
+    color: #b45309;
+    font-size: 0.65rem;
+    font-weight: 800;
+    vertical-align: middle;
+    cursor: help;
+    border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.amostra-badge i {
+    font-size: 0.6rem;
+}
+
+.amostra-badge:hover {
+    background: rgba(245, 158, 11, 0.25);
+}
+
+/* Tema escuro */
+[data-theme="dark"] .amostra-badge {
+    background: rgba(242, 201, 76, 0.18);
+    color: var(--nutri-gold-light);
+    border-color: rgba(242, 201, 76, 0.4);
+}
+
+[data-theme="dark"] .amostra-badge:hover {
+    background: rgba(242, 201, 76, 0.28);
+}
+/* ============================================================
+   Card de eficiência com aviso de amostra pequena
+   ============================================================ */
+.eficiencia-card.com-aviso {
+    /* Borda dupla sutil para dar sensação de "cuidado" */
+    border-style: dashed;
+}
+
+.eficiencia-card.com-aviso small {
+    color: #b45309 !important;
+    font-weight: 700;
+}
+
+[data-theme="dark"] .eficiencia-card.com-aviso small {
+    color: var(--nutri-gold-light) !important;
+}
+/* ============================================================
+   Toggle "Ocultar sem eficiência" — cabeçalho do ranking
+   ============================================================ */
+.toggle-eficiencia {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+    user-select: none;
+    padding: 6px 12px;
+    border-radius: 999px;
+    border: 1px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    transition: var(--transition);
+}
+
+.toggle-eficiencia:hover {
+    border-color: var(--nutri-gold);
+    background: rgba(var(--nutri-gold-rgb, 212, 160, 23), 0.06);
+}
+
+/* Esconde o checkbox nativo */
+.toggle-eficiencia input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* Slider (a "pílula" do toggle) */
+.toggle-eficiencia-slider {
+    position: relative;
+    display: inline-block;
+    width: 34px;
+    height: 20px;
+    background: var(--nutri-border);
+    border-radius: 999px;
+    transition: background 0.25s ease;
+    flex-shrink: 0;
+}
+
+.toggle-eficiencia-slider::after {
+    content: "";
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.toggle-eficiencia input[type="checkbox"]:checked + .toggle-eficiencia-slider {
+    background: var(--nutri-accent);
+}
+
+.toggle-eficiencia input[type="checkbox"]:checked + .toggle-eficiencia-slider::after {
+    transform: translateX(14px);
+}
+
+/* Texto do toggle */
+.toggle-eficiencia-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--nutri-text-secondary);
+    transition: color 0.2s ease;
+}
+
+.toggle-eficiencia-label i {
+    font-size: 0.7rem;
+}
+
+.toggle-eficiencia input[type="checkbox"]:checked ~ .toggle-eficiencia-label {
+    color: var(--nutri-accent);
+}
+
+/* Tema escuro */
+[data-theme="dark"] .toggle-eficiencia {
+    background: var(--nutri-card-bg);
+    border-color: var(--nutri-border);
+}
+
+[data-theme="dark"] .toggle-eficiencia-slider {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+[data-theme="dark"] .toggle-eficiencia input[type="checkbox"]:checked + .toggle-eficiencia-slider {
+    background: var(--nutri-accent);
+}
+
+/* Responsivo */
+@media (max-width: 640px) {
+    .toggle-eficiencia-label span {
+        display: none; /* só mostra "Ocultar" no mobile, ou esconde o texto */
+    }
+    .toggle-eficiencia {
+        padding: 6px 8px;
+    }
+}

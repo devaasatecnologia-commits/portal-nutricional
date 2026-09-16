@@ -187,6 +187,177 @@ public function __construct()
     }
 
     /**
+     * POST /v1/frota/cobli/sincronizar-frota
+     * Importa veículos ausentes, atualiza os existentes e vincula os devices por placa.
+     * Body opcional: { "dry_run": true } para apenas visualizar as alterações.
+     */
+    public function sincronizarFrota(Request $request, Response $response): Response
+    {
+        $body = (array)$request->getParsedBody();
+        $dryRun = filter_var($body['dry_run'] ?? false, FILTER_VALIDATE_BOOLEAN);
+        $resultado = $this->cobli->listarVeiculos();
+
+        if (!$resultado['success']) {
+            return $this->json($response, ['success' => false, 'error' => $resultado['error']], 502);
+        }
+
+        $dadosCobli = $resultado['data'] ?? [];
+        $veiculosCobli = $dadosCobli['data'] ?? $dadosCobli;
+        if (!is_array($veiculosCobli)) {
+            return $this->json($response, ['success' => false, 'error' => 'Resposta de veículos da Cobli inválida'], 502);
+        }
+
+        try {
+            $veiculosLocais = $this->pdo->query('SELECT id, placa FROM frota_veiculo')->fetchAll(\PDO::FETCH_ASSOC);
+            $locaisPorPlaca = [];
+            foreach ($veiculosLocais as $veiculoLocal) {
+                $placa = $this->normalizarPlaca($veiculoLocal['placa']);
+                if ($placa !== '') {
+                    $locaisPorPlaca[$placa] = (int)$veiculoLocal['id'];
+                }
+            }
+
+            $resumo = [
+                'total_cobli' => count($veiculosCobli),
+                'novos' => 0,
+                'atualizados' => 0,
+                'vinculados' => 0,
+                'odometros_atualizados' => 0,
+                'ignorados' => 0,
+                'placas_novas' => [],
+                'avisos' => []
+            ];
+
+            $odometrosPorVeiculo = [];
+            if (!$dryRun) {
+                foreach ($veiculosCobli as $veiculoCobli) {
+                    $placa = $this->normalizarPlaca($veiculoCobli['license_plate'] ?? '');
+                    $vehicleId = trim((string)($veiculoCobli['id'] ?? ''));
+                    if ($placa === '' || $vehicleId === '') {
+                        continue;
+                    }
+
+                    $resultadoOdometro = $this->cobli->buscarOdometro($vehicleId);
+                    $dadosOdometro = $resultadoOdometro['data']['data'] ?? $resultadoOdometro['data'] ?? [];
+                    if ($resultadoOdometro['success'] && is_numeric($dadosOdometro['odometer_in_km'] ?? null)) {
+                        $odometrosPorVeiculo[$vehicleId] = (int)floor((float)$dadosOdometro['odometer_in_km']);
+                        $resumo['odometros_atualizados']++;
+                    } elseif (!$resultadoOdometro['success']) {
+                        $resumo['avisos'][] = "{$placa}: odômetro não disponível na Cobli";
+                    }
+                }
+            }
+
+            if (!$dryRun) {
+                $this->pdo->beginTransaction();
+            }
+
+            foreach ($veiculosCobli as $veiculoCobli) {
+                $placa = $this->normalizarPlaca($veiculoCobli['license_plate'] ?? '');
+                $deviceId = trim((string)($veiculoCobli['device_id'] ?? ''));
+                $vehicleId = trim((string)($veiculoCobli['id'] ?? ''));
+
+                if ($placa === '') {
+                    $resumo['ignorados']++;
+                    $resumo['avisos'][] = 'Veículo Cobli sem placa: ' . ($vehicleId ?: 'ID não informado');
+                    continue;
+                }
+
+                $odometroKm = $odometrosPorVeiculo[$vehicleId] ?? null;
+
+                $veiculoId = $locaisPorPlaca[$placa] ?? null;
+                if ($veiculoId === null) {
+                    $resumo['novos']++;
+                    $resumo['placas_novas'][] = $placa;
+
+                    if (!$dryRun) {
+                        $stmt = $this->pdo->prepare("
+                            INSERT INTO frota_veiculo
+                                (placa, modelo, marca, tipo, ano, odometro_atual, status, created_at, updated_at)
+                            VALUES
+                                (:placa, :modelo, :marca, 'bau', :ano, COALESCE(:odometro, 0), 'indisponivel', NOW(), NOW())
+                            RETURNING id
+                        ");
+                        $stmt->execute([
+                            'placa' => $placa,
+                            'modelo' => trim((string)($veiculoCobli['model'] ?? '')) ?: 'Não informado',
+                            'marca' => trim((string)($veiculoCobli['brand'] ?? '')) ?: 'Não informada',
+                            'ano' => !empty($veiculoCobli['year']) ? (int)$veiculoCobli['year'] : null,
+                            'odometro' => $odometroKm
+                        ]);
+                        $veiculoId = (int)$stmt->fetchColumn();
+                        $locaisPorPlaca[$placa] = $veiculoId;
+                    }
+                } else {
+                    $resumo['atualizados']++;
+                    if (!$dryRun) {
+                        $stmt = $this->pdo->prepare("
+                            UPDATE frota_veiculo SET
+                                marca = COALESCE(NULLIF(:marca, ''), marca),
+                                modelo = COALESCE(NULLIF(:modelo, ''), modelo),
+                                ano = COALESCE(:ano, ano),
+                                odometro_atual = CASE
+                                    WHEN :tem_odometro = 1 THEN GREATEST(COALESCE(odometro_atual, 0), :odometro)
+                                    ELSE odometro_atual
+                                END,
+                                updated_at = NOW()
+                            WHERE id = :id
+                        ");
+                        $stmt->execute([
+                            'id' => $veiculoId,
+                            'marca' => trim((string)($veiculoCobli['brand'] ?? '')),
+                            'modelo' => trim((string)($veiculoCobli['model'] ?? '')),
+                            'ano' => !empty($veiculoCobli['year']) ? (int)$veiculoCobli['year'] : null,
+                            'tem_odometro' => $odometroKm !== null ? 1 : 0,
+                            'odometro' => $odometroKm ?? 0
+                        ]);
+                    }
+                }
+
+                if ($deviceId === '') {
+                    $resumo['avisos'][] = "{$placa}: dispositivo Cobli não informado";
+                    continue;
+                }
+
+                $resumo['vinculados']++;
+                if (!$dryRun) {
+                    $stmt = $this->pdo->prepare("
+                        INSERT INTO frota_cobli_dispositivo
+                            (veiculo_id, cobli_device_id, cobli_vehicle_id, ativo, updated_at)
+                        VALUES (:veiculo_id, :device_id, :vehicle_id, TRUE, NOW())
+                        ON CONFLICT (veiculo_id) DO UPDATE SET
+                            cobli_device_id = EXCLUDED.cobli_device_id,
+                            cobli_vehicle_id = EXCLUDED.cobli_vehicle_id,
+                            ativo = TRUE,
+                            updated_at = NOW()
+                    ");
+                    $stmt->execute([
+                        'veiculo_id' => $veiculoId,
+                        'device_id' => $deviceId,
+                        'vehicle_id' => $vehicleId ?: null
+                    ]);
+                }
+            }
+
+            if (!$dryRun) {
+                $this->pdo->commit();
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'dry_run' => $dryRun,
+                'data' => $resumo
+            ]);
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            error_log('Erro ao sincronizar frota Cobli: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao sincronizar a frota com a Cobli'], 500);
+        }
+    }
+
+    /**
      * POST /v1/frota/cobli/vincular-automatico
      * Casa automaticamente os veículos do sistema com os veículos da Cobli
      * comparando a placa (normalizada, sem traço/espaço, case-insensitive).

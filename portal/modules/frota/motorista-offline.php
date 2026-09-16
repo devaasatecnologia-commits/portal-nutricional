@@ -63,7 +63,31 @@ $extraJs = '
 
 require_once __DIR__ . '/../../estrutura/header.php';
 ?>
-<main class="motorista-app" data-motorista-id="<?= (int)$motoristaId ?>">
+<main class="motorista-app<?= $isAdmin ? ' is-admin-view' : '' ?>" data-motorista-id="<?= (int)$motoristaId ?>">
+    <section class="driver-admin-panel" id="driver-admin-panel" <?= $isAdmin ? '' : 'hidden' ?>>
+        <div class="driver-admin-head">
+            <div>
+                <span class="eyebrow"><i class="fa-solid fa-chart-line"></i> Operação de hoje</span>
+                <h1>Visão geral dos motoristas</h1>
+                <p>Acompanhe o andamento das rotas e abra os detalhes de cada motorista.</p>
+            </div>
+            <label class="driver-admin-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="driver-admin-search" placeholder="Buscar motorista ou placa" autocomplete="off">
+            </label>
+        </div>
+        <div class="driver-admin-summary" aria-label="Resumo dos motoristas">
+            <div><strong id="admin-total-motoristas">0</strong><span>motoristas</span></div>
+            <div><strong id="admin-em-rota">0</strong><span>em rota</span></div>
+            <div><strong id="admin-entregas-concluidas">0</strong><span>concluídas</span></div>
+            <div><strong id="admin-entregas-pendentes">0</strong><span>pendentes</span></div>
+            <div class="is-alert"><strong id="admin-problemas">0</strong><span>problemas</span></div>
+        </div>
+        <div class="driver-admin-list" id="driver-admin-list">
+            <div class="empty-state">Carregando motoristas...</div>
+        </div>
+    </section>
+
     <!-- SELECTOR DE MOTORISTA (SÓ PARA ADMIN/GESTOR) -->
     <section class="driver-selector-card" id="driver-selector-card" <?= $isAdmin ? '' : 'hidden' ?>>
         <div class="driver-selector-inner">
@@ -83,7 +107,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <header class="motorista-header">
         <div class="motorista-header-info">
             <span class="eyebrow"><i class="fa-solid fa-route"></i> Rota do dia</span>
-            <h1>Minhas entregas</h1>
+            <h1><?= $isAdmin ? 'Detalhes da rota' : 'Minhas entregas' ?></h1>
             <p id="motorista-status">Preparando dados para uso offline</p>
         </div>
         <div class="header-right-actions">

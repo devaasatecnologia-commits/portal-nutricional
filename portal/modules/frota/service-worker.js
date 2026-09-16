@@ -4,7 +4,7 @@
 // Versão nova = cache renovado automaticamente no próximo carregamento.
 // SEMPRE incremente este número ao publicar mudanças em HTML/CSS/JS.
 // ======================================================================
-const CACHE_NAME = 'frota-motorista-v17';  
+const CACHE_NAME = 'frota-motorista-v18';
 const APP_SHELL = [
     new URL('motorista-offline.php', self.registration.scope).pathname,
     new URL('assets/motorista-offline.css', self.registration.scope).pathname,
@@ -13,7 +13,7 @@ const APP_SHELL = [
     new URL('manifest-motorista.json', self.registration.scope).pathname,
     new URL('assets/icons/android-chrome-192x192.png', self.registration.scope).pathname,
     new URL('assets/icons/android-chrome-512x512.png', self.registration.scope).pathname,
-    '/portal/assets/js/config.js'   // ← ADICIONADO — caminho absoluto, igual ao HTML
+    new URL('../../assets/js/config.js', self.registration.scope).pathname
 ];
 const EXTERNAL_ASSETS = [
     'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',

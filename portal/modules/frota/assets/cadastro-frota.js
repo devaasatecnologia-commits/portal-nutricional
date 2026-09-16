@@ -4,8 +4,9 @@
 
 // Respeita window.API_URL definido em /portal/assets/js/config.js,
 // que já trata corretamente ambiente local (pasta /API) vs produção.
+const apiUrl = window.API_URL || '/';
 const CONFIG = {
-    API_BASE: (window.API_URL || '/') + 'frota'
+    API_BASE: apiUrl + (apiUrl.endsWith('/') || apiUrl.endsWith('=') ? '' : '/') + 'frota'
 };
 
 // ================================================================
@@ -14,7 +15,8 @@ const CONFIG = {
 function getAuthToken() {
     const token = localStorage.getItem('authToken');
     if (!token && !window.location.pathname.includes('login.php')) {
-        window.location.href = '/portal/login.php';
+        const base = window.location.pathname.startsWith('/API/') ? '/API' : '';
+        window.location.href = base + '/portal/login.php';
     }
     return token;
 }
@@ -38,6 +40,13 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+    function formatarQuilometragem(valor) {
+        const km = Number(valor);
+        return Number.isFinite(km) && km > 0
+        ? km.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' km'
+        : '';
+    }
 
 let debounceTimerVeiculo = null;
 function debounceCarregarVeiculosCad() {
@@ -153,10 +162,11 @@ async function carregarVeiculosCad() {
                             <div class="cadfrota-card-title">${escapeHtml(v.placa)}</div>
                             <div class="cadfrota-card-sub">${escapeHtml(v.marca || '')} ${escapeHtml(v.modelo || '')} ${v.ano ? '· ' + escapeHtml(v.ano) : ''}</div>
                         </div>
-                        <span class="hist-status-badge ${v.status === 'disponivel' ? 'finalizado' : v.status === 'manutencao' ? 'problema' : v.status === 'inativo' ? 'cancelado' : 'em_andamento'}">${escapeHtml(v.status || '-')}</span>
+                        <span class="hist-status-badge ${v.status === 'disponivel' ? 'finalizado' : v.status === 'manutencao' ? 'problema' : v.status === 'indisponivel' ? 'cancelado' : 'em_andamento'}">${escapeHtml(v.status || '-')}</span>
                     </div>
                     <div class="cadfrota-card-info">
                         ${vinculo ? '<span class="cadfrota-chip cobli-on"><i class="fa-solid fa-satellite-dish"></i> Cobli vinculado</span>' : '<span class="cadfrota-chip cobli-off"><i class="fa-solid fa-satellite-dish"></i> Sem Cobli</span>'}
+                        ${formatarQuilometragem(v.odometro_atual) ? `<span class="cadfrota-chip"><i class="fa-solid fa-gauge-high"></i> ${formatarQuilometragem(v.odometro_atual)}</span>` : ''}
                         ${v.capacidade_peso ? `<span class="cadfrota-chip">${escapeHtml(v.capacidade_peso)} kg</span>` : ''}
                         ${v.tipo ? `<span class="cadfrota-chip">${escapeHtml(v.tipo)}</span>` : ''}
                     </div>
@@ -178,6 +188,78 @@ async function carregarVeiculosCad() {
     }
 }
 
+async function sincronizarFrotaCobli() {
+    const token = getAuthToken();
+    const button = document.getElementById('btn-sincronizar-cobli');
+    const originalHtml = button?.innerHTML;
+
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Consultando...';
+    }
+
+    try {
+        const headers = {
+            'Authorization': 'Bearer ' + token,
+            'Content-Type': 'application/json'
+        };
+        const previewResponse = await fetch(`${CONFIG.API_BASE}/cobli/sincronizar-frota`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ dry_run: true })
+        });
+        const preview = await previewResponse.json();
+        if (!preview.success) throw new Error(preview.error || 'Erro ao consultar a Cobli');
+
+        const dados = preview.data || {};
+        const placas = (dados.placas_novas || []).map(escapeHtml).join(', ');
+        const confirmacao = await Swal.fire({
+            icon: 'question',
+            title: 'Sincronizar frota Cobli?',
+            html: `
+                <div class="text-left text-sm">
+                    <p><strong>${dados.total_cobli || 0}</strong> veículo(s) encontrados na Cobli.</p>
+                    <p><strong>${dados.novos || 0}</strong> novo(s) serão cadastrados e <strong>${dados.atualizados || 0}</strong> existente(s) serão atualizados.</p>
+                    ${dados.novos ? '<p class="mt-2 text-amber-700">Os novos veículos entrarão indisponíveis até a revisão do tipo e da capacidade.</p>' : ''}
+                    ${placas ? `<p class="mt-2 text-slate-500">Novas placas: ${placas}</p>` : ''}
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: 'Sincronizar agora',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#10b981'
+        });
+
+        if (!confirmacao.isConfirmed) return;
+
+        if (button) button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sincronizando...';
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/sincronizar-frota`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({ dry_run: false })
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao sincronizar a frota');
+
+        const resultado = payload.data || {};
+        await Promise.all([carregarVeiculosCad(), carregarContadores()]);
+        await Swal.fire({
+            icon: 'success',
+            title: 'Frota sincronizada',
+            text: `${resultado.novos || 0} veículo(s) importado(s), ${resultado.atualizados || 0} atualizado(s), ${resultado.vinculados || 0} vínculo(s) e ${resultado.odometros_atualizados || 0} odômetro(s) sincronizado(s).`,
+            confirmButtonColor: '#10b981'
+        });
+    } catch (error) {
+        console.error('Erro ao sincronizar frota Cobli:', error);
+        await Swal.fire('Erro', error.message, 'error');
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+}
+
 function abrirFormVeiculo(veiculo) {
     document.getElementById('veiculo-cad-id').value = veiculo?.id || '';
     document.getElementById('veiculo-cad-placa').value = veiculo?.placa || '';
@@ -187,6 +269,7 @@ function abrirFormVeiculo(veiculo) {
     document.getElementById('veiculo-cad-ano').value = veiculo?.ano || '';
     document.getElementById('veiculo-cad-cor').value = veiculo?.cor || '';
     document.getElementById('veiculo-cad-capacidade').value = veiculo?.capacidade_peso || '';
+    document.getElementById('veiculo-cad-odometro').value = veiculo?.odometro_atual || '';
     document.getElementById('veiculo-cad-status').value = veiculo?.status || 'disponivel';
     document.getElementById('modal-veiculo-titulo').textContent = veiculo?.id ? 'Editar veículo' : 'Novo veículo';
 
@@ -212,6 +295,7 @@ async function salvarVeiculoCad() {
         ano: document.getElementById('veiculo-cad-ano').value || null,
         cor: document.getElementById('veiculo-cad-cor').value.trim(),
         capacidade_peso: document.getElementById('veiculo-cad-capacidade').value || null,
+        odometro_atual: document.getElementById('veiculo-cad-odometro').value || null,
         status: document.getElementById('veiculo-cad-status').value
     };
 

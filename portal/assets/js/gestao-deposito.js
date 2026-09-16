@@ -2,6 +2,31 @@
 // MÓDULO DE GESTÃO DE DEPÓSITO (ENDEREÇOS E LOCALIZAÇÃO)
 // ==========================================================================
 
+const apiFetch = async function(acao, metodo = 'GET', body = null) {
+    const endpoint = acao.replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    let url = apiRoot.replace(/\/$/, '') + '/' + endpoint;
+    const options = { method: metodo, headers: {}, credentials: 'include' };
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+
+    if (token) options.headers.Authorization = 'Bearer ' + token;
+
+    if (metodo === 'GET' && body) {
+        const query = new URLSearchParams(body).toString();
+        if (query) url += (url.includes('?') ? '&' : '?') + query;
+    } else if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text || 'Resposta inválida do servidor' }; }
+    if (!response.ok) throw new Error(data.error || `Erro ${response.status}`);
+    return data;
+};
+
 // ==========================================================================
 // INICIALIZAÇÃO
 // ==========================================================================

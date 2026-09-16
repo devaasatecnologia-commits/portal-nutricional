@@ -81,7 +81,7 @@ class DashboardController
                 $stmt = $this->pdo->prepare("
                     SELECT 
                         COUNT(*) as total,
-                        COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
+                        COUNT(CASE WHEN status IN ('entregue', 'entregue_com_problema') THEN 1 END) as concluidas,
                         COUNT(CASE WHEN status IN ('pendente', 'em_andamento') THEN 1 END) as pendentes
                     FROM frota_entrega
                     WHERE DATE(created_at) = CURRENT_DATE
@@ -118,7 +118,7 @@ class DashboardController
                 $stmt = $this->pdo->query("
                     SELECT 
                         COUNT(CASE WHEN status = 'em_andamento' THEN 1 END) as ativos,
-                        COUNT(CASE WHEN DATE(finalizado_em) = CURRENT_DATE THEN 1 END) as finalizados_hoje
+                        COUNT(CASE WHEN data_retorno = CURRENT_DATE THEN 1 END) as finalizados_hoje
                     FROM frota_embarque
                 ");
                 $embarques = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -135,7 +135,7 @@ class DashboardController
     FROM frota_entrega
     WHERE EXTRACT(MONTH FROM created_at) = EXTRACT(MONTH FROM CURRENT_DATE)
       AND EXTRACT(YEAR FROM created_at) = EXTRACT(YEAR FROM CURRENT_DATE)
-      AND status = 'entregue'
+    AND status IN ('entregue', 'entregue_com_problema')
 ");
                 $mes = $stmt->fetch(PDO::FETCH_ASSOC);
                 $data['total_entregas_mes'] = (int)$mes['total'];
@@ -144,12 +144,18 @@ class DashboardController
                 // 6. MÉTRICAS DE ROTA (PESO + KM)
                 // ============================================================
                 $stmt = $this->pdo->prepare("
-                    SELECT 
-                        COALESCE(SUM(distancia_percorrida), 0) as total_km,
-                        COALESCE(SUM(peso_total), 0) as total_peso
-                    FROM frota_embarque
-                    WHERE DATE(data_saida) = CURRENT_DATE
-                    AND status = 'finalizado'
+                    SELECT
+                        COALESCE(SUM(em.distancia_total_km), 0) as total_km,
+                        COALESCE((
+                            SELECT SUM(ent.peso_total)
+                            FROM frota_entrega ent
+                            INNER JOIN frota_embarque emb ON emb.id = ent.embarque_id
+                            WHERE DATE(emb.data_saida) = CURRENT_DATE
+                              AND emb.status = 'finalizado'
+                        ), 0) as total_peso
+                    FROM frota_embarque em
+                    WHERE DATE(em.data_saida) = CURRENT_DATE
+                    AND em.status = 'finalizado'
                 ");
                 $stmt->execute();
                 $metricas = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -161,12 +167,12 @@ class DashboardController
                 // ============================================================
                 $stmt = $this->pdo->prepare("
                     SELECT 
-                        AVG(EXTRACT(EPOCH FROM (checkout - checkin))/60) as tempo_medio
+                        AVG(EXTRACT(EPOCH FROM (horario_entrega - horario_checkin))/60) as tempo_medio
                     FROM frota_entrega
                     WHERE DATE(created_at) = CURRENT_DATE
-                    AND status = 'entregue'
-                    AND checkin IS NOT NULL 
-                    AND checkout IS NOT NULL
+                    AND status IN ('entregue', 'entregue_com_problema')
+                    AND horario_checkin IS NOT NULL
+                    AND horario_entrega IS NOT NULL
                 ");
                 $stmt->execute();
                 $tempo = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -178,8 +184,8 @@ class DashboardController
                 $stmt = $this->pdo->prepare("
                     SELECT 
                         COUNT(CASE WHEN status = 'pendente' AND data_prevista < CURRENT_DATE THEN 1 END) as atrasadas,
-                        COUNT(CASE WHEN status = 'entregue' AND DATE(checkout) <= data_prevista THEN 1 END) as no_prazo,
-                        COUNT(CASE WHEN status = 'entregue' THEN 1 END) as total_entregues
+                        COUNT(CASE WHEN status IN ('entregue', 'entregue_com_problema') AND DATE(horario_entrega) <= data_prevista THEN 1 END) as no_prazo,
+                        COUNT(CASE WHEN status IN ('entregue', 'entregue_com_problema') THEN 1 END) as total_entregues
                     FROM frota_entrega
                     WHERE DATE(created_at) >= CURRENT_DATE - INTERVAL '30 days'
                     AND status != 'cancelada'
@@ -200,10 +206,9 @@ class DashboardController
         } catch (\Exception $e) {
             error_log('Erro no kpis: ' . $e->getMessage());
             return $this->json($response, [
-                'success' => true,
-                'data' => $this->getDefaultKPIs(),
-                'timestamp' => date('Y-m-d H:i:s')
-            ]);
+                'success' => false,
+                'error' => 'Erro ao carregar indicadores do dashboard'
+            ], 500);
         }
     }
 
@@ -246,9 +251,9 @@ class DashboardController
 
                     $stmt = $this->pdo->prepare("
                       SELECT 
-    COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
+    COUNT(CASE WHEN status IN ('entregue', 'entregue_com_problema') THEN 1 END) as concluidas,
     COUNT(CASE WHEN status IN ('pendente', 'em_andamento') THEN 1 END) as pendentes,
-    COALESCE(SUM(CASE WHEN status = 'entregue' THEN valor_total ELSE 0 END), 0) as faturamento
+    COALESCE(SUM(CASE WHEN status IN ('entregue', 'entregue_com_problema') THEN valor_total ELSE 0 END), 0) as faturamento
 FROM frota_entrega
 WHERE DATE(created_at) = :data
 AND status != 'cancelada'
@@ -266,7 +271,7 @@ AND status != 'cancelada'
                 // ============================================================
                 $stmt = $this->pdo->query("
                     SELECT 
-                        COUNT(CASE WHEN status = 'entregue' THEN 1 END) as concluidas,
+                        COUNT(CASE WHEN status IN ('entregue', 'entregue_com_problema') THEN 1 END) as concluidas,
                         COUNT(CASE WHEN status = 'pendente' THEN 1 END) as pendentes,
                         COUNT(CASE WHEN status = 'em_andamento' THEN 1 END) as em_andamento,
                         COUNT(CASE WHEN status = 'falha' THEN 1 END) as falha,
@@ -293,9 +298,10 @@ AND status != 'cancelada'
     COUNT(e.id) as total_entregas,
     COALESCE(SUM(e.valor_total), 0) as total_faturado
 FROM frota_motorista m
-JOIN frota_entrega e ON e.motorista_id = m.id
+JOIN frota_embarque em ON em.motorista_id = m.id
+JOIN frota_entrega e ON e.embarque_id = em.id
                     WHERE DATE(e.created_at) >= CURRENT_DATE - INTERVAL '30 days'
-                    AND e.status = 'entregue'
+                    AND e.status IN ('entregue', 'entregue_com_problema')
                     GROUP BY m.id, m.nome
                     ORDER BY total_entregas DESC
                     LIMIT 5
@@ -343,10 +349,9 @@ JOIN frota_entrega e ON e.motorista_id = m.id
         } catch (\Exception $e) {
             error_log('Erro no graficos: ' . $e->getMessage());
             return $this->json($response, [
-                'success' => true,
-                'data' => $this->getDefaultGraficos(),
-                'timestamp' => date('Y-m-d H:i:s')
-            ]);
+                'success' => false,
+                'error' => 'Erro ao carregar gráficos do dashboard'
+            ], 500);
         }
     }
 
@@ -1151,7 +1156,7 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
             LEFT JOIN frota_entrega e ON e.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = e.id
-            WHERE ep.created_at >= CURRENT_DATE - INTERVAL :dias DAY
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
             GROUP BY mo.id, mo.nome
             HAVING COUNT(DISTINCT ep.id) > 0
             ORDER BY total_problemas DESC
@@ -1202,7 +1207,7 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
             LEFT JOIN frota_entrega e ON e.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = e.id
-            WHERE ep.created_at >= CURRENT_DATE - INTERVAL :dias DAY
+            WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
             GROUP BY ve.id, ve.placa, ve.modelo
             HAVING COUNT(DISTINCT ep.id) > 0
             ORDER BY total_problemas DESC
@@ -1363,22 +1368,106 @@ JOIN frota_entrega e ON e.motorista_id = m.id
 
     /**
      * GET /v1/frota/gestao-cargas/ranking-motoristas
-     * Ranking completo de eficiência/ineficiência por motorista
+     * Ranking completo de eficiência/ineficiência por motorista.
+     *
+     * KPIs de eficiência de trajeto:
+     *  - tempo_medio_deslocamento_min
+     *  - distancia_media_trajeto_km
+     *  - tempo_ideal_medio_min
+     *  - indice_eficiencia_trajeto   (calculado com 1+ trajetos; NULL se 0)
+     *  - trajetos_analisados
+     *
+     * Flags de confiabilidade (para o frontend avisar o gestor):
+     *  - amostra_pequena:        true se 1 ou 2 trajetos (índice existe mas é frágil)
+     *  - amostra_insuficiente:   true se 0 trajetos (índice NULL)
      */
     public function rankingMotoristas(Request $request, Response $response): Response
     {
         try {
             $params = $request->getQueryParams();
             $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+            $velRef = $this->getVelocidadeReferenciaKmh();
 
+            // =================================================================
+            // QUERY PRINCIPAL — usa CTEs para separar as etapas
+            // =================================================================
             $sql = "
+            WITH trajetos_base AS (
+                SELECT
+                    ent.id                    AS entrega_id,
+                    ent.embarque_id,
+                    em.motorista_id,
+                    ent.latitude              AS lat_atual,
+                    ent.longitude             AS lng_atual,
+                    ent.horario_checkin       AS checkin_atual,
+                    LAG(ent.latitude)         OVER w  AS lat_anterior,
+                    LAG(ent.longitude)        OVER w  AS lng_anterior,
+                    LAG(ent.horario_entrega)  OVER w  AS entrega_anterior
+                FROM frota_entrega ent
+                INNER JOIN frota_embarque em ON em.id = ent.embarque_id
+                WHERE em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                  AND em.motorista_id IS NOT NULL
+                  AND ent.status IN ('entregue', 'entregue_com_problema')
+                  AND ent.horario_checkin IS NOT NULL
+                WINDOW w AS (PARTITION BY ent.embarque_id ORDER BY ent.horario_checkin)
+            ),
+            trajetos_validos AS (
+                SELECT
+                    tb.motorista_id,
+                    tb.embarque_id,
+                    tb.entrega_id,
+                    tb.lat_atual, tb.lng_atual,
+                    tb.lat_anterior, tb.lng_anterior,
+                    tb.checkin_atual,
+                    tb.entrega_anterior,
+                    EXTRACT(EPOCH FROM (tb.checkin_atual - tb.entrega_anterior))/60.0 AS tempo_real_min,
+                    fn_haversine_km(tb.lat_anterior, tb.lng_anterior, tb.lat_atual, tb.lng_atual) AS distancia_km
+                FROM trajetos_base tb
+                WHERE tb.entrega_anterior IS NOT NULL
+                  AND tb.lat_atual   IS NOT NULL AND tb.lng_atual   IS NOT NULL
+                  AND tb.lat_anterior IS NOT NULL AND tb.lng_anterior IS NOT NULL
+                  AND tb.checkin_atual > tb.entrega_anterior
+            ),
+            trajetos_filtrados AS (
+                SELECT
+                    tv.motorista_id,
+                    tv.tempo_real_min,
+                    tv.distancia_km,
+                    (tv.distancia_km / :vel_ref) * 60.0 AS tempo_ideal_min
+                FROM trajetos_validos tv
+                WHERE tv.tempo_real_min >= 1.0
+                  AND tv.tempo_real_min <= 180.0
+                  AND tv.distancia_km IS NOT NULL
+                  AND tv.distancia_km >= 0.1
+                  AND tv.distancia_km <= 500.0
+                  AND (tv.distancia_km / NULLIF(tv.tempo_real_min, 0)) * 60.0 <= 120.0
+            ),
+            eficiencia_por_motorista AS (
+                SELECT
+                    tf.motorista_id,
+                    COUNT(*)                                          AS trajetos_analisados,
+                    ROUND(AVG(tf.tempo_real_min)::NUMERIC, 1)         AS tempo_medio_deslocamento_min,
+                    ROUND(AVG(tf.distancia_km)::NUMERIC, 2)           AS distancia_media_trajeto_km,
+                    ROUND(AVG(tf.tempo_ideal_min)::NUMERIC, 1)        AS tempo_ideal_medio_min,
+                    -- Índice calculado com 1+ trajetos; NULL apenas quando 0
+                    CASE
+                        WHEN COUNT(*) >= 1 THEN
+                            ROUND(
+                                LEAST(100.0, (AVG(tf.tempo_ideal_min) / NULLIF(AVG(tf.tempo_real_min), 0)) * 100)::NUMERIC,
+                                1
+                            )
+                        ELSE NULL
+                    END                                               AS indice_eficiencia_trajeto
+                FROM trajetos_filtrados tf
+                GROUP BY tf.motorista_id
+            )
             SELECT
                 mo.id,
                 mo.nome AS motorista_nome,
                 mo.telefone AS motorista_telefone,
                 mo.status AS motorista_status,
-                COUNT(DISTINCT em.id) AS total_embarques,
-                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT em.id)   AS total_embarques,
+                COUNT(DISTINCT ent.id)  AS total_entregas,
                 COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
                 COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
                 COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
@@ -1389,43 +1478,84 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
                 COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
                 COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'resolvido' THEN ep.id END) AS problemas_resolvidos,
                 COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
                 COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
-                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min,
+                ef.trajetos_analisados,
+                ef.tempo_medio_deslocamento_min,
+                ef.distancia_media_trajeto_km,
+                ef.tempo_ideal_medio_min,
+                ef.indice_eficiencia_trajeto
             FROM frota_motorista mo
             LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
-                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
-            GROUP BY mo.id, mo.nome, mo.telefone, mo.status
+            LEFT JOIN eficiencia_por_motorista ef ON ef.motorista_id = mo.id
+            GROUP BY mo.id, mo.nome, mo.telefone, mo.status,
+                     ef.trajetos_analisados,
+                     ef.tempo_medio_deslocamento_min,
+                     ef.distancia_media_trajeto_km,
+                     ef.tempo_ideal_medio_min,
+                     ef.indice_eficiencia_trajeto
             HAVING COUNT(DISTINCT em.id) > 0
             ORDER BY total_problemas DESC, entregas_atrasadas DESC
-        ";
+            ";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['dias' => $dias]);
+            $stmt->bindValue(':dias',    $dias, \PDO::PARAM_INT);
+            $stmt->bindValue(':dias2',   $dias, \PDO::PARAM_INT);
+            $stmt->bindValue(':vel_ref', $velRef);
+            $stmt->execute();
             $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            // =================================================================
+            // Pós-processamento
+            // =================================================================
             foreach ($dados as &$m) {
                 $totalEntregas = (int)$m['total_entregas'];
+
                 $m['taxa_divergencia'] = $totalEntregas > 0
                     ? round(($m['entregas_com_problema'] + $m['entregas_falha']) / $totalEntregas * 100, 1)
                     : 0.0;
+
                 $m['taxa_no_prazo'] = $totalEntregas > 0
                     ? round($m['entregas_no_prazo'] / $totalEntregas * 100, 1)
                     : 0.0;
+
                 $m['tempo_medio_entrega_min'] = round((float)$m['tempo_medio_entrega_min'], 1);
 
-                // Índice de ineficiência (0-100): pondera divergência, atraso e problemas pendentes
+                // Índice de ineficiência
                 $indice = ($m['taxa_divergencia'] * 0.5)
                     + ((100 - $m['taxa_no_prazo']) * 0.3)
-                    + (min($m['problemas_pendentes'] * 5, 100) * 0.2);
+                    + (min((int)$m['problemas_pendentes'] * 5, 100) * 0.2);
                 $m['indice_ineficiencia'] = round(min($indice, 100), 1);
+
+                // Sanitização dos campos de eficiência
+                $m['trajetos_analisados'] = $m['trajetos_analisados'] !== null
+                    ? (int)$m['trajetos_analisados'] : 0;
+                $m['tempo_medio_deslocamento_min'] = $m['tempo_medio_deslocamento_min'] !== null
+                    ? (float)$m['tempo_medio_deslocamento_min'] : null;
+                $m['distancia_media_trajeto_km'] = $m['distancia_media_trajeto_km'] !== null
+                    ? (float)$m['distancia_media_trajeto_km'] : null;
+                $m['tempo_ideal_medio_min'] = $m['tempo_ideal_medio_min'] !== null
+                    ? (float)$m['tempo_ideal_medio_min'] : null;
+                $m['indice_eficiencia_trajeto'] = $m['indice_eficiencia_trajeto'] !== null
+                    ? (float)$m['indice_eficiencia_trajeto'] : null;
+
+                // ================================================================
+                // Flags de confiabilidade da amostra
+                // ================================================================
+                $m['amostra_insuficiente'] = ($m['trajetos_analisados'] === 0);
+                $m['amostra_pequena']      = ($m['trajetos_analisados'] >= 1 && $m['trajetos_analisados'] < 3);
+
+                // Score de desempenho (usa as novas regras 2A)
                 $m['score_desempenho'] = $this->calcularScoreMotorista($m);
             }
             unset($m);
 
-            // Reordenar pelo índice de ineficiência calculado (piores primeiro)
+            // Reordenar pelo índice de ineficiência
             usort($dados, function ($a, $b) {
                 return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
             });
@@ -1434,13 +1564,14 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 'success' => true,
                 'data' => $dados,
                 'dias' => $dias,
+                'velocidade_referencia_kmh' => $velRef,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
         } catch (\Exception $e) {
             error_log('Erro em rankingMotoristas: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'Erro ao carregar ranking de motoristas'
+                'error' => 'Erro ao carregar ranking de motoristas: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1572,15 +1703,92 @@ JOIN frota_entrega e ON e.motorista_id = m.id
 
     /**
      * GET /v1/frota/gestao-cargas/ranking-veiculos
-     * Ranking completo de eficiência/ineficiência por veículo (caminhão)
+     * Ranking completo de eficiência/ineficiência por veículo (caminhão).
+     *
+     * KPIs de eficiência de trajeto (com flags de confiabilidade):
+     *  - tempo_medio_deslocamento_min
+     *  - distancia_media_trajeto_km
+     *  - tempo_ideal_medio_min
+     *  - indice_eficiencia_trajeto   (calculado com 1+ trajetos; NULL se 0)
+     *  - trajetos_analisados
+     *  - amostra_pequena             (1-2 trajetos)
+     *  - amostra_insuficiente        (0 trajetos)
      */
     public function rankingVeiculos(Request $request, Response $response): Response
     {
         try {
             $params = $request->getQueryParams();
             $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+            $velRef = $this->getVelocidadeReferenciaKmh();
 
+            // =================================================================
+            // QUERY PRINCIPAL
+            // =================================================================
             $sql = "
+            WITH trajetos_base AS (
+                SELECT
+                    ent.id                    AS entrega_id,
+                    ent.embarque_id,
+                    em.veiculo_id,
+                    ent.latitude              AS lat_atual,
+                    ent.longitude             AS lng_atual,
+                    ent.horario_checkin       AS checkin_atual,
+                    LAG(ent.latitude)         OVER w  AS lat_anterior,
+                    LAG(ent.longitude)        OVER w  AS lng_anterior,
+                    LAG(ent.horario_entrega)  OVER w  AS entrega_anterior
+                FROM frota_entrega ent
+                INNER JOIN frota_embarque em ON em.id = ent.embarque_id
+                WHERE em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                  AND em.veiculo_id IS NOT NULL
+                  AND ent.status IN ('entregue', 'entregue_com_problema')
+                  AND ent.horario_checkin IS NOT NULL
+                WINDOW w AS (PARTITION BY ent.embarque_id ORDER BY ent.horario_checkin)
+            ),
+            trajetos_validos AS (
+                SELECT
+                    tb.veiculo_id,
+                    tb.embarque_id,
+                    tb.entrega_id,
+                    EXTRACT(EPOCH FROM (tb.checkin_atual - tb.entrega_anterior))/60.0 AS tempo_real_min,
+                    fn_haversine_km(tb.lat_anterior, tb.lng_anterior, tb.lat_atual, tb.lng_atual) AS distancia_km
+                FROM trajetos_base tb
+                WHERE tb.entrega_anterior IS NOT NULL
+                  AND tb.lat_atual   IS NOT NULL AND tb.lng_atual   IS NOT NULL
+                  AND tb.lat_anterior IS NOT NULL AND tb.lng_anterior IS NOT NULL
+                  AND tb.checkin_atual > tb.entrega_anterior
+            ),
+            trajetos_filtrados AS (
+                SELECT
+                    tv.veiculo_id,
+                    tv.tempo_real_min,
+                    tv.distancia_km,
+                    (tv.distancia_km / :vel_ref) * 60.0 AS tempo_ideal_min
+                FROM trajetos_validos tv
+                WHERE tv.tempo_real_min >= 1.0
+                  AND tv.tempo_real_min <= 180.0
+                  AND tv.distancia_km IS NOT NULL
+                  AND tv.distancia_km >= 0.1
+                  AND tv.distancia_km <= 500.0
+                  AND (tv.distancia_km / NULLIF(tv.tempo_real_min, 0)) * 60.0 <= 120.0
+            ),
+            eficiencia_por_veiculo AS (
+                SELECT
+                    tf.veiculo_id,
+                    COUNT(*)                                          AS trajetos_analisados,
+                    ROUND(AVG(tf.tempo_real_min)::NUMERIC, 1)         AS tempo_medio_deslocamento_min,
+                    ROUND(AVG(tf.distancia_km)::NUMERIC, 2)           AS distancia_media_trajeto_km,
+                    ROUND(AVG(tf.tempo_ideal_min)::NUMERIC, 1)        AS tempo_ideal_medio_min,
+                    CASE
+                        WHEN COUNT(*) >= 1 THEN
+                            ROUND(
+                                LEAST(100.0, (AVG(tf.tempo_ideal_min) / NULLIF(AVG(tf.tempo_real_min), 0)) * 100)::NUMERIC,
+                                1
+                            )
+                        ELSE NULL
+                    END                                               AS indice_eficiencia_trajeto
+                FROM trajetos_filtrados tf
+                GROUP BY tf.veiculo_id
+            )
             SELECT
                 ve.id,
                 ve.placa,
@@ -1588,8 +1796,8 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 ve.marca,
                 ve.tipo,
                 ve.status AS veiculo_status,
-                COUNT(DISTINCT em.id) AS total_embarques,
-                COUNT(DISTINCT ent.id) AS total_entregas,
+                COUNT(DISTINCT em.id)   AS total_embarques,
+                COUNT(DISTINCT ent.id)  AS total_entregas,
                 COUNT(DISTINCT CASE WHEN ent.status = 'entregue' THEN ent.id END) AS entregas_concluidas,
                 COUNT(DISTINCT CASE WHEN ent.status = 'entregue_com_problema' THEN ent.id END) AS entregas_com_problema,
                 COUNT(DISTINCT CASE WHEN ent.status = 'falha' THEN ent.id END) AS entregas_falha,
@@ -1600,38 +1808,76 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'faltante' THEN ep.id END) AS faltantes,
                 COUNT(DISTINCT CASE WHEN ep.tipo_problema = 'devolucao' THEN ep.id END) AS devolucoes,
                 COUNT(DISTINCT CASE WHEN ep.status_problema = 'pendente' THEN ep.id END) AS problemas_pendentes,
+                COUNT(DISTINCT CASE WHEN ep.status_problema = 'resolvido' THEN ep.id END) AS problemas_resolvidos,
                 COALESCE(SUM(ep.valor_afetado), 0) AS valor_total_afetado,
-                COALESCE(SUM(ent.peso_total), 0) AS peso_total_transportado,
+                COALESCE(SUM(ent.peso_total), 0)   AS peso_total_transportado,
                 COALESCE(AVG(CASE WHEN ent.status = 'entregue' AND ent.horario_entrega IS NOT NULL AND ent.horario_checkin IS NOT NULL
-                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min
+                    THEN EXTRACT(EPOCH FROM (ent.horario_entrega - ent.horario_checkin))/60 END), 0) AS tempo_medio_entrega_min,
+                ef.trajetos_analisados,
+                ef.tempo_medio_deslocamento_min,
+                ef.distancia_media_trajeto_km,
+                ef.tempo_ideal_medio_min,
+                ef.indice_eficiencia_trajeto
             FROM frota_veiculo ve
             LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
-                AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
-            GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status
+            LEFT JOIN eficiencia_por_veiculo ef ON ef.veiculo_id = ve.id
+            GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status,
+                     ef.trajetos_analisados,
+                     ef.tempo_medio_deslocamento_min,
+                     ef.distancia_media_trajeto_km,
+                     ef.tempo_ideal_medio_min,
+                     ef.indice_eficiencia_trajeto
             HAVING COUNT(DISTINCT em.id) > 0
             ORDER BY total_problemas DESC, entregas_atrasadas DESC
-        ";
+            ";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['dias' => $dias]);
+            $stmt->bindValue(':dias',    $dias, \PDO::PARAM_INT);
+            $stmt->bindValue(':dias2',   $dias, \PDO::PARAM_INT);
+            $stmt->bindValue(':vel_ref', $velRef);
+            $stmt->execute();
             $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+            // =================================================================
+            // Pós-processamento
+            // =================================================================
             foreach ($dados as &$v) {
                 $totalEntregas = (int)$v['total_entregas'];
+
                 $v['taxa_divergencia'] = $totalEntregas > 0
                     ? round(($v['entregas_com_problema'] + $v['entregas_falha']) / $totalEntregas * 100, 1)
                     : 0.0;
+
                 $v['taxa_no_prazo'] = $totalEntregas > 0
                     ? round($v['entregas_no_prazo'] / $totalEntregas * 100, 1)
                     : 0.0;
+
                 $v['tempo_medio_entrega_min'] = round((float)$v['tempo_medio_entrega_min'], 1);
 
+                // Índice de ineficiência
                 $indice = ($v['taxa_divergencia'] * 0.5)
                     + ((100 - $v['taxa_no_prazo']) * 0.3)
-                    + (min($v['problemas_pendentes'] * 5, 100) * 0.2);
+                    + (min((int)$v['problemas_pendentes'] * 5, 100) * 0.2);
                 $v['indice_ineficiencia'] = round(min($indice, 100), 1);
+
+                // Sanitização dos campos de eficiência
+                $v['trajetos_analisados'] = $v['trajetos_analisados'] !== null
+                    ? (int)$v['trajetos_analisados'] : 0;
+                $v['tempo_medio_deslocamento_min'] = $v['tempo_medio_deslocamento_min'] !== null
+                    ? (float)$v['tempo_medio_deslocamento_min'] : null;
+                $v['distancia_media_trajeto_km'] = $v['distancia_media_trajeto_km'] !== null
+                    ? (float)$v['distancia_media_trajeto_km'] : null;
+                $v['tempo_ideal_medio_min'] = $v['tempo_ideal_medio_min'] !== null
+                    ? (float)$v['tempo_ideal_medio_min'] : null;
+                $v['indice_eficiencia_trajeto'] = $v['indice_eficiencia_trajeto'] !== null
+                    ? (float)$v['indice_eficiencia_trajeto'] : null;
+
+                // Flags de confiabilidade
+                $v['amostra_insuficiente'] = ($v['trajetos_analisados'] === 0);
+                $v['amostra_pequena']      = ($v['trajetos_analisados'] >= 1 && $v['trajetos_analisados'] < 3);
             }
             unset($v);
 
@@ -1643,13 +1889,14 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 'success' => true,
                 'data' => $dados,
                 'dias' => $dias,
+                'velocidade_referencia_kmh' => $velRef,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
         } catch (\Exception $e) {
             error_log('Erro em rankingVeiculos: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'Erro ao carregar ranking de veículos'
+                'error' => 'Erro ao carregar ranking de veículos: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1922,8 +2169,12 @@ JOIN frota_entrega e ON e.motorista_id = m.id
 
     /**
      * GET /v1/frota/gestao-cargas/motorista/{id}/perfil
-     * Perfil completo e rastreável do motorista: embarques, veículos usados, pontos
-     * positivos/negativos e score de desempenho.
+     * Perfil completo e rastreável do motorista.
+     *
+     * Inclui KPIs de eficiência de trajeto com flags de confiabilidade:
+     *  - indice_eficiencia_trajeto (calculado com 1+ trajetos)
+     *  - amostra_pequena (1-2 trajetos)
+     *  - amostra_insuficiente (0 trajetos)
      */
     public function motoristaPerfilCompleto(Request $request, Response $response, array $args): Response
     {
@@ -1931,9 +2182,39 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             $id = (int)$args['id'];
             $params = $request->getQueryParams();
             $dias = max(1, min((int)($params['dias'] ?? 90), 365));
+            $velRef = $this->getVelocidadeReferenciaKmh();
 
+            // -------------------------------------------------------------
+            // 1) Dados cadastrais do motorista
+            // -------------------------------------------------------------
             $stmtMotorista = $this->pdo->prepare("
-                SELECT id, nome, telefone, status, email, cnh_numero, cnh_categoria, foto_url
+                SELECT
+                    id,
+                    erp_id,
+                    nome,
+                    cpf,
+                    cnh,
+                    categoria_cnh,
+                    data_validade_cnh,
+                    telefone,
+                    telefone_emergencia,
+                    email,
+                    data_nascimento,
+                    data_admissao,
+                    endereco,
+                    bairro,
+                    cidade,
+                    uf,
+                    cep,
+                    complemento,
+                    numero,
+                    status,
+                    veiculo_atual_id,
+                    latitude,
+                    longitude,
+                    ultima_posicao,
+                    created_at,
+                    updated_at
                 FROM frota_motorista
                 WHERE id = :id
             ");
@@ -1944,7 +2225,9 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 return $this->json($response, ['success' => false, 'error' => 'Motorista não encontrado'], 404);
             }
 
-            // Métricas agregadas (mesma base do ranking, mas focado neste motorista)
+            // -------------------------------------------------------------
+            // 2) Métricas de performance geral
+            // -------------------------------------------------------------
             $sqlMetricas = "
                 SELECT
                     COUNT(DISTINCT em.id) AS total_embarques,
@@ -1986,9 +2269,98 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                 + ((100 - $metricas['taxa_no_prazo']) * 0.3)
                 + (min($metricas['problemas_pendentes'] * 5, 100) * 0.2);
             $metricas['indice_ineficiencia'] = round(min($indice, 100), 1);
+
+            // -------------------------------------------------------------
+            // 3) KPIs de eficiência de trajeto (com filtros de sanidade)
+            // -------------------------------------------------------------
+            $sqlEficiencia = "
+            WITH trajetos_base AS (
+                SELECT
+                    ent.id                    AS entrega_id,
+                    ent.embarque_id,
+                    ent.latitude              AS lat_atual,
+                    ent.longitude             AS lng_atual,
+                    ent.horario_checkin       AS checkin_atual,
+                    LAG(ent.latitude)         OVER w  AS lat_anterior,
+                    LAG(ent.longitude)        OVER w  AS lng_anterior,
+                    LAG(ent.horario_entrega)  OVER w  AS entrega_anterior
+                FROM frota_entrega ent
+                INNER JOIN frota_embarque em ON em.id = ent.embarque_id
+                WHERE em.motorista_id = :id
+                  AND em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                  AND ent.status IN ('entregue', 'entregue_com_problema')
+                  AND ent.horario_checkin IS NOT NULL
+                WINDOW w AS (PARTITION BY ent.embarque_id ORDER BY ent.horario_checkin)
+            ),
+            trajetos_validos AS (
+                SELECT
+                    tb.embarque_id,
+                    tb.entrega_id,
+                    EXTRACT(EPOCH FROM (tb.checkin_atual - tb.entrega_anterior))/60.0 AS tempo_real_min,
+                    fn_haversine_km(tb.lat_anterior, tb.lng_anterior, tb.lat_atual, tb.lng_atual) AS distancia_km
+                FROM trajetos_base tb
+                WHERE tb.entrega_anterior IS NOT NULL
+                  AND tb.lat_atual   IS NOT NULL AND tb.lng_atual   IS NOT NULL
+                  AND tb.lat_anterior IS NOT NULL AND tb.lng_anterior IS NOT NULL
+                  AND tb.checkin_atual > tb.entrega_anterior
+            ),
+            trajetos_filtrados AS (
+                SELECT
+                    tv.tempo_real_min,
+                    tv.distancia_km,
+                    (tv.distancia_km / :vel_ref) * 60.0 AS tempo_ideal_min
+                FROM trajetos_validos tv
+                WHERE tv.tempo_real_min >= 1.0
+                  AND tv.tempo_real_min <= 180.0
+                  AND tv.distancia_km IS NOT NULL
+                  AND tv.distancia_km >= 0.1
+                  AND tv.distancia_km <= 500.0
+                  AND (tv.distancia_km / NULLIF(tv.tempo_real_min, 0)) * 60.0 <= 120.0
+            )
+            SELECT
+                COUNT(*)                                          AS trajetos_analisados,
+                ROUND(AVG(tempo_real_min)::NUMERIC, 1)            AS tempo_medio_deslocamento_min,
+                ROUND(AVG(distancia_km)::NUMERIC, 2)              AS distancia_media_trajeto_km,
+                ROUND(AVG(tempo_ideal_min)::NUMERIC, 1)           AS tempo_ideal_medio_min,
+                CASE
+                    WHEN COUNT(*) >= 1 THEN
+                        ROUND(
+                            LEAST(100.0, (AVG(tempo_ideal_min) / NULLIF(AVG(tempo_real_min), 0)) * 100)::NUMERIC,
+                            1
+                        )
+                    ELSE NULL
+                END                                               AS indice_eficiencia_trajeto
+            FROM trajetos_filtrados
+            ";
+            $stmt = $this->pdo->prepare($sqlEficiencia);
+            $stmt->bindValue(':id',      $id, \PDO::PARAM_INT);
+            $stmt->bindValue(':dias',    $dias, \PDO::PARAM_INT);
+            $stmt->bindValue(':vel_ref', $velRef);
+            $stmt->execute();
+            $eficiencia = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            // Mescla os KPIs de eficiência nas métricas
+            $metricas['trajetos_analisados'] = isset($eficiencia['trajetos_analisados'])
+                ? (int)$eficiencia['trajetos_analisados'] : 0;
+            $metricas['tempo_medio_deslocamento_min'] = $eficiencia['tempo_medio_deslocamento_min'] !== null
+                ? (float)$eficiencia['tempo_medio_deslocamento_min'] : null;
+            $metricas['distancia_media_trajeto_km'] = $eficiencia['distancia_media_trajeto_km'] !== null
+                ? (float)$eficiencia['distancia_media_trajeto_km'] : null;
+            $metricas['tempo_ideal_medio_min'] = $eficiencia['tempo_ideal_medio_min'] !== null
+                ? (float)$eficiencia['tempo_ideal_medio_min'] : null;
+            $metricas['indice_eficiencia_trajeto'] = $eficiencia['indice_eficiencia_trajeto'] !== null
+                ? (float)$eficiencia['indice_eficiencia_trajeto'] : null;
+
+            // Flags de confiabilidade da amostra
+            $metricas['amostra_insuficiente'] = ($metricas['trajetos_analisados'] === 0);
+            $metricas['amostra_pequena']      = ($metricas['trajetos_analisados'] >= 1 && $metricas['trajetos_analisados'] < 3);
+
+            // Score de desempenho
             $metricas['score_desempenho'] = $this->calcularScoreMotorista($metricas);
 
-            // Veículos utilizados historicamente
+            // -------------------------------------------------------------
+            // 4) Veículos utilizados historicamente
+            // -------------------------------------------------------------
             $stmtVeiculos = $this->pdo->prepare("
                 SELECT v.id, v.placa, v.modelo, v.marca,
                     COUNT(DISTINCT em.id) AS total_embarques,
@@ -2002,7 +2374,9 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             $stmtVeiculos->execute(['id' => $id]);
             $veiculos = $stmtVeiculos->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Todos os embarques do motorista (rastreável, com link para detalhes-completos)
+            // -------------------------------------------------------------
+            // 5) Todos os embarques do motorista
+            // -------------------------------------------------------------
             $stmtEmbarques = $this->pdo->prepare("
                 SELECT
                     em.id, em.numero_embarque, em.nome_embarque, em.status AS embarque_status,
@@ -2022,7 +2396,9 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             $stmtEmbarques->execute(['id' => $id]);
             $embarques = $stmtEmbarques->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Pontos positivos e negativos (destaques automáticos)
+            // -------------------------------------------------------------
+            // 6) Pontos positivos e negativos
+            // -------------------------------------------------------------
             $pontosPositivos = [];
             $pontosNegativos = [];
 
@@ -2040,6 +2416,10 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             if ($metricas['problemas_resolvidos'] > 0) {
                 $pontosPositivos[] = "{$metricas['problemas_resolvidos']} problemas resolvidos adequadamente";
             }
+            if ($metricas['indice_eficiencia_trajeto'] !== null && $metricas['indice_eficiencia_trajeto'] >= 85) {
+                $sufixo = $metricas['amostra_pequena'] ? ' (amostra pequena)' : '';
+                $pontosPositivos[] = "Alta eficiência de trajeto: {$metricas['indice_eficiencia_trajeto']}%{$sufixo}";
+            }
 
             if ($metricas['entregas_atrasadas'] > 0) {
                 $pontosNegativos[] = "{$metricas['entregas_atrasadas']} entregas em atraso";
@@ -2053,7 +2433,14 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             if ($metricas['entregas_falha'] > 0) {
                 $pontosNegativos[] = "{$metricas['entregas_falha']} entregas com falha total";
             }
+            if ($metricas['indice_eficiencia_trajeto'] !== null && $metricas['indice_eficiencia_trajeto'] < 60) {
+                $sufixo = $metricas['amostra_pequena'] ? ' (amostra pequena)' : '';
+                $pontosNegativos[] = "Baixa eficiência de trajeto: {$metricas['indice_eficiencia_trajeto']}%{$sufixo} (possíveis paradas ou desvios)";
+            }
 
+            // -------------------------------------------------------------
+            // 7) Resposta
+            // -------------------------------------------------------------
             return $this->json($response, [
                 'success' => true,
                 'data' => [
@@ -2065,22 +2452,37 @@ JOIN frota_entrega e ON e.motorista_id = m.id
                     'pontos_negativos' => $pontosNegativos
                 ],
                 'dias' => $dias,
+                'velocidade_referencia_kmh' => $velRef,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
         } catch (\Exception $e) {
             error_log('Erro em motoristaPerfilCompleto: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'Erro ao carregar perfil completo do motorista'
+                'error' => 'Erro ao carregar perfil completo do motorista: ' . $e->getMessage()
             ], 500);
         }
     }
-
+    
     /**
-     * Calcula o score de desempenho (0-100, quanto maior melhor) do motorista
-     * a partir de métricas já apuradas (entregas concluídas, pontualidade,
-     * divergência e resolução de problemas). É o complemento "positivo" do
-     * índice de ineficiência.
+     * Calcula o score de desempenho (0-100) do motorista.
+     *
+     * Pesos quando há eficiência de trajeto (peso cheio):
+     *   - Conclusão de entregas:    25%
+     *   - Pontualidade:             25%
+     *   - Ausência de divergência:  20%
+     *   - Eficiência de trajeto:    20%
+     *   - Resolução de problemas:   10%
+     *
+     * Quando NÃO há eficiência (menos de 1 trajeto válido):
+     *   - Mantém os 4 pesos restantes (25+25+20+10 = 80%) e renormaliza
+     *   - Aplica multiplicador de 0.9 como penalização leve
+     *   - Incentiva o motorista a fazer check-in/checkout corretamente
+     *
+     * Fator de confiança (aplicado sempre no final):
+     *   - min(1.0, total_entregas / 10)
+     *   - Amostra pequena (< 10 entregas) gera score proporcionalmente reduzido
+     *   - Evita "score 100" com 1-2 entregas
      */
     private function calcularScoreMotorista(array $m): float
     {
@@ -2089,24 +2491,85 @@ JOIN frota_entrega e ON e.motorista_id = m.id
             return 0.0;
         }
 
-        $taxaConclusao = round(((int)($m['entregas_concluidas'] ?? 0) + (int)($m['entregas_com_problema'] ?? 0)) / $totalEntregas * 100, 1);
-        $taxaNoPrazo = (float)($m['taxa_no_prazo'] ?? 0);
+        $taxaConclusao = round(
+            ((int)($m['entregas_concluidas'] ?? 0) + (int)($m['entregas_com_problema'] ?? 0))
+            / $totalEntregas * 100,
+            1
+        );
+        $taxaNoPrazo     = (float)($m['taxa_no_prazo'] ?? 0);
         $taxaDivergencia = (float)($m['taxa_divergencia'] ?? 0);
 
-        $problemasPendentes = (int)($m['problemas_pendentes'] ?? 0);
+        $problemasPendentes  = (int)($m['problemas_pendentes'] ?? 0);
         $problemasResolvidos = (int)($m['problemas_resolvidos'] ?? 0);
-        $totalProblemas = $problemasPendentes + $problemasResolvidos;
-        $taxaResolucao = $totalProblemas > 0 ? ($problemasResolvidos / $totalProblemas * 100) : 100;
+        $totalProblemas      = $problemasPendentes + $problemasResolvidos;
+        $taxaResolucao       = $totalProblemas > 0
+            ? ($problemasResolvidos / $totalProblemas * 100)
+            : 100;
 
-        // Pesos: conclusão (30%), pontualidade (30%), ausência de divergência (25%), resolução de problemas (15%)
-        $score = ($taxaConclusao * 0.30)
-            + ($taxaNoPrazo * 0.30)
-            + ((100 - min($taxaDivergencia, 100)) * 0.25)
-            + ($taxaResolucao * 0.15);
+        // Ausência de divergência (quanto menor a divergência, melhor)
+        $ausenciaDivergencia = 100 - min($taxaDivergencia, 100);
 
-        return round(max(0, min($score, 100)), 1);
+        // ================================================================
+        // Eficiência de trajeto (só entra se existir)
+        // ================================================================
+        $indiceEficiencia = $m['indice_eficiencia_trajeto'] ?? null;
+        $temEficiencia    = $indiceEficiencia !== null && $indiceEficiencia !== '';
+
+        if ($temEficiencia) {
+            // Fórmula com peso cheio (soma 1.00)
+            $eficiencia = (float)$indiceEficiencia;
+
+            $scoreBase = ($taxaConclusao       * 0.25)
+                       + ($taxaNoPrazo         * 0.25)
+                       + ($ausenciaDivergencia * 0.20)
+                       + ($eficiencia          * 0.20)
+                       + ($taxaResolucao       * 0.10);
+        } else {
+            // Renormaliza os 4 pesos restantes para somar 1.00 e aplica 0.9
+            // Pesos originais: 0.25, 0.25, 0.20, 0.10 (soma 0.80)
+            // Redistribuição proporcional para somar 1.00:
+            //   0.25 / 0.80 = 0.3125
+            //   0.25 / 0.80 = 0.3125
+            //   0.20 / 0.80 = 0.25
+            //   0.10 / 0.80 = 0.125
+            // Multiplicador final de 0.9 penaliza levemente a ausência de dados
+            $scoreBase = ($taxaConclusao       * 0.3125)
+                       + ($taxaNoPrazo         * 0.3125)
+                       + ($ausenciaDivergencia * 0.25)
+                       + ($taxaResolucao       * 0.125);
+
+            $scoreBase = $scoreBase * 0.9;
+        }
+
+        // ================================================================
+        // Fator de confiança (amostra pequena diluí o score)
+        // ================================================================
+        $fatorConfianca = min(1.0, $totalEntregas / 10);
+
+        $scoreFinal = $scoreBase * $fatorConfianca;
+
+        return round(max(0, min($scoreFinal, 100)), 1);
     }
-
+/**
+ * Retorna a velocidade de referência (km/h) usada para calcular o tempo ideal
+ * de deslocamento. Configurável via frota_configuracao (chave: velocidade_referencia_kmh).
+ */
+private function getVelocidadeReferenciaKmh(): float
+{
+    try {
+        $stmt = $this->pdo->prepare("
+            SELECT valor FROM frota_configuracao WHERE chave = 'velocidade_referencia_kmh'
+        ");
+        $stmt->execute();
+        $valor = $stmt->fetchColumn();
+        if ($valor !== false && is_numeric($valor) && (float)$valor > 0) {
+            return (float)$valor;
+        }
+    } catch (\Throwable $e) {
+        error_log('[Dashboard] Falha ao ler velocidade_referencia_kmh: ' . $e->getMessage());
+    }
+    return 40.0; // fallback seguro
+}
     /**
      * Resposta JSON
      */

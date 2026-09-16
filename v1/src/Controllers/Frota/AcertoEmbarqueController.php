@@ -750,6 +750,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
             SELECT 
                 ent.id,
                 ent.cliente_id,
+                fc.erp_id AS cliente_erp_id,
                 ent.cliente_nome,
                 ent.pedido_id,
                 ent.pedidos_ids,
@@ -761,6 +762,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                 ent.status as entrega_status,
                 ent.codigo_rastreamento
             FROM frota_entrega ent
+            LEFT JOIN frota_cliente fc ON fc.id = ent.cliente_id
             WHERE ent.id = :id AND ent.embarque_id = :embarque_id
         ");
         $stmt->execute(['id' => $entregaId, 'embarque_id' => $embarqueId]);
@@ -926,13 +928,51 @@ if (!empty($itensIds)) {
         // ============================================================
         // 6. CRIAR PEDIDO DE ACERTO (frota_acerto_pedido)
         // ============================================================
-        $pedidoErpId = null;
-        if (!empty($entrega['pedidos_ids'])) {
-            $ids = explode(',', $entrega['pedidos_ids']);
-            $pedidoErpId = (int)$ids[0];
+        $pedidosErpIds = array_values(array_unique(array_filter(
+            array_map('intval', explode(',', (string)($entrega['pedidos_ids'] ?? '')))
+        )));
+        if (empty($pedidosErpIds) && !empty($entrega['pedido_id'])) {
+            $pedidosErpIds[] = (int)$entrega['pedido_id'];
         }
-        
-        $numeroPedido = $entrega['pedido_id'] ?? 'P' . date('Ymd') . rand(100, 999);
+
+        if (empty($pedidosErpIds)) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'A entrega não possui pedido original vinculado no ERP'
+            ], 409);
+        }
+
+        $placeholdersPedidos = implode(',', array_fill(0, count($pedidosErpIds), '?'));
+        $stmtClientePedido = $pdo->prepare("
+            SELECT DISTINCT p.idcliforemp, COALESCE(c.fantasia, c.razao) AS cliente_nome
+            FROM pedido p
+            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
+            WHERE p.idpedido IN ({$placeholdersPedidos})
+        ");
+        $stmtClientePedido->execute($pedidosErpIds);
+        $clientesPedidos = $stmtClientePedido->fetchAll(\PDO::FETCH_ASSOC);
+
+        if (count($clientesPedidos) !== 1) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Os pedidos vinculados à entrega não pertencem a um único cliente ERP'
+            ], 409);
+        }
+
+        $clienteErpId = (int)$clientesPedidos[0]['idcliforemp'];
+        if (!empty($entrega['cliente_erp_id']) && (int)$entrega['cliente_erp_id'] !== $clienteErpId) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'O cliente da entrega diverge do cliente dos pedidos originais'
+            ], 409);
+        }
+
+        $pedidoErpId = $pedidosErpIds[0];
+        $numeroPedido = $entrega['pedido_id'] ?? $pedidoErpId;
+        $clienteNome = $clientesPedidos[0]['cliente_nome'] ?: $entrega['cliente_nome'];
         
         // 🔥 CORRIGIDO: Usar nomes de parâmetros consistentes
         $stmt = $pdo->prepare("
@@ -977,8 +1017,8 @@ if (!empty($itensIds)) {
             'embarque_id' => $embarqueId,
             'pedido_erp_id' => $pedidoErpId ?? 0,
             'numero_pedido' => $numeroPedido,
-            'cliente_id' => $entrega['cliente_id'],
-            'cliente_nome' => $entrega['cliente_nome'],
+            'cliente_id' => $clienteErpId,
+            'cliente_nome' => $clienteNome,
             'tipo_problema' => $tipoProblema,
             'itens_afetados' => json_encode($itensFormatados),
             'motivo' => $motivo,
@@ -1169,6 +1209,8 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 ent.horario_checkin,
                 ent.horario_entrega,
                 ent.nome_recebedor,
+                fc.erp_id as entrega_cliente_erp_id,
+                pedido_original.idcliforemp as pedido_cliente_erp_id,
                 -- Dados do motorista
                 m.nome as motorista_nome,
                 m.cpf as motorista_cpf,
@@ -1181,6 +1223,8 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             FROM frota_acerto_pedido ap
             LEFT JOIN frota_acerto_embarque ae ON ae.id = ap.acerto_id
             LEFT JOIN frota_entrega ent ON ent.id = ap.entrega_id
+            LEFT JOIN frota_cliente fc ON fc.id = ent.cliente_id
+            LEFT JOIN pedido pedido_original ON pedido_original.idpedido = ap.pedido_erp_id
             LEFT JOIN frota_motorista m ON m.id = ae.motorista_id
             LEFT JOIN frota_veiculo v ON v.id = ae.veiculo_id
             WHERE ap.id = :id AND ap.status IN ('pendente', 'processando')
@@ -1193,6 +1237,23 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'success' => false,
                 'error' => 'Pedido de acerto não encontrado ou já processado'
             ], 404);
+        }
+
+        $clienteErpId = (int)($pedidoAcerto['pedido_cliente_erp_id'] ?? $pedidoAcerto['entrega_cliente_erp_id'] ?? 0);
+        if ($clienteErpId <= 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Não foi possível identificar o cliente ERP do pedido original'
+            ], 409);
+        }
+
+        if (!empty($pedidoAcerto['pedido_cliente_erp_id'])
+            && !empty($pedidoAcerto['entrega_cliente_erp_id'])
+            && (int)$pedidoAcerto['pedido_cliente_erp_id'] !== (int)$pedidoAcerto['entrega_cliente_erp_id']) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'O cliente da entrega diverge do cliente do pedido original'
+            ], 409);
         }
         
         // ============================================================
@@ -1328,7 +1389,7 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             FROM cliforemp
             WHERE idcliforemp = :id
         ");
-        $stmtCliente->execute(['id' => $pedidoAcerto['cliente_id']]);
+        $stmtCliente->execute(['id' => $clienteErpId]);
         $cliente = $stmtCliente->fetch(\PDO::FETCH_ASSOC);
         
         if (!$cliente) {
@@ -1357,15 +1418,9 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         }
         
         // ============================================================
-        // 8. GERAR SEQUENCIAIS (SIMULADOS)
-        // ============================================================
-        $idPedidoPDA = rand(100000, 999999);
-        $sequencialPortal = rand(1000, 9999);
-        
-        // ============================================================
         // 9. MONTAR DADOS COMPLETOS DO PEDIDO
         // ============================================================
-        $nomeCliente = $cliente['fantasia'] ?? $cliente['razao'] ?? 'PORTAL[' . $sequencialPortal . ']';
+        $nomeCliente = $cliente['fantasia'] ?? $cliente['razao'] ?? 'PORTAL';
         
         $config = [
             'idempresa' => 1,
@@ -1437,10 +1492,8 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         );
         
        $dadosPedido = array_merge($config, [
-    'idpedidopda' => $idPedidoPDA,
-    'sequencial_portal' => $sequencialPortal,
     'idfilial' => $idFilial,
-    'idcliente' => (int)$pedidoAcerto['cliente_id'],
+    'idcliente' => $clienteErpId,
     'idtransacao' => $idTransacaoFinal,
     'idserie' => $transacao['idserie'] ?? '.',
     'idvendrepre' => (int)($cliente['idvendedor'] ?? 0),
@@ -1493,6 +1546,15 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             return $this->json($response, [
                 'success' => false,
                 'error' => $resultado['message'] ?? 'Erro ao processar pedido'
+            ], 500);
+        }
+
+        $idPedidoPDA = (int)($resultado['data']['idpedidopda'] ?? 0);
+        $sequencialPortal = (int)($resultado['data']['sequencial_portal'] ?? $idPedidoPDA);
+        if ($idPedidoPDA <= 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'O ERP não retornou o identificador do pedido criado'
             ], 500);
         }
         
@@ -1745,6 +1807,35 @@ public function listarTransacoes(Request $request, Response $response): Response
         ], 500);
     }
 }
+
+    public function getResumoAcertos(Request $request, Response $response): Response
+    {
+        try {
+            $stmt = $this->pdo->query("
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE status = 'pendente') AS pendentes,
+                    COUNT(*) FILTER (WHERE status = 'em_andamento') AS em_andamento,
+                    COUNT(*) FILTER (WHERE status = 'finalizado') AS finalizados,
+                    COUNT(*) FILTER (WHERE status = 'cancelado') AS cancelados,
+                    COALESCE(SUM(valor_total_faltante), 0) AS valor_total_faltante,
+                    COALESCE(SUM(valor_total_devolvido), 0) AS valor_total_devolvido
+                FROM frota_acerto_embarque
+            ");
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => $stmt->fetch(\PDO::FETCH_ASSOC)
+            ]);
+        } catch (\Exception $e) {
+            error_log('[Acerto-resumo] ERRO: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar resumo dos acertos'
+            ], 500);
+        }
+    }
+
     /**
      * POST /v1/frota/acerto/{id}/finalizar
      * Finaliza o acerto

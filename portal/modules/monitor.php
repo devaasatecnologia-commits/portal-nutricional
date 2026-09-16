@@ -2,11 +2,12 @@
 $pageTitle = 'NUTRICIONAL | CENTRAL DE COMANDO';
 $moduleJs = 'monitor.js';
 $version = time();
+$appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/assets/css/monitor.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/monitor.css?v=' . $version . '">
 <style>
     /* ====================================================================== */
     /* MODO TV - TEMA ESCURO (preservado) */
@@ -92,8 +93,8 @@ $extraCss = '
 
 /* 1. FORÇAR SETA VOLTAR VISÍVEL NO DESKTOP */
 @media (min-width: 1024px) {
-    a[href="/portal/"].hidden.lg\:flex,
-    .tv-glass a[href="/portal/"].hidden.lg\:flex {
+    .portal-home-link.hidden.lg\:flex,
+    .tv-glass .portal-home-link.hidden.lg\:flex {
         display: flex !important;
         visibility: visible !important;
         opacity: 1 !important;
@@ -155,12 +156,12 @@ $extraCss = '
 }
 
 /* 4. BOTÃO VOLTAR - MELHOR VISIBILIDADE */
-.tv-glass a[href="/portal/"] {
+.tv-glass .portal-home-link {
     color: #94a3b8 !important;
     border: 1px solid #475569 !important;
 }
 
-.tv-glass a[href="/portal/"]:hover {
+.tv-glass .portal-home-link:hover {
     color: #f7be2f !important;
     border-color: #f7be2f !important;
     background: rgba(247, 190, 47, 0.1) !important;
@@ -186,7 +187,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 <!-- ====================================================================== -->
 <div class="mobile-toolbar block lg:hidden fixed top-0 left-0 right-0 z-50 shadow-lg tv-mode">
     <div class="flex items-center justify-between px-4 py-3">
-        <a href="/portal/" class="flex items-center gap-2 no-underline">
+        <a href="<?= $appBase ?>/portal/" class="portal-home-link flex items-center gap-2 no-underline">
             <i class="fa-solid fa-arrow-left text-lg"></i>
             <span class="text-sm font-bold">VOLTAR</span>
         </a>
@@ -207,7 +208,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="tv-glass px-4 lg:px-8 py-3 lg:py-6 flex justify-between items-center shadow-2xl z-10 border-b border-slate-800">
         <div class="flex items-center gap-3 lg:gap-6">
             <!-- Botão Voltar (desktop) -->
-            <a href="/portal/" class="hidden lg:flex w-10 h-10 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl items-center justify-center transition-colors mr-2 no-underline border border-slate-700" title="Voltar ao Portal">
+            <a href="<?= $appBase ?>/portal/" class="portal-home-link hidden lg:flex w-10 h-10 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl items-center justify-center transition-colors mr-2 no-underline border border-slate-700" title="Voltar ao Portal">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
            

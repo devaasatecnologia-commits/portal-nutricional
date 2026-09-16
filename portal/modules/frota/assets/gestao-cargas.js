@@ -7,8 +7,9 @@
 // ================================================================
 // Respeita window.API_URL definido em /portal/assets/js/config.js,
 // que já trata corretamente ambiente local (pasta /API) vs produção.
+const apiUrl = window.API_URL || '/';
 const CONFIG = {
-    API_BASE: (window.API_URL || '/') + 'frota',
+    API_BASE: apiUrl + (apiUrl.endsWith('/') || apiUrl.endsWith('=') ? '' : '/') + 'frota',
     CACHE_VALIDADE: 60000,
     LIMITE_PADRAO: 25,
     DEBOUNCE_DELAY: 400
@@ -46,7 +47,8 @@ let cache = {
 function getAuthToken() {
     const token = localStorage.getItem('authToken');
     if (!token && !window.location.pathname.includes('login.php')) {
-        window.location.href = '/portal/login.php';
+        const base = window.location.pathname.startsWith('/API/') ? '/API' : '';
+        window.location.href = base + '/portal/login.php';
     }
     return token;
 }
@@ -237,7 +239,8 @@ async function carregarDados(forceRefresh = false) {
         });
 
         if (response.status === 401) {
-            window.location.href = '/portal/login.php';
+            const base = window.location.pathname.startsWith('/API/') ? '/API' : '';
+            window.location.href = base + '/portal/login.php';
             return;
         }
 
@@ -1132,6 +1135,13 @@ let graficosCarregados = false;
 let cobliCarregado = false;
 let rankingMotoristasData = [];
 let rankingVeiculosData = [];
+
+// ================================================================
+// Filtros de eficiência (persistidos em localStorage)
+// true = ocultar itens com amostra_insuficiente
+// ================================================================
+let filtroEficienciaMotoristas = false;
+let filtroEficienciaVeiculos   = false;
 let chartInstances = {};
 let historicoState = {
     pagina: 1,
@@ -1248,18 +1258,66 @@ function renderizarTabelaMotoristas(dados) {
     const tbody = document.getElementById('lista-motoristas');
     if (!tbody) return;
 
-    if (!dados.length) {
-        tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8">Nenhum motorista com embarques no período.</td></tr>';
+    // ================================================================
+    // Aplica filtro "Ocultar sem eficiência" (se ativo)
+    // ================================================================
+    const dadosFiltrados = aplicarFiltroEficiencia(dados, filtroEficienciaMotoristas);
+
+    if (!dadosFiltrados.length) {
+        const msgVazia = (filtroEficienciaMotoristas && dados.length > 0)
+            ? 'Nenhum motorista com eficiência calculada no período (filtro ativo).'
+            : 'Nenhum motorista com embarques no período.';
+        tbody.innerHTML = `<tr><td colspan="12" class="text-center py-8">${msgVazia}</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = dados.map((m, idx) => {
+    tbody.innerHTML = dadosFiltrados.map((m, idx) => {
         const indice = Number(m.indice_ineficiencia || 0);
         const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
         const taxaDivClass = m.taxa_divergencia >= 15 ? 'critico' : (m.taxa_divergencia >= 5 ? 'alerta' : 'ok');
         const taxaPrazoClass = m.taxa_no_prazo >= 90 ? 'ok' : (m.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
         const score = Number(m.score_desempenho || 0);
         const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
+
+        // ================================================================
+        // KPIs de eficiência de trajeto (com flags)
+        // ================================================================
+        const trajetos = Number(m.trajetos_analisados || 0);
+        const amostraInsuf = !!m.amostra_insuficiente;
+        const amostraPequena = !!m.amostra_pequena;
+
+        // ----- Tempo Médio de Deslocamento -----
+        let tempoDeslHtml = '';
+        if (amostraInsuf || m.tempo_medio_deslocamento_min === null || m.tempo_medio_deslocamento_min === undefined) {
+            tempoDeslHtml = '<span class="text-slate-400" title="Dados insuficientes (0 trajetos válidos)">—</span>';
+        } else {
+            const badgeAviso = amostraPequena
+                ? `<span class="amostra-badge" title="Amostra pequena — use com cautela"><i class="fa-solid fa-triangle-exclamation"></i> ${trajetos}</span>`
+                : `<span class="text-xs text-slate-400" title="Baseado em ${trajetos} trajetos">(${trajetos})</span>`;
+            tempoDeslHtml = `${Math.round(m.tempo_medio_deslocamento_min)} min ${badgeAviso}`;
+        }
+
+        // ----- Índice de Eficiência -----
+        let eficienciaHtml = '';
+        if (amostraInsuf || m.indice_eficiencia_trajeto === null || m.indice_eficiencia_trajeto === undefined) {
+            eficienciaHtml = '<span class="text-slate-400" title="Dados insuficientes (0 trajetos válidos)">—</span>';
+        } else {
+            const ef = Number(m.indice_eficiencia_trajeto);
+            const efClass = ef >= 85 ? 'ok' : (ef >= 60 ? 'alerta' : 'critico');
+            const efIcon = ef >= 85 ? 'fa-arrow-trend-up'
+                          : (ef >= 60 ? 'fa-arrow-right' : 'fa-arrow-trend-down');
+            const titulo = amostraPequena
+                ? `Amostra pequena (${trajetos} trajeto${trajetos === 1 ? '' : 's'}) — use com cautela`
+                : `Tempo ideal / tempo real (baseado em ${trajetos} trajetos)`;
+
+            const badgeAviso = amostraPequena
+                ? `<span class="amostra-badge" title="${titulo}"><i class="fa-solid fa-triangle-exclamation"></i></span>`
+                : '';
+
+            eficienciaHtml = `<span class="badge-taxa ${efClass}" title="${titulo}">
+                <i class="fa-solid ${efIcon}"></i> ${ef.toFixed(1)}%
+            </span>${badgeAviso}`;
+        }
 
         return `
         <tr class="tabela-motoristas-linha" onclick="abrirDetalheMotorista(${m.id})">
@@ -1275,6 +1333,8 @@ function renderizarTabelaMotoristas(dados) {
             <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(m.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
             <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(m.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
             <td class="text-center">${Math.round(m.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${tempoDeslHtml}</td>
+            <td class="text-center">${eficienciaHtml}</td>
             <td class="text-center">${m.total_problemas ?? 0}</td>
             <td class="text-center"><span class="score-mini-badge nivel-${scoreNivel}">${score.toFixed(1)}</span></td>
             <td>
@@ -1328,6 +1388,83 @@ function montarHtmlPerfilMotorista(data) {
     const score = Number(met.score_desempenho || 0);
     const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
 
+    // ================================================================
+    // KPIs de eficiência de trajeto (com flags)
+    // ================================================================
+    const trajetos = Number(met.trajetos_analisados || 0);
+    const amostraInsuf = !!met.amostra_insuficiente;
+    const amostraPequena = !!met.amostra_pequena;
+    const temEficiencia = !amostraInsuf
+        && met.indice_eficiencia_trajeto !== null
+        && met.indice_eficiencia_trajeto !== undefined;
+
+    // ----- Card Eficiência Trajeto -----
+    let eficienciaCardHtml = '';
+    if (temEficiencia) {
+        const ef = Number(met.indice_eficiencia_trajeto);
+        const efClass = ef >= 85 ? 'ok' : (ef >= 60 ? 'alerta' : 'critico');
+        const efIcon = ef >= 85 ? 'fa-arrow-trend-up'
+                      : (ef >= 60 ? 'fa-arrow-right' : 'fa-arrow-trend-down');
+        const efLabel = ef >= 85 ? 'Trajeto Eficiente'
+                       : (ef >= 60 ? 'Trajeto Aceitável' : 'Trajeto Ineficiente');
+
+        const subtitulo = amostraPequena
+            ? `⚠ Amostra pequena (${trajetos} trajeto${trajetos === 1 ? '' : 's'}) — use com cautela`
+            : `${efLabel} • ${trajetos} trajetos`;
+
+        eficienciaCardHtml = `
+            <div class="stat eficiencia-card ${efClass}${amostraPequena ? ' com-aviso' : ''}">
+                <strong>
+                    <i class="fa-solid ${efIcon}"></i>
+                    ${ef.toFixed(1)}%
+                </strong>
+                <span>Eficiência Trajeto</span>
+                <small class="text-xs text-slate-400">${subtitulo}</small>
+            </div>
+        `;
+    } else {
+        eficienciaCardHtml = `
+            <div class="stat eficiencia-card neutro">
+                <strong>
+                    <i class="fa-solid fa-circle-info"></i>
+                    —
+                </strong>
+                <span>Eficiência Trajeto</span>
+                <small class="text-xs text-slate-400">Dados insuficientes (${trajetos} trajeto${trajetos === 1 ? '' : 's'})</small>
+            </div>
+        `;
+    }
+
+    // ----- Cards de Tempo de Deslocamento -----
+    let tempoDeslHtml = '';
+    if (temEficiencia && met.tempo_medio_deslocamento_min !== null) {
+        tempoDeslHtml = `
+            <div class="stat">
+                <strong>${Math.round(met.tempo_medio_deslocamento_min)} min</strong>
+                <span>Tempo Médio Desl.</span>
+                <small class="text-xs text-slate-400">média real entre paradas</small>
+            </div>
+            <div class="stat">
+                <strong>${Math.round(met.tempo_ideal_medio_min ?? 0)} min</strong>
+                <span>Tempo Ideal Médio</span>
+                <small class="text-xs text-slate-400">a ${data.velocidade_referencia_kmh ?? 40} km/h</small>
+            </div>
+            <div class="stat">
+                <strong>${met.distancia_media_trajeto_km != null ? met.distancia_media_trajeto_km.toFixed(1) : '—'} km</strong>
+                <span>Distância Média</span>
+                <small class="text-xs text-slate-400">entre paradas</small>
+            </div>
+        `;
+    } else {
+        tempoDeslHtml = `
+            <div class="stat">
+                <strong>—</strong>
+                <span>Tempo Médio Desl.</span>
+                <small class="text-xs text-slate-400">sem trajetos válidos</small>
+            </div>
+        `;
+    }
+
     const header = `
         <div class="detalhe-ranking-header">
             <div>
@@ -1344,6 +1481,8 @@ function montarHtmlPerfilMotorista(data) {
                     <div class="indice-ineficiencia-bar-label">Índice de Ineficiência: ${indice.toFixed(1)}</div>
                 </div>
             </div>
+
+            <!-- KPIs PRINCIPAIS -->
             <div class="detalhe-ranking-stats">
                 <div class="stat"><strong>${met.total_embarques ?? 0}</strong><span>Embarques</span></div>
                 <div class="stat"><strong>${met.total_entregas ?? 0}</strong><span>Entregas</span></div>
@@ -1351,9 +1490,15 @@ function montarHtmlPerfilMotorista(data) {
                 <div class="stat"><strong>${met.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
                 <div class="stat"><strong>${(met.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
                 <div class="stat"><strong>${(met.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
-                <div class="stat"><strong>${Math.round(met.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                <div class="stat"><strong>${Math.round(met.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo no cliente</span></div>
                 <div class="stat"><strong>${met.total_problemas ?? 0}</strong><span>Problemas</span></div>
                 <div class="stat"><strong>${formatarMoeda(met.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+            </div>
+
+            <!-- KPIs NOVOS: EFICIÊNCIA DE TRAJETO -->
+            <div class="detalhe-ranking-stats detalhe-ranking-stats-eficiencia">
+                ${eficienciaCardHtml}
+                ${tempoDeslHtml}
             </div>
         </div>
     `;
@@ -1492,16 +1637,64 @@ function renderizarTabelaVeiculos(dados) {
     const tbody = document.getElementById('lista-veiculos');
     if (!tbody) return;
 
-    if (!dados.length) {
-        tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8">Nenhum veículo com embarques no período.</td></tr>';
+    // ================================================================
+    // Aplica filtro "Ocultar sem eficiência" (se ativo)
+    // ================================================================
+    const dadosFiltrados = aplicarFiltroEficiencia(dados, filtroEficienciaVeiculos);
+
+    if (!dadosFiltrados.length) {
+        const msgVazia = (filtroEficienciaVeiculos && dados.length > 0)
+            ? 'Nenhum veículo com eficiência calculada no período (filtro ativo).'
+            : 'Nenhum veículo com embarques no período.';
+        tbody.innerHTML = `<tr><td colspan="11" class="text-center py-8">${msgVazia}</td></tr>`;
         return;
     }
 
-    tbody.innerHTML = dados.map((v, idx) => {
+    tbody.innerHTML = dadosFiltrados.map((v, idx) => {
         const indice = Number(v.indice_ineficiencia || 0);
         const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
         const taxaDivClass = v.taxa_divergencia >= 15 ? 'critico' : (v.taxa_divergencia >= 5 ? 'alerta' : 'ok');
         const taxaPrazoClass = v.taxa_no_prazo >= 90 ? 'ok' : (v.taxa_no_prazo >= 70 ? 'alerta' : 'critico');
+
+        // ================================================================
+        // KPIs de eficiência de trajeto (com flags)
+        // ================================================================
+        const trajetos = Number(v.trajetos_analisados || 0);
+        const amostraInsuf = !!v.amostra_insuficiente;
+        const amostraPequena = !!v.amostra_pequena;
+
+        // ----- Tempo Médio de Deslocamento -----
+        let tempoDeslHtml = '';
+        if (amostraInsuf || v.tempo_medio_deslocamento_min === null || v.tempo_medio_deslocamento_min === undefined) {
+            tempoDeslHtml = '<span class="text-slate-400" title="Dados insuficientes (0 trajetos válidos)">—</span>';
+        } else {
+            const badgeAviso = amostraPequena
+                ? `<span class="amostra-badge" title="Amostra pequena — use com cautela"><i class="fa-solid fa-triangle-exclamation"></i> ${trajetos}</span>`
+                : `<span class="text-xs text-slate-400" title="Baseado em ${trajetos} trajetos">(${trajetos})</span>`;
+            tempoDeslHtml = `${Math.round(v.tempo_medio_deslocamento_min)} min ${badgeAviso}`;
+        }
+
+        // ----- Índice de Eficiência -----
+        let eficienciaHtml = '';
+        if (amostraInsuf || v.indice_eficiencia_trajeto === null || v.indice_eficiencia_trajeto === undefined) {
+            eficienciaHtml = '<span class="text-slate-400" title="Dados insuficientes (0 trajetos válidos)">—</span>';
+        } else {
+            const ef = Number(v.indice_eficiencia_trajeto);
+            const efClass = ef >= 85 ? 'ok' : (ef >= 60 ? 'alerta' : 'critico');
+            const efIcon = ef >= 85 ? 'fa-arrow-trend-up'
+                          : (ef >= 60 ? 'fa-arrow-right' : 'fa-arrow-trend-down');
+            const titulo = amostraPequena
+                ? `Amostra pequena (${trajetos} trajeto${trajetos === 1 ? '' : 's'}) — use com cautela`
+                : `Tempo ideal / tempo real (baseado em ${trajetos} trajetos)`;
+
+            const badgeAviso = amostraPequena
+                ? `<span class="amostra-badge" title="${titulo}"><i class="fa-solid fa-triangle-exclamation"></i></span>`
+                : '';
+
+            eficienciaHtml = `<span class="badge-taxa ${efClass}" title="${titulo}">
+                <i class="fa-solid ${efIcon}"></i> ${ef.toFixed(1)}%
+            </span>${badgeAviso}`;
+        }
 
         return `
         <tr class="tabela-veiculos-linha" onclick="abrirDetalheVeiculo(${v.id})">
@@ -1517,6 +1710,8 @@ function renderizarTabelaVeiculos(dados) {
             <td class="text-center"><span class="badge-taxa ${taxaDivClass}">${(v.taxa_divergencia ?? 0).toFixed(1)}%</span></td>
             <td class="text-center"><span class="badge-taxa ${taxaPrazoClass}">${(v.taxa_no_prazo ?? 0).toFixed(1)}%</span></td>
             <td class="text-center">${Math.round(v.tempo_medio_entrega_min ?? 0)} min</td>
+            <td class="text-center">${tempoDeslHtml}</td>
+            <td class="text-center">${eficienciaHtml}</td>
             <td class="text-center">${v.total_problemas ?? 0}</td>
             <td>
                 <div class="indice-ineficiencia-bar">
@@ -1526,6 +1721,56 @@ function renderizarTabelaVeiculos(dados) {
             </td>
         </tr>`;
     }).join('');
+}
+// =====================================================================
+// FILTRO "Ocultar sem eficiência" — toggle rápido no cabeçalho
+// =====================================================================
+
+/**
+ * Alterna o filtro de eficiência para uma das abas (motoristas/veiculos).
+ * Persiste em localStorage e re-renderiza a tabela.
+ */
+function alternarFiltroEficiencia(aba, ativo) {
+    if (aba === 'motoristas') {
+        filtroEficienciaMotoristas = !!ativo;
+        try { localStorage.setItem('frota_filtro_eficiencia_motoristas', ativo ? '1' : '0'); } catch (e) {}
+        renderizarTabelaMotoristas(rankingMotoristasData);
+    } else if (aba === 'veiculos') {
+        filtroEficienciaVeiculos = !!ativo;
+        try { localStorage.setItem('frota_filtro_eficiencia_veiculos', ativo ? '1' : '0'); } catch (e) {}
+        renderizarTabelaVeiculos(rankingVeiculosData);
+    }
+}
+
+/**
+ * Aplica o filtro de eficiência sobre um array de dados.
+ * Remove itens com amostra_insuficiente quando o filtro está ativo.
+ */
+function aplicarFiltroEficiencia(dados, ativo) {
+    if (!ativo) return dados;
+    return dados.filter(item => !item.amostra_insuficiente);
+}
+
+/**
+ * Restaura o estado dos toggles a partir do localStorage ao carregar a página.
+ * Deve ser chamada ANTES de carregar os rankings, para que os toggles
+ * apareçam já marcados.
+ */
+function restaurarFiltrosEficiencia() {
+    try {
+        const m = localStorage.getItem('frota_filtro_eficiencia_motoristas') === '1';
+        const v = localStorage.getItem('frota_filtro_eficiencia_veiculos') === '1';
+
+        filtroEficienciaMotoristas = m;
+        filtroEficienciaVeiculos = v;
+
+        const toggleM = document.getElementById('toggle-eficiencia-motoristas');
+        const toggleV = document.getElementById('toggle-eficiencia-veiculos');
+        if (toggleM) toggleM.checked = m;
+        if (toggleV) toggleV.checked = v;
+    } catch (e) {
+        console.warn('Não foi possível restaurar filtros de eficiência:', e);
+    }
 }
 
 function abrirDetalheVeiculo(id) {
@@ -1539,6 +1784,83 @@ function abrirDetalheVeiculo(id) {
     const indice = Number(v.indice_ineficiencia || 0);
     const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
 
+    // ================================================================
+    // KPIs de eficiência de trajeto (com flags)
+    // ================================================================
+    const trajetos = Number(v.trajetos_analisados || 0);
+    const amostraInsuf = !!v.amostra_insuficiente;
+    const amostraPequena = !!v.amostra_pequena;
+    const temEficiencia = !amostraInsuf
+        && v.indice_eficiencia_trajeto !== null
+        && v.indice_eficiencia_trajeto !== undefined;
+
+    // ----- Card Eficiência Trajeto -----
+    let eficienciaCardHtml = '';
+    if (temEficiencia) {
+        const ef = Number(v.indice_eficiencia_trajeto);
+        const efClass = ef >= 85 ? 'ok' : (ef >= 60 ? 'alerta' : 'critico');
+        const efIcon = ef >= 85 ? 'fa-arrow-trend-up'
+                      : (ef >= 60 ? 'fa-arrow-right' : 'fa-arrow-trend-down');
+        const efLabel = ef >= 85 ? 'Trajeto Eficiente'
+                       : (ef >= 60 ? 'Trajeto Aceitável' : 'Trajeto Ineficiente');
+
+        const subtitulo = amostraPequena
+            ? `⚠ Amostra pequena (${trajetos} trajeto${trajetos === 1 ? '' : 's'}) — use com cautela`
+            : `${efLabel} • ${trajetos} trajetos`;
+
+        eficienciaCardHtml = `
+            <div class="stat eficiencia-card ${efClass}${amostraPequena ? ' com-aviso' : ''}">
+                <strong>
+                    <i class="fa-solid ${efIcon}"></i>
+                    ${ef.toFixed(1)}%
+                </strong>
+                <span>Eficiência Trajeto</span>
+                <small class="text-xs text-slate-400">${subtitulo}</small>
+            </div>
+        `;
+    } else {
+        eficienciaCardHtml = `
+            <div class="stat eficiencia-card neutro">
+                <strong>
+                    <i class="fa-solid fa-circle-info"></i>
+                    —
+                </strong>
+                <span>Eficiência Trajeto</span>
+                <small class="text-xs text-slate-400">Dados insuficientes (${trajetos} trajeto${trajetos === 1 ? '' : 's'})</small>
+            </div>
+        `;
+    }
+
+    // ----- Cards de Tempo de Deslocamento -----
+    let tempoDeslHtml = '';
+    if (temEficiencia && v.tempo_medio_deslocamento_min !== null) {
+        tempoDeslHtml = `
+            <div class="stat">
+                <strong>${Math.round(v.tempo_medio_deslocamento_min)} min</strong>
+                <span>Tempo Médio Desl.</span>
+                <small class="text-xs text-slate-400">média real entre paradas</small>
+            </div>
+            <div class="stat">
+                <strong>${Math.round(v.tempo_ideal_medio_min ?? 0)} min</strong>
+                <span>Tempo Ideal Médio</span>
+                <small class="text-xs text-slate-400">a 40 km/h</small>
+            </div>
+            <div class="stat">
+                <strong>${v.distancia_media_trajeto_km != null ? v.distancia_media_trajeto_km.toFixed(1) : '—'} km</strong>
+                <span>Distância Média</span>
+                <small class="text-xs text-slate-400">entre paradas</small>
+            </div>
+        `;
+    } else {
+        tempoDeslHtml = `
+            <div class="stat">
+                <strong>—</strong>
+                <span>Tempo Médio Desl.</span>
+                <small class="text-xs text-slate-400">sem trajetos válidos</small>
+            </div>
+        `;
+    }
+
     if (conteudo) {
         conteudo.innerHTML = `
             <div class="detalhe-ranking-header">
@@ -1550,6 +1872,8 @@ function abrirDetalheVeiculo(id) {
                     <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
                     <div class="indice-ineficiencia-bar-label">Índice: ${indice.toFixed(1)}</div>
                 </div>
+
+                <!-- KPIs PRINCIPAIS -->
                 <div class="detalhe-ranking-stats">
                     <div class="stat"><strong>${v.total_embarques ?? 0}</strong><span>Embarques</span></div>
                     <div class="stat"><strong>${v.total_entregas ?? 0}</strong><span>Entregas</span></div>
@@ -1557,12 +1881,18 @@ function abrirDetalheVeiculo(id) {
                     <div class="stat"><strong>${v.entregas_atrasadas ?? 0}</strong><span>Atrasadas</span></div>
                     <div class="stat"><strong>${(v.taxa_divergencia ?? 0).toFixed(1)}%</strong><span>Divergência</span></div>
                     <div class="stat"><strong>${(v.taxa_no_prazo ?? 0).toFixed(1)}%</strong><span>No prazo</span></div>
-                    <div class="stat"><strong>${Math.round(v.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo médio</span></div>
+                    <div class="stat"><strong>${Math.round(v.tempo_medio_entrega_min ?? 0)} min</strong><span>Tempo no cliente</span></div>
                     <div class="stat"><strong>${v.total_problemas ?? 0}</strong><span>Problemas</span></div>
                     <div class="stat"><strong>${v.faltantes ?? 0}</strong><span>Faltantes</span></div>
                     <div class="stat"><strong>${v.devolucoes ?? 0}</strong><span>Devoluções</span></div>
                     <div class="stat"><strong>${Math.round(v.peso_total_transportado ?? 0)} kg</strong><span>Peso Transportado</span></div>
                     <div class="stat"><strong>${formatarMoeda(v.valor_total_afetado ?? 0)}</strong><span>Valor Afetado</span></div>
+                </div>
+
+                <!-- KPIs NOVOS: EFICIÊNCIA DE TRAJETO -->
+                <div class="detalhe-ranking-stats detalhe-ranking-stats-eficiencia">
+                    ${eficienciaCardHtml}
+                    ${tempoDeslHtml}
                 </div>
             </div>
         `;
@@ -2130,6 +2460,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const icon = document.querySelector('.theme-toggle i');
     if (icon) icon.className = saved === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
 
+    // ================================================================
+    // Restaura filtros de eficiência ANTES de carregar dados
+    // ================================================================
+    restaurarFiltrosEficiencia();
+
     // Carregar dados
     carregarDados();
 
@@ -2252,3 +2587,5 @@ window.abrirDetalheMotorista = abrirDetalheMotorista;
 window.abrirDetalheVeiculo = abrirDetalheVeiculo;
 window.mudarPaginaHistorico = mudarPaginaHistorico;
 window.abrirDetalheEmbarque = abrirDetalheEmbarque;
+window.alternarFiltroEficiencia = alternarFiltroEficiencia;
+window.restaurarFiltrosEficiencia = restaurarFiltrosEficiencia;

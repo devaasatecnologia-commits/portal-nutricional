@@ -35,6 +35,114 @@ class MotoristaController
         return $motoristaAutenticado > 0 && $motoristaAutenticado === $motoristaId;
     }
 
+    private function usuarioTemAcessoGestao(Request $request): bool
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+
+        return (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
+    }
+
+    public function painelApp(Request $request, Response $response): Response
+    {
+        if (!$this->usuarioTemAcessoGestao($request)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
+
+        $stmt = $this->pdo->query("
+            SELECT
+                m.id,
+                m.nome,
+                m.status,
+                m.telefone,
+                m.latitude,
+                m.longitude,
+                m.ultima_posicao,
+                v.placa AS veiculo_placa,
+                v.modelo AS veiculo_modelo,
+                eb.id AS embarque_id,
+                eb.numero_embarque,
+                eb.status AS embarque_status,
+                eb.data_saida,
+                COALESCE(entregas.total, 0) AS total_entregas,
+                COALESCE(entregas.concluidas, 0) AS entregas_concluidas,
+                COALESCE(entregas.em_entrega, 0) AS entregas_em_andamento,
+                COALESCE(entregas.pendentes, 0) AS entregas_pendentes,
+                COALESCE(entregas.problemas, 0) AS entregas_problemas
+            FROM frota_motorista m
+            LEFT JOIN LATERAL (
+                SELECT embarque.*
+                FROM frota_embarque embarque
+                WHERE embarque.motorista_id = m.id
+                  AND (
+                      embarque.status IN ('planejado', 'em_andamento')
+                      OR DATE(embarque.data_saida) = CURRENT_DATE
+                  )
+                ORDER BY
+                    CASE WHEN embarque.status = 'em_andamento' THEN 0
+                         WHEN embarque.status = 'planejado' THEN 1
+                         ELSE 2 END,
+                    embarque.data_saida DESC,
+                    embarque.id DESC
+                LIMIT 1
+            ) eb ON TRUE
+            LEFT JOIN frota_veiculo v ON v.id = COALESCE(eb.veiculo_id, m.veiculo_atual_id)
+            LEFT JOIN LATERAL (
+                SELECT
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')) AS concluidas,
+                    COUNT(*) FILTER (WHERE e.status = 'em_entrega') AS em_entrega,
+                    COUNT(*) FILTER (WHERE e.status = 'pendente') AS pendentes,
+                    COUNT(*) FILTER (WHERE e.status IN ('falha', 'entregue_com_problema')) AS problemas
+                FROM frota_entrega e
+                WHERE e.embarque_id = eb.id
+            ) entregas ON TRUE
+            WHERE m.status = 'ativo'
+            ORDER BY
+                CASE WHEN eb.status = 'em_andamento' THEN 0
+                     WHEN eb.status = 'planejado' THEN 1
+                     ELSE 2 END,
+                m.nome
+        ");
+
+        $motoristas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        $resumo = [
+            'motoristas' => count($motoristas),
+            'em_rota' => 0,
+            'com_rota' => 0,
+            'total_entregas' => 0,
+            'entregas_concluidas' => 0,
+            'entregas_pendentes' => 0,
+            'problemas' => 0,
+        ];
+
+        foreach ($motoristas as &$motorista) {
+            foreach (['total_entregas', 'entregas_concluidas', 'entregas_em_andamento', 'entregas_pendentes', 'entregas_problemas'] as $campo) {
+                $motorista[$campo] = (int)$motorista[$campo];
+            }
+            $motorista['progresso'] = $motorista['total_entregas'] > 0
+                ? round(($motorista['entregas_concluidas'] / $motorista['total_entregas']) * 100, 1)
+                : 0;
+
+            $resumo['em_rota'] += $motorista['embarque_status'] === 'em_andamento' ? 1 : 0;
+            $resumo['com_rota'] += $motorista['embarque_id'] ? 1 : 0;
+            $resumo['total_entregas'] += $motorista['total_entregas'];
+            $resumo['entregas_concluidas'] += $motorista['entregas_concluidas'];
+            $resumo['entregas_pendentes'] += $motorista['entregas_pendentes'] + $motorista['entregas_em_andamento'];
+            $resumo['problemas'] += $motorista['entregas_problemas'];
+        }
+        unset($motorista);
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $motoristas,
+            'resumo' => $resumo,
+        ]);
+    }
+
     public function listar(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();

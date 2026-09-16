@@ -24,38 +24,56 @@ const getUserId = typeof window.getUserId === 'function'
         return document.getElementById('user_id')?.value || userData.uid || '0';
     };
 
-const apiFetch = typeof window.apiFetch === 'function'
-    ? window.apiFetch
-    : async function(acao, metodo = 'GET', body = null) {
-        let url = 'https://api.nutricionalbr.com/' + acao.replace(/^\/+/, '');
-        const options = { method: metodo, headers: {} };
-        const token = localStorage.getItem('authToken') || localStorage.getItem('token');
+const apiFetch = async function(acao, metodo = 'GET', body = null) {
+    const endpoint = acao.replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    let url = apiRoot.replace(/\/$/, '') + '/' + endpoint;
+    const options = { method: metodo, headers: {}, credentials: 'include' };
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
 
-        if (token) options.headers.Authorization = 'Bearer ' + token;
+    if (token) options.headers.Authorization = 'Bearer ' + token;
 
-        if (metodo === 'GET' && body) {
-            url += '?' + new URLSearchParams(body).toString();
-        } else if (body) {
-            options.headers['Content-Type'] = 'application/json';
-            options.body = JSON.stringify(body);
-        }
+    if (metodo === 'GET' && body) {
+        const query = new URLSearchParams(body).toString();
+        if (query) url += (url.includes('?') ? '&' : '?') + query;
+    } else if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
 
-        const response = await fetch(url, options);
-        const text = await response.text();
-        let data = {};
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data = {};
 
-        try {
-            data = text ? JSON.parse(text) : {};
-        } catch (error) {
-            data = { error: text || 'Resposta inválida do servidor' };
-        }
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch (error) {
+        data = { error: text || 'Resposta inválida do servidor' };
+    }
 
-        if (!response.ok) {
-            throw new Error(data.error || `Erro ${response.status}`);
-        }
+    if (!response.ok) throw new Error(data.error || `Erro ${response.status}`);
+    return data;
+};
 
-        return data;
-    };
+const semFotoUrl = 'https://placehold.co/150x150?text=S/F';
+
+function getProductImageUrl(path) {
+    if (!path) return semFotoUrl;
+
+    const normalized = String(path).trim().replace(/\\/g, '/');
+    if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return semFotoUrl;
+    if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
+
+    const marker = 'Fotos para o Site/';
+    const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+    let relativePath = markerIndex >= 0
+        ? normalized.substring(markerIndex + marker.length)
+        : normalized.replace(/^\/+/, '').replace(/^fotos\//i, '');
+
+    if (!relativePath) return semFotoUrl;
+    relativePath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath;
+}
 
 
 // ==========================================================================
@@ -214,15 +232,13 @@ function render() {
             ultimaSecao = i.idsecao;
         }
 
-        // CORREÇÃO: usa path_foto_master em vez de foto
-        const imgPath = i.path_foto_master ? i.path_foto_master.split('Fotos para o Site\\')[1] : null;
-        const img = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/100x100?text=S/F';
+        const img = getProductImageUrl(i.path_foto_master || i.foto);
         
         // CORREÇÃO: usa descricao (fallback para nome_item)
         const nomeProduto = i.descricao || i.nome_item || 'Produto';
 
         h += `<div class="item-card ${concluido ? 'concluido' : ''}" id="item-${i.cod_item}">
-            <img src="${img}" class="prod-img" loading="lazy" onerror="this.src='https://placehold.co/100x100?text=S/F'">
+            <img src="${img}" class="prod-img" loading="lazy" onerror="this.onerror=null;this.src='${semFotoUrl}'">
             <div class="item-info">
                 <div class="item-name">${nomeProduto}</div>
                 <div class="qty-row">
@@ -293,8 +309,7 @@ async function processarLeitura(codigo) {
     const el = document.getElementById('item-' + item.cod_item);
     if (el) el.classList.add('active');
 
-const imgPath = item.path_foto_master ? item.path_foto_master.split('Fotos para o Site\\')[1] : null;
-const fotoUrl = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/150x150?text=S/F';
+const fotoUrl = getProductImageUrl(item.path_foto_master || item.foto);
  const saldoFormatado = Number(saldoNum.toFixed(3));
 
     const res = await Swal.fire({

@@ -45,7 +45,9 @@ function getUserId() {
 // ==========================================================================
 async function apiFetch(endpoint, method = 'GET', body = null) {
     const token = getAuthToken();
-    const url = endpoint.startsWith('http') ? endpoint : `/${endpoint}`;
+    const normalizedEndpoint = endpoint.replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    let url = endpoint.startsWith('http') ? endpoint : `${apiRoot.replace(/\/$/, '')}/${normalizedEndpoint}`;
     
     const options = {
         method: method,
@@ -60,7 +62,10 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
         options.headers['X-API-Token'] = API_TOKEN;
     }
     
-    if (body && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    if (method === 'GET' && body) {
+        const query = new URLSearchParams(body).toString();
+        if (query) url += (url.includes('?') ? '&' : '?') + query;
+    } else if (body) {
         options.body = JSON.stringify(body);
     }
     
@@ -74,7 +79,8 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
             icon: 'warning',
             confirmButtonText: 'OK'
         }).then(() => {
-            window.location.href = '/portal/login.php';
+            const portalBase = location.pathname.includes('/API/') ? '/API/portal' : '/portal';
+            window.location.href = `${portalBase}/login.php`;
         });
         throw new Error('Sessão expirada');
     }

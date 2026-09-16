@@ -386,15 +386,18 @@ class EntregaController
                 (float)$entrega['latitude'],
                 (float)$entrega['longitude']
             );
-            $distanciaMinima = $this->getConfig('distancia_minima_checkin_metros', 100);
+            $distanciaMaxima = max(1000.0, (float)$this->getConfig('distancia_minima_checkin_metros', 1000));
             
-            if ($distancia > $distanciaMinima) {
+            if ($distancia > $distanciaMaxima) {
                 $distanciaFormatada = $distancia >= 1000
                     ? number_format($distancia / 1000, 2, ',', '.') . ' km'
                     : number_format($distancia, 0, ',', '.') . ' m';
+                $limiteFormatado = $distanciaMaxima >= 1000
+                    ? number_format($distanciaMaxima / 1000, 2, ',', '.') . ' km'
+                    : number_format($distanciaMaxima, 0, ',', '.') . ' m';
                 return $this->json($response, [
                     'success' => false,
-                    'error' => "Você está a {$distanciaFormatada} do local de entrega. Distância máxima permitida: {$distanciaMinima} m.",
+                    'error' => "Você está a {$distanciaFormatada} do local de entrega. Distância máxima permitida: {$limiteFormatado}.",
                     'distancia' => round($distancia, 0)
                 ], 400);
             }
@@ -533,7 +536,7 @@ public function checkout(Request $request, Response $response, array $args): Res
     }
     if (!$desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
         $distanciaCheckout = $this->calcularDistancia($lat, $lng, (float)$entrega['latitude'], (float)$entrega['longitude']);
-        $distanciaMaximaCheckout = (float)$this->getConfig('distancia_maxima_checkout_metros', 200);
+        $distanciaMaximaCheckout = max(1000.0, (float)$this->getConfig('distancia_maxima_checkout_metros', 1000));
         if ($distanciaCheckout > $distanciaMaximaCheckout) {
             $distanciaFormatada = $distanciaCheckout >= 1000
                 ? number_format($distanciaCheckout / 1000, 2, ',', '.') . ' km'
@@ -1070,9 +1073,16 @@ public function checkout(Request $request, Response $response, array $args): Res
 
     private function motoristaPodeOperarEntrega(Request $request, array $entrega, bool $desktop): bool
     {
-        if ($desktop) return true;
         $user = $request->getAttribute('user') ?? [];
-        if (in_array('admin', $user['permissoes'] ?? [], true)) return true;
+        $permissoes = $user['permissoes'] ?? [];
+        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
+        $temAcessoGestao = $isAdmin
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
+
+        if ($desktop) return $temAcessoGestao;
+        if ($isAdmin) return true;
+
         $motoristaId = (int)($user['motorista_id'] ?? 0);
         return $motoristaId > 0 && $motoristaId === (int)($entrega['motorista_id'] ?? 0);
     }

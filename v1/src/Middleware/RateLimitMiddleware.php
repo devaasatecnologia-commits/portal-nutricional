@@ -33,18 +33,29 @@ class RateLimitMiddleware
 
     public function __invoke(Request $request, RequestHandler $handler): Response
     {
-        $path = $request->getUri()->getPath();
+        $path = rtrim($request->getUri()->getPath(), '/') ?: '/';
         $ip = $this->getClientIp($request);
+
+        if ($path === '/v1/auth/login' && strtoupper($request->getMethod()) === 'POST') {
+            return $this->handleLogin($request, $handler, $ip);
+        }
+
         $user = $request->getAttribute('user');
         $userId = (int)($user['uid'] ?? $user['idusuario'] ?? 0);
 
         // ================================================================
         // Chave do rate limit:
-        //   - Usuário autenticado → por user_id (não compartilha com colegas)
-        //   - Anônimo            → por IP       (protege contra DDoS)
-        // Não inclui a rota — o limite é por cliente, não por endpoint.
+        //   - Usuário autenticado → por user_id ou token
+        //   - Anônimo             → por IP e rota
         // ================================================================
-        $chaveBase = $userId > 0 ? "user:{$userId}" : "ip:{$ip}";
+        $authorization = $request->getHeaderLine('Authorization');
+        if ($userId > 0) {
+            $chaveBase = "user:{$userId}";
+        } elseif (preg_match('/^Bearer\s+(.+)$/i', $authorization, $matches)) {
+            $chaveBase = 'token:' . hash('sha256', $matches[1]);
+        } else {
+            $chaveBase = "ip:{$ip}:path:{$path}";
+        }
         $identifier = md5($chaveBase);
 
         // Limite específico por rota, senão usa o padrão
@@ -69,6 +80,57 @@ class RateLimitMiddleware
             ->withHeader('X-RateLimit-Limit', (string)$limit)
             ->withHeader('X-RateLimit-Remaining', (string)max(0, $limit - $current - 1))
             ->withHeader('X-RateLimit-Reset', (string)(time() + $this->getResetTime($identifier)));
+    }
+
+    private function handleLogin(Request $request, RequestHandler $handler, string $ip): Response
+    {
+        $rawBody = (string)$request->getBody();
+        $request->getBody()->rewind();
+        $input = json_decode($rawBody, true) ?: [];
+        $username = mb_strtolower(trim((string)($input['user'] ?? '')), 'UTF-8');
+        $usernameKey = $username !== '' ? hash('sha256', $username) : 'vazio';
+
+        $userIdentifier = md5("login:ip:{$ip}:user:{$usernameKey}");
+        $ipIdentifier = md5("login:ip:{$ip}:all");
+        $userLimit = $this->limitesPorRota['/v1/auth/login'];
+        $ipLimit = 30;
+
+        $userCount = $this->getRequestCount($userIdentifier, $this->timeWindow);
+        $ipCount = $this->getRequestCount($ipIdentifier, $this->timeWindow);
+
+        if ($userCount >= $userLimit) {
+            return $this->rateLimitExceeded(new \Slim\Psr7\Response(), $this->getRetryAfter($userIdentifier));
+        }
+        if ($ipCount >= $ipLimit) {
+            return $this->rateLimitExceeded(new \Slim\Psr7\Response(), $this->getRetryAfter($ipIdentifier));
+        }
+
+        $response = $handler->handle($request);
+
+        if (in_array($response->getStatusCode(), [400, 401, 403], true)) {
+            $this->incrementRequestCount($userIdentifier);
+            $this->incrementRequestCount($ipIdentifier);
+            $userCount++;
+            $ipCount++;
+        } elseif ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300) {
+            $this->clearRequestCount($userIdentifier);
+            $userCount = 0;
+        }
+
+        return $response
+            ->withHeader('X-RateLimit-Limit', (string)$userLimit)
+            ->withHeader('X-RateLimit-Remaining', (string)max(0, $userLimit - $userCount))
+            ->withHeader('X-RateLimit-Reset', (string)(time() + $this->getResetTime($userIdentifier)));
+    }
+
+    private function clearRequestCount(string $identifier): void
+    {
+        try {
+            $stmt = $this->pdo->prepare('DELETE FROM rate_limit WHERE identifier = :identifier');
+            $stmt->execute(['identifier' => $identifier]);
+        } catch (\Exception $e) {
+            error_log('[RateLimit] Erro ao limpar contador: ' . $e->getMessage());
+        }
     }
 
     private function getClientIp(Request $request): string

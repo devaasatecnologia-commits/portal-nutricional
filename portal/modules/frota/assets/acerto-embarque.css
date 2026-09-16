@@ -840,6 +840,14 @@ body {
     background: #d97706;
     transform: translateY(-2px);
 }
+.btn-acerto-view {
+    background: #e2e8f0;
+    color: #334155;
+}
+.btn-acerto-view:hover {
+    background: #cbd5e1;
+    transform: translateY(-2px);
+}
 
 /* ================================================================
    PEDIDOS EM DESTAQUE - MESMO ESTILO DO EMBARQUES

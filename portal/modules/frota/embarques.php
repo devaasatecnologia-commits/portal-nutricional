@@ -20,22 +20,20 @@ define('DISTRIBUIDORA_ENDERECO', 'R. Alameda Ascendino Moraes de Sá, 6151, Arar
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.css" />
+<link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
 <link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/embarquesClaude.css?v=' . $version . '">
 
 <!-- PWA MANIFEST -->
-<link rel="manifest" href="/portal/modules/frota/manifest.json">
+<link rel="manifest" href="' . $assetBase . '/portal/modules/frota/manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="/portal/modules/frota/assets/icons/icon-192x192.png">';
+<link rel="apple-touch-icon" href="' . $assetBase . '/portal/modules/frota/assets/icons/icon-192x192.png">';
 
 $extraJs = '
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet-control-geocoder/dist/Control.Geocoder.js"></script>
+<script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>';
 
@@ -60,7 +58,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="hero-embarques bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
+                <a href="<?= $assetBase ?>/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -187,7 +185,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
 <!-- ================================================================
    SEÇÃO: DISPONÍVEIS PARA ROTA (EMBARQUES DO ERP)
    ================================================================ -->
-   <div class="section-card mb-6" id="secao-disponiveis">
+<div class="section-card mb-6" id="secao-disponiveis">
     <!-- Cabeçalho clicável -->
     <div class="section-header section-header-toggle flex justify-between items-center" onclick="toggleDisponiveis()">
         <div class="flex items-center gap-3">
@@ -211,17 +209,40 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </button>
         </div>
     </div>
+
     <!-- Corpo (recolhível) -->
     <div class="section-body" id="disponiveis-body">
-        <div class="flex flex-wrap gap-1 border-b border-slate-200 mb-4" id="abas-disponiveis">
-            <!-- Abas geradas via JavaScript -->
+        <!-- Barra de busca + filtro de status -->
+        <div class="disponiveis-toolbar">
+            <div class="disponiveis-search">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="search" id="busca-disponiveis" placeholder="Buscar por nº, rota, placa, motorista, filial..." autocomplete="off" aria-label="Buscar embarques disponíveis">
+                <button type="button" class="disponiveis-search-clear" id="busca-disponiveis-clear" hidden aria-label="Limpar busca">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="disponiveis-status-tabs" id="abas-disponiveis">
+                <!-- Abas geradas via JavaScript -->
+            </div>
         </div>
-        <div id="lista-disponiveis" class="space-y-3">
+
+        <!-- Lista (checkboxes tipo select) -->
+        <div id="lista-disponiveis" class="disponiveis-list">
             <div class="text-center py-4 text-slate-400">Carregando embarques disponíveis...</div>
+        </div>
+
+        <!-- Rodapé com ações em massa -->
+        <div class="disponiveis-footer" id="disponiveis-footer" hidden>
+            <div class="disponiveis-footer-info">
+                <span id="disponiveis-info-selecao">0 embarques selecionados</span>
+                <button type="button" class="disponiveis-limpar" onclick="limparSelecionados()">
+                    <i class="fa-solid fa-xmark"></i> Limpar seleção
+                </button>
+            </div>
+            <div class="disponiveis-footer-totais" id="disponiveis-footer-totais"></div>
         </div>
     </div>
 </div>
-
 <!-- TABELA DE ROTAS CRIADAS (GRUPOS) -->
 <div class="section-card">
     <div class="section-header flex justify-between items-center flex-wrap gap-2">
@@ -292,42 +313,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
 </div>
 </div>
 
-<!-- ================================================================
-   MODAL: DETALHES DO EMBARQUE
-   ================================================================ -->
-   <div class="modal fade" id="modalDetalhes" tabindex="-1" data-bs-backdrop="static" style="display: none;">
-    <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fa-solid fa-truck mr-2"></i> Detalhes do Embarque <span id="detalhes-numero" class="font-bold"></span>
-                </h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body" id="detalhes-conteudo">
-                <div class="text-center py-8">
-                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn-secondary-nutri" onclick="exportarRota()" id="btn-exportar-rota">
-                    <i class="fa-solid fa-file-export mr-2"></i> Exportar CSV
-                </button>
-                <button type="button" class="btn-primary-nutri" onclick="otimizarRota()" id="btn-otimizar-rota">
-                    <i class="fa-solid fa-route mr-2"></i> Otimizar Rota
-                </button>
-                <button type="button" class="btn btn-secondary rounded-xl" data-bs-dismiss="modal">Fechar</button>
-            </div>
-        </div>
-    </div>
-</div>
+
 <!-- ================================================================
    SCRIPTS COMPLETOS
    ================================================================ -->
-   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-   <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-   <script src="<?= $assetBase ?>/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
-   <script src="<?= $assetBase ?>/portal/modules/frota/assets/embarquesClaude.js?v=<?= $version ?>"></script>
+  <script src="<?= $assetBase ?>/portal/modules/frota/assets/frota.js?v=<?= $version ?>"></script>
+<script src="<?= $assetBase ?>/portal/modules/frota/assets/embarquesClaude.js?v=<?= $version ?>"></script>
 <?php
 require_once __DIR__ . '/../../estrutura/footer.php';
 ?>

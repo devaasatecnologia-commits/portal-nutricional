@@ -1,10 +1,12 @@
 <?php
 
 use Nutricional\Middleware\JwtMiddleware;
+use Nutricional\Middleware\FrotaGestaoMiddleware;
 use Nutricional\Middleware\BlacklistMiddleware;
 use Nutricional\Middleware\RateLimitMiddleware;
 use Nutricional\Middleware\LoggingMiddleware;
 use Nutricional\Middleware\CsrfMiddleware;
+use Nutricional\Middleware\ModulePermissionMiddleware;
 use Nutricional\Controllers\SeparacaoController;
 use Nutricional\Controllers\CarregamentoController;
 use Nutricional\Controllers\MonitorController;
@@ -125,16 +127,13 @@ $app->group('/v1', function ($group) {
             // ==================================================================
             $frota->group('/dashboard', function ($dash) {
                 $controller = new DashboardController();
-                $dash->get('/operacional', [$controller, 'operacional']);
-                $dash->get('/motorista/{id}', [$controller, 'motorista']);
-                $dash->get('/embarque/{id}', [$controller, 'embarque']);
                 $dash->get('/entregas/hoje', [$controller, 'entregasHoje']);
                 $dash->get('/graficos', [$controller, 'graficos']);
                 $dash->get('/kpis', [$controller, 'kpis']);
                 $dash->get('/kpis-problemas', [$controller, 'kpisProblemas']);
                 $dash->get('/mapa', [$controller, 'mapa']);
                 $dash->get('/alertas', [$controller, 'alertas']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 2. EMBARQUES
@@ -146,9 +145,8 @@ $app->group('/v1', function ($group) {
                 // CRUD Básico
                 $embarque->get('', [$controller, 'listar']);
                 $embarque->get('/{id}', [$controller, 'buscar']);
-                $embarque->post('', [$controller, 'criar']);
                 $embarque->put('/{id}', [$controller, 'atualizar']);
-                $embarque->delete('/{id}', [$controller, 'deletar']);
+                $embarque->delete('/{id}', [$controller, 'deletar']);   
 
                 // Ações do Embarque
                 $embarque->post('/{id}/iniciar', [$controller, 'iniciar']);
@@ -162,14 +160,6 @@ $app->group('/v1', function ($group) {
                 // Rotas e Otimização
                 $embarque->post('/{id}/otimizar-rota', [$controller, 'otimizarRota']);
                 $embarque->get('/{id}/rota', [$controller, 'rota']);
-                $embarque->get('/{id}/entregas', [$controller, 'entregas']);
-                $embarque->get('/{id}/motorista', [$controller, 'motorista']);
-                $embarque->get('/{id}/veiculo', [$controller, 'veiculo']);
-
-                // Histórico e Relatórios
-                $embarque->get('/{id}/historico', [$controller, 'historico']);
-                $embarque->get('/{id}/relatorio', [$controller, 'relatorio']);
-                $embarque->post('/{id}/exportar-pdf', [$controller, 'exportarPDF']);
             });
 
             // ==================================================================
@@ -181,13 +171,9 @@ $app->group('/v1', function ($group) {
                 // CRUD Básico
                 $entrega->get('', [$controller, 'listar']);
                 $entrega->get('/{id}', [$controller, 'buscar']);
-                $entrega->post('', [$controller, 'criar']);
-                $entrega->put('/{id}', [$controller, 'atualizar']);
-                $entrega->delete('/{id}', [$controller, 'deletar']);
 
                 // Rastreamento
                 $entrega->get('/rastreamento/{codigo}', [$controller, 'buscarPorRastreamento']);
-                $entrega->get('/{id}/rastreamento', [$controller, 'rastreamento']);
 
                 // Ações da Entrega
                 $entrega->post('/{id}/checkin', [$controller, 'checkin']);
@@ -195,17 +181,6 @@ $app->group('/v1', function ($group) {
                 $entrega->post('/{id}/falha', [$controller, 'falha']);
                 $entrega->put('/{id}/corrigir-endereco', [$controller, 'corrigirEndereco']);
                 $entrega->post('/{id}/reagendar', [$controller, 'reagendar']);
-                $entrega->post('/{id}/tentar-novamente', [$controller, 'tentarNovamente']);
-
-                // Fotos e Comprovantes
-                $entrega->post('/{id}/foto', [$controller, 'uploadFoto']);
-                $entrega->post('/{id}/assinatura', [$controller, 'uploadAssinatura']);
-                $entrega->get('/{id}/fotos', [$controller, 'getFotos']);
-                $entrega->get('/{id}/comprovante', [$controller, 'getComprovante']);
-
-                // Histórico
-                $entrega->get('/{id}/historico', [$controller, 'historico']);
-                $entrega->get('/{id}/ocorrencias', [$controller, 'ocorrencias']);
             });
 
             // ==================================================================
@@ -216,6 +191,7 @@ $app->group('/v1', function ($group) {
 
                 // CRUD Básico
                 $motorista->get('', [$controller, 'listar']);
+                $motorista->get('/painel-app', [$controller, 'painelApp']);
                 $motorista->get('/{id}', [$controller, 'buscar']);
                 $motorista->post('', [$controller, 'criar']);
                 $motorista->put('/{id}', [$controller, 'atualizar']);
@@ -230,13 +206,9 @@ $app->group('/v1', function ($group) {
 
                 // Estatísticas
                 $motorista->get('/{id}/estatisticas', [$controller, 'estatisticas']);
-                $motorista->get('/{id}/ranking', [$controller, 'ranking']);
-                $motorista->get('/{id}/performance', [$controller, 'performance']);
 
                 // Posição e Rastreamento
                 $motorista->post('/{id}/posicao', [$controller, 'atualizarPosicao']);
-                $motorista->get('/{id}/posicao', [$controller, 'getPosicao']);
-                $motorista->get('/{id}/historico-posicao', [$controller, 'historicoPosicao']);
 
                 // Ocorrências e Notificações
                 $motorista->post('/{id}/ocorrencia', [$controller, 'registrarOcorrencia']);
@@ -263,11 +235,9 @@ $app->group('/v1', function ($group) {
 
                 // Rastreamento de Embarques
                 $rastreamento->get('/embarque/{id}', [$controller, 'embarque']);
-                $rastreamento->get('/embarque/{id}/entregas', [$controller, 'entregasEmbarque']);
 
                 // Rastreamento de Entregas
                 $rastreamento->get('/entrega/{id}', [$controller, 'entrega']);
-                $rastreamento->get('/entrega/{id}/historico', [$controller, 'historicoEntrega']);
 
                 // Posição em Tempo Real
                 $rastreamento->post('/posicao', [$controller, 'atualizarPosicao']);
@@ -289,23 +259,24 @@ $app->group('/v1', function ($group) {
                 $controller = new \Nutricional\Controllers\Frota\CobliController();
 
                 $cobli->get('/status', [$controller, 'status']);
-                $cobli->post('/configurar', [$controller, 'configurar']);
+                $cobli->post('/configurar', [$controller, 'configurar'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
                 $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);
-                $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico']);
+                $cobli->post('/sincronizar-frota', [$controller, 'sincronizarFrota'])->add(new FrotaGestaoMiddleware());
+                $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
 
-                $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo']);
-                $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo']);
-                $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista']);
+                $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo'])->add(new FrotaGestaoMiddleware());
+                $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo'])->add(new FrotaGestaoMiddleware());
+                $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
                 $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
                 $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);
 
-                $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista']);
+                $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
 
-                $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco']);
+                $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco'])->add(new FrotaGestaoMiddleware());
             });
 
             // ==================================================================
@@ -317,7 +288,6 @@ $app->group('/v1', function ($group) {
                 $importar->get('/embarque-detalhes/{id}', [$controller, 'getEmbarqueDetalhes']);
                 $importar->post('/criar-embarque', [$controller, 'criarEmbarqueDoERP']);
                 $importar->get('/buscar-pedidos', [$controller, 'buscarPedidos']);
-                $importar->post('/embarques', [$controller, 'importarEmbarques']);
                 $importar->post('/entregas', [$controller, 'importarEntregas']);
                 $importar->post('/veiculos', [$controller, 'importarVeiculos']);
                 $importar->post('/motoristas', [$controller, 'importarMotoristas']);
@@ -326,7 +296,7 @@ $app->group('/v1', function ($group) {
                 $importar->post('/tudo', [$controller, 'importarTudo']);
                 $importar->get('/status', [$controller, 'status']);
                 $importar->post('/geocodificar', [$controller, 'geocodificar']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 7. VEÍCULOS (GESTÃO DA FROTA)
@@ -346,19 +316,7 @@ $app->group('/v1', function ($group) {
                 $veiculo->put('/{id}', [$controller, 'atualizar']);
                 $veiculo->delete('/{id}', [$controller, 'deletar']);
 
-                // Status e Disponibilidade
-                $veiculo->post('/{id}/status', [$controller, 'atualizarStatus']);
-                $veiculo->get('/{id}/historico-status', [$controller, 'historicoStatus']);
-
-                // Manutenção
-                $veiculo->get('/{id}/manutencoes', [$controller, 'manutencoes']);
-                $veiculo->post('/{id}/manutencao', [$controller, 'registrarManutencao']);
-                $veiculo->get('/{id}/proxima-manutencao', [$controller, 'proximaManutencao']);
-
-                // Estatísticas
-                $veiculo->get('/{id}/estatisticas', [$controller, 'estatisticas']);
-                $veiculo->get('/{id}/relatorio', [$controller, 'relatorio']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 8. GEOLOCALIZAÇÃO
@@ -366,7 +324,7 @@ $app->group('/v1', function ($group) {
             $frota->group('/geocodificar', function ($geocodificacao) {
                 $controller = new GeocodificacaoController();
                 $geocodificacao->post('', [$controller, 'geocodificar']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 9. GESTÃO DE CARGAS - ANÁLISE DE PROBLEMAS
@@ -423,7 +381,7 @@ $app->group('/v1', function ($group) {
 
                 // EXPORTAR RELATÓRIO DE PROBLEMAS
                 $cargas->post('/exportar', [$controller, 'exportarProblemas']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 10. 🆕 ACERTO DE EMBARQUE - GESTÃO ADMINISTRATIVA
@@ -458,14 +416,8 @@ $app->group('/v1', function ($group) {
                 // Criar pedido de problema
                 $acerto->post('/pedido-problema', [$controller, 'criarPedidoProblema']);
 
-                // Listar pedidos de acerto
-                $acerto->get('/pedidos', [$controller, 'listarPedidosAcerto']);
-
                 // Detalhes de um pedido de acerto
                 $acerto->get('/pedido/{id}', [$controller, 'getPedidoAcerto']);
-
-                // Remover pedido de acerto
-                $acerto->delete('/pedido/{id}', [$controller, 'removerPedidoAcerto']);
 
                 // ============================================================
                 // INTEGRAÇÃO COM ERP
@@ -482,9 +434,6 @@ $app->group('/v1', function ($group) {
                 // ============================================================
                 // RELATÓRIOS E EXPORTAÇÃO
                 // ============================================================
-                // Exportar relatório do acerto
-                $acerto->post('/{id}/exportar', [$controller, 'exportarRelatorio']);
-
                 // Resumo dos acertos para dashboard
                 $acerto->get('/resumo', [$controller, 'getResumoAcertos']);
 
@@ -492,7 +441,7 @@ $app->group('/v1', function ($group) {
                 // TESTE (SANDBOX)
                 // ============================================================
                 $acerto->post('/testar', [$controller, 'testarCriacao']);
-            });
+            })->add(new FrotaGestaoMiddleware());
 
             // ==================================================================
             // 11. RESUMO DO DASHBOARD (UNIFICADO)
@@ -558,7 +507,7 @@ $app->group('/v1', function ($group) {
                         COUNT(CASE WHEN tipo_problema = 'faltante' THEN 1 END) as faltantes,
                         COUNT(CASE WHEN tipo_problema = 'devolucao' THEN 1 END) as devolucoes
                     FROM frota_entrega_problema
-                    WHERE created_at >= CURRENT_DATE - INTERVAL :dias DAY
+                    WHERE created_at >= CURRENT_DATE - (:dias || ' days')::interval
                     GROUP BY DATE(created_at)
                     ORDER BY data ASC
                 ");
@@ -616,7 +565,7 @@ $protected->group('/monitor', function ($group) {
     $group->get('/embarques', [$controller, 'getMonitoramento']);
     $group->get('/detalhes/{idembarque}', [$controller, 'getDetalhes']);
     $group->get('/historico', [$controller, 'getHistorico']);
-});
+})->add(new ModulePermissionMiddleware('monitor'));
 
         // ======================================================================
         // LOGÍSTICA - CONFERÊNCIA XML
@@ -651,7 +600,7 @@ $protected->group('/auditoria', function ($group) {
     $group->get('/historico', [$controller, 'getHistoricoGerencial']);
     $group->get('/conferencia/{idembarque}', [$controller, 'getDetalhesConferencia']);
     $group->get('/exportar', [$controller, 'exportarRelatorio']);
-});
+})->add(new ModulePermissionMiddleware('auditoria'));
 
         // ======================================================================
         // INVENTÁRIO (CONSULTA DE ESTOQUE)
@@ -665,7 +614,7 @@ $protected->group('/inventario', function ($group) {
     $group->post('/consultar', [$controller, 'consultarInventario']);
     $group->get('/detalhes-lote/{iditem}/{lote}', [$controller, 'getDetalhesLote']);
     $group->get('/exportar-excel', [$controller, 'exportarExcel']);
-});
+})->add(new ModulePermissionMiddleware('inventario'));
 
         // ======================================================================
         // FINANCEIRO
@@ -676,6 +625,7 @@ $protected->group('/financeiro', function ($group) {
     $group->post('/historico-kpi', [$controller, 'getHistoricoKpi']);
     $group->post('/lista-usuarios', [$controller, 'getListaUsuariosHistorico']);
     $group->post('/detalhes-kpi', [$controller, 'getDetalhesAnaliseKpi']);
+    $group->post('/relatorio-detalhado', [$controller, 'getRelatorioDetalhado']);
 });
 
         // ======================================================================
@@ -887,7 +837,7 @@ $protected->group('/deposito', function ($group) {
     $group->get('/resumo', [$controller, 'getResumo']);
     $group->post('/secao', [$controller, 'salvarSecao']);
     $group->get('/secao/{idsecao}', [$controller, 'getSecao']);
-});
+})->add(new ModulePermissionMiddleware('gestao-deposito'));
 
         // ======================================================================
         // ESTOQUE COM PREVISÃO
@@ -901,7 +851,7 @@ $protected->group('/estoque-previsao', function ($group) {
     $group->get('/item/{id}', [$controller, 'getItemDetalhe']);
     $group->get('/filiais', [$controller, 'getFiliais']);
     $group->post('/exportar', [$controller, 'exportar']);
-});
+})->add(new ModulePermissionMiddleware('estoque-previsao'));
 
         // ======================================================================
         // DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)

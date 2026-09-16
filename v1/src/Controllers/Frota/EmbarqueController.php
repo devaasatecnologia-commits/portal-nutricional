@@ -404,7 +404,110 @@ public function buscar(Request $request, Response $response, array $args): Respo
     ]);
 }
 
-    
+    /**
+ * DELETE /v1/frota/embarques/{id}
+ * Excluir um embarque e todas as suas entregas.
+ * - Bloqueia se houver entrega entregue (ou com problema) → exige cancelamento primeiro.
+ * - Remove em cascata: entregas, checklists, fotos, problemas, timeline, logs.
+ */
+public function deletar(Request $request, Response $response, array $args): Response
+{
+    $id = (int)$args['id'];
+    $user = $request->getAttribute('user');
+    $usuarioId = $user['idusuario'] ?? 0;
+
+    if ($id <= 0) {
+        return $this->json($response, ['success' => false, 'error' => 'ID inválido'], 400);
+    }
+
+    try {
+        $pdo = $this->pdo;
+
+        // Confirma existência
+        $stmt = $pdo->prepare("SELECT id, numero_embarque, status FROM frota_embarque WHERE id = :id");
+        $stmt->execute(['id' => $id]);
+        $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$embarque) {
+            return $this->json($response, ['success' => false, 'error' => 'Embarque não encontrado'], 404);
+        }
+
+        // Bloqueia se já foi finalizado e tem entregas marcadas como entregues
+        $stmt = $pdo->prepare("
+            SELECT COUNT(*) FROM frota_entrega
+            WHERE embarque_id = :id
+              AND status IN ('entregue', 'entregue_com_problema')
+        ");
+        $stmt->execute(['id' => $id]);
+        $entregues = (int)$stmt->fetchColumn();
+
+        if ($entregues > 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => "Este embarque possui {$entregues} entrega(s) já concluída(s). Cancele o embarque em vez de excluí-lo."
+            ], 400);
+        }
+
+        // Busca IDs das entregas para limpar dependências
+        $stmt = $pdo->prepare("SELECT id FROM frota_entrega WHERE embarque_id = :id");
+        $stmt->execute(['id' => $id]);
+        $entregaIds = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+
+        $pdo->beginTransaction();
+
+        try {
+            if (!empty($entregaIds)) {
+                $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
+
+                // Dependências por entrega
+                $pdo->prepare("DELETE FROM frota_checklist_entrega WHERE entrega_id IN ({$placeholders})")->execute($entregaIds);
+                $pdo->prepare("DELETE FROM frota_entrega_foto      WHERE entrega_id IN ({$placeholders})")->execute($entregaIds);
+                $pdo->prepare("DELETE FROM frota_entrega_problema  WHERE entrega_id IN ({$placeholders})")->execute($entregaIds);
+                $pdo->prepare("DELETE FROM frota_checkin           WHERE entrega_id IN ({$placeholders})")->execute($entregaIds);
+                $pdo->prepare("DELETE FROM frota_ocorrencia        WHERE entrega_id IN ({$placeholders})")->execute($entregaIds);
+                // Timeline pode não existir em algumas bases — ignora erro
+                try { $pdo->prepare("DELETE FROM frota_entrega_timeline WHERE entrega_id IN ({$placeholders})")->execute($entregaIds); } catch (\Throwable $e) {}
+                try { $pdo->prepare("DELETE FROM frota_log_entrega       WHERE entrega_id IN ({$placeholders})")->execute($entregaIds); } catch (\Throwable $e) {}
+            }
+
+            // Dependências do embarque
+            try { $pdo->prepare("DELETE FROM frota_log_embarque     WHERE embarque_id = :id")->execute(['id' => $id]); } catch (\Throwable $e) {}
+            try { $pdo->prepare("DELETE FROM frota_notificacao      WHERE embarque_id = :id")->execute(['id' => $id]); } catch (\Throwable $e) {}
+            try { $pdo->prepare("DELETE FROM frota_historico_posicao WHERE embarque_id = :id")->execute(['id' => $id]); } catch (\Throwable $e) {}
+
+            // Entregas
+            $pdo->prepare("DELETE FROM frota_entrega WHERE embarque_id = :id")->execute(['id' => $id]);
+
+            // Embarque
+            $pdo->prepare("DELETE FROM frota_embarque WHERE id = :id")->execute(['id' => $id]);
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+            throw $e;
+        }
+
+        // Log de auditoria (em embarque "fantasma" já removido — gravamos em log_embarque com id 0? Não; só registramos no error_log)
+        error_log("[Embarque-DELETE] Excluído #{$id} ({$embarque['numero_embarque']}) por usuário #{$usuarioId}");
+
+        return $this->json($response, [
+            'success' => true,
+            'message' => "Embarque #{$embarque['numero_embarque']} excluído com sucesso",
+            'data' => [
+                'id' => $id,
+                'entregas_removidas' => count($entregaIds)
+            ]
+        ]);
+
+    } catch (\Throwable $e) {
+        if (isset($pdo) && $pdo->inTransaction()) $pdo->rollBack();
+        error_log('[Embarque-DELETE] Erro ao excluir #' . $id . ': ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao excluir embarque: ' . $e->getMessage()
+        ], 500);
+    }
+}
     public function otimizarRota(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];

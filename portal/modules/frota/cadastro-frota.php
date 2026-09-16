@@ -15,6 +15,7 @@ $assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
@@ -25,6 +26,7 @@ $extraCss = '
 
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="' . $assetBase . '/portal/modules/frota/assets/cadastro-frota.js?v=' . $version . '"></script>
 ';
@@ -38,7 +40,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
+                <a href="<?= $assetBase ?>/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -101,9 +103,14 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         <span class="text-xs text-slate-400 block">Placa, modelo, status Cobli e vínculo com o ERP</span>
                     </div>
                 </div>
-                <button type="button" class="btn-premium" onclick="abrirFormVeiculo()">
-                    <i class="fa-solid fa-plus"></i> Novo veículo
-                </button>
+                <div class="flex flex-wrap gap-2">
+                    <button type="button" id="btn-sincronizar-cobli" class="cargas-clear-filter" onclick="sincronizarFrotaCobli()">
+                        <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Cobli
+                    </button>
+                    <button type="button" class="btn-premium" onclick="abrirFormVeiculo()">
+                        <i class="fa-solid fa-plus"></i> Novo veículo
+                    </button>
+                </div>
             </div>
             <div class="section-body p-0">
                 <div class="cadfrota-toolbar p-4 pb-0">
@@ -116,9 +123,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         <select id="cadfrota-filtro-status-veiculo" onchange="carregarVeiculosCad()">
                             <option value="">Todos</option>
                             <option value="disponivel">Disponível</option>
-                            <option value="em_uso">Em uso</option>
+                            <option value="em_rota">Em rota</option>
                             <option value="manutencao">Manutenção</option>
-                            <option value="inativo">Inativo</option>
+                            <option value="indisponivel">Indisponível</option>
                         </select>
                     </label>
                 </div>
@@ -243,12 +250,16 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         <input type="number" id="veiculo-cad-capacidade" placeholder="10000">
                     </div>
                     <div class="cadfrota-field">
+                        <label>Odômetro atual (km)</label>
+                        <input type="number" id="veiculo-cad-odometro" min="0" step="1" placeholder="Ex: 125000">
+                    </div>
+                    <div class="cadfrota-field">
                         <label>Status</label>
                         <select id="veiculo-cad-status">
                             <option value="disponivel">Disponível</option>
-                            <option value="em_uso">Em uso</option>
+                            <option value="em_rota">Em rota</option>
                             <option value="manutencao">Manutenção</option>
-                            <option value="inativo">Inativo</option>
+                            <option value="indisponivel">Indisponível</option>
                         </select>
                     </div>
                 </div>

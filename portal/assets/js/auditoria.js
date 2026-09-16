@@ -71,10 +71,12 @@ function fecharModalFoto() {
     // ======================================================================
     // CHAMADAS À API (usando fetchWithAuth global)
     // ======================================================================
+
+    const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
     
     async function apiCall(endpoint, params = {}) {
         const queryString = new URLSearchParams(params).toString();
-        const url = `/v1/auditoria${endpoint}${queryString ? '?' + queryString : ''}`;
+        const url = `${apiRoot}/auditoria${endpoint}${queryString ? (apiRoot.includes('?') ? '&' : '?') + queryString : ''}`;
         
         const resp = await fetchWithAuth(url);
         return resp.json();
@@ -158,7 +160,7 @@ function fecharModalFoto() {
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>';
         
         try {
-            const resp = await fetchWithAuth('/v1/carregamento/embarques');
+            const resp = await fetchWithAuth(`${apiRoot}/carregamento/embarques`);
             const dados = await resp.json();
             dadosCarregamento = dados;
             
@@ -171,7 +173,7 @@ function fecharModalFoto() {
             
             const detalhes = await Promise.all(dados.map(async (emb) => {
                 try {
-                    const resp = await fetchWithAuth(`/v1/carregamento/resumo/${emb.idembarque}`);
+                    const resp = await fetchWithAuth(`${apiRoot}/carregamento/resumo/${emb.idembarque}`);
                     const resumo = await resp.json();
                     return { ...emb, ...resumo };
                 } catch { return emb; }
@@ -565,7 +567,7 @@ function processarFotoUrl(foto) {
     const SEM_FOTO_URL = 'https://placehold.co/200x200/E2E8F0/64748B?text=S/F';
     
     // Se não tiver foto, retornar imagem padrão
-    if (!foto || foto === 'null' || foto === 'undefined' || foto === '') {
+    if (!foto || ['.', '-', 'null', 'undefined'].includes(String(foto).trim().toLowerCase())) {
         return SEM_FOTO_URL;
     }
     
@@ -579,14 +581,17 @@ function processarFotoUrl(foto) {
     }
     
     // Se for URL completa (http/https)
-    if (foto.startsWith('http')) {
-        return foto;
+    if (/^https?:\/\//i.test(foto)) {
+        return foto.replace(/ /g, '%20');
     }
     
     // Se for caminho do servidor de fotos (padrão Nutricional)
-    if (foto.includes('Fotos para o Site/')) {
-        let imgPath = foto.split('Fotos para o Site/')[1];
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20');
+    const marker = 'Fotos para o Site/';
+    const markerIndex = foto.toLowerCase().indexOf(marker.toLowerCase());
+    if (markerIndex >= 0) {
+        const imgPath = foto.substring(markerIndex + marker.length)
+            .split('/').map(segment => encodeURIComponent(segment)).join('/');
+        return imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath : SEM_FOTO_URL;
     }
     
     // Tratar /portal/assets/ (caso ainda tenha sem produtos)
@@ -693,10 +698,19 @@ function abrirFotoZoom(fotoUrl, produto) {
         }
     }
 
-    function exportarRelatorio() {
+    async function exportarRelatorio() {
         const inicio = document.getElementById('dataInicio')?.value || '';
         const fim = document.getElementById('dataFim')?.value || '';
-        window.open(`/v1/auditoria/exportar?inicio=${inicio}&fim=${fim}`, '_blank');
+        const separator = apiRoot.includes('?') ? '&' : '?';
+        const response = await fetchWithAuth(`${apiRoot}/auditoria/exportar${separator}inicio=${encodeURIComponent(inicio)}&fim=${encodeURIComponent(fim)}`);
+        if (!response.ok) throw new Error('Falha ao exportar relatório');
+
+        const blobUrl = URL.createObjectURL(await response.blob());
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = `auditoria-logistica-${inicio}-${fim}.csv`;
+        link.click();
+        URL.revokeObjectURL(blobUrl);
     }
 
     // ======================================================================

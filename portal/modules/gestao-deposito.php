@@ -2,10 +2,11 @@
 $pageTitle = 'Gestão de Depósito | Nutricional';
 $moduleJs = 'gestao-deposito.js';
 $version = time();
+$appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 ';
 require_once __DIR__ . '/../estrutura/header.php';
 ?>
@@ -15,7 +16,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
 <div class="mobile-toolbar block lg:hidden fixed top-0 left-0 right-0 z-50 shadow-lg">
     <div class="flex items-center justify-between px-4 py-3">
-        <a href="/portal/" class="flex items-center gap-2 no-underline">
+        <a href="<?= $appBase ?>/portal/" class="flex items-center gap-2 no-underline">
             <i class="fa-solid fa-arrow-left text-lg"></i>
             <span class="text-sm font-bold">VOLTAR</span>
         </a>
@@ -32,7 +33,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- Header -->
     <div class="glass rounded-3xl p-5 mb-6 flex justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
-            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline">
+            <a href="<?= $appBase ?>/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
             <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center">
@@ -177,7 +178,5 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 </div>
-
-<script src="/portal/assets/js/gestao-deposito.js?v=<?= $version ?>"></script>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

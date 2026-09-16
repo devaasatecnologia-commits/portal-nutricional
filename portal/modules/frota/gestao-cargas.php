@@ -15,6 +15,7 @@ $assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
 <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css">
 <link rel="stylesheet" href="' . $assetBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 <link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/frota.css?v=' . $version . '">
@@ -26,6 +27,7 @@ $extraCss = '
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="' . $assetBase . '/portal/modules/frota/assets/gestao-cargas.js?v=' . $version . '"></script>
 ';
@@ -40,7 +42,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <div class="bg-gradient-to-r from-[#1a3c34] to-[#2d5a4e] rounded-3xl p-6 lg:p-7 mb-6 shadow-xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-5">
             <div class="flex items-center gap-4">
-                <a href="/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
+                <a href="<?= $assetBase ?>/portal/" class="flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-white/20 hover:bg-white/30" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left text-white"></i>
                 </a>
                 <div class="hero-icon-badge">
@@ -67,7 +69,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <span id="total-resolvidos">0</span>
                     <span class="hero-stat-label">resolvidos</span>
                 </div>
-                <a href="/portal/modules/frota/cadastro-frota.php" class="hero-refresh-btn" title="Cadastro de Frota (veículos e motoristas)">
+                <a href="<?= $assetBase ?>/portal/modules/frota/cadastro-frota.php" class="hero-refresh-btn" title="Cadastro de Frota (veículos e motoristas)">
                     <i class="fa-solid fa-id-card-clip"></i>
                 </a>
                 <button class="hero-refresh-btn" onclick="carregarDados()" title="Atualizar dados">
@@ -237,6 +239,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <!-- ================================================================
        ABA: DESEMPENHO DE MOTORISTAS
     ================================================================ -->
+    <d    <!-- ================================================================
+       ABA: DESEMPENHO DE MOTORISTAS
+    ================================================================ -->
     <div class="cargas-tab-panel" id="tab-motoristas" role="tabpanel" hidden>
         <div class="section-card mb-6">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
@@ -271,6 +276,13 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
                     <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
                 </div>
+                <label class="toggle-eficiencia" title="Esconde motoristas sem trajetos válidos (amostra insuficiente)">
+                    <input type="checkbox" id="toggle-eficiencia-motoristas" onchange="alternarFiltroEficiencia('motoristas', this.checked)">
+                    <span class="toggle-eficiencia-slider"></span>
+                    <span class="toggle-eficiencia-label">
+                        <i class="fa-solid fa-filter-circle-xmark"></i> Ocultar sem eficiência
+                    </span>
+                </label>
             </div>
             <div class="section-body p-0 overflow-x-auto">
                 <table class="table-frota w-full" id="tabela-motoristas">
@@ -283,13 +295,15 @@ require_once __DIR__ . '/../../estrutura/header.php';
                             <th class="text-center">Divergência</th>
                             <th class="text-center">No Prazo</th>
                             <th class="text-center">Tempo Médio</th>
+                            <th class="text-center">Tempo Médio Desl.</th>
+                            <th class="text-center">Eficiência Trajeto</th>
                             <th class="text-center">Problemas</th>
                             <th class="text-center">Score</th>
                             <th class="text-center">Índice de Ineficiência</th>
                         </tr>
                     </thead>
                     <tbody id="lista-motoristas">
-                        <tr><td colspan="10" class="text-center py-8">Carregando...</td></tr>
+                        <tr><td colspan="12" class="text-center py-8">Carregando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -333,6 +347,13 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
                     <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
                 </div>
+                <label class="toggle-eficiencia" title="Esconde veículos sem trajetos válidos (amostra insuficiente)">
+                    <input type="checkbox" id="toggle-eficiencia-veiculos" onchange="alternarFiltroEficiencia('veiculos', this.checked)">
+                    <span class="toggle-eficiencia-slider"></span>
+                    <span class="toggle-eficiencia-label">
+                        <i class="fa-solid fa-filter-circle-xmark"></i> Ocultar sem eficiência
+                    </span>
+                </label>
             </div>
             <div class="section-body p-0 overflow-x-auto">
                 <table class="table-frota w-full" id="tabela-veiculos">
@@ -345,12 +366,14 @@ require_once __DIR__ . '/../../estrutura/header.php';
                             <th class="text-center">Divergência</th>
                             <th class="text-center">No Prazo</th>
                             <th class="text-center">Tempo Médio</th>
+                            <th class="text-center">Tempo Médio Desl.</th>
+                            <th class="text-center">Eficiência Trajeto</th>
                             <th class="text-center">Problemas</th>
                             <th class="text-center">Índice de Ineficiência</th>
                         </tr>
                     </thead>
                     <tbody id="lista-veiculos">
-                        <tr><td colspan="9" class="text-center py-8">Carregando...</td></tr>
+                        <tr><td colspan="11" class="text-center py-8">Carregando...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -520,7 +543,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                </div>
            </div>
            <div class="section-body">
-               <a href="/portal/modules/frota/cadastro-frota.php" class="btn-premium" style="text-decoration:none; display:inline-flex;">
+               <a href="<?= $assetBase ?>/portal/modules/frota/cadastro-frota.php" class="btn-premium" style="text-decoration:none; display:inline-flex;">
                    <i class="fa-solid fa-id-card-clip"></i> Abrir Cadastro de Frota
                </a>
            </div>

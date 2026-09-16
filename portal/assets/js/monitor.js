@@ -33,7 +33,8 @@
         window.fetchWithAuth = async function(url, options = {}) {
             const token = localStorage.getItem('authToken');
             if (!token) {
-                window.location.href = '/portal/login.php';
+                const portalBase = location.pathname.includes('/API/') ? '/API/portal' : '/portal';
+                window.location.href = `${portalBase}/login.php`;
                 throw new Error('Não autenticado');
             }
             const headers = {
@@ -44,7 +45,8 @@
             const response = await fetch(url, { ...options, headers });
             if (response.status === 401) {
                 localStorage.clear();
-                window.location.href = '/portal/login.php';
+                const portalBase = location.pathname.includes('/API/') ? '/API/portal' : '/portal';
+                window.location.href = `${portalBase}/login.php`;
                 throw new Error('Sessão expirada');
             }
             return response;
@@ -105,7 +107,8 @@
     // ======================================================================
     async function atualizarMonitor() {
         try {
-            const resp = await fetchWithAuth('/v1/monitor/embarques');
+            const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+            const resp = await fetchWithAuth(`${apiRoot.replace(/\/$/, '')}/monitor/embarques`);
             const dados = await resp.json();
 
             if (!dados || !Array.isArray(dados)) return;
@@ -179,14 +182,20 @@ function renderizarMonitor(dados) {
     };
 
     const formatFoto = (p) => {
-        if (!p || typeof p !== 'string' || p.indexOf('Fotos para o Site\\') === -1) {
-            return 'https://placehold.co/80x80?text=SEM+FOTO';
-        }
-        try {
-            return 'https://acesso.nutricionalbr.com:2053/fotos/' + p.split('Fotos para o Site\\')[1].replace(/ /g, '%20');
-        } catch (e) {
-            return 'https://placehold.co/80x80?text=ERRO+FOTO';
-        }
+        const placeholder = 'https://placehold.co/80x80?text=SEM+FOTO';
+        if (!p) return placeholder;
+
+        const normalized = String(p).trim().replace(/\\/g, '/');
+        if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return placeholder;
+        if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
+
+        const marker = 'Fotos para o Site/';
+        const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+        if (markerIndex < 0) return placeholder;
+
+        const relativePath = normalized.substring(markerIndex + marker.length)
+            .split('/').map(segment => encodeURIComponent(segment)).join('/');
+        return relativePath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath : placeholder;
     };
 
     let html = '';

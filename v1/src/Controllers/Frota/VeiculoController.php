@@ -233,12 +233,20 @@ class VeiculoController extends BaseController
     $tipo = $data['tipo'] ?? 'bau';  // carreta, bau
     $marca = $data['marca'] ?? 'Não Informada';
     $modelo = $data['modelo'] ?? 'Veículo ERP';
+    $odometroAtual = $data['odometro_atual'] ?? null;
+    if ($odometroAtual !== null && $odometroAtual !== '' && (!is_numeric($odometroAtual) || (float)$odometroAtual < 0)) {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Odômetro atual inválido'
+        ], 400);
+    }
+    $odometroAtual = $odometroAtual === null || $odometroAtual === '' ? null : (int)floor((float)$odometroAtual);
     
     $stmt = $this->pdo->prepare("
         INSERT INTO frota_veiculo (
-            placa, modelo, marca, tipo, ano, cor, capacidade_peso, status, created_at, updated_at
+            placa, modelo, marca, tipo, ano, cor, capacidade_peso, odometro_atual, status, created_at, updated_at
         ) VALUES (
-            :placa, :modelo, :marca, :tipo, :ano, :cor, :capacidade_peso, :status, NOW(), NOW()
+            :placa, :modelo, :marca, :tipo, :ano, :cor, :capacidade_peso, :odometro_atual, :status, NOW(), NOW()
         ) RETURNING id
     ");
     
@@ -250,6 +258,7 @@ class VeiculoController extends BaseController
         'ano' => $data['ano'] ?? null,
         'cor' => $data['cor'] ?? null,
         'capacidade_peso' => $data['capacidade_peso'] ?? null,
+        'odometro_atual' => $odometroAtual,
         'status' => $status
     ]);
     
@@ -270,6 +279,17 @@ class VeiculoController extends BaseController
     {
         $id = (int)$args['id'];
         $data = $request->getParsedBody();
+
+        if (array_key_exists('odometro_atual', $data) && $data['odometro_atual'] !== null &&
+            (!is_numeric($data['odometro_atual']) || (float)$data['odometro_atual'] < 0)) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Odômetro atual inválido'
+            ], 400);
+        }
+        if (isset($data['odometro_atual'])) {
+            $data['odometro_atual'] = (int)floor((float)$data['odometro_atual']);
+        }
         
         try {
             $campos = [];

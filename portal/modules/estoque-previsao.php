@@ -2,11 +2,12 @@
 $pageTitle = 'Estoque com Previsão | Nutricional';
 $version = time();
 $moduleJs = 'estoque-previsao.js';
+$appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 <style>
     .stat-card { transition: all 0.3s ease; }
     .stat-card:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.08); }
@@ -29,7 +30,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- Header -->
     <div class="rounded-3xl p-5 mb-6 flex justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
-            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200">
+            <a href="<?= $appBase ?>/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200">
                 <i class="fa-solid fa-arrow-left text-slate-600"></i>
             </a>
             <div class="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">

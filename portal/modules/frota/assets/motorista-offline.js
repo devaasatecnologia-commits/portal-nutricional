@@ -36,6 +36,7 @@
   let routeSourceId = 'driver-route-source';
   let watchId = null;
   let lastFitBounds = 0;
+  let painelMotoristas = [];
 
   const $ = (id) => document.getElementById(id);
   const online = () => navigator.onLine;
@@ -102,13 +103,18 @@
     if (perfilDados) renderizarAvatar();
     if (!online()) return;
     try {
-      const resp = await fetch(`${apiRoot}/perfil/dados`, {
+      const endpoint = isAdminApp && motoristaId
+        ? `${apiBase}/motoristas/${motoristaId}`
+        : `${apiRoot}/perfil/dados`;
+      const resp = await fetch(endpoint, {
         headers: authHeaders(),
         credentials: 'include'
       });
       if (!resp.ok) return;
-      const dados = await resp.json();
+      const payload = await resp.json();
+      const dados = isAdminApp ? payload.data : payload;
       if (dados && !dados.error) {
+        if (isAdminApp) dados.fantasia = dados.nome;
         perfilDados = dados;
         localStorage.setItem(`frota.motorista.${motoristaId}.perfil`, JSON.stringify(dados));
         renderizarAvatar();
@@ -183,6 +189,7 @@
   // TROCA DE FOTO (com fila offline)
   // ================================================================
   function abrirSeletorFoto() {
+    if (isAdminApp) return;
     const input = $('input-foto-perfil');
     if (input) input.click();
     fecharDrawer();
@@ -358,7 +365,8 @@
     localStorage.removeItem('authToken');
     localStorage.removeItem('userData');
     sessionStorage.clear();
-    window.location.href = '/portal/login.php';
+    const appBase = window.location.pathname.startsWith('/API/') ? '/API' : '';
+    window.location.href = appBase + '/portal/login.php';
   }
 
   // ================================================================
@@ -546,10 +554,8 @@
     const select = $('driver-select-input');
     if (!select) return;
     try {
-      const response = await fetch(apiBase + '/motoristas?status=ativo&limite=100', { headers: authHeaders(), credentials: 'include' });
-      if (!response.ok) return;
-      const payload = await response.json();
-      const list = payload.data || [];
+      if (!painelMotoristas.length) await carregarPainelAdmin();
+      const list = painelMotoristas;
       select.innerHTML = '<option value="">-- Selecione um motorista --</option>' +
         list.map((m) => '<option value="' + m.id + '" ' + (Number(m.id) === motoristaId ? 'selected' : '') + '>' + escapeHtml(m.nome) + ' (' + escapeHtml(m.veiculo_placa || 'Sem veículo') + ')</option>').join('');
       if (motoristaId) {
@@ -561,6 +567,75 @@
     } catch (e) {
       console.warn('Erro ao carregar lista de motoristas:', e);
     }
+  }
+
+  function statusRotaMotorista(motorista) {
+    if (motorista.embarque_status === 'em_andamento') return ['Em rota', 'is-running'];
+    if (motorista.embarque_status === 'planejado') return ['Planejada', ''];
+    if (motorista.embarque_id) return ['Finalizada', ''];
+    return ['Sem rota', ''];
+  }
+
+  function renderizarPainelAdmin() {
+    if (!isAdminApp) return;
+    const termo = String($('driver-admin-search')?.value || '').trim().toLowerCase();
+    const filtrados = painelMotoristas.filter((motorista) =>
+      !termo || `${motorista.nome || ''} ${motorista.veiculo_placa || ''}`.toLowerCase().includes(termo)
+    );
+    const list = $('driver-admin-list');
+    if (!list) return;
+    if (!filtrados.length) {
+      list.innerHTML = '<div class="empty-state">Nenhum motorista encontrado.</div>';
+      return;
+    }
+    list.innerHTML = filtrados.map((motorista) => {
+      const [statusLabel, statusClass] = statusRotaMotorista(motorista);
+      const problemas = Number(motorista.entregas_problemas || 0);
+      return `<button type="button" class="driver-overview-card${Number(motorista.id) === motoristaId ? ' is-selected' : ''}" data-driver-id="${Number(motorista.id)}">
+        <span class="driver-overview-card-head"><span><h2>${escapeHtml(motorista.nome || 'Motorista')}</h2><small>${escapeHtml(motorista.veiculo_placa || 'Sem veículo vinculado')}</small></span><span class="driver-route-status ${statusClass}">${statusLabel}</span></span>
+        <span class="driver-overview-progress"><span style="width:${Math.max(0, Math.min(100, Number(motorista.progresso || 0)))}%"></span></span>
+        <span class="driver-overview-meta"><span>${Number(motorista.entregas_concluidas || 0)} de ${Number(motorista.total_entregas || 0)} concluídas</span><span class="${problemas ? 'has-problem' : ''}">${problemas} problema${problemas === 1 ? '' : 's'}</span></span>
+      </button>`;
+    }).join('');
+  }
+
+  async function carregarPainelAdmin() {
+    if (!isAdminApp || !online()) return;
+    try {
+      const response = await fetch(`${apiBase}/motoristas/painel-app`, { headers: authHeaders(), credentials: 'include' });
+      if (!response.ok) throw new Error('Falha ao carregar painel');
+      const payload = await response.json();
+      painelMotoristas = payload.data || [];
+      const resumo = payload.resumo || {};
+      if ($('admin-total-motoristas')) $('admin-total-motoristas').textContent = resumo.motoristas || 0;
+      if ($('admin-em-rota')) $('admin-em-rota').textContent = resumo.em_rota || 0;
+      if ($('admin-entregas-concluidas')) $('admin-entregas-concluidas').textContent = resumo.entregas_concluidas || 0;
+      if ($('admin-entregas-pendentes')) $('admin-entregas-pendentes').textContent = resumo.entregas_pendentes || 0;
+      if ($('admin-problemas')) $('admin-problemas').textContent = resumo.problemas || 0;
+      renderizarPainelAdmin();
+    } catch (error) {
+      if ($('driver-admin-list')) $('driver-admin-list').innerHTML = '<div class="empty-state">Não foi possível atualizar os motoristas.</div>';
+      console.warn('Erro no painel de motoristas:', error);
+    }
+  }
+
+  async function selecionarMotorista(novoMotoristaId) {
+    if (!podeTrocarMotorista || !novoMotoristaId) return;
+    motoristaId = Number(novoMotoristaId);
+    localStorage.setItem('motoristaId', motoristaId);
+    app.dataset.motoristaId = motoristaId;
+    cacheKey = `frota.motorista.${motoristaId}.entregas`;
+    queueKey = `frota.motorista.${motoristaId}.offline.queue`;
+    positionKey = `frota.motorista.${motoristaId}.posicao`;
+    truckKey = `frota.motorista.${motoristaId}.truck`;
+    perfilDados = safeParse(localStorage.getItem(`frota.motorista.${motoristaId}.perfil`) || 'null', null);
+    if ($('driver-select-input')) $('driver-select-input').value = String(motoristaId);
+    renderizarPainelAdmin();
+    await carregarEntregas();
+    await carregarListaMotoristas();
+    await carregarPerfil();
+    renderizarAvatar();
+    $('driver-selector-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
   function formatAddress(item) { return [item.endereco, item.numero, item.bairro, item.cidade, item.uf].filter(Boolean).join(', ') || 'Endereço não informado'; }
@@ -1136,8 +1211,14 @@
   });
 
   document.addEventListener('click', (event) => {
+    const driverCard = event.target.closest('[data-driver-id]');
+    if (driverCard) {
+      selecionarMotorista(driverCard.dataset.driverId);
+      return;
+    }
     const button = event.target.closest('[data-action], [data-order]');
     if (!button) return;
+    if (isAdminApp) return;
     if (button.dataset.action === 'checkout') {
       abrirCheckout(entregas.find((item) => Number(item.id) === Number(button.dataset.id)));
     } else if (button.dataset.action) {
@@ -1234,19 +1315,10 @@
       else alert('Selecione um motorista');
       return;
     }
-    motoristaId = val;
-    localStorage.setItem('motoristaId', val);
-    app.dataset.motoristaId = val;
-    cacheKey = 'frota.motorista.' + motoristaId + '.entregas';
-    queueKey = 'frota.motorista.' + motoristaId + '.offline.queue';
-    positionKey = 'frota.motorista.' + motoristaId + '.posicao';
-    truckKey = 'frota.motorista.' + motoristaId + '.truck';
-    perfilDados = safeParse(localStorage.getItem(`frota.motorista.${motoristaId}.perfil`) || 'null', null);
-    await carregarEntregas();
-    await carregarListaMotoristas();
-    await carregarPerfil();
-    renderizarAvatar();
+    await selecionarMotorista(val);
   });
+
+  $('driver-admin-search')?.addEventListener('input', renderizarPainelAdmin);
 
   $('next-stop-waze')?.addEventListener('click', () => {
     const proxima = entregas.find((item) => !['entregue', 'entregue_com_problema'].includes(item.status));
@@ -1303,7 +1375,7 @@
     navigator.serviceWorker.register(`${appBase}/portal/modules/frota/service-worker.js`).catch(() => {});
   }
 
-  if (navigator.geolocation && online()) {
+  if (!isAdminApp && navigator.geolocation && online()) {
     watchId = navigator.geolocation.watchPosition(
       (position) => salvarPosicaoMotorista({ latitude: position.coords.latitude, longitude: position.coords.longitude, precisao: position.coords.accuracy }),
       () => {},
@@ -1314,6 +1386,7 @@
   // ─── BOOT ───
   aplicarTema();
   setConnectionState();
+  carregarPainelAdmin();
   carregarPerfil();
   carregarListaMotoristas();
   inicializarMapa();

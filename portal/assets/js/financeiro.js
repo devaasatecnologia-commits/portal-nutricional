@@ -10,9 +10,9 @@ const app = {
     uid: (() => {
         try {
             const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-            return userData.uid || 5166;
+            return userData.uid || 0;
         } catch {
-            return 5166;
+            return 0;
         }
     })(),
 
@@ -33,7 +33,11 @@ const app = {
             method: 'POST',
             body: JSON.stringify(body)
         });
-        return resp.json();
+        const data = await resp.json();
+        if (!resp.ok) {
+            throw new Error(data.error || data.erro || `Erro ${resp.status}`);
+        }
+        return data;
     },
 
     updateBreadcrumb() {
@@ -82,6 +86,7 @@ const app = {
         const select = document.getElementById("global-user-filter");
         if (!select) return;
         try {
+            const currentValue = select.value;
             const usuarios = await this.api("lista-usuarios", {
                 idusuario: this.uid,
                 idfilial: this.f_id
@@ -96,6 +101,9 @@ const app = {
                     if (u.id == this.uid) opt.selected = true;
                     select.appendChild(opt);
                 });
+                if (currentValue && Array.from(select.options).some(option => option.value === currentValue)) {
+                    select.value = currentValue;
+                }
                 select.style.display = "block";
             } else {
                 select.style.display = "none";
@@ -108,16 +116,15 @@ const app = {
 
     changeUser(val) {
         this.nivel = "filial";
+        this.f_id = null;
+        this.initialized = false;
         const selectUser = document.getElementById("global-user-filter");
-        const selectFilial = document.getElementById("select-filial");
         const nomeUser = selectUser.options[selectUser.selectedIndex].text;
-        const nomeFilial = selectFilial && selectFilial.selectedIndex >= 0 ? selectFilial.options[selectFilial.selectedIndex].text : "GLOBAL";
         const isMaster = selectUser.selectedIndex > 0;
-        const label = isMaster ? `${nomeUser} - ${nomeFilial}` : nomeFilial;
+        const label = isMaster ? `${nomeUser} - TODAS AS FILIAIS` : "TODAS AS FILIAIS";
         this.path = [{ nivel: "filial", f_id: this.f_id, nome: label }];
         this.updateBreadcrumb();
-        this.load();
-        this.loadHistory();
+        this.load().then(() => this.loadHistory());
     },
 
     async load() {
@@ -128,9 +135,6 @@ const app = {
             const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
             const diasRecupInput = document.getElementById("filtro-dias-recup");
             const diasRecup = (diasRecupInput && diasRecupInput.value) ? diasRecupInput.value : 120;
-            const selectFilial = document.getElementById("select-filial");
-            const idfilial = selectFilial && selectFilial.value ? selectFilial.value : 1;
-
             // NÍVEL CLIENTE – busca clientes via dashboard
             if (this.nivel === 'cliente') {
                 const res = await this.api("dashboard", {
@@ -162,6 +166,12 @@ const app = {
                     select.innerHTML = "";
                     if (res.config?.filiais) {
                         select.style.display = res.config.filiais.length <= 1 ? "none" : "block";
+                        if (res.config.filiais.length > 1) {
+                            const optTodas = document.createElement("option");
+                            optTodas.value = "";
+                            optTodas.innerText = "TODAS AS FILIAIS";
+                            select.appendChild(optTodas);
+                        }
                         res.config.filiais.forEach(f => {
                             const opt = document.createElement("option");
                             opt.value = f.idfilial;
@@ -243,13 +253,11 @@ renderTable(dados) {
     } else {
                let titulo = "";
         if (this.nivel === "filial") {
-            titulo = "Unidade";
+                titulo = "Gestor";
         } else if (this.nivel === "gestor") {
-            if (this.f_id === 1 || this.f_id === null) {
-                titulo = "Gestor";       
-            } else {
-                titulo = "Representante"; 
-            }
+                titulo = "Representante";
+            } else if (this.nivel === "representante") {
+                titulo = "Cliente";
         } else {
             titulo = "Item";
         }
@@ -287,7 +295,7 @@ renderTable(dados) {
     try {
         const globalUserSelect = document.getElementById("global-user-filter");
         const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-        const idfilial = document.getElementById("select-filial")?.value || 1;
+        const idfilial = document.getElementById("select-filial")?.value || 0;
         const diasRecup = document.getElementById("filtro-dias-recup")?.value || 999;
         const payload = {
             idusuario: currentUid,
@@ -378,14 +386,22 @@ renderTable(dados) {
             const globalUserSelect = document.getElementById("global-user-filter");
             const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
             const selectFilialGlobal = document.getElementById("select-filial");
-            const alvoVisualizado = (selectFilialGlobal && selectFilialGlobal.value) ? selectFilialGlobal.value : (this.f_id || 1);
+            const alvoVisualizado = (selectFilialGlobal && selectFilialGlobal.value)
+                ? selectFilialGlobal.value
+                : (this.f_id || 0);
             const res = await this.api("historico-kpi", {
                 idusuario: currentUid,
                 tipo: type,
                 filtro_id: alvoVisualizado,
                 dia_semana: day
             });
-            if (!res || res.length === 0) return;
+            if (!res || res.length === 0) {
+                if (this.chart) {
+                    this.chart.destroy();
+                    this.chart = null;
+                }
+                return;
+            }
             const labels = res.map(h => h.data);
             const values = res.map(h => parseFloat(h.valor) || 0);
             const labelMap = { iag_calculado: "IAG %", iap_calculado: "IAP %", taxa_recuperacao: "Recuperação %" };
@@ -416,7 +432,31 @@ renderTable(dados) {
                 }],
                 options: {
                     responsive: true, maintainAspectRatio: false, layout: { padding: { top: 25 } },
-                    plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(30,41,59,0.95)', callbacks: { label: (ctx) => `Percentual: ${ctx.raw}%` } } },
+                    onClick: (_, elements) => {
+                        if (elements.length > 0) {
+                            this.showHistoryDetails(res[elements[0].index], type);
+                        }
+                    },
+                    onHover: (event, elements) => {
+                        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    },
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(30,41,59,0.95)',
+                            callbacks: {
+                                label: (tooltipContext) => `Percentual: ${tooltipContext.raw}%`,
+                                afterLabel: (tooltipContext) => {
+                                    const item = res[tooltipContext.dataIndex];
+                                    if (type === 'taxa_recuperacao') {
+                                        return `Recuperados: ${item.abs_recup_pagos} de ${item.abs_recup_total}`;
+                                    }
+                                    const valor = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
+                                    return `Valor-base: ${this.formatCurrency(valor)}`;
+                                }
+                            }
+                        }
+                    },
                     scales: { y: { beginAtZero: true, grid: { color: "#f1f5f9" }, ticks: { callback: (v) => v + "%" } }, x: { grid: { display: false } } }
                 }
             });
@@ -425,14 +465,54 @@ renderTable(dados) {
         }
     },
 
+    formatCurrency(value) {
+        return (parseFloat(value) || 0).toLocaleString('pt-BR', {
+            style: 'currency',
+            currency: 'BRL'
+        });
+    },
+
+    showHistoryDetails(item, type) {
+        const nomes = {
+            iag_calculado: 'Inadimplência Geral (IAG)',
+            iap_calculado: 'Atraso Crítico (IAP)',
+            taxa_recuperacao: 'Taxa de Recuperação'
+        };
+        const data = item.data_registro
+            ? item.data_registro.split('-').reverse().join('/')
+            : item.data;
+
+        let componentes;
+        if (type === 'taxa_recuperacao') {
+            componentes = `
+                <div><span>Recuperados</span><strong>${item.abs_recup_pagos}</strong></div>
+                <div><span>Base trabalhada</span><strong>${item.abs_recup_total}</strong></div>`;
+        } else {
+            const valor = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
+            componentes = `
+                <div><span>Valor do indicador</span><strong>${this.formatCurrency(valor)}</strong></div>
+                <div><span>Carteira total</span><strong>${this.formatCurrency(item.abs_total)}</strong></div>`;
+        }
+
+        Swal.fire({
+            title: nomes[type] || 'Histórico financeiro',
+            html: `
+                <div style="display:grid; gap:10px; text-align:left; font-size:0.85rem;">
+                    <div style="padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Data registrada</span><strong>${data}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Resultado</span><strong>${parseFloat(item.valor).toFixed(2)}%</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Filiais</span><strong>${item.filiais || '-'}</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span>Registros consolidados</span><strong>${item.registros_origem || 0}</strong></div>
+                    </div>
+                    <div style="display:grid; gap:8px;">${componentes}</div>
+                </div>`,
+            confirmButtonText: 'Fechar',
+            confirmButtonColor: '#274036'
+        });
+    },
+
     drill(id, nome) {
         if (this.nivel === 'filial') {
-            if (id === this.f_id) {
-                this.nivel = 'gestor';
-                this.updateBreadcrumb();
-                this.load();
-                return;
-            }
             this.path.push({ nivel: 'gestor', f_id: id, nome: nome });
             this.nivel = 'gestor';
             this.f_id = id;
@@ -441,25 +521,15 @@ renderTable(dados) {
             return;
         }
         if (this.nivel === 'gestor') {
-            if (this.f_id === 1 || this.f_id === null) {
-                this.f_id = id;
-                const idx = this.path.findIndex(p => p.nivel === 'gestor');
-                if (idx !== -1) {
-                    this.path[idx] = { nivel: 'gestor', f_id: id, nome: nome };
-                } else {
-                    this.path.push({ nivel: 'gestor', f_id: id, nome: nome });
-                }
-                this.updateBreadcrumb();
-                this.load();
-                return;
-            } else {
-                this.path.push({ nivel: 'cliente', f_id: id, nome: nome });
-                this.nivel = 'cliente';
-                this.f_id = id;
-                this.updateBreadcrumb();
-                this.load();
-                return;
-            }
+            this.path.push({ nivel: 'representante', f_id: id, nome: nome });
+            this.nivel = 'representante';
+            this.f_id = id;
+            this.updateBreadcrumb();
+            this.load();
+            return;
+        }
+        if (this.nivel === 'representante') {
+            this.showClientTitles(id, nome);
         }
     },
 
@@ -618,7 +688,7 @@ renderTable(dados) {
     const globalUserSelect = document.getElementById("global-user-filter");
     const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
     const selectFilial = document.getElementById("select-filial");
-    const idfilial = selectFilial && selectFilial.value ? selectFilial.value : 1;
+    const idfilial = selectFilial && selectFilial.value ? selectFilial.value : 0;
     const diasRecup = document.getElementById("filtro-dias-recup")?.value || 999;
 
     let nivel = this.nivel;
@@ -627,10 +697,6 @@ renderTable(dados) {
     if (nivel === 'filial') {
         filtroId = 0;
     }
-    if (nivel === 'gestor' && (filtroId === 1 || filtroId === null)) {
-        filtroId = 0;
-    }
-
     Swal.fire({ title: 'Gerando Relatório...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
 
     try {
@@ -657,6 +723,9 @@ renderTable(dados) {
         } else if (nivel === 'gestor' && filtroId > 0) {
             const gestorNome = this.path.find(p => p.nivel === 'gestor')?.nome || 'Gestor';
             tituloRelatorio = `RELATÓRIO FINANCEIRO - GESTOR: ${gestorNome}`;
+        } else if (nivel === 'representante' && filtroId > 0) {
+            const representanteNome = this.path.find(p => p.nivel === 'representante')?.nome || 'Representante';
+            tituloRelatorio = `RELATÓRIO FINANCEIRO - REPRESENTANTE: ${representanteNome}`;
         } else if (nivel === 'cliente' && filtroId > 0) {
             const clienteNome = this.path.find(p => p.nivel === 'cliente')?.nome || 'Cliente';
             tituloRelatorio = `RELATÓRIO FINANCEIRO - CLIENTE: ${clienteNome}`;

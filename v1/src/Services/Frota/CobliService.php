@@ -62,6 +62,18 @@ class CobliService
     }
 
     /**
+     * Busca o odômetro atual do veículo em quilômetros.
+     * A Cobli atualiza esse valor quando uma viagem é encerrada.
+     */
+    public function buscarOdometro(string $vehicleId): array
+    {
+        return $this->request(
+            'GET',
+            '/public/v1/vehicles/' . urlencode($vehicleId) . '/odometer?timezone=America%2FSao_Paulo'
+        );
+    }
+
+    /**
      * Eventos de risco de condução (score/comportamento) da frota, em um período.
      */
     public function eventosDeRisco(string $startDate, string $endDate, string $timezone = 'America/Sao_Paulo'): array

@@ -1,15 +1,17 @@
 <?php
 $pageTitle = 'Dashboard Executivo | Frota | Nutricional';
 $version = time();
+$assetBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : '';
 $extraCss = '
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-<link rel="stylesheet" href="/portal/modules/frota/assets/componentes-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/modules/frota/assets/dashboard-executivo.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/componentes-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $assetBase . '/portal/modules/frota/assets/dashboard-executivo.css?v=' . $version . '">
 ';
 $extraJs = '
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="' . $assetBase . '/portal/modules/frota/assets/dashboard-executivo.js?v=' . $version . '"></script>
 ';
 require_once __DIR__ . '/../../estrutura/header.php';
 ?>
@@ -46,4 +48,4 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <article class="dashboard-panel ranking-panel"><div class="panel-heading"><div><span class="panel-label">Performance</span><h2>Ranking de motoristas</h2></div><i class="fa-solid fa-ranking-star"></i></div><div id="ranking-motoristas" class="ranking-list"><div class="empty-state">Carregando ranking...</div></div></article>
     </section>
 </main>
-<script src="/portal/modules/frota/assets/dashboard-executivo.js?v=<?= $version ?>"></script>
+<?php require_once __DIR__ . '/../../estrutura/footer.php'; ?>

@@ -110,12 +110,23 @@ class DepositoController
         $capacidade = (int)($input['capacidade'] ?? 100);
         $sigla = $linha . $coluna;
         
-        if ($idsecao <= 0 || empty($linha) || empty($coluna)) {
+        if ($idsecao <= 0 || empty($linha) || empty($coluna) || $numLinha <= 0 || $numColuna <= 0 || $capacidade <= 0) {
             $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
             return $response->withStatus(400);
         }
         
         try {
+            $this->pdo->beginTransaction();
+            $this->pdo->query("SELECT pg_advisory_xact_lock(71001)");
+
+            $stmtSecao = $this->pdo->prepare("SELECT idsecao FROM secao WHERE idsecao = ? AND inativo = 'N' FOR UPDATE");
+            $stmtSecao->execute([$idsecao]);
+            if (!$stmtSecao->fetchColumn()) {
+                $this->pdo->rollBack();
+                $response->getBody()->write(json_encode(['error' => 'Seção não encontrada']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
             // Verificar se já existe
             $stmtCheck = $this->pdo->prepare("
                 SELECT idendereco FROM secao_enderecos 
@@ -124,8 +135,9 @@ class DepositoController
             $stmtCheck->execute(['idsecao' => $idsecao, 'linha' => $linha, 'coluna' => $coluna]);
             
             if ($stmtCheck->fetch()) {
+                $this->pdo->rollBack();
                 $response->getBody()->write(json_encode(['error' => 'Este endereço já existe nesta seção']));
-                return $response->withStatus(400);
+                return $response->withStatus(409)->withHeader('Content-Type', 'application/json');
             }
             
             // Buscar próximo idendereco
@@ -145,11 +157,14 @@ class DepositoController
                 'colunasigla' => $coluna,
                 'capacidade' => $capacidade
             ]);
+
+            $this->pdo->commit();
             
             $payload = json_encode(['success' => true, 'idendereco' => $nextId, 'sigla' => $sigla]);
             $response->getBody()->write($payload);
             return $response->withHeader('Content-Type', 'application/json');
         } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
             return $response->withStatus(500);
         }
@@ -166,19 +181,29 @@ public function salvarSecao(Request $request, Response $response): Response
     $idsecao = (int)($input['idsecao'] ?? 0);
     $descricao = $input['descricao'] ?? '';
     $sigla = strtoupper($input['sigla'] ?? '');
+    $usuario = (string)(($request->getAttribute('user') ?? [])['username'] ?? '');
     
-    if (empty($descricao)) {
+    if (empty($descricao) || empty($sigla) || empty($usuario)) {
         $response->getBody()->write(json_encode(['error' => 'Descrição é obrigatória']));
         return $response->withStatus(400);
     }
     
     try {
+        $this->pdo->beginTransaction();
+        $this->pdo->query("SELECT pg_advisory_xact_lock(71002)");
+
         if ($idsecao > 0) {
             // Editar seção existente
-            $this->pdo->prepare("
+            $stmtUpdate = $this->pdo->prepare("
                 UPDATE secao SET descricao = :desc, sigla = :sigla, datahoraultimaatualizacao = NOW()
                 WHERE idsecao = :id
-            ")->execute(['desc' => $descricao, 'sigla' => $sigla, 'id' => $idsecao]);
+            ");
+            $stmtUpdate->execute(['desc' => $descricao, 'sigla' => $sigla, 'id' => $idsecao]);
+            if ($stmtUpdate->rowCount() === 0) {
+                $this->pdo->rollBack();
+                $response->getBody()->write(json_encode(['error' => 'Seção não encontrada']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
             
             $payload = json_encode(['success' => true, 'idsecao' => $idsecao, 'acao' => 'editado']);
         } else {
@@ -193,15 +218,18 @@ public function salvarSecao(Request $request, Response $response): Response
                 'id' => $nextId,
                 'desc' => $descricao,
                 'sigla' => $sigla,
-                'usuario' => $input['usuario'] ?? 'SISTEMA'
+                'usuario' => $usuario
             ]);
             
             $payload = json_encode(['success' => true, 'idsecao' => $nextId, 'acao' => 'criado']);
         }
+
+        $this->pdo->commit();
         
         $response->getBody()->write($payload);
         return $response->withHeader('Content-Type', 'application/json');
     } catch (\Exception $e) {
+        if ($this->pdo->inTransaction()) $this->pdo->rollBack();
         $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
         return $response->withStatus(500);
     }
@@ -240,24 +268,49 @@ public function getSecao(Request $request, Response $response, array $args): Res
     {
         $idsecao = (int)($args['idsecao'] ?? 0);
         $idendereco = (int)($args['idendereco'] ?? 0);
+
+        if ($idsecao <= 0 || $idendereco <= 0) {
+            $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+        }
         
         try {
+            $this->pdo->beginTransaction();
+
+            $stmtEndereco = $this->pdo->prepare("
+                SELECT idendereco, ocupado
+                FROM secao_enderecos
+                WHERE idsecao = :idsecao AND idendereco = :idendereco
+                FOR UPDATE
+            ");
+            $stmtEndereco->execute(['idsecao' => $idsecao, 'idendereco' => $idendereco]);
+            $endereco = $stmtEndereco->fetch(PDO::FETCH_ASSOC);
+            if (!$endereco) {
+                $this->pdo->rollBack();
+                $response->getBody()->write(json_encode(['error' => 'Endereço não encontrado']));
+                return $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+            }
+
             // Verificar se tem lotes
-            $stmtCheck = $this->pdo->prepare("SELECT COUNT(*) FROM lote_endereco WHERE idendereco = :id");
-            $stmtCheck->execute(['id' => $idendereco]);
+            $stmtCheck = $this->pdo->prepare("SELECT COUNT(*) FROM lote_endereco WHERE idsecao = :idsecao AND idendereco = :idendereco");
+            $stmtCheck->execute(['idsecao' => $idsecao, 'idendereco' => $idendereco]);
             
-            if ($stmtCheck->fetchColumn() > 0) {
+            if ((float)$endereco['ocupado'] > 0 || $stmtCheck->fetchColumn() > 0) {
+                $this->pdo->rollBack();
                 $response->getBody()->write(json_encode(['error' => 'Este endereço possui lotes armazenados. Remova-os primeiro.']));
-                return $response->withStatus(400);
+                return $response->withStatus(409)->withHeader('Content-Type', 'application/json');
             }
             
             $this->pdo->prepare("DELETE FROM secao_enderecos WHERE idsecao = :idsecao AND idendereco = :idendereco")
                 ->execute(['idsecao' => $idsecao, 'idendereco' => $idendereco]);
+
+            $this->pdo->commit();
             
             $payload = json_encode(['success' => true]);
             $response->getBody()->write($payload);
             return $response->withHeader('Content-Type', 'application/json');
         } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
             return $response->withStatus(500);
         }

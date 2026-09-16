@@ -2098,9 +2098,12 @@ case 'PR0C3SS4_H1ST0R1_DASH':
 
                     ROUND(SUM(COALESCE(varg.dias_60 + varg.mais_60_dias, 0)) * 100 / NULLIF(SUM(COALESCE(varg.total_receber,0)), 0), 2),
 
-                    /* Quantidade Trabalhados (Dinâmico) */
+                    /* Base usada no cálculo da taxa de recuperação */
                     COALESCE((
-                        SELECT COUNT(*)
+                        SELECT
+                            SUM(CASE WHEN vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= 8 AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                            SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                            SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END)
                         FROM vw_financeiro_eventos_geral vfe 
                         WHERE vfe.idfilial = varg.idfilial 
                         AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '120 days')

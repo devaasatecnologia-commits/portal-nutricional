@@ -56,7 +56,9 @@ function selecionarDoca(doca) {
 // ==========================================================================
 async function apiFetch(endpoint, method = 'GET', body = null) {
     const token = localStorage.getItem('authToken') || localStorage.getItem('token');
-    const url = endpoint.startsWith('http') ? endpoint : `/${endpoint}`;
+    const normalizedEndpoint = endpoint.replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    let url = endpoint.startsWith('http') ? endpoint : `${apiRoot.replace(/\/$/, '')}/${normalizedEndpoint}`;
     
     const options = {
         method: method,
@@ -71,7 +73,10 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
         options.headers['X-API-Token'] = API_TOKEN;
     }
     
-    if (body && (method === 'POST' || method === 'PUT' || method === 'DELETE')) {
+    if (method === 'GET' && body) {
+        const query = new URLSearchParams(body).toString();
+        if (query) url += (url.includes('?') ? '&' : '?') + query;
+    } else if (body) {
         options.body = JSON.stringify(body);
     }
     
@@ -79,11 +84,32 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     
     if (response.status === 401) {
         console.error('[Carregamento] Token inválido ou expirado');
-        window.location.href = '/portal/login.php?redirect=carregamento';
+        const portalBase = location.pathname.includes('/API/') ? '/API/portal' : '/portal';
+        window.location.href = `${portalBase}/login.php?redirect=carregamento`;
         throw new Error('Sessão expirada');
     }
     
     return response.json();
+}
+
+const semFotoUrl = 'https://placehold.co/150x150?text=S/F';
+
+function getProductImageUrl(path) {
+    if (!path) return semFotoUrl;
+
+    const normalized = String(path).trim().replace(/\\/g, '/');
+    if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return semFotoUrl;
+    if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
+
+    const marker = 'Fotos para o Site/';
+    const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+    let relativePath = markerIndex >= 0
+        ? normalized.substring(markerIndex + marker.length)
+        : normalized.replace(/^\/+/, '').replace(/^fotos\//i, '');
+
+    if (!relativePath) return semFotoUrl;
+    relativePath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath;
 }
 
 function getUserId() {
@@ -183,7 +209,8 @@ async function uploadFotoRapida(file, iditem, nomeItem, idCarregamento) {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 20000);
         
-        const resp = await fetch('/v1/carregamento/foto', {
+        const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+        const resp = await fetch(`${apiRoot.replace(/\/$/, '')}/carregamento/foto`, {
             method: 'POST',
             headers: { 'Authorization': 'Bearer ' + token },
             body: formData,
@@ -489,8 +516,7 @@ function render() {
             ultimaSecao = i.idsecao;
         }
 
-        const imgPath = i.path_foto_master ? i.path_foto_master.split('Fotos para o Site\\')[1] : null;
-        const img = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/100x100?text=S/F';
+        const img = getProductImageUrl(i.path_foto_master);
 
         h += `<div class="item-card ${concluido ? 'concluido' : ''} ${!liberado ? 'bloqueado' : ''}" id="item-${i.cod_item}">
             <img src="${img}" class="prod-img" onerror="this.src='https://placehold.co/100x100?text=S/F'">
@@ -584,8 +610,7 @@ async function processarLeitura(codigo) {
     const el = document.getElementById('item-' + item.cod_item);
     if (el) el.classList.add('active');
 
-    const imgPath = item.path_foto_master ? item.path_foto_master.split('Fotos para o Site\\')[1] : null;
-    const fotoUrl = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/150x150?text=S/F';
+    const fotoUrl = getProductImageUrl(item.path_foto_master);
 
     const res = await Swal.fire({
         title: 'Confirmar Carga',
@@ -716,8 +741,7 @@ async function confirmarEstornoCarregamento(id, nome) {
     document.getElementById('barcode-input').blur();
     
     const itemEstorno = state.itens.find(i => i.cod_item == id);
-    const imgPath = itemEstorno?.path_foto_master ? itemEstorno.path_foto_master.split('Fotos para o Site\\')[1] : null;
-    const fotoUrl = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/150x150?text=S/F';
+    const fotoUrl = getProductImageUrl(itemEstorno?.path_foto_master);
 
     const res = await Swal.fire({
         title: 'Estornar?',

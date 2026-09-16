@@ -20,6 +20,7 @@
 }
 body:has(.motorista-app) { background: var(--driver-bg); }
 .motorista-app { max-width: 720px; min-height: 100vh; margin: 0 auto; padding: 24px 16px 40px; color: var(--driver-ink); }
+.motorista-app.is-admin-view { max-width: 1180px; }
 .motorista-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .eyebrow { color: var(--driver-success); font-size: .72rem; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .motorista-header h1 { margin: 4px 0; font-size: clamp(1.7rem, 7vw, 2.5rem); line-height: 1.05; }
@@ -148,6 +149,37 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .driver-selector-controls { display: flex; gap: 10px; }
 .driver-select-input { flex: 1; border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-bg); color: var(--driver-ink); padding: 10px 12px; font-weight: 600; font-size: .88rem; }
 .driver-confirm-btn { border: 0; border-radius: 10px; background: var(--driver-success); color: #fff; padding: 10px 16px; font-weight: 800; font-size: .85rem; cursor: pointer; white-space: nowrap; }
+
+/* Painel administrativo do aplicativo */
+.driver-admin-panel { margin-bottom: 20px; }
+.driver-admin-panel[hidden] { display: none; }
+.driver-admin-head { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 16px; }
+.driver-admin-head h1 { margin: 4px 0; font-size: 1.8rem; }
+.driver-admin-head p { margin: 0; color: var(--driver-muted); font-size: .88rem; }
+.driver-admin-search { display: flex; align-items: center; gap: 8px; width: min(100%, 320px); border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-card); padding: 0 12px; color: var(--driver-muted); }
+.driver-admin-search input { width: 100%; border: 0; outline: 0; background: transparent; color: var(--driver-ink); padding: 11px 0; }
+.driver-admin-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.driver-admin-summary div { border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-card); padding: 12px; }
+.driver-admin-summary strong, .driver-admin-summary span { display: block; }
+.driver-admin-summary strong { font-size: 1.35rem; }
+.driver-admin-summary span { color: var(--driver-muted); font-size: .72rem; }
+.driver-admin-summary .is-alert strong { color: var(--driver-danger); }
+.driver-admin-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.driver-overview-card { display: grid; gap: 11px; min-width: 0; border: 1px solid var(--driver-border); border-radius: 8px; background: var(--driver-card); padding: 14px; color: var(--driver-ink); text-align: left; cursor: pointer; }
+.driver-overview-card:hover, .driver-overview-card.is-selected { border-color: var(--driver-success); box-shadow: 0 4px 16px rgba(22, 132, 94, .12); }
+.driver-overview-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.driver-overview-card h2 { margin: 0; overflow: hidden; font-size: .96rem; text-overflow: ellipsis; white-space: nowrap; }
+.driver-overview-card small { display: block; margin-top: 3px; color: var(--driver-muted); }
+.driver-route-status { flex-shrink: 0; border-radius: 999px; background: var(--driver-bg); padding: 4px 7px; color: var(--driver-muted); font-size: .68rem; font-weight: 800; }
+.driver-route-status.is-running { background: #e4f5ed; color: var(--driver-success); }
+[data-driver-theme="dark"] .driver-route-status.is-running { background: rgba(66, 211, 154, .14); }
+.driver-overview-progress { height: 7px; overflow: hidden; border-radius: 999px; background: var(--driver-border); }
+.driver-overview-progress span { display: block; height: 100%; background: var(--driver-success); }
+.driver-overview-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--driver-muted); font-size: .72rem; }
+.driver-overview-meta .has-problem { color: var(--driver-danger); font-weight: 800; }
+.is-admin-view .delivery-actions, .is-admin-view .order-actions, .is-admin-view #next-stop-action, .is-admin-view #gps-status, .is-admin-view [data-drawer-action="foto"] { display: none; }
+@media (max-width: 820px) { .driver-admin-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .driver-admin-head { align-items: stretch; flex-direction: column; gap: 12px; } .driver-admin-search { width: 100%; } .driver-admin-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .driver-admin-list { grid-template-columns: 1fr; } }
 
 /* Dynamic Header Actions */
 .header-right-actions { display: flex; align-items: center; gap: 8px; }

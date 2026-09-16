@@ -95,17 +95,9 @@ function fetchAuth(url, options = {}) {
         
         if (res.status === 401) {
             console.warn('⚠️ Token inválido ou expirado');
-            
-            try {
-                const refreshResult = await tentarRenovarToken();
-                if (refreshResult) {
-                    console.log('🔄 Token renovado. Tentando novamente...');
-                    return fetchAuth(url, options);
-                }
-            } catch (e) {
-                console.error('❌ Erro ao renovar token:', e);
-            }
-            
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('userData');
+            sessionStorage.removeItem('authToken');
             throw new Error('Sessão expirada. Faça login novamente.');
         }
         
@@ -115,31 +107,6 @@ function fetchAuth(url, options = {}) {
         
         return res.json();
     });
-}
-
-async function tentarRenovarToken() {
-    try {
-        const response = await fetch(API_BASE + '/auth/refresh', {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            if (data.token) {
-                localStorage.setItem('authToken', data.token);
-                console.log('✅ Token renovado com sucesso');
-                return true;
-            }
-        }
-        return false;
-    } catch (e) {
-        console.error('❌ Erro ao renovar token:', e);
-        return false;
-    }
 }
 
 // ================================================================
@@ -160,7 +127,8 @@ function verificarAutenticacao() {
             confirmButtonColor: '#1a3c34',
             allowOutsideClick: false
         }).then(() => {
-            window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+            const base = window.location.pathname.startsWith('/API/') ? '/API' : '';
+            window.location.href = base + '/portal/login.php?redirect=' + encodeURIComponent(window.location.pathname);
         });
         return false;
     }
@@ -217,7 +185,8 @@ function carregarEmbarquesParaAcerto(forcar = false) {
                 confirmButtonText: 'Ir para Login',
                 confirmButtonColor: '#1a3c34'
             }).then(() => {
-                window.location.href = '/login?redirect=' + encodeURIComponent(window.location.pathname);
+                const base = window.location.pathname.startsWith('/API/') ? '/API' : '';
+                window.location.href = base + '/portal/login.php?redirect=' + encodeURIComponent(window.location.pathname);
             });
         } else {
             showError('Erro ao carregar embarques: ' + err.message);
@@ -293,6 +262,13 @@ function renderizarEmbarques(embarques) {
         const num = (embarcar.paginacao.pagina - 1) * embarcar.paginacao.limite + index + 1;
         const dataSaida = emb.data_saida ? formatDate(emb.data_saida) : '-';
         const valorTotal = parseFloat(emb.valor_total) || 0;
+        const acertoFinalizado = emb.acerto_status === 'finalizado';
+        const acertoEmAndamento = emb.acerto_status === 'em_andamento';
+        const acaoAcerto = acertoFinalizado
+            ? { classe: 'btn-acerto-view', icone: 'fa-eye', label: 'Visualizar' }
+            : acertoEmAndamento
+                ? { classe: 'btn-acerto-warning', icone: 'fa-pen-to-square', label: 'Continuar' }
+                : { classe: 'btn-acerto-primary', icone: 'fa-file-signature', label: 'Acertar' };
         
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const textTitle = isDark ? 'text-white' : 'text-gray-800';
@@ -346,9 +322,9 @@ function renderizarEmbarques(embarques) {
                     ${emb.data_fim_acerto ? `<div class="text-xs ${textSub} mt-1">${formatDate(emb.data_fim_acerto)}</div>` : ''}
                 </td>
                 <td class="text-center" data-label="Ações">
-                    <button class="btn-acerto btn-acerto-primary" onclick="abrirAcerto(${emb.id})">
-                        <i class="fa-solid fa-file-signature"></i> 
-                        <span class="hidden sm:inline">Acertar</span>
+                    <button class="btn-acerto ${acaoAcerto.classe}" onclick="abrirAcerto(${emb.id})">
+                        <i class="fa-solid ${acaoAcerto.icone}"></i>
+                        <span class="hidden sm:inline">${acaoAcerto.label}</span>
                     </button>
                 </td>
             </tr>

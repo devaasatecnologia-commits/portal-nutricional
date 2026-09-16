@@ -2,8 +2,54 @@
 // MÓDULO DE DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)
 // ==========================================================================
 
-const state = AppState;
+const state = typeof AppState !== 'undefined' ? AppState : { itens: [] };
 let ocAtual = null;
+let scanner = null;
+let isProcessing = false;
+
+const apiFetch = async function(acao, metodo = 'GET', body = null) {
+    const endpoint = acao.replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    let url = apiRoot.replace(/\/$/, '') + '/' + endpoint;
+    const options = { method: metodo, headers: {}, credentials: 'include' };
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+
+    if (token) options.headers.Authorization = 'Bearer ' + token;
+
+    if (metodo === 'GET' && body) {
+        const query = new URLSearchParams(body).toString();
+        if (query) url += (url.includes('?') ? '&' : '?') + query;
+    } else if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    const text = await response.text();
+    let data = {};
+    try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text || 'Resposta inválida do servidor' }; }
+    if (!response.ok) throw new Error(data.error || `Erro ${response.status}`);
+    return data;
+};
+
+const semFotoUrl = 'https://placehold.co/150x150?text=S/F';
+
+function getProductImageUrl(path) {
+    if (!path) return semFotoUrl;
+    const normalized = String(path).trim().replace(/\\/g, '/');
+    if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return semFotoUrl;
+    if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
+
+    const marker = 'Fotos para o Site/';
+    const markerIndex = normalized.toLowerCase().indexOf(marker.toLowerCase());
+    let relativePath = markerIndex >= 0
+        ? normalized.substring(markerIndex + marker.length)
+        : normalized.replace(/^\/+/, '').replace(/^fotos\//i, '');
+
+    if (!relativePath) return semFotoUrl;
+    relativePath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
+    return 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath;
+}
 
 // ==========================================================================
 // INICIALIZAÇÃO
@@ -142,8 +188,7 @@ function renderDesembarque() {
         
         if (concluido) concluidos++;
 
-        const imgPath = i.path_foto_master ? i.path_foto_master.split('Fotos para o Site\\')[1] : null;
-        const img = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/100x100?text=S/F';
+        const img = getProductImageUrl(i.path_foto_master);
 
         h += `<div class="item-card ${concluido ? 'concluido' : ''}" id="item-${i.cod_item}">
             <img src="${img}" class="prod-img" onerror="this.src='https://placehold.co/100x100?text=S/F'">
@@ -219,8 +264,7 @@ async function processarLeituraDesembarque(codigo) {
 async function exibirModalConferencia(item) {
     const saldo = parseFloat(item.saldo) || 0;
     const nomeItem = item.nome_item || 'Item';
-    const imgPath = item.path_foto_master ? item.path_foto_master.split('Fotos para o Site\\')[1] : null;
-    const fotoUrl = imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath.replace(/ /g, '%20') : 'https://placehold.co/150x150?text=S/F';
+    const fotoUrl = getProductImageUrl(item.path_foto_master);
     
     const dataPadrao = new Date();
     dataPadrao.setFullYear(dataPadrao.getFullYear() + 1);
@@ -433,7 +477,8 @@ async function capturarFotoDesembarque(iditem) {
                         
                         try {
                             const token = getAuthToken();
-                            const resp = await fetch('/v1/desembarque/foto', {
+                            const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+                            const resp = await fetch(`${apiRoot.replace(/\/$/, '')}/desembarque/foto`, {
                                 method: 'POST',
                                 headers: { 'Authorization': 'Bearer ' + token },
                                 body: formData

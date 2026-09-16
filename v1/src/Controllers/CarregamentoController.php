@@ -12,12 +12,36 @@ class CarregamentoController
     {
         $this->pdo = \getPDO();
     }
+
+    private function json(Response $response, array $data, int $status = 200): Response
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
+        return $response
+            ->withStatus($status)
+            ->withHeader('Content-Type', 'application/json; charset=utf-8')
+            ->withHeader('Cache-Control', 'no-store');
+    }
+
+    private function validarAcesso(Request $request, Response $response): ?Response
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $permitido = (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('carregamento', $permissoes, true);
+
+        return $permitido
+            ? null
+            : $this->json($response, ['error' => 'Acesso não autorizado ao módulo Carregamento'], 403);
+    }
 /**
  * GET /v1/carregamento/embarques
  * Lista embarques que já têm NF gerada e separação concluída, prontos para carregar
  */
 public function getEmbarques(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     // Log 1: Método foi chamado
     error_log('[Carregamento] getEmbarques chamado');
     
@@ -31,6 +55,7 @@ public function getEmbarques(Request $request, Response $response): Response
                 LEFT JOIN embarque_status_log s ON s.idembarque = ep.idembarque
                 WHERE ep.pex_conferido = 'N' 
                   AND ep.gerou_nf = 'S'
+                                    AND ep.pex_embarque_pronto = 'S'
                   AND ep.idfilial IN (1,6)
                   AND ep.data >= (CURRENT_DATE - INTERVAL '30 days')
                 ORDER BY ep.idembarque DESC";
@@ -73,6 +98,8 @@ public function getEmbarques(Request $request, Response $response): Response
      */
 public function getItens(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = $args['idembarque'] ?? 0;
     $ordem = $request->getQueryParams()['ordem'] ?? 'ASC';
     
@@ -143,6 +170,8 @@ public function getItens(Request $request, Response $response, array $args): Res
  */
 public function getResumo(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = (int)($args['idembarque'] ?? 0);
     
     if ($idembarque <= 0) {
@@ -186,21 +215,61 @@ public function getResumo(Request $request, Response $response, array $args): Re
  */
 public function confirmarItem(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $input = json_decode($request->getBody()->getContents(), true) ?? [];
     
     $iditem = (int)($input['iditem'] ?? 0);
     $idembarque = (int)($input['idembarque'] ?? 0);
     $qt_lida = round((float)($input['qtd'] ?? 0), 4);
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
     $doca = $input['doca'] ?? null;
     
-    if ($iditem <= 0 || $idembarque <= 0 || $qt_lida <= 0) {
+    if ($iditem <= 0 || $idembarque <= 0 || $qt_lida <= 0 || $idusuario <= 0) {
         $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
         return $response->withStatus(400);
     }
     
     try {
         $this->pdo->beginTransaction();
+
+        $stmtEmbarque = $this->pdo->prepare("
+            SELECT idembarque
+            FROM embarque_pedido
+            WHERE idembarque = ?
+              AND pex_conferido = 'N'
+              AND gerou_nf = 'S'
+              AND pex_embarque_pronto = 'S'
+              AND idfilial IN (1, 6)
+            FOR UPDATE
+        ");
+        $stmtEmbarque->execute([$idembarque]);
+        if (!$stmtEmbarque->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não disponível para carregamento'], 409);
+        }
+
+        $stmtLockItens = $this->pdo->prepare("
+            SELECT pi.iditempedido
+            FROM pedido_item pi
+            JOIN pedido p ON p.idpedido = pi.idpedido
+            WHERE p.idembarque = ? AND pi.iditem = ? AND pi.ativo = 'S'
+            FOR UPDATE OF pi
+        ");
+        $stmtLockItens->execute([$idembarque, $iditem]);
+        if (!$stmtLockItens->fetchAll()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item não encontrado no embarque'], 404);
+        }
+
+        $stmtLockCargas = $this->pdo->prepare("
+            SELECT id
+            FROM pedido_item_carregamento
+            WHERE idembarque = ? AND iditem = ?
+            FOR UPDATE
+        ");
+        $stmtLockCargas->execute([$idembarque, $iditem]);
+        $stmtLockCargas->fetchAll();
         
         // Busca os pedidos que contém este item
         $stmt = $this->pdo->prepare("
@@ -223,7 +292,27 @@ public function confirmarItem(Request $request, Response $response): Response
         $pedidos = $stmt->fetchAll();
         
         if (!$pedidos) {
-            throw new \Exception("Item não encontrado no embarque.");
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item não encontrado no embarque'], 404);
+        }
+
+        $quantidadePendente = array_reduce($pedidos, function ($total, $pedido) {
+            return $total + max(0, round(
+                (float)$pedido['qt_separada'] - (float)$pedido['ja_carregado_total'],
+                4
+            ));
+        }, 0.0);
+
+        if ($quantidadePendente <= 0.0001) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item já foi totalmente carregado'], 409);
+        }
+        if ($qt_lida > $quantidadePendente + 0.0001) {
+            $this->pdo->rollBack();
+            return $this->json($response, [
+                'error' => 'Quantidade informada é maior que o saldo separado pendente',
+                'saldo_pendente' => round($quantidadePendente, 4),
+            ], 422);
         }
         
         $resto = $qt_lida;
@@ -273,7 +362,7 @@ public function confirmarItem(Request $request, Response $response): Response
             'doca' => $doca,
             'id_carregamento' => $idsCarregamentoCriados[0] ?? null,
             'ids_carregamentos' => $idsCarregamentoCriados,
-            'quantidade_registrada' => $qt_lida
+            'quantidade_registrada' => round($qt_lida - $resto, 4)
         ]);
         $response->getBody()->write($payload);
         return $response->withHeader('Content-Type', 'application/json');
@@ -293,38 +382,55 @@ public function confirmarItem(Request $request, Response $response): Response
  */
 public function estornarItem(Request $request, Response $response, array $args): Response
 {
-    $iditem = (int)$args['iditem'];
-    $idembarque = (int)$args['idembarque'];
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
+    $iditem = (int)($args['iditem'] ?? 0);
+    $idembarque = (int)($args['idembarque'] ?? 0);
+
+    if ($iditem <= 0 || $idembarque <= 0) {
+        return $this->json($response, ['error' => 'Dados inválidos'], 400);
+    }
     
     try {
         $this->pdo->beginTransaction();
+
+        $lock = $this->pdo->prepare("SELECT idembarque FROM embarque_pedido WHERE idembarque = ? AND pex_conferido = 'N' FOR UPDATE");
+        $lock->execute([$idembarque]);
+        if (!$lock->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Embarque não disponível para estorno'], 409);
+        }
         
         // Buscar fotos para deletar
         $stmt = $this->pdo->prepare("
             SELECT path_foto_conferencia FROM pedido_item_carregamento 
             WHERE iditem = ? AND idembarque = ?
+            FOR UPDATE
         ");
         $stmt->execute([$iditem, $idembarque]);
         $fotos = $stmt->fetchAll();
-        
-        foreach ($fotos as $foto) {
-            if (!empty($foto['path_foto_conferencia'])) {
-                $caminho = __DIR__ . '/../../../' . $foto['path_foto_conferencia'];
-                if (file_exists($caminho)) {
-                    @unlink($caminho);
-                }
-            }
+        if (!$fotos) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Item carregado não encontrado'], 404);
         }
         
         $sql = "DELETE FROM pedido_item_carregamento WHERE iditem = ? AND idembarque = ?";
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute([$iditem, $idembarque]);
+
+        $this->pdo->prepare("DELETE FROM carregamento_fotos WHERE iditem = ? AND idembarque = ?")
+            ->execute([$iditem, $idembarque]);
         
         $this->pdo->commit();
+
+        foreach ($fotos as $foto) {
+            if (!empty($foto['path_foto_conferencia'])) {
+                $caminho = __DIR__ . '/../../../' . $foto['path_foto_conferencia'];
+                if (is_file($caminho)) @unlink($caminho);
+            }
+        }
         
-        $payload = json_encode(['success' => true]);
-        $response->getBody()->write($payload);
-        return $response->withHeader('Content-Type', 'application/json');
+        return $this->json($response, ['success' => true]);
         
     } catch (\Exception $e) {
         if ($this->pdo->inTransaction()) {
@@ -341,12 +447,96 @@ public function estornarItem(Request $request, Response $response, array $args):
      */
     public function finalizarEmbarque(Request $request, Response $response, array $args): Response
     {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         $idembarque = (int)$args['idembarque'];
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $idusuario = (int)($input['idusuario'] ?? 0);
+        $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
+
+        if ($idembarque <= 0 || $idusuario <= 0) {
+            return $this->json($response, ['error' => 'Dados inválidos'], 400);
+        }
         
         try {
             $this->pdo->beginTransaction();
+
+            $stmtEmbarque = $this->pdo->prepare("
+                SELECT idembarque
+                FROM embarque_pedido
+                WHERE idembarque = ?
+                  AND pex_conferido = 'N'
+                  AND gerou_nf = 'S'
+                  AND pex_embarque_pronto = 'S'
+                  AND idfilial IN (1, 6)
+                FOR UPDATE
+            ");
+            $stmtEmbarque->execute([$idembarque]);
+            if (!$stmtEmbarque->fetchColumn()) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Embarque não disponível para finalização'], 409);
+            }
+
+            $stmtLockItens = $this->pdo->prepare("
+                SELECT pi.iditempedido
+                FROM pedido_item pi
+                JOIN pedido p ON p.idpedido = pi.idpedido
+                WHERE p.idembarque = ? AND pi.ativo = 'S'
+                FOR UPDATE OF pi
+            ");
+            $stmtLockItens->execute([$idembarque]);
+            if (!$stmtLockItens->fetchAll()) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Embarque não possui itens ativos'], 409);
+            }
+
+            $stmtLockCargas = $this->pdo->prepare("
+                SELECT id FROM pedido_item_carregamento WHERE idembarque = ? FOR UPDATE
+            ");
+            $stmtLockCargas->execute([$idembarque]);
+            $stmtLockCargas->fetchAll();
+
+            $stmtPendencias = $this->pdo->prepare("
+                SELECT COUNT(*)
+                FROM pedido_item pi
+                JOIN pedido p ON p.idpedido = pi.idpedido
+                WHERE p.idembarque = :idembarque
+                  AND pi.ativo = 'S'
+                  AND COALESCE((
+                      SELECT SUM(carga.qt_carregada)
+                      FROM pedido_item_carregamento carga
+                      WHERE carga.idpedido = pi.idpedido
+                        AND carga.iditempedido = pi.iditempedido
+                        AND carga.iditem = pi.iditem
+                        AND carga.idembarque = :idembarque_carga
+                  ), 0) < pi.qt - 0.0001
+            ");
+            $stmtPendencias->execute([
+                'idembarque' => $idembarque,
+                'idembarque_carga' => $idembarque,
+            ]);
+            $itensPendentes = (int)$stmtPendencias->fetchColumn();
+            if ($itensPendentes > 0) {
+                $this->pdo->rollBack();
+                return $this->json($response, [
+                    'error' => 'Existem itens pendentes de carregamento',
+                    'itens_pendentes' => $itensPendentes,
+                ], 409);
+            }
+
+            $stmtFotos = $this->pdo->prepare("
+                SELECT COUNT(*)
+                FROM pedido_item_carregamento
+                WHERE idembarque = ?
+                  AND (path_foto_conferencia IS NULL OR path_foto_conferencia = '')
+            ");
+            $stmtFotos->execute([$idembarque]);
+            $fotosPendentes = (int)$stmtFotos->fetchColumn();
+            if ($fotosPendentes > 0) {
+                $this->pdo->rollBack();
+                return $this->json($response, [
+                    'error' => 'Existem carregamentos sem foto de conferência',
+                    'fotos_pendentes' => $fotosPendentes,
+                ], 409);
+            }
             
             // Atualiza status
             $stmt = $this->pdo->prepare("
@@ -389,6 +579,8 @@ public function estornarItem(Request $request, Response $response, array $args):
  */
 public function getFotos(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idembarque = (int)($args['idembarque'] ?? 0);
     
     if ($idembarque <= 0) {
@@ -423,6 +615,8 @@ public function getFotos(Request $request, Response $response, array $args): Res
  */
 public function getFoto(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idfoto = (int)($args['idfoto'] ?? 0);
     
     try {
@@ -452,6 +646,8 @@ public function getFoto(Request $request, Response $response, array $args): Resp
  */
 public function uploadFoto(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $uploadedFiles = $request->getUploadedFiles();
     
     if (empty($uploadedFiles['foto'])) {
@@ -468,25 +664,35 @@ public function uploadFoto(Request $request, Response $response): Response
     $params = $request->getParsedBody();
     $idembarque = (int)($params['idembarque'] ?? 0);
     $iditem = (int)($params['iditem'] ?? 0);
-    $idusuario = (int)($params['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
     $doca = $params['doca'] ?? null;
     $idCarregamento = (int)($params['id_carregamento'] ?? 0);
 
-    if ($idembarque <= 0 || $iditem <= 0) {
+    if ($idembarque <= 0 || $iditem <= 0 || $idusuario <= 0 || $idCarregamento <= 0) {
         $response->getBody()->write(json_encode(['error' => 'ID do embarque ou item inválido']));
         return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
     }
 
-    // Valida o tipo de arquivo
-    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    $clientMediaType = $foto->getClientMediaType();
-    if (!in_array($clientMediaType, $allowedTypes)) {
+    if (($foto->getSize() ?? 0) > 15 * 1024 * 1024) {
+        return $this->json($response, ['error' => 'A foto deve ter no máximo 15 MB'], 413);
+    }
+
+    $stream = $foto->getStream();
+    $conteudo = $stream->getContents();
+    $stream->rewind();
+    $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->buffer($conteudo);
+    $extensoesPermitidas = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/webp' => 'webp',
+    ];
+    if (!isset($extensoesPermitidas[$mimeType])) {
         $response->getBody()->write(json_encode(['error' => 'Tipo de arquivo não permitido. Use JPEG, PNG ou WEBP.']));
         return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
     }
 
     // 🔥 GERAR NOME ÚNICO COM ID DO CARREGAMENTO
-    $ext = pathinfo($foto->getClientFilename(), PATHINFO_EXTENSION);
+    $ext = $extensoesPermitidas[$mimeType];
     $nomeArquivo = sprintf(
         'emb_%d_item_%d_carga_%d_%s.%s',
         $idembarque,
@@ -506,27 +712,33 @@ public function uploadFoto(Request $request, Response $response): Response
     }
 
     try {
+        $this->pdo->beginTransaction();
+
+        $stmtCarga = $this->pdo->prepare("
+            SELECT id
+            FROM pedido_item_carregamento
+            WHERE id = ?
+              AND idembarque = ?
+              AND iditem = ?
+              AND id_conferente = ?
+              AND (path_foto_conferencia IS NULL OR path_foto_conferencia = '')
+            FOR UPDATE
+        ");
+        $stmtCarga->execute([$idCarregamento, $idembarque, $iditem, $idusuario]);
+        if (!$stmtCarga->fetchColumn()) {
+            $this->pdo->rollBack();
+            return $this->json($response, ['error' => 'Registro de carregamento não encontrado ou foto já enviada'], 404);
+        }
+
         $foto->moveTo($caminhoAbsoluto);
 
         // 🔥 ATUALIZAR O REGISTRO ESPECÍFICO COM A FOTO
-        if ($idCarregamento > 0) {
-            $stmt = $this->pdo->prepare("
-                UPDATE pedido_item_carregamento 
-                SET path_foto_conferencia = ?
-                WHERE id = ? AND idembarque = ? AND iditem = ?
-            ");
-            $stmt->execute([$caminhoRelativo, $idCarregamento, $idembarque, $iditem]);
-        } else {
-            // Fallback: atualizar o registro mais recente sem foto
-            $stmt = $this->pdo->prepare("
-                UPDATE pedido_item_carregamento 
-                SET path_foto_conferencia = ?
-                WHERE idembarque = ? AND iditem = ? 
-                  AND (path_foto_conferencia IS NULL OR path_foto_conferencia = '')
-                ORDER BY id DESC LIMIT 1
-            ");
-            $stmt->execute([$caminhoRelativo, $idembarque, $iditem]);
-        }
+        $stmt = $this->pdo->prepare("
+            UPDATE pedido_item_carregamento
+            SET path_foto_conferencia = ?
+            WHERE id = ? AND idembarque = ? AND iditem = ? AND id_conferente = ?
+        ");
+        $stmt->execute([$caminhoRelativo, $idCarregamento, $idembarque, $iditem, $idusuario]);
 
         // Salvar na tabela de auditoria de fotos
         $stmt2 = $this->pdo->prepare("
@@ -535,6 +747,8 @@ public function uploadFoto(Request $request, Response $response): Response
             VALUES (?, ?, ?, ?, ?, ?, NOW())
         ");
         $stmt2->execute([$idembarque, $iditem, $idCarregamento, $caminhoRelativo, $idusuario, $doca]);
+
+        $this->pdo->commit();
 
         $payload = json_encode([
             'success' => true,
@@ -547,6 +761,7 @@ public function uploadFoto(Request $request, Response $response): Response
         return $response->withHeader('Content-Type', 'application/json');
 
     } catch (\Exception $e) {
+        if ($this->pdo->inTransaction()) $this->pdo->rollBack();
         if (file_exists($caminhoAbsoluto)) {
             @unlink($caminhoAbsoluto);
         }

@@ -13,6 +13,28 @@ class DesembarqueController
     {
         $this->pdo = \getPDO();
     }
+
+    private function json(Response $response, array $data, int $status = 200): Response
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
+        return $response
+            ->withStatus($status)
+            ->withHeader('Content-Type', 'application/json; charset=utf-8')
+            ->withHeader('Cache-Control', 'no-store');
+    }
+
+    private function validarAcesso(Request $request, Response $response): ?Response
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $permitido = (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('desembarque', $permissoes, true);
+
+        return $permitido
+            ? null
+            : $this->json($response, ['error' => 'Acesso não autorizado ao módulo Desembarque'], 403);
+    }
     
     
 /**
@@ -21,6 +43,8 @@ class DesembarqueController
  */
 public function getOrdensCompra(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     try {
         $sql = "
                  SELECT DISTINCT 
@@ -61,6 +85,8 @@ ORDER BY oc.idoc DESC
      */
     public function getItens(Request $request, Response $response, array $args): Response
     {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         $idoc = (int)($args['idoc'] ?? 0);
         
         if ($idoc <= 0) {
@@ -118,6 +144,8 @@ ORDER BY oc.idoc DESC
      */
     public function buscarItem(Request $request, Response $response, array $args): Response
     {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         $idoc = (int)($args['idoc'] ?? 0);
         $codigo = $request->getQueryParams()['codigo'] ?? '';
         
@@ -186,6 +214,8 @@ ORDER BY oc.idoc DESC
  */
 public function uploadFoto(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $uploadedFiles = $request->getUploadedFiles();
     
     if (empty($uploadedFiles['foto'])) {
@@ -237,6 +267,8 @@ public function uploadFoto(Request $request, Response $response): Response
  */
 public function getSecoes(Request $request, Response $response): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     try {
         $stmt = $this->pdo->query("
             SELECT idsecao, descricao, sigla 
@@ -259,6 +291,8 @@ public function getSecoes(Request $request, Response $response): Response
      */
     public function confirmarItem(Request $request, Response $response): Response
     {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
         $idoc = (int)($input['idoc'] ?? 0);
@@ -266,18 +300,65 @@ public function getSecoes(Request $request, Response $response): Response
         $quantidade = round((float)($input['quantidade'] ?? 0), 2);
         $lote = $input['lote'] ?? '';
         $validade = $input['validade'] ?? date('Y-m-d');
-        $usuario = $input['usuario'] ?? 'SISTEMA';
+        $usuario = (string)(($request->getAttribute('user') ?? [])['username'] ?? '');
+        $idsecao = (int)($input['idsecao'] ?? 0);
+        $idendereco = (int)($input['idendereco'] ?? 0);
         
-        if ($idoc <= 0 || $iditem <= 0 || $quantidade <= 0 || empty($lote)) {
+        if ($idoc <= 0 || $iditem <= 0 || $quantidade <= 0 || empty($lote) || empty($usuario) || $idsecao <= 0 || $idendereco <= 0) {
             $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
             return $response->withStatus(400);
         }
         
         try {
             $this->pdo->beginTransaction();
+
+            $stmtOc = $this->pdo->prepare("
+                SELECT idoc
+                FROM oc
+                WHERE idoc = ? AND status = 1 AND idfilial IN (1, 6)
+                FOR UPDATE
+            ");
+            $stmtOc->execute([$idoc]);
+            if (!$stmtOc->fetchColumn()) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Ordem de compra não disponível para conferência'], 409);
+            }
+
+            $stmtOcItem = $this->pdo->prepare("
+                SELECT qt, idfilial
+                FROM oc_item
+                WHERE idoc = ? AND iditem = ?
+                FOR UPDATE
+            ");
+            $stmtOcItem->execute([$idoc, $iditem]);
+            $ocItem = $stmtOcItem->fetch(PDO::FETCH_ASSOC);
+            if (!$ocItem) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Item não encontrado na ordem de compra'], 404);
+            }
+
+            $stmtEndereco = $this->pdo->prepare("
+                SELECT capacidade - ocupado AS disponivel
+                FROM secao_enderecos
+                WHERE idsecao = ? AND idendereco = ?
+                FOR UPDATE
+            ");
+            $stmtEndereco->execute([$idsecao, $idendereco]);
+            $capacidadeDisponivel = $stmtEndereco->fetchColumn();
+            if ($capacidadeDisponivel === false) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Endereço não encontrado'], 404);
+            }
+            if ($quantidade > (float)$capacidadeDisponivel + 0.01) {
+                $this->pdo->rollBack();
+                return $this->json($response, [
+                    'error' => 'Quantidade excede a capacidade disponível do endereço',
+                    'capacidade_disponivel' => round((float)$capacidadeDisponivel, 2),
+                ], 422);
+            }
             
             // 1. Verificar/Criar registro na aps_oc_conferencia
-            $stmtCheck = $this->pdo->prepare("SELECT idoc FROM aps_oc_conferencia WHERE idoc = :idoc");
+            $stmtCheck = $this->pdo->prepare("SELECT idoc FROM aps_oc_conferencia WHERE idoc = :idoc FOR UPDATE");
             $stmtCheck->execute(['idoc' => $idoc]);
             
             if (!$stmtCheck->fetch()) {
@@ -295,9 +376,24 @@ public function getSecoes(Request $request, Response $response): Response
                 SELECT quantidadeconferida, quantidadesaldo 
                 FROM aps_oc_conferencia_item 
                 WHERE idoc = :idoc AND iditem = :iditem
+                FOR UPDATE
             ");
             $stmtItem->execute(['idoc' => $idoc, 'iditem' => $iditem]);
             $itemExistente = $stmtItem->fetch(PDO::FETCH_ASSOC);
+
+            $quantidadeConferida = (float)($itemExistente['quantidadeconferida'] ?? 0);
+            $saldoPendente = max(0, round((float)$ocItem['qt'] - $quantidadeConferida, 2));
+            if ($saldoPendente <= 0.01) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Item já foi totalmente conferido'], 409);
+            }
+            if ($quantidade > $saldoPendente + 0.01) {
+                $this->pdo->rollBack();
+                return $this->json($response, [
+                    'error' => 'Quantidade informada é maior que o saldo pendente',
+                    'saldo_pendente' => $saldoPendente,
+                ], 422);
+            }
             
             if ($itemExistente) {
                 $this->pdo->prepare("
@@ -321,6 +417,7 @@ public function getSecoes(Request $request, Response $response): Response
             $stmtLote = $this->pdo->prepare("
                 SELECT quantsaldo FROM aps_oc_conferencia_item_lote 
                 WHERE idoc = :idoc AND iditem = :iditem AND quantsaldo > 0
+                FOR UPDATE
             ");
             $stmtLote->execute(['idoc' => $idoc, 'iditem' => $iditem]);
             
@@ -348,6 +445,7 @@ public function getSecoes(Request $request, Response $response): Response
             $stmtOCLote = $this->pdo->prepare("
                 SELECT quantsaldo FROM oc_item_lote 
                 WHERE idoc = :idoc AND iditem = :iditem AND quantsaldo > 0
+                FOR UPDATE
             ");
             $stmtOCLote->execute(['idoc' => $idoc, 'iditem' => $iditem]);
             
@@ -373,9 +471,6 @@ public function getSecoes(Request $request, Response $response): Response
             
 // 5. Registrar endereço no lote_endereco e atualizar secao_enderecos
 if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
-    $idsecao = (int)$input['idsecao'];
-    $idendereco = (int)$input['idendereco'];
-    
     // Inserir no lote_endereco
     $this->pdo->prepare("
         INSERT INTO lote_endereco (
@@ -387,7 +482,7 @@ if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
             :qtd, :idoc, :idsecao, CURRENT_DATE, :usuario, :obs
         )
     ")->execute([
-        'idfilial' => 1,
+        'idfilial' => (int)$ocItem['idfilial'],
         'iditem' => $iditem,
         'lote' => $lote,
         'idendereco' => $idendereco,
@@ -429,6 +524,8 @@ if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
  */
 public function getEnderecos(Request $request, Response $response, array $args): Response
 {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
     $idsecao = (int)($args['idsecao'] ?? 0);
     
     if ($idsecao <= 0) {
@@ -469,12 +566,74 @@ public function getEnderecos(Request $request, Response $response, array $args):
      */
     public function finalizarConferencia(Request $request, Response $response, array $args): Response
     {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
         $idoc = (int)($args['idoc'] ?? 0);
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $usuario = $input['usuario'] ?? 'SISTEMA';
+        $usuario = (string)(($request->getAttribute('user') ?? [])['username'] ?? '');
+
+        if ($idoc <= 0 || empty($usuario)) {
+            return $this->json($response, ['error' => 'Dados inválidos'], 400);
+        }
         
         try {
             $this->pdo->beginTransaction();
+
+            $stmtOc = $this->pdo->prepare("
+                SELECT idoc
+                FROM oc
+                WHERE idoc = ? AND status = 1 AND idfilial IN (1, 6)
+                FOR UPDATE
+            ");
+            $stmtOc->execute([$idoc]);
+            if (!$stmtOc->fetchColumn()) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Ordem de compra não disponível para finalização'], 409);
+            }
+
+            $stmtConferencia = $this->pdo->prepare("
+                SELECT status
+                FROM aps_oc_conferencia
+                WHERE idoc = ?
+                FOR UPDATE
+            ");
+            $stmtConferencia->execute([$idoc]);
+            $statusConferencia = $stmtConferencia->fetchColumn();
+            if ($statusConferencia === false) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Conferência ainda não foi iniciada'], 409);
+            }
+            if ((int)$statusConferencia === 3) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Conferência já foi finalizada'], 409);
+            }
+
+            $stmtLockItens = $this->pdo->prepare("SELECT iditemoc FROM oc_item WHERE idoc = ? FOR UPDATE");
+            $stmtLockItens->execute([$idoc]);
+            if (!$stmtLockItens->fetchAll()) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Ordem de compra não possui itens'], 409);
+            }
+
+            $stmtPendencias = $this->pdo->prepare("
+                SELECT COUNT(*)
+                FROM oc_item item_oc
+                WHERE item_oc.idoc = :idoc
+                  AND COALESCE((
+                      SELECT conferencia.quantidadeconferida
+                      FROM aps_oc_conferencia_item conferencia
+                      WHERE conferencia.idoc = item_oc.idoc
+                        AND conferencia.iditem = item_oc.iditem
+                  ), 0) < item_oc.qt - 0.01
+            ");
+            $stmtPendencias->execute(['idoc' => $idoc]);
+            $itensPendentes = (int)$stmtPendencias->fetchColumn();
+            if ($itensPendentes > 0) {
+                $this->pdo->rollBack();
+                return $this->json($response, [
+                    'error' => 'Existem itens pendentes de conferência',
+                    'itens_pendentes' => $itensPendentes,
+                ], 409);
+            }
             
             $this->pdo->prepare("
                 UPDATE aps_oc_conferencia 
