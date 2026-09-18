@@ -144,14 +144,22 @@ public function listarParaAcerto(Request $request, Response $response): Response
  * GET /v1/frota/acerto/{embarqueId}/detalhes
  * Busca todos os detalhes do embarque para acerto
  * 🔥 COMPLETO COM PEDIDOS DE ACERTO
+ *
+ * 🔥 MUDANÇA 2026-09-18 (Bloco 4):
+ *   - Adiciona LEFT JOIN com frota_problema_tratamento na query de problemas
+ *   - Retorna em `problemas[]` os campos do tratamento (Camada 2):
+ *     tratamento_id, tratamento_tipo, tratamento_status,
+ *     tratamento_numero_comprovante, tratamento_comprovante_emitido_em,
+ *     tratamento_acerto_pedido_id
+ *   - Permite ao frontend decidir se mostra "Gerar Pedido" ou "Gerar Comprovante"
  */
 public function getDetalhesAcerto(Request $request, Response $response, array $args): Response
 {
     $embarqueId = (int)$args['embarqueId'];
-    
+
     try {
         $pdo = $this->pdo;
-        
+
         // 1. DADOS DO EMBARQUE
         $stmt = $pdo->prepare("
             SELECT 
@@ -186,14 +194,14 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['id' => $embarqueId]);
         $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$embarque) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Embarque não encontrado'
             ], 404);
         }
-        
+
         // 2. ENTREGAS COM CHECKLIST E FOTOS
         $stmt = $pdo->prepare("
             SELECT 
@@ -230,8 +238,8 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['embarque_id' => $embarqueId]);
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        // Buscar checklist e fotos para cada entrega
+
+        // Buscar checklist, fotos e problemas para cada entrega
         foreach ($entregas as &$entrega) {
             // Checklist
             $stmt = $pdo->prepare("
@@ -251,7 +259,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             ");
             $stmt->execute(['entrega_id' => $entrega['id']]);
             $entrega['checklist'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
+
             // Fotos
             $stmt = $pdo->prepare("
                 SELECT 
@@ -268,33 +276,40 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             ");
             $stmt->execute(['entrega_id' => $entrega['id']]);
             $entrega['fotos'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            // Problemas
+
+            // Problemas (com tratamento vinculado — Bloco 4)
             $stmt = $pdo->prepare("
                 SELECT 
-                    id,
-                    tipo_problema,
-                    item_id,
-                    referencia,
-                    descricao_problema,
-                    quantidade_afetada,
-                    valor_afetado,
-                    status_problema,
-                    prioridade,
-                    solucao,
-                    data_resolucao,
-                    created_at
-                FROM frota_entrega_problema
-                WHERE entrega_id = :entrega_id
-                ORDER BY created_at DESC
+                    p.id,
+                    p.tipo_problema,
+                    p.item_id,
+                    p.referencia,
+                    p.descricao_problema,
+                    p.quantidade_afetada,
+                    p.valor_afetado,
+                    p.status_problema,
+                    p.prioridade,
+                    p.solucao,
+                    p.data_resolucao,
+                    p.created_at,
+                    t.id                     AS tratamento_id,
+                    t.tipo_tratamento        AS tratamento_tipo,
+                    t.status                 AS tratamento_status,
+                    t.numero_comprovante     AS tratamento_numero_comprovante,
+                    t.comprovante_emitido_em AS tratamento_comprovante_emitido_em,
+                    t.acerto_pedido_id       AS tratamento_acerto_pedido_id
+                FROM frota_entrega_problema p
+                LEFT JOIN frota_problema_tratamento t ON t.problema_id = p.id
+                WHERE p.entrega_id = :entrega_id
+                ORDER BY p.created_at DESC
             ");
             $stmt->execute(['entrega_id' => $entrega['id']]);
             $entrega['problemas'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         }
         unset($entrega);
-        
+
         $embarque['entregas'] = $entregas;
-        
+
         // 3. TIMELINE
         $stmt = $pdo->prepare("
             SELECT 
@@ -311,7 +326,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['embarque_id' => $embarqueId]);
         $embarque['timeline'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
+
         // 4. RESUMO DE PROBLEMAS
         $stmt = $pdo->prepare("
             SELECT 
@@ -326,7 +341,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['embarque_id' => $embarqueId]);
         $embarque['resumo_problemas'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
+
         // 5. VERIFICAR ACERTO EXISTENTE
         $stmt = $pdo->prepare("
             SELECT 
@@ -343,7 +358,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['embarque_id' => $embarqueId]);
         $embarque['acerto_existente'] = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+
         // 6. Calcular total de problemas
         $totalProblemas = 0;
         if (!empty($embarque['resumo_problemas'])) {
@@ -352,7 +367,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             }
         }
         $embarque['total_problemas'] = $totalProblemas;
-        
+
         // 🔥 7. PEDIDOS DE ACERTO CRIADOS
         $stmt = $pdo->prepare("
             SELECT 
@@ -363,6 +378,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
                 ap.numero_pedido,
                 ap.cliente_nome,
                 ap.tipo_problema,
+                ap.tipo_tratamento,
                 ap.itens_afetados,
                 ap.motivo,
                 ap.observacoes,
@@ -386,7 +402,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         ");
         $stmt->execute(['embarque_id' => $embarqueId]);
         $pedidosAcerto = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
+
         // Processar itens_afetados (JSON) para cada pedido
         foreach ($pedidosAcerto as &$pedido) {
             if (!empty($pedido['itens_afetados'])) {
@@ -399,14 +415,14 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             }
         }
         unset($pedido);
-        
+
         $embarque['pedidos_acerto'] = $pedidosAcerto;
-        
+
         return $this->json($response, [
             'success' => true,
             'data' => $embarque
         ]);
-        
+
     } catch (\Exception $e) {
         error_log('[Acerto] Erro ao buscar detalhes: ' . $e->getMessage());
         error_log('[Acerto] Stack trace: ' . $e->getTraceAsString());
@@ -668,10 +684,19 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
         }
     }
 
-    /**
+/**
  * POST /v1/frota/acerto/pedido-problema
- * Cria um pedido de acerto a partir de um problema identificado
- * 🔥 CORRIGIDO - ERRO DE PARÂMETROS MISTURADOS
+ * Cria um pedido de acerto a partir de um problema identificado.
+ *
+ * 🔥 MUDANÇA 2026-09-17 (Bloco 2, Passo 2.1):
+ *   - Aceita o campo `tipo_tratamento` no payload:
+ *       • 'faltante_com_estoque'  → transação ERP 19
+ *       • 'faltante_sem_estoque'  → transação ERP 20
+ *       • 'devolucao_comprovante' → gera comprovante (não cria pedido ERP)
+ *   - Grava em 3 camadas: FATO (já existe) + TRATAMENTO (nova) + DOCUMENTO
+ *   - Compatibilidade: se `tipo_tratamento` não vier, deriva do `tipo_problema`
+ *   - Para DEVOLUÇÃO: NÃO cria pedido de acerto, só registra o tratamento
+ *     e retorna `proximo_passo: 'gerar_comprovante'`
  */
 public function criarPedidoProblema(Request $request, Response $response): Response
 {
@@ -679,14 +704,35 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
     $user = $request->getAttribute('user');
     $usuarioId = $user['idusuario'] ?? 0;
     $usuarioNome = $user['username'] ?? $user['nome'] ?? 'Gestor';
-    
+
     $acertoId = (int)($input['acerto_id'] ?? 0);
     $entregaId = (int)($input['entrega_id'] ?? 0);
     $tipoProblema = $input['tipo_problema'] ?? 'faltante';
     $itens = $input['itens'] ?? [];
     $motivo = $input['motivo'] ?? '';
     $observacoes = $input['observacoes'] ?? '';
-    
+    $problemaId = (int)($input['problema_id'] ?? 0);
+
+    // ============================================================
+    // 🔥 NOVO: Resolver tipo_tratamento
+    // ============================================================
+    $tipoTratamentoRecebido = trim((string)($input['tipo_tratamento'] ?? ''));
+
+    $tiposTratamentoValidos = [
+        'faltante_com_estoque',
+        'faltante_sem_estoque',
+        'devolucao_comprovante'
+    ];
+
+    // Compatibilidade retroativa: se não veio, derivar do tipo_problema
+    if ($tipoTratamentoRecebido === '') {
+        if ($tipoProblema === 'faltante') {
+            $tipoTratamentoRecebido = 'faltante_com_estoque'; // padrão seguro
+        } elseif ($tipoProblema === 'devolucao') {
+            $tipoTratamentoRecebido = 'devolucao_comprovante';
+        }
+    }
+
     // ============================================================
     // VALIDAÇÕES
     // ============================================================
@@ -696,43 +742,77 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
             'error' => 'ID do acerto é obrigatório'
         ], 400);
     }
-    
+
     if ($entregaId <= 0) {
         return $this->json($response, [
             'success' => false,
             'error' => 'ID da entrega é obrigatório'
         ], 400);
     }
-    
+
     if (!in_array($tipoProblema, ['faltante', 'devolucao'])) {
         return $this->json($response, [
             'success' => false,
             'error' => 'Tipo de problema inválido. Use "faltante" ou "devolucao"'
         ], 400);
     }
-    
+
+    if (!in_array($tipoTratamentoRecebido, $tiposTratamentoValidos, true)) {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Tipo de tratamento inválido. Use: ' . implode(', ', $tiposTratamentoValidos)
+        ], 400);
+    }
+
+    // Coerência entre tipo_problema e tipo_tratamento
+    if ($tipoProblema === 'devolucao' && $tipoTratamentoRecebido !== 'devolucao_comprovante') {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Devolução só pode ser tratada como "devolucao_comprovante"'
+        ], 400);
+    }
+    if ($tipoProblema === 'faltante' && $tipoTratamentoRecebido === 'devolucao_comprovante') {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Faltante não pode ser tratado como devolução'
+        ], 400);
+    }
+
     if (empty($itens)) {
         return $this->json($response, [
             'success' => false,
             'error' => 'Pelo menos um item deve ser informado'
         ], 400);
     }
-    
+
+    // Mapear tratamento → transação ERP
+    $idTransacaoErp = null;
+    $tipoFaltante = null;
+
+    if ($tipoTratamentoRecebido === 'faltante_com_estoque') {
+        $idTransacaoErp = 19;
+        $tipoFaltante = 'com_estoque';
+    } elseif ($tipoTratamentoRecebido === 'faltante_sem_estoque') {
+        $idTransacaoErp = 20;
+        $tipoFaltante = 'sem_estoque';
+    }
+    // devolucao_comprovante → idTransacaoErp permanece NULL
+
     try {
         $pdo = $this->pdo;
         $pdo->beginTransaction();
-        
+
         // ============================================================
         // 1. VERIFICAR ACERTO
         // ============================================================
         $stmt = $pdo->prepare("
-            SELECT id, embarque_id, status 
-            FROM frota_acerto_embarque 
+            SELECT id, embarque_id, status
+            FROM frota_acerto_embarque
             WHERE id = :id AND status IN ('em_andamento', 'pendente')
         ");
         $stmt->execute(['id' => $acertoId]);
         $acerto = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$acerto) {
             $pdo->rollBack();
             return $this->json($response, [
@@ -740,14 +820,14 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                 'error' => 'Acerto não encontrado ou já finalizado'
             ], 404);
         }
-        
+
         $embarqueId = $acerto['embarque_id'];
-        
+
         // ============================================================
         // 2. BUSCAR DADOS DA ENTREGA
         // ============================================================
         $stmt = $pdo->prepare("
-            SELECT 
+            SELECT
                 ent.id,
                 ent.cliente_id,
                 fc.erp_id AS cliente_erp_id,
@@ -767,7 +847,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         ");
         $stmt->execute(['id' => $entregaId, 'embarque_id' => $embarqueId]);
         $entrega = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$entrega) {
             $pdo->rollBack();
             return $this->json($response, [
@@ -775,62 +855,59 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                 'error' => 'Entrega não encontrada neste embarque'
             ], 404);
         }
-        
+
         // ============================================================
         // 3. BUSCAR VALOR UNITÁRIO DOS ITENS
         // ============================================================
-$itensFormatados = [];
-$valorTotal = 0;
-$itensIds = array_column($itens, 'iditem');
-$itensInfoMap = [];
+        $itensFormatados = [];
+        $valorTotal = 0;
+        $itensIds = array_column($itens, 'iditem');
+        $itensInfoMap = [];
 
-if (!empty($itensIds)) {
-    // 🔥 CORRIGIDO: usar APENAS parâmetros posicionais (?)
-    $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
-    $idFilial = (int)($input['id_filial'] ?? 1);
-    $stmtItem = $pdo->prepare("
-    SELECT DISTINCT
-        i.iditem,
-        i.referencia,
-        i.descricao,
-        i.complemento,
-        i.pesobruto,
-        i.pesoliquido,
-        i.idunidadebasica AS idunidade,
-        i.perccomissao,
-        e.valorprecovenda AS valor_unitario,
-        e.valorcustocontabil,
-        e.valorcustomediounitario,
-        e.percmargem,
-        e.custogerencial,
-        e.percicmscompra,
-        e.idimposto,
-        COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
-        COALESCE(ie.perc_ipi, 0) AS perc_ipi
-    FROM item i
-    JOIN estoque_filial e ON e.iditem = i.iditem
-    JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
-    LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
-    LEFT JOIN imposto_estado ie ON (
-        ie.idimposto = imposto.idimposto 
-        AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
-        AND ie.uf = f.uf
-    )
-    WHERE i.iditem IN ({$placeholders})
-    AND e.idfilial = ?
-");
-    
-    // 🔥 CORRIGIDO: todos os params são posicionais
-    $params = array_merge($itensIds, [$idFilial]);
-    $stmtItem->execute($params);
-    $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
-    
-    foreach ($itensInfo as $info) {
-        $itensInfoMap[$info['iditem']] = $info;
-    }
-}
-        
-            // ============================================================
+        if (!empty($itensIds)) {
+            $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
+            $idFilial = (int)($input['id_filial'] ?? 1);
+            $stmtItem = $pdo->prepare("
+                SELECT DISTINCT
+                    i.iditem,
+                    i.referencia,
+                    i.descricao,
+                    i.complemento,
+                    i.pesobruto,
+                    i.pesoliquido,
+                    i.idunidadebasica AS idunidade,
+                    i.perccomissao,
+                    e.valorprecovenda AS valor_unitario,
+                    e.valorcustocontabil,
+                    e.valorcustomediounitario,
+                    e.percmargem,
+                    e.custogerencial,
+                    e.percicmscompra,
+                    e.idimposto,
+                    COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
+                    COALESCE(ie.perc_ipi, 0) AS perc_ipi
+                FROM item i
+                JOIN estoque_filial e ON e.iditem = i.iditem
+                JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
+                LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
+                LEFT JOIN imposto_estado ie ON (
+                    ie.idimposto = imposto.idimposto
+                    AND ie.tipo_enquadramento = f.tipoenquadraformapreco
+                    AND ie.uf = f.uf
+                )
+                WHERE i.iditem IN ({$placeholders})
+                AND e.idfilial = ?
+            ");
+            $params = array_merge($itensIds, [$idFilial]);
+            $stmtItem->execute($params);
+            $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($itensInfo as $info) {
+                $itensInfoMap[$info['iditem']] = $info;
+            }
+        }
+
+        // ============================================================
         // 4. MONTAR ITENS COM VALORES
         // ============================================================
         $itensDetalhes = [];
@@ -838,7 +915,6 @@ if (!empty($itensIds)) {
             $iditem = (int)($item['iditem'] ?? 0);
             $quantidade = (float)($item['quantidade'] ?? 0);
 
-            // Se o front não mandou valor_unitario, buscar do mapa populado no bloco 3
             $valorUnitario = (float)($item['valor_unitario'] ?? 0);
             if ($valorUnitario == 0 && isset($itensInfoMap[$iditem])) {
                 $valorUnitario = (float)($itensInfoMap[$iditem]['valor_unitario'] ?? 0);
@@ -883,20 +959,20 @@ if (!empty($itensIds)) {
                 'error' => 'Nenhum item válido para criar o pedido'
             ], 400);
         }
-        
+
         // ============================================================
         // 5. MONTAR OBSERVAÇÃO COMPLETA
         // ============================================================
-        $dataHoraEntrega = !empty($entrega['horario_entrega']) 
-            ? date('d/m/Y H:i:s', strtotime($entrega['horario_entrega'])) 
+        $dataHoraEntrega = !empty($entrega['horario_entrega'])
+            ? date('d/m/Y H:i:s', strtotime($entrega['horario_entrega']))
             : 'Não registrado';
-        
-        $dataHoraCheckin = !empty($entrega['horario_checkin']) 
-            ? date('d/m/Y H:i:s', strtotime($entrega['horario_checkin'])) 
+
+        $dataHoraCheckin = !empty($entrega['horario_checkin'])
+            ? date('d/m/Y H:i:s', strtotime($entrega['horario_checkin']))
             : 'Não registrado';
-        
+
         $itensLista = implode('; ', $itensDetalhes);
-        
+
         $observacaoCompleta = sprintf(
             "=== ACERTO DE ENTREGA ===\n" .
             "Embarque: #%d\n" .
@@ -907,6 +983,7 @@ if (!empty($itensIds)) {
             "Status Entrega: %s\n" .
             "Recebedor: %s\n" .
             "Tipo Problema: %s\n" .
+            "Tipo Tratamento: %s\n" .
             "Motivo: %s\n" .
             "Itens Afetados: %s\n" .
             "Gestor: %s\n" .
@@ -919,14 +996,15 @@ if (!empty($itensIds)) {
             $entrega['entrega_status'] ?? 'N/A',
             $entrega['nome_recebedor'] ?? 'Não informado',
             $tipoProblema,
+            $tipoTratamentoRecebido,
             $motivo ?: 'Não informado',
             $itensLista ?: 'Nenhum item listado',
             $usuarioNome,
             date('d/m/Y H:i:s')
         );
-        
+
         // ============================================================
-        // 6. CRIAR PEDIDO DE ACERTO (frota_acerto_pedido)
+        // 6. RESOLVER CLIENTE ERP
         // ============================================================
         $pedidosErpIds = array_values(array_unique(array_filter(
             array_map('intval', explode(',', (string)($entrega['pedidos_ids'] ?? '')))
@@ -973,8 +1051,110 @@ if (!empty($itensIds)) {
         $pedidoErpId = $pedidosErpIds[0];
         $numeroPedido = $entrega['pedido_id'] ?? $pedidoErpId;
         $clienteNome = $clientesPedidos[0]['cliente_nome'] ?: $entrega['cliente_nome'];
-        
-        // 🔥 CORRIGIDO: Usar nomes de parâmetros consistentes
+
+        // ============================================================
+        // 🆕 7. GRAVAR CAMADA 2 (TRATAMENTO) — frota_problema_tratamento
+        // ============================================================
+        // Só grava se tivermos um `problema_id` válido vindo do frontend.
+        // Se não vier, mantemos compatibilidade (tratamento implícito nos espelhos).
+        $tratamentoId = null;
+
+        if ($problemaId > 0) {
+            $stmtProblema = $pdo->prepare("
+                SELECT id FROM frota_entrega_problema
+                WHERE id = :id AND entrega_id = :entrega_id
+            ");
+            $stmtProblema->execute(['id' => $problemaId, 'entrega_id' => $entregaId]);
+            $problemaExiste = $stmtProblema->fetchColumn();
+
+            if ($problemaExiste) {
+                // Status inicial:
+                //   faltante (com/sem estoque) → 'pendente' (aguardando criar pedido ERP)
+                //   devolução                    → 'aguardando_fat' (aguardando comprovante)
+                $statusInicial = ($tipoTratamentoRecebido === 'devolucao_comprovante')
+                    ? 'aguardando_fat'
+                    : 'pendente';
+
+                $stmtTrat = $pdo->prepare("
+                    INSERT INTO frota_problema_tratamento (
+                        problema_id,
+                        tipo_tratamento,
+                        id_transacao_erp,
+                        id_filial_erp,
+                        transacao_descricao_snapshot,
+                        valor_afetado,
+                        status,
+                        decidido_por,
+                        decidido_em,
+                        observacoes,
+                        created_at,
+                        updated_at
+                    ) VALUES (
+                        :problema_id,
+                        :tipo_tratamento,
+                        :id_transacao_erp,
+                        :id_filial_erp,
+                        :transacao_descricao,
+                        :valor_afetado,
+                        :status,
+                        :decidido_por,
+                        NOW(),
+                        :observacoes,
+                        NOW(),
+                        NOW()
+                    ) RETURNING id
+                ");
+
+                $stmtTrat->execute([
+                    'problema_id' => $problemaId,
+                    'tipo_tratamento' => $tipoTratamentoRecebido,
+                    'id_transacao_erp' => $idTransacaoErp,
+                    'id_filial_erp' => (int)($input['id_filial'] ?? 1),
+                    'transacao_descricao' => null, // preenchido no Passo 2.2
+                    'valor_afetado' => $valorTotal,
+                    'status' => $statusInicial,
+                    'decidido_por' => $usuarioId,
+                    'observacoes' => $motivo
+                ]);
+
+                $tratamentoId = (int)$stmtTrat->fetchColumn();
+            }
+        }
+
+        // ============================================================
+        // 8. DECISÃO DE FLUXO: DEVOLUÇÃO ENCERRA AQUI
+        // ============================================================
+        // Para DEVOLUÇÃO: NÃO cria pedido de acerto.
+        // Só registra o tratamento (Camada 2) com status 'aguardando_fat'.
+        // O comprovante será gerado por endpoint separado (Passo 2.4).
+        if ($tipoTratamentoRecebido === 'devolucao_comprovante') {
+            $this->registrarLog(
+                $embarqueId,
+                'tratamento_devolucao_registrado',
+                "Devolução registrada para entrega #{$entregaId} (tratamento #{$tratamentoId})",
+                $usuarioId
+            );
+
+            $pdo->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Devolução registrada. Gere o comprovante para faturamento.',
+                'data' => [
+                    'tratamento_id' => $tratamentoId,
+                    'tipo_problema' => $tipoProblema,
+                    'tipo_tratamento' => $tipoTratamentoRecebido,
+                    'valor_total' => $valorTotal,
+                    'total_itens' => count($itensFormatados),
+                    'proximo_passo' => 'gerar_comprovante',
+                    'observacao' => $observacaoCompleta
+                ]
+            ]);
+        }
+
+        // ============================================================
+        // 9. FALTANTE (com/sem estoque): CRIAR PEDIDO DE ACERTO
+        // ============================================================
         $stmt = $pdo->prepare("
             INSERT INTO frota_acerto_pedido (
                 acerto_id,
@@ -990,6 +1170,10 @@ if (!empty($itensIds)) {
                 observacoes,
                 valor_total,
                 status,
+                tipo_tratamento,
+                id_transacao_erp,
+                id_filial_erp,
+                transacao_descricao_snapshot,
                 created_at,
                 updated_at
             ) VALUES (
@@ -1006,11 +1190,15 @@ if (!empty($itensIds)) {
                 :observacoes,
                 :valor_total,
                 'pendente',
+                :tipo_tratamento,
+                :id_transacao_erp,
+                :id_filial_erp,
+                :transacao_descricao,
                 NOW(),
                 NOW()
             ) RETURNING id
         ");
-        
+
         $stmt->execute([
             'acerto_id' => $acertoId,
             'entrega_id' => $entregaId,
@@ -1023,11 +1211,15 @@ if (!empty($itensIds)) {
             'itens_afetados' => json_encode($itensFormatados),
             'motivo' => $motivo,
             'observacoes' => $observacaoCompleta,
-            'valor_total' => $valorTotal
+            'valor_total' => $valorTotal,
+            'tipo_tratamento' => $tipoTratamentoRecebido,
+            'id_transacao_erp' => $idTransacaoErp,
+            'id_filial_erp' => (int)($input['id_filial'] ?? 1),
+            'transacao_descricao' => null // preenchido no Passo 2.2
         ]);
-        
+
         $pedidoAcertoId = $stmt->fetchColumn();
-        
+
         if (!$pedidoAcertoId) {
             $pdo->rollBack();
             return $this->json($response, [
@@ -1035,9 +1227,26 @@ if (!empty($itensIds)) {
                 'error' => 'Falha ao criar pedido de acerto'
             ], 500);
         }
-        
+
         // ============================================================
-        // 7. CRIAR ITENS DO ACERTO (frota_acerto_item)
+        // 10. VINCULAR TRATAMENTO AO PEDIDO (Camada 2 → Camada 3)
+        // ============================================================
+        if ($tratamentoId) {
+            $stmtLink = $pdo->prepare("
+                UPDATE frota_problema_tratamento
+                SET acerto_pedido_id = :acerto_pedido_id,
+                    status = 'pendente',
+                    updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmtLink->execute([
+                'acerto_pedido_id' => $pedidoAcertoId,
+                'id' => $tratamentoId
+            ]);
+        }
+
+        // ============================================================
+        // 11. CRIAR ITENS DO ACERTO (frota_acerto_item)
         // ============================================================
         $stmtItem = $pdo->prepare("
             INSERT INTO frota_acerto_item (
@@ -1053,6 +1262,7 @@ if (!empty($itensIds)) {
                 valor_unitario,
                 valor_total,
                 status,
+                tipo_faltante,
                 created_at,
                 updated_at
             ) VALUES (
@@ -1068,11 +1278,12 @@ if (!empty($itensIds)) {
                 :valor_unitario,
                 :valor_total,
                 'pendente',
+                :tipo_faltante,
                 NOW(),
                 NOW()
             )
         ");
-        
+
         foreach ($itensFormatados as $item) {
             $stmtItem->execute([
                 'acerto_pedido_id' => $pedidoAcertoId,
@@ -1081,25 +1292,23 @@ if (!empty($itensIds)) {
                 'descricao' => $item['descricao'],
                 'unidade' => $item['unidade'],
                 'quantidade_prevista' => $item['quantidade'],
-                'quantidade_entregue' => $tipoProblema === 'devolucao' ? $item['quantidade'] : 0,
-                'quantidade_faltante' => $tipoProblema === 'faltante' ? $item['quantidade'] : 0,
-                'quantidade_devolvida' => $tipoProblema === 'devolucao' ? $item['quantidade'] : 0,
+                'quantidade_entregue' => 0,
+                'quantidade_faltante' => $item['quantidade'],
+                'quantidade_devolvida' => 0,
                 'valor_unitario' => $item['valor_unitario'],
-                'valor_total' => $item['valor_total']
+                'valor_total' => $item['valor_total'],
+                'tipo_faltante' => $tipoFaltante
             ]);
         }
-        
+
         // ============================================================
-        // 8. ATUALIZAR CONTADORES NO ACERTO
+        // 12. ATUALIZAR CONTADORES NO ACERTO
         // ============================================================
-        $campoContador = $tipoProblema === 'faltante' ? 'total_pedidos_faltantes' : 'total_pedidos_devolvidos';
-        $campoValor = $tipoProblema === 'faltante' ? 'valor_total_faltante' : 'valor_total_devolvido';
-        
         $stmt = $pdo->prepare("
-            UPDATE frota_acerto_embarque 
-            SET 
-                {$campoContador} = {$campoContador} + 1,
-                {$campoValor} = {$campoValor} + :valor,
+            UPDATE frota_acerto_embarque
+            SET
+                total_pedidos_faltantes = total_pedidos_faltantes + 1,
+                valor_total_faltante = valor_total_faltante + :valor,
                 updated_at = NOW()
             WHERE id = :acerto_id
         ");
@@ -1107,34 +1316,41 @@ if (!empty($itensIds)) {
             'acerto_id' => $acertoId,
             'valor' => $valorTotal
         ]);
-        
+
         // ============================================================
-        // 9. REGISTRAR LOG
+        // 13. REGISTRAR LOG
         // ============================================================
+        $labelTratamento = ($tipoTratamentoRecebido === 'faltante_com_estoque')
+            ? 'faltante COM estoque'
+            : 'faltante SEM estoque';
+
         $this->registrarLog(
-            $embarqueId, 
-            'pedido_problema_criado', 
-            "Pedido de {$tipoProblema} criado para entrega #{$entregaId}", 
+            $embarqueId,
+            'pedido_problema_criado',
+            "Pedido de {$labelTratamento} criado para entrega #{$entregaId}",
             $usuarioId
         );
-        
+
         // ============================================================
-        // 10. COMMIT
+        // 14. COMMIT E RESPOSTA
         // ============================================================
         $pdo->commit();
-        
+
         return $this->json($response, [
             'success' => true,
             'message' => 'Pedido de acerto criado com sucesso',
             'data' => [
                 'acerto_pedido_id' => $pedidoAcertoId,
+                'tratamento_id' => $tratamentoId,
                 'tipo_problema' => $tipoProblema,
+                'tipo_tratamento' => $tipoTratamentoRecebido,
+                'id_transacao_erp' => $idTransacaoErp,
                 'valor_total' => $valorTotal,
                 'total_itens' => count($itensFormatados),
                 'observacao' => $observacaoCompleta
             ]
         ]);
-        
+
     } catch (\Exception $e) {
         if (isset($pdo) && $pdo->inTransaction()) {
             $pdo->rollBack();
@@ -1148,9 +1364,575 @@ if (!empty($itensIds)) {
     }
 }
 /**
+ * POST /v1/frota/acerto/tratamento/{id}/gerar-comprovante
+ *
+ * 🔥 NOVO 2026-09-18 (Bloco 2, Passo 2.4):
+ *   Gera o número de comprovante de devolução (DEV-AAAA-NNNNNN) para um
+ *   tratamento com tipo_tratamento = 'devolucao_comprovante'.
+ *
+ *   Regras:
+ *     - 1 comprovante por tratamento (granularidade individual)
+ *     - Numeração por filial + ano (UNIQUE id_filial, ano)
+ *     - Formato: DEV-AAAA-NNNNNN (6 dígitos zero-padded)
+ *     - Itens vêm de frota_checklist_entrega WHERE status = 'devolvido'
+ *     - NÃO cria pedido ERP; apenas registra para o faturamento consumir
+ *     - Após emitir, o tratamento muda de 'aguardando_fat' → 'comprovante_emitido'
+ *
+ *   🔥 CORRIGIDO 2026-09-18 (após teste real):
+ *     - Removido SELECT das colunas `nome` e `cpf` em `usuario`
+ *       (essas colunas NÃO existem na tabela — quebrava a transação)
+ *     - Agora busca apenas `username` e usa o nome do JWT como fallback
+ *     - `registrarLog()` movido para FORA da transação (não derruba o commit)
+ *
+ *   Retorno: dados estruturados para o frontend montar o HTML do comprovante.
+ */
+public function gerarComprovanteDevolucao(Request $request, Response $response, array $args): Response
+{
+    $tratamentoId = (int)($args['id'] ?? 0);
+    $input = json_decode($request->getBody()->getContents(), true) ?? [];
+    $user = $request->getAttribute('user');
+    $usuarioId = (int)($user['idusuario'] ?? 0);
+    $usuarioNome = $user['username'] ?? $user['nome'] ?? 'Gestor';
+
+    if ($tratamentoId <= 0) {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'ID do tratamento é obrigatório'
+        ], 400);
+    }
+
+    // Variáveis que precisam existir depois do try/catch para o log
+    $embarqueIdParaLog = 0;
+    $numeroComprovanteParaLog = '';
+    $emitenteNome = $usuarioNome;
+
+    try {
+        $pdo = $this->pdo;
+        $pdo->beginTransaction();
+
+        // ============================================================
+        // 1. BUSCAR TRATAMENTO + CONTEXTO COMPLETO
+        // ============================================================
+        $stmt = $pdo->prepare("
+            SELECT
+                t.id                       AS tratamento_id,
+                t.problema_id,
+                t.tipo_tratamento,
+                t.id_filial_erp,
+                t.id_transacao_erp,
+                t.transacao_descricao_snapshot,
+                t.numero_comprovante,
+                t.valor_afetado,
+                t.status                   AS tratamento_status,
+                t.observacoes              AS tratamento_obs,
+                t.decidido_em,
+                t.comprovante_emitido_em,
+                -- Problema (Camada 1)
+                p.id                       AS problema_origem_id,
+                p.entrega_id,
+                p.embarque_id,
+                p.tipo_problema            AS problema_tipo,
+                p.descricao_problema,
+                p.quantidade_afetada,
+                p.item_id                  AS problema_item_id,
+                p.referencia               AS problema_referencia,
+                p.status_problema,
+                -- Entrega
+                ent.cliente_nome,
+                ent.endereco,
+                ent.numero                 AS endereco_numero,
+                ent.bairro,
+                ent.cidade,
+                ent.uf,
+                ent.cep,
+                ent.codigo_rastreamento,
+                ent.nome_recebedor,
+                ent.horario_checkin,
+                ent.horario_entrega,
+                -- Embarque
+                e.id                       AS embarque_id,
+                e.numero_embarque,
+                e.nome_embarque,
+                -- Acerto
+                ae.id                      AS acerto_id,
+                ae.gestor_nome,
+                ae.data_inicio_acerto,
+                -- Motorista
+                m.nome                     AS motorista_nome,
+                m.cpf                      AS motorista_cpf,
+                m.telefone                 AS motorista_telefone,
+                -- Veículo
+                v.placa                    AS veiculo_placa,
+                v.modelo                   AS veiculo_modelo,
+                v.marca                    AS veiculo_marca,
+                v.cor                      AS veiculo_cor
+            FROM frota_problema_tratamento t
+            INNER JOIN frota_entrega_problema p ON p.id = t.problema_id
+            INNER JOIN frota_entrega ent        ON ent.id = p.entrega_id
+            INNER JOIN frota_embarque e         ON e.id = ent.embarque_id
+            LEFT JOIN frota_acerto_embarque ae  ON ae.embarque_id = e.id
+                                                AND ae.status IN ('em_andamento', 'finalizado')
+            LEFT JOIN frota_motorista m         ON m.id = ae.motorista_id
+            LEFT JOIN frota_veiculo v           ON v.id = ae.veiculo_id
+            WHERE t.id = :id
+            ORDER BY ae.id DESC NULLS LAST
+            LIMIT 1
+        ");
+        $stmt->execute(['id' => $tratamentoId]);
+        $tratamento = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$tratamento) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Tratamento não encontrado'
+            ], 404);
+        }
+
+        // ============================================================
+        // 2. VALIDAÇÕES DE NEGÓCIO
+        // ============================================================
+        if ($tratamento['tipo_tratamento'] !== 'devolucao_comprovante') {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Só é possível gerar comprovante para tratamentos do tipo "devolucao_comprovante"',
+                'code'  => 'TIPO_TRATAMENTO_INVALIDO'
+            ], 400);
+        }
+
+        if (!empty($tratamento['numero_comprovante'])) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Este tratamento já possui comprovante emitido: ' . $tratamento['numero_comprovante'],
+                'code'  => 'COMPROVANTE_JA_EMITIDO',
+                'numero_comprovante' => $tratamento['numero_comprovante']
+            ], 409);
+        }
+
+        if ($tratamento['tratamento_status'] !== 'aguardando_fat') {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => "Status do tratamento é '{$tratamento['tratamento_status']}', esperado 'aguardando_fat'",
+                'code'  => 'STATUS_INVALIDO'
+            ], 400);
+        }
+
+        // ============================================================
+        // 3. RESOLVER FILIAL
+        // ============================================================
+        $idFilial = (int)($tratamento['id_filial_erp'] ?? 0);
+        if ($idFilial <= 0) {
+            $idFilial = (int)($input['id_filial'] ?? 1);
+        }
+        $ano = (int)date('Y');
+
+        // ============================================================
+        // 4. GERAR NÚMERO SEQUENCIAL (upsert atômico)
+        // ============================================================
+        $stmtSeq = $pdo->prepare("
+            INSERT INTO frota_comprovante_sequencia (id_filial, ano, ultimo_numero, created_at, updated_at)
+            VALUES (:id_filial, :ano, 1, NOW(), NOW())
+            ON CONFLICT (id_filial, ano)
+            DO UPDATE SET
+                ultimo_numero = frota_comprovante_sequencia.ultimo_numero + 1,
+                updated_at = NOW()
+            RETURNING ultimo_numero
+        ");
+        $stmtSeq->execute(['id_filial' => $idFilial, 'ano' => $ano]);
+        $ultimoNumero = (int)$stmtSeq->fetchColumn();
+
+        if ($ultimoNumero <= 0) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Falha ao gerar número sequencial do comprovante'
+            ], 500);
+        }
+
+        $numeroComprovante = sprintf('DEV-%d-%06d', $ano, $ultimoNumero);
+
+        // ============================================================
+        // 5. BUSCAR ITENS DEVOLVIDOS (frota_checklist_entrega)
+        //    Filtro: status = 'devolvido'
+        // ============================================================
+        $stmtItens = $pdo->prepare("
+            SELECT
+                ce.id,
+                ce.item_id,
+                ce.referencia,
+                ce.descricao,
+                ce.quantidade_prevista,
+                ce.quantidade_entregue,
+                ce.motivo,
+                ce.foto_url
+            FROM frota_checklist_entrega ce
+            WHERE ce.entrega_id = :entrega_id
+              AND ce.status = 'devolvido'
+            ORDER BY ce.item_id ASC
+        ");
+        $stmtItens->execute(['entrega_id' => (int)$tratamento['entrega_id']]);
+        $itensDevolvidos = $stmtItens->fetchAll(\PDO::FETCH_ASSOC);
+
+        // ============================================================
+        // 6. DADOS DO EMITENTE
+        // 🔥 CORRIGIDO 2026-09-18: a tabela `usuario` NÃO possui as
+        //    colunas `nome` e `cpf`. Buscamos apenas `username`.
+        //    Se falhar, mantemos o nome vindo do JWT ($usuarioNome).
+        // ============================================================
+        if ($usuarioId > 0) {
+            try {
+                $stmtUser = $pdo->prepare("
+                    SELECT username
+                    FROM usuario
+                    WHERE idusuario = :id
+                    LIMIT 1
+                ");
+                $stmtUser->execute(['id' => $usuarioId]);
+                $u = $stmtUser->fetch(\PDO::FETCH_ASSOC);
+                if ($u && !empty($u['username'])) {
+                    $emitenteNome = $u['username'];
+                }
+            } catch (\Exception $e) {
+                // mantém o nome do JWT
+                error_log('[Acerto] Aviso: não foi possível buscar username do emitente: ' . $e->getMessage());
+            }
+        }
+
+        // ============================================================
+        // 7. ATUALIZAR TRATAMENTO
+        // ============================================================
+        $obsAdicional = trim((string)($input['observacoes'] ?? ''));
+        $obsAtual = (string)($tratamento['tratamento_obs'] ?? '');
+        if ($obsAdicional !== '') {
+            $obsAtual = $obsAtual === ''
+                ? $obsAdicional
+                : $obsAtual . "\n[Comprovante emitido] " . $obsAdicional;
+        }
+
+        $stmtUpd = $pdo->prepare("
+            UPDATE frota_problema_tratamento
+            SET numero_comprovante     = :numero_comprovante,
+                comprovante_emitido_em = NOW(),
+                comprovante_emitido_por = :usuario_id,
+                status                 = 'comprovante_emitido',
+                observacoes            = :observacoes,
+                updated_at             = NOW()
+            WHERE id = :id
+              AND numero_comprovante IS NULL
+        ");
+        $stmtUpd->execute([
+            'id' => $tratamentoId,
+            'numero_comprovante' => $numeroComprovante,
+            'usuario_id' => $usuarioId,
+            'observacoes' => $obsAtual !== '' ? $obsAtual : null
+        ]);
+
+        if ($stmtUpd->rowCount() === 0) {
+            $pdo->rollBack();
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Não foi possível emitir: o comprovante já foi gerado por outra operação.',
+                'code'  => 'CONCORRENCIA'
+            ], 409);
+        }
+
+        // ============================================================
+        // 8. COMMIT PRIMEIRO
+        // 🔥 CORRIGIDO 2026-09-18: o log é feito DEPOIS do commit.
+        //    Se o log falhar, o comprovante já foi emitido e não
+        //    derruba a operação principal.
+        // ============================================================
+        $pdo->commit();
+
+        $embarqueIdParaLog = (int)$tratamento['embarque_id'];
+        $numeroComprovanteParaLog = $numeroComprovante;
+
+        // ============================================================
+        // 9. REGISTRAR LOG (fora da transação)
+        // ============================================================
+        try {
+            $this->registrarLog(
+                $embarqueIdParaLog,
+                'comprovante_devolucao_emitido',
+                "Comprovante {$numeroComprovante} emitido por {$emitenteNome} (tratamento #{$tratamentoId})",
+                $usuarioId
+            );
+        } catch (\Exception $e) {
+            error_log('[Acerto] Aviso: falha ao registrar log do comprovante: ' . $e->getMessage());
+        }
+
+        // ============================================================
+        // 10. MONTAR RESPOSTA ESTRUTURADA PARA O FRONT
+        // ============================================================
+        $itensFormatados = array_map(function ($it) {
+            $qtd = (float)($it['quantidade_prevista'] ?? 0)
+                 - (float)($it['quantidade_entregue'] ?? 0);
+            return [
+                'item_id'              => (int)($it['item_id'] ?? 0),
+                'referencia'           => $it['referencia'] ?? '',
+                'descricao'            => $it['descricao'] ?? '',
+                'quantidade_prevista'  => (float)($it['quantidade_prevista'] ?? 0),
+                'quantidade_entregue'  => (float)($it['quantidade_entregue'] ?? 0),
+                'quantidade_devolvida' => max(0, $qtd),
+                'motivo'               => $it['motivo'] ?? null,
+                'foto_url'             => $it['foto_url'] ?? null
+            ];
+        }, $itensDevolvidos);
+
+        return $this->json($response, [
+            'success' => true,
+            'message' => "Comprovante {$numeroComprovante} emitido com sucesso.",
+            'data' => [
+                'tratamento_id'      => $tratamentoId,
+                'numero_comprovante' => $numeroComprovante,
+                'emitido_em'         => date('Y-m-d H:i:s'),
+                'emitido_por'        => [
+                    'id'   => $usuarioId,
+                    'nome' => $emitenteNome
+                ],
+                'filial' => [
+                    'id_filial'  => $idFilial,
+                    'ano'        => $ano,
+                    'sequencial' => $ultimoNumero
+                ],
+                'tratamento' => [
+                    'id'               => $tratamentoId,
+                    'problema_id'      => (int)$tratamento['problema_id'],
+                    'tipo_tratamento'  => $tratamento['tipo_tratamento'],
+                    'id_transacao_erp' => $tratamento['id_transacao_erp'],
+                    'valor_afetado'    => (float)($tratamento['valor_afetado'] ?? 0),
+                    'decidido_em'      => $tratamento['decidido_em']
+                ],
+                'problema' => [
+                    'id'                 => (int)$tratamento['problema_origem_id'],
+                    'tipo_problema'      => $tratamento['problema_tipo'],
+                    'descricao'          => $tratamento['descricao_problema'],
+                    'quantidade_afetada' => (float)($tratamento['quantidade_afetada'] ?? 0),
+                    'item_id'            => (int)($tratamento['problema_item_id'] ?? 0),
+                    'referencia'         => $tratamento['problema_referencia']
+                ],
+                'entrega' => [
+                    'id'                  => (int)$tratamento['entrega_id'],
+                    'cliente_nome'        => $tratamento['cliente_nome'],
+                    'endereco'            => trim(sprintf('%s %s', $tratamento['endereco'] ?? '', $tratamento['endereco_numero'] ?? '')),
+                    'bairro'              => $tratamento['bairro'],
+                    'cidade'              => $tratamento['cidade'],
+                    'uf'                  => $tratamento['uf'],
+                    'cep'                 => $tratamento['cep'],
+                    'codigo_rastreamento' => $tratamento['codigo_rastreamento'],
+                    'nome_recebedor'      => $tratamento['nome_recebedor'],
+                    'horario_checkin'     => $tratamento['horario_checkin'],
+                    'horario_entrega'     => $tratamento['horario_entrega']
+                ],
+                'embarque' => [
+                    'id'              => (int)$tratamento['embarque_id'],
+                    'numero_embarque' => $tratamento['numero_embarque'],
+                    'nome_embarque'   => $tratamento['nome_embarque'],
+                    'motorista_nome'  => $tratamento['motorista_nome'],
+                    'motorista_cpf'   => $tratamento['motorista_cpf'],
+                    'motorista_fone'  => $tratamento['motorista_telefone'],
+                    'veiculo_placa'   => $tratamento['veiculo_placa'],
+                    'veiculo_modelo'  => $tratamento['veiculo_modelo'],
+                    'veiculo_marca'   => $tratamento['veiculo_marca'],
+                    'veiculo_cor'     => $tratamento['veiculo_cor']
+                ],
+                'itens_devolvidos' => $itensFormatados,
+                'observacoes'      => $obsAtual
+            ]
+        ]);
+
+    } catch (\Exception $e) {
+        if (isset($pdo) && $pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
+        error_log('[Acerto] Erro ao gerar comprovante: ' . $e->getMessage());
+        error_log('[Acerto] Stack trace: ' . $e->getTraceAsString());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao gerar comprovante: ' . $e->getMessage()
+        ], 500);
+    }
+}
+/**
+ * GET /v1/frota/acerto/tratamento/{id}/comprovante
+ * Retorna os dados do comprovante de devolução já emitido (para reimpressão).
+ * NÃO gera um novo — apenas lê o que já existe.
+ */
+public function buscarComprovanteDevolucao(Request $request, Response $response, array $args): Response
+{
+    $tratamentoId = (int)($args['id'] ?? 0);
+
+    if ($tratamentoId <= 0) {
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'ID de tratamento inválido'
+        ], 400);
+    }
+
+    try {
+        $stmt = $this->pdo->prepare("
+            SELECT
+                t.id AS tratamento_id,
+                t.tipo_tratamento,
+                t.status,
+                t.numero_comprovante,
+                t.comprovante_emitido_em,
+                t.comprovante_emitido_por,
+                t.valor_afetado,
+                t.observacoes,
+                t.problema_id,
+                t.acerto_pedido_id,
+                t.id_transacao_erp,
+                t.id_filial_erp,
+                t.transacao_descricao_snapshot,
+                p.tipo_problema,
+                p.referencia,
+                p.descricao_problema,
+                p.quantidade_afetada,
+                p.entrega_id,
+                u.username AS emitido_por_username
+            FROM frota_problema_tratamento t
+            INNER JOIN frota_entrega_problema p ON p.id = t.problema_id
+            LEFT JOIN usuario u ON u.idusuario = t.comprovante_emitido_por
+            WHERE t.id = :id
+        ");
+        $stmt->execute(['id' => $tratamentoId]);
+        $tratamento = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$tratamento) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Tratamento não encontrado'
+            ], 404);
+        }
+
+        if (empty($tratamento['numero_comprovante'])) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Este tratamento ainda não possui comprovante emitido'
+            ], 400);
+        }
+
+        // ================================================================
+        // Dados complementares (entrega, cliente, embarque, motorista, itens)
+        // ================================================================
+        $entregaId = (int)$tratamento['entrega_id'];
+
+        $stmt = $this->pdo->prepare("
+            SELECT
+                e.id AS entrega_id,
+                e.cliente_nome,
+                e.endereco,
+                e.numero AS numero_end,
+                e.bairro,
+                e.cidade,
+                e.uf,
+                e.codigo_rastreamento,
+                e.embarque_id,
+                eb.numero_embarque,
+                eb.id AS embarque_id_real,
+                m.nome AS motorista_nome,
+                m.cpf AS motorista_cpf,
+                v.placa AS veiculo_placa,
+                v.modelo AS veiculo_modelo
+            FROM frota_entrega e
+            LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
+            LEFT JOIN frota_motorista m ON m.id = eb.motorista_id
+            LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
+            WHERE e.id = :id
+        ");
+        $stmt->execute(['id' => $entregaId]);
+        $entrega = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+        // Itens devolvidos (checklist onde status != 'entregue')
+        $stmt = $this->pdo->prepare("
+            SELECT
+                referencia,
+                descricao,
+                quantidade_prevista,
+                quantidade_entregue,
+                status,
+                motivo,
+                (quantidade_prevista - quantidade_entregue) AS quantidade_devolvida
+            FROM frota_checklist_entrega
+            WHERE entrega_id = :id
+              AND status = 'devolvido'
+            ORDER BY referencia
+        ");
+        $stmt->execute(['id' => $entregaId]);
+        $itens = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Fallback: se checklist não tem registro, usa o próprio problema
+        if (empty($itens)) {
+            $itens = [[
+                'referencia'          => $tratamento['referencia'] ?? '—',
+                'descricao'           => $tratamento['descricao_problema'] ?? '—',
+                'quantidade_prevista' => $tratamento['quantidade_afetada'] ?? 0,
+                'quantidade_entregue' => 0,
+                'status'              => 'devolvido',
+                'motivo'              => $tratamento['observacoes'] ?? '—',
+                'quantidade_devolvida'=> $tratamento['quantidade_afetada'] ?? 0,
+            ]];
+        }
+
+        $payload = [
+            'tratamento_id'          => (int)$tratamento['tratamento_id'],
+            'numero_comprovante'     => $tratamento['numero_comprovante'],
+            'comprovante_emitido_em' => $tratamento['comprovante_emitido_em'],
+            'emitente_nome'          => $tratamento['emitido_por_username'] ?? 'Gestor',
+            'status'                 => $tratamento['status'],
+            'tipo_tratamento'        => $tratamento['tipo_tratamento'],
+
+            'entrega_id'             => $entrega['entrega_id'] ?? null,
+            'cliente_nome'           => $entrega['cliente_nome'] ?? '—',
+            'endereco'               => $entrega['endereco'] ?? '',
+            'numero_end'             => $entrega['numero_end'] ?? '',
+            'bairro'                 => $entrega['bairro'] ?? '',
+            'cidade'                 => $entrega['cidade'] ?? '',
+            'uf'                     => $entrega['uf'] ?? '',
+            'codigo_rastreamento'    => $entrega['codigo_rastreamento'] ?? '',
+
+            'embarque_id'            => $entrega['embarque_id_real'] ?? null,
+            'numero_embarque'        => $entrega['numero_embarque'] ?? '—',
+            'motorista_nome'         => $entrega['motorista_nome'] ?? '—',
+            'motorista_cpf'          => $entrega['motorista_cpf'] ?? '',
+            'veiculo_placa'          => $entrega['veiculo_placa'] ?? '—',
+            'veiculo_modelo'         => $entrega['veiculo_modelo'] ?? '',
+
+            'itens'                  => $itens,
+            'valor_total'            => (float)($tratamento['valor_afetado'] ?? 0),
+        ];
+
+        return $this->json($response, [
+            'success' => true,
+            'data' => $payload
+        ]);
+
+    } catch (\Exception $e) {
+        error_log('[Acerto] Erro ao buscar comprovante: ' . $e->getMessage());
+        return $this->json($response, [
+            'success' => false,
+            'error' => 'Erro ao buscar comprovante'
+        ], 500);
+    }
+}
+/**
  * POST /v1/frota/acerto/pedido/{id}/criar-erp
  * 🔥 SIMULAÇÃO - Apenas gera SQLs para visualização
  * NUNCA insere no palmtop_pedido ou palmtop_pedido_item
+ *
+ * 🔥 MUDANÇA 2026-09-18 (Bloco 2, Passo 2.2):
+ *   - 2.2a: Guard bloqueando devolução (não gera pedido ERP)
+ *   - 2.2b: Transação determinada por tipo_tratamento (não tipo_problema)
+ *   - Propagação de status para Camada 2 (frota_problema_tratamento)
+ *   - Compatibilidade retroativa: se tipo_tratamento for NULL, deriva de tipo_problema
+ *
+ * 🔥 MUDANÇA 2026-09-18 (Bloco 3, Passo 3.1):
+ *   - Envia `tipo_faltante` no payload para o ERPPedidoService
+ *     ('com_estoque' | 'sem_estoque' | null), derivado do tipo_tratamento
  */
 public function criarPedidoERP(Request $request, Response $response, array $args): Response
 {
@@ -1159,30 +1941,31 @@ public function criarPedidoERP(Request $request, Response $response, array $args
     $user = $request->getAttribute('user');
     $usuarioId = $user['idusuario'] ?? 0;
     $usuarioNome = $user['username'] ?? $user['nome'] ?? 'SISTEMA';
-    
+
     $idTransacaoSolicitada = (int)($input['id_transacao'] ?? 0);
     $idFilial = (int)($input['id_filial'] ?? 1);
     $sandboxSolicitado = array_key_exists('sandbox', $input) ? (bool)$input['sandbox'] : true;
-    
+
     if ($pedidoAcertoId <= 0) {
         return $this->json($response, [
             'success' => false,
             'error' => 'ID do pedido de acerto é obrigatório'
         ], 400);
     }
-    
+
     if ($idTransacaoSolicitada <= 0) {
         return $this->json($response, [
             'success' => false,
             'error' => 'ID da transação ERP é obrigatório'
         ], 400);
     }
-    
+
     try {
         $pdo = $this->pdo;
-        
+
         // ============================================================
         // 1. BUSCAR DADOS DO PEDIDO DE ACERTO COM MOTORISTA E VEÍCULO
+        // 🔥 2.2b: inclui tipo_tratamento, id_transacao_erp, id_filial_erp
         // ============================================================
         $stmt = $pdo->prepare("
             SELECT 
@@ -1195,6 +1978,10 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 ap.cliente_id,
                 ap.cliente_nome,
                 ap.tipo_problema,
+                ap.tipo_tratamento,
+                ap.id_transacao_erp,
+                ap.id_filial_erp,
+                ap.transacao_descricao_snapshot,
                 ap.itens_afetados,
                 ap.motivo,
                 ap.observacoes,
@@ -1231,12 +2018,26 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         ");
         $stmt->execute(['id' => $pedidoAcertoId]);
         $pedidoAcerto = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$pedidoAcerto) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Pedido de acerto não encontrado ou já processado'
             ], 404);
+        }
+
+        // ============================================================
+        // 🔥 MUDANÇA 2026-09-18 (Bloco 2, Passo 2.2a):
+        // GUARD DE DEVOLUÇÃO
+        // Devolução NÃO gera pedido ERP. Só comprovante para faturamento.
+        // ============================================================
+        if (($pedidoAcerto['tipo_tratamento'] ?? null) === 'devolucao_comprovante'
+            || $pedidoAcerto['tipo_problema'] === 'devolucao') {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Devoluções não geram pedido ERP. Use a opção "Gerar Comprovante".',
+                'code'  => 'DEVOLUCAO_NAO_GERA_ERP'
+            ], 400);
         }
 
         $clienteErpId = (int)($pedidoAcerto['pedido_cliente_erp_id'] ?? $pedidoAcerto['entrega_cliente_erp_id'] ?? 0);
@@ -1255,26 +2056,55 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'error' => 'O cliente da entrega diverge do cliente do pedido original'
             ], 409);
         }
-        
+
         // ============================================================
-        // 2. DEFINIR IDTRANSACAO COM BASE NO TIPO
+        // 2. DEFINIR IDTRANSACAO COM BASE NO TIPO_TRATAMENTO
+        // 🔥 MUDANÇA 2026-09-18 (Bloco 2, Passo 2.2b):
+        //    - Usa tipo_tratamento (com/sem estoque), não tipo_problema
+        //    - Compatibilidade retroativa: se NULL, deriva de tipo_problema
+        //    - Devolução já foi bloqueada pelo guard do 2.2a
+        //
+        // 🔥 MUDANÇA 2026-09-18 (Bloco 3, Passo 3.1):
+        //    - Deriva também `$tipoFaltante` para envio ao ERPPedidoService
         // ============================================================
-        $tipoProblema = $pedidoAcerto['tipo_problema'];
-        $idTransacaoFinal = 0;
-        
+        $tipoProblema   = $pedidoAcerto['tipo_problema'];
+        $tipoTratamento = $pedidoAcerto['tipo_tratamento'] ?? null;
+
+        if ($tipoTratamento === null) {
+            // Compatibilidade com pedidos criados antes do Passo 2.1
+            $tipoTratamento = ($tipoProblema === 'faltante')
+                ? 'faltante_com_estoque'
+                : null;
+        }
+
         $mapTransacao = [
-            'faltante' => 19,
-            'devolucao' => 20
+            'faltante_com_estoque' => 19,
+            'faltante_sem_estoque' => 20
         ];
-        
-        if (!isset($mapTransacao[$tipoProblema])) {
-            return $this->json($response, ['success' => false, 'error' => 'Tipo de problema sem transação ERP configurada'], 400);
+
+        $mapTipoFaltante = [
+            'faltante_com_estoque' => 'com_estoque',
+            'faltante_sem_estoque' => 'sem_estoque'
+        ];
+
+        if (!isset($mapTransacao[$tipoTratamento])) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Tipo de tratamento inválido para criação de pedido ERP: ' . ($tipoTratamento ?? 'NULL'),
+                'code'  => 'TIPO_TRATAMENTO_INVALIDO'
+            ], 400);
         }
-        $idTransacaoFinal = $mapTransacao[$tipoProblema];
+
+        $idTransacaoFinal = $mapTransacao[$tipoTratamento];
+        $tipoFaltante     = $mapTipoFaltante[$tipoTratamento] ?? null; // 🔥 NOVO (Bloco 3.1)
+
         if ($idTransacaoSolicitada !== $idTransacaoFinal) {
-            return $this->json($response, ['success' => false, 'error' => "A transação correta para {$tipoProblema} é {$idTransacaoFinal}"], 400);
+            return $this->json($response, [
+                'success' => false,
+                'error' => "A transação correta para '{$tipoTratamento}' é {$idTransacaoFinal}"
+            ], 400);
         }
-        
+
         // ============================================================
         // 3. PROCESSAR ITENS
         // ============================================================
@@ -1285,55 +2115,55 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'error' => 'Nenhum item encontrado no pedido de acerto'
             ], 400);
         }
-        
+
         // ============================================================
         // 4. BUSCAR INFORMAÇÕES DOS ITENS NO ERP
         // ============================================================
         $itensIds = array_column($itens, 'iditem');
         $itensInfoMap = [];
-        
+
         if (!empty($itensIds)) {
             $placeholders = implode(',', array_fill(0, count($itensIds), '?'));
-           $stmtItem = $pdo->prepare("
-    SELECT DISTINCT
-        i.iditem,
-        i.referencia,
-        i.descricao,
-        i.complemento,
-        i.pesobruto,
-        i.pesoliquido,
-        i.idunidadebasica AS idunidade,
-        i.perccomissao,
-        e.valorprecovenda AS valor_unitario,
-        e.valorcustocontabil,
-        e.valorcustomediounitario,
-        e.percmargem,
-        e.custogerencial,
-        e.percicmscompra,
-        e.idimposto,
-        COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
-        COALESCE(ie.perc_ipi, 0) AS perc_ipi
-    FROM item i
-    JOIN estoque_filial e ON e.iditem = i.iditem
-    JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
-    LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
-    LEFT JOIN imposto_estado ie ON (
-        ie.idimposto = imposto.idimposto 
-        AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
-        AND ie.uf = f.uf
-    )
-    WHERE i.iditem IN ({$placeholders})
-    AND e.idfilial = ?
-");
+            $stmtItem = $pdo->prepare("
+                SELECT DISTINCT
+                    i.iditem,
+                    i.referencia,
+                    i.descricao,
+                    i.complemento,
+                    i.pesobruto,
+                    i.pesoliquido,
+                    i.idunidadebasica AS idunidade,
+                    i.perccomissao,
+                    e.valorprecovenda AS valor_unitario,
+                    e.valorcustocontabil,
+                    e.valorcustomediounitario,
+                    e.percmargem,
+                    e.custogerencial,
+                    e.percicmscompra,
+                    e.idimposto,
+                    COALESCE(ie.idsituacaotributaria, 0) AS idsituacaotributaria,
+                    COALESCE(ie.perc_ipi, 0) AS perc_ipi
+                FROM item i
+                JOIN estoque_filial e ON e.iditem = i.iditem
+                JOIN filial f ON (f.idempresa = e.idempresa AND f.idfilial = e.idfilial)
+                LEFT JOIN imposto ON (imposto.idimposto = e.idimposto)
+                LEFT JOIN imposto_estado ie ON (
+                    ie.idimposto = imposto.idimposto 
+                    AND ie.tipo_enquadramento = f.tipoenquadraformapreco 
+                    AND ie.uf = f.uf
+                )
+                WHERE i.iditem IN ({$placeholders})
+                AND e.idfilial = ?
+            ");
             $params = array_merge($itensIds, [$idFilial]);
             $stmtItem->execute($params);
             $itensInfo = $stmtItem->fetchAll(\PDO::FETCH_ASSOC);
-            
+
             foreach ($itensInfo as $info) {
                 $itensInfoMap[$info['iditem']] = $info;
             }
         }
-        
+
         // ============================================================
         // 5. MONTAR ITENS PROCESSADOS
         // ============================================================
@@ -1341,15 +2171,15 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         $valorTotalItens = 0;
         $pesoBrutoTotal = 0;
         $pesoLiquidoTotal = 0;
-        
+
         foreach ($itens as $item) {
             $iditem = (int)($item['iditem'] ?? 0);
             $quantidade = (float)($item['quantidade'] ?? 1);
             $info = $itensInfoMap[$iditem] ?? [];
-            
+
             $valorUnitario = (float)($info['valor_unitario'] ?? $item['valor_unitario'] ?? 0);
             $valorTotalItem = $quantidade * $valorUnitario;
-            
+
             $itensProcessados[] = [
                 'iditem' => $iditem,
                 'quantidade' => $quantidade,
@@ -1370,12 +2200,12 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'idsituacaotributaria' => (int)($info['idsituacaotributaria'] ?? 0),
                 'percipi' => (float)($info['perc_ipi'] ?? 0)
             ];
-            
+
             $valorTotalItens += $valorTotalItem;
             $pesoBrutoTotal += (float)($info['pesobruto'] ?? 0) * $quantidade;
             $pesoLiquidoTotal += (float)($info['pesoliquido'] ?? 0) * $quantidade;
         }
-        
+
         // ============================================================
         // 6. BUSCAR CLIENTE
         // ============================================================
@@ -1391,14 +2221,14 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         ");
         $stmtCliente->execute(['id' => $clienteErpId]);
         $cliente = $stmtCliente->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$cliente) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Cliente não encontrado no ERP'
             ], 404);
         }
-        
+
         // ============================================================
         // 7. BUSCAR TRANSAÇÃO
         // ============================================================
@@ -1409,19 +2239,19 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         ");
         $stmtTransacao->execute(['id' => $idTransacaoFinal]);
         $transacao = $stmtTransacao->fetch(\PDO::FETCH_ASSOC);
-        
+
         if (!$transacao) {
             return $this->json($response, [
                 'success' => false,
                 'error' => "Transação {$idTransacaoFinal} não encontrada"
             ], 404);
         }
-        
+
         // ============================================================
         // 9. MONTAR DADOS COMPLETOS DO PEDIDO
         // ============================================================
         $nomeCliente = $cliente['fantasia'] ?? $cliente['razao'] ?? 'PORTAL';
-        
+
         $config = [
             'idempresa' => 1,
             'idcondicao' => 65,
@@ -1438,37 +2268,40 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             'tipovendrepre' => 1,
             'idorigem' => 0
         ];
-        
+
         // 🔥 MONTAR OBSERVAÇÃO COM TODOS OS DADOS
-        $tipoLabel = $tipoProblema === 'faltante' ? 'FALTANTE' : 'DEVOLUÇÃO';
-      $tipoEmoji = '';
+        $tipoLabel = $tipoTratamento === 'faltante_com_estoque'
+            ? 'FALTANTE C/ ESTOQUE'
+            : 'FALTANTE S/ ESTOQUE';
+        $tipoEmoji = '';
 
         $dataEntrega = !empty($pedidoAcerto['horario_entrega']) 
             ? date('d/m/Y H:i:s', strtotime($pedidoAcerto['horario_entrega'])) 
             : 'N/A';
-        
+
         $dataCheckin = !empty($pedidoAcerto['horario_checkin']) 
             ? date('d/m/Y H:i:s', strtotime($pedidoAcerto['horario_checkin'])) 
             : 'N/A';
-        
-   $observacaoERP = sprintf(
-    "[%s] %s - PEDIDO DE %s\n" .
-    "----------------------------------------------------------\n" .
-    "ACERTO: #%d | EMBARQUE: #%d | ENTREGA: #%d\n" .
-    "CODIGO: %s\n" .
-    "CLIENTE: %s\n" .
-    "----------------------------------------------------------\n" .
-    "MOTORISTA: %s | CPF: %s\n" .
-    "VEICULO: %s | %s %s\n" .
-    "----------------------------------------------------------\n" .
-    "CHECK-IN: %s\n" .
-    "ENTREGA: %s\n" .
-    "RECEBEDOR: %s\n" .
-    "----------------------------------------------------------\n" .
-    "MOTIVO: %s\n" .
-    "ITENS: %s\n" .
-    "----------------------------------------------------------\n" .
-    "USUARIO: %s | DATA: %s",
+
+        $observacaoERP = sprintf(
+            "[%s] %s - PEDIDO DE %s\n" .
+            "----------------------------------------------------------\n" .
+            "ACERTO: #%d | EMBARQUE: #%d | ENTREGA: #%d\n" .
+            "CODIGO: %s\n" .
+            "CLIENTE: %s\n" .
+            "----------------------------------------------------------\n" .
+            "MOTORISTA: %s | CPF: %s\n" .
+            "VEICULO: %s | %s %s\n" .
+            "----------------------------------------------------------\n" .
+            "CHECK-IN: %s\n" .
+            "ENTREGA: %s\n" .
+            "RECEBEDOR: %s\n" .
+            "----------------------------------------------------------\n" .
+            "TRATAMENTO: %s (Transação ERP %d)\n" .
+            "MOTIVO: %s\n" .
+            "ITENS: %s\n" .
+            "----------------------------------------------------------\n" .
+            "USUARIO: %s | DATA: %s",
             $tipoEmoji,
             $tipoLabel,
             $tipoLabel,
@@ -1485,63 +2318,66 @@ public function criarPedidoERP(Request $request, Response $response, array $args
             $dataCheckin,
             $dataEntrega,
             $pedidoAcerto['nome_recebedor'] ?? 'N/A',
+            $tipoTratamento,
+            $idTransacaoFinal,
             $pedidoAcerto['motivo'] ?? 'Não informado',
             implode('; ', array_column($itensProcessados, 'referencia')),
             $usuarioNome,
             date('d/m/Y H:i:s')
         );
-        
-       $dadosPedido = array_merge($config, [
-    'idfilial' => $idFilial,
-    'idcliente' => $clienteErpId,
-    'idtransacao' => $idTransacaoFinal,
-    'idserie' => $transacao['idserie'] ?? '.',
-    'idvendrepre' => (int)($cliente['idvendedor'] ?? 0),
-    'uf_destino' => $cliente['uf'] ?? 'SC',
-    'nomecliente' => $nomeCliente,
-    'usuario' => $usuarioNome,
-    'dataenvio' => date('Y-m-d'),
-    'data' => date('Y-m-d'),
-    'dataentrega' => date('Y-m-d', strtotime('+30 days')),
-    'datahorapda' => date('Y-m-d H:i:s'),
-    'datahora' => date('Y-m-d H:i:s'),
-    'observacao' => $observacaoERP,
-    'valortotalitens' => $valorTotalItens,
-    'valortotalpedido' => $valorTotalItens,
-    'pesobruto' => $pesoBrutoTotal,
-    'pesoliquido' => $pesoLiquidoTotal,
-    'itens' => $itensProcessados,
-    // ============================================================
-    // 🔥 DADOS ADICIONAIS PARA O SERVIÇO (USADOS NA OBSERVAÇÃO)
-    // ============================================================
-    'tipo_problema' => $tipoProblema,
-    'acerto_id' => $pedidoAcerto['acerto_id'],
-    'embarque_id' => $pedidoAcerto['embarque_id'],
-    'entrega_id' => $pedidoAcerto['entrega_id'],
-    'motorista_nome' => $pedidoAcerto['motorista_nome'] ?? 'N/A',
-    'motorista_cpf' => $pedidoAcerto['motorista_cpf'] ?? 'N/A',
-    'veiculo_placa' => $pedidoAcerto['veiculo_placa'] ?? 'N/A',
-    'veiculo_modelo' => $pedidoAcerto['veiculo_modelo'] ?? '',
-    'veiculo_marca' => $pedidoAcerto['veiculo_marca'] ?? '',
-    'veiculo_cor' => $pedidoAcerto['veiculo_cor'] ?? '',
-    'data_entrega' => $dataEntrega,
-    'hora_entrega' => $dataEntrega,
-    'data_checkin' => $dataCheckin,
-    'cliente_nome' => $pedidoAcerto['cliente_nome'],
-    'nome_recebedor' => $pedidoAcerto['nome_recebedor'] ?? 'N/A',
-    'motivo' => $pedidoAcerto['motivo'] ?? 'Não informado',
-    'pedido_original' => $pedidoAcerto['numero_pedido'] ?? 'N/A',
-    'codigo_rastreamento' => $pedidoAcerto['codigo_rastreamento'] ?? 'N/A'
-]);
-        
+
+        $dadosPedido = array_merge($config, [
+            'idfilial' => $idFilial,
+            'idcliente' => $clienteErpId,
+            'idtransacao' => $idTransacaoFinal,
+            'idserie' => $transacao['idserie'] ?? '.',
+            'idvendrepre' => (int)($cliente['idvendedor'] ?? 0),
+            'uf_destino' => $cliente['uf'] ?? 'SC',
+            'nomecliente' => $nomeCliente,
+            'usuario' => $usuarioNome,
+            'dataenvio' => date('Y-m-d'),
+            'data' => date('Y-m-d'),
+            'dataentrega' => date('Y-m-d', strtotime('+30 days')),
+            'datahorapda' => date('Y-m-d H:i:s'),
+            'datahora' => date('Y-m-d H:i:s'),
+            'observacao' => $observacaoERP,
+            'valortotalitens' => $valorTotalItens,
+            'valortotalpedido' => $valorTotalItens,
+            'pesobruto' => $pesoBrutoTotal,
+            'pesoliquido' => $pesoLiquidoTotal,
+            'itens' => $itensProcessados,
+            // ============================================================
+            // 🔥 DADOS ADICIONAIS PARA O SERVIÇO
+            // ============================================================
+            'tipo_problema'   => $tipoProblema,
+            'tipo_tratamento' => $tipoTratamento,
+            'tipo_faltante'   => $tipoFaltante,   // 🔥 NOVO (Bloco 3.1)
+            'acerto_id' => $pedidoAcerto['acerto_id'],
+            'embarque_id' => $pedidoAcerto['embarque_id'],
+            'entrega_id' => $pedidoAcerto['entrega_id'],
+            'motorista_nome' => $pedidoAcerto['motorista_nome'] ?? 'N/A',
+            'motorista_cpf' => $pedidoAcerto['motorista_cpf'] ?? 'N/A',
+            'veiculo_placa' => $pedidoAcerto['veiculo_placa'] ?? 'N/A',
+            'veiculo_modelo' => $pedidoAcerto['veiculo_modelo'] ?? '',
+            'veiculo_marca' => $pedidoAcerto['veiculo_marca'] ?? '',
+            'veiculo_cor' => $pedidoAcerto['veiculo_cor'] ?? '',
+            'data_entrega' => $dataEntrega,
+            'hora_entrega' => $dataEntrega,
+            'data_checkin' => $dataCheckin,
+            'cliente_nome' => $pedidoAcerto['cliente_nome'],
+            'nome_recebedor' => $pedidoAcerto['nome_recebedor'] ?? 'N/A',
+            'motivo' => $pedidoAcerto['motivo'] ?? 'Não informado',
+            'pedido_original' => $pedidoAcerto['numero_pedido'] ?? 'N/A',
+            'codigo_rastreamento' => $pedidoAcerto['codigo_rastreamento'] ?? 'N/A'
+        ]);
+
         // ============================================================
         // 10. USAR O ERPPedidoService PARA GERAR OS SQLs
         // ============================================================
         $this->erpService->setSandboxMode($sandboxSolicitado);
-        
-        // Chamar o serviço para gerar os SQLs
+
         $resultado = $this->erpService->criarPedidoERP($dadosPedido);
-        
+
         if (!$resultado['success']) {
             return $this->json($response, [
                 'success' => false,
@@ -1557,13 +2393,15 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'error' => 'O ERP não retornou o identificador do pedido criado'
             ], 500);
         }
-        
-              // ============================================================
-        // 11. RESPOSTA
+
+        // ============================================================
+        // 11. RESPOSTA + PERSISTÊNCIA (se não for sandbox)
+        // 🔥 2.2b: também propaga status para a Camada 2
         // ============================================================
         if (!$sandboxSolicitado) {
             $pdo->beginTransaction();
             try {
+                // 1) Atualizar Camada 3 (frota_acerto_pedido)
                 $stmtStatus = $pdo->prepare("
                     UPDATE frota_acerto_pedido 
                     SET status = 'criado_erp', 
@@ -1579,6 +2417,19 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                     'idpedidopda' => $idPedidoPDA,
                     'numeropedido' => (string)$idPedidoPDA
                 ]);
+
+                // 2) 🔥 Atualizar Camada 2 (frota_problema_tratamento)
+                $stmtTrat = $pdo->prepare("
+                    UPDATE frota_problema_tratamento
+                    SET status = 'criado_erp',
+                        updated_at = NOW()
+                    WHERE acerto_pedido_id = :acerto_pedido_id
+                      AND status IN ('pendente', 'processando')
+                ");
+                $stmtTrat->execute([
+                    'acerto_pedido_id' => $pedidoAcertoId
+                ]);
+
                 $pdo->commit();
             } catch (\Exception $e) {
                 if ($pdo->inTransaction()) {
@@ -1592,7 +2443,9 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         return $this->json($response, [
             'success' => true,
             'sandbox' => $sandboxSolicitado,
-            'message' => $sandboxSolicitado ? 'MODO SANDBOX: pedido validado; nenhuma inserção foi feita.' : 'Pedido criado com sucesso no ERP.',
+            'message' => $sandboxSolicitado 
+                ? 'MODO SANDBOX: pedido validado; nenhuma inserção foi feita.' 
+                : 'Pedido criado com sucesso no ERP.',
             'data' => [
                 'idpedidopda' => $idPedidoPDA,
                 'sequencial_portal' => $sequencialPortal,
@@ -1600,6 +2453,8 @@ public function criarPedidoERP(Request $request, Response $response, array $args
                 'idtransacao' => $idTransacaoFinal,
                 'idfilial' => $dadosPedido['idfilial'],
                 'tipo_problema' => $tipoProblema,
+                'tipo_tratamento' => $tipoTratamento,
+                'tipo_faltante' => $tipoFaltante,   // 🔥 NOVO (Bloco 3.1)
                 'valortotalpedido' => $dadosPedido['valortotalpedido'],
                 'total_itens' => count($itensProcessados),
                 'pedido_acerto_id' => $pedidoAcertoId
@@ -1620,6 +2475,7 @@ public function criarPedidoERP(Request $request, Response $response, array $args
         ], 500);
     }
 }
+
 /**
  * Gera SQL para inserir o pedido (APENAS VISUALIZAÇÃO)
  */
@@ -2073,36 +2929,42 @@ public function listarTransacoes(Request $request, Response $response): Response
         }
     }
     
-    /**
-     * POST /v1/frota/acerto/testar
-     * Endpoint de teste para criação de pedido (sandbox)
-     */
-    public function testarCriacao(Request $request, Response $response): Response
-    {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        
-        $dadosTeste = [
-            'idcliente' => (int)($input['idcliente'] ?? 1),
-            'idtransacao' => (int)($input['idtransacao'] ?? 8),
-            'idfilial' => (int)($input['idfilial'] ?? 1),
-            'usuario' => 'TESTE_SANDBOX',
-            'acerto_id' => 999,
-            'embarque_id' => 999,
-            'entrega_id' => 999,
-            'tipo_problema' => $input['tipo_problema'] ?? 'faltante',
-            'pedido_original' => 'TESTE-001',
-            'observacao' => 'PEDIDO DE TESTE - MODO SANDBOX',
-            'itens' => $input['itens'] ?? [
-                ['iditem' => 1, 'quantidade' => 2, 'valor_unitario' => 10.50],
-                ['iditem' => 2, 'quantidade' => 1, 'valor_unitario' => 25.00]
-            ]
-        ];
-        
-        $this->erpService->setSandboxMode(true);
-        $resultado = $this->erpService->criarPedidoERP($dadosTeste);
-        
-        return $this->json($response, $resultado);
-    }
+   /**
+ * POST /v1/frota/acerto/testar
+ * Endpoint de teste para criação de pedido (sandbox)
+ *
+ * 🔥 MUDANÇA 2026-09-18 (Bloco 3, Passo 3.1):
+ *   - Agora repassa `tipo_tratamento` e `tipo_faltante` para o ERPPedidoService
+ *   - Permite validar a nova lógica sem tocar no ERP real
+ */
+public function testarCriacao(Request $request, Response $response): Response
+{
+    $input = json_decode($request->getBody()->getContents(), true) ?? [];
+
+    $dadosTeste = [
+        'idcliente'       => (int)($input['idcliente'] ?? 1),
+        'idtransacao'     => (int)($input['idtransacao'] ?? 8),
+        'idfilial'        => (int)($input['idfilial'] ?? 1),
+        'usuario'         => 'TESTE_SANDBOX',
+        'acerto_id'       => (int)($input['acerto_id'] ?? 999),
+        'embarque_id'     => (int)($input['embarque_id'] ?? 999),
+        'entrega_id'      => (int)($input['entrega_id'] ?? 999),
+        'tipo_problema'   => $input['tipo_problema']   ?? 'faltante',
+        'tipo_tratamento' => $input['tipo_tratamento'] ?? null,   // 🔥 NOVO (Bloco 3.1)
+        'tipo_faltante'   => $input['tipo_faltante']   ?? null,   // 🔥 NOVO (Bloco 3.1)
+        'pedido_original' => 'TESTE-001',
+        'observacao'      => 'PEDIDO DE TESTE - MODO SANDBOX',
+        'itens'           => $input['itens'] ?? [
+            ['iditem' => 1, 'quantidade' => 2, 'valor_unitario' => 10.50],
+            ['iditem' => 2, 'quantidade' => 1, 'valor_unitario' => 25.00]
+        ]
+    ];
+
+    $this->erpService->setSandboxMode(true);
+    $resultado = $this->erpService->criarPedidoERP($dadosTeste);
+
+    return $this->json($response, $resultado);
+}
     
     // ========================================================================
     // MÉTODOS AUXILIARES

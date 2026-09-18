@@ -16,3 +16,10 @@ uploads/
 *.cache
 *.tmp
 /.git/
+
+# Backups e temporários
+*.bak_*
+*.bak
+*.apos_passo_*
+*.bak_antes_*
+payload.json

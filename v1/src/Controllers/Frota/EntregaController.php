@@ -468,6 +468,13 @@ class EntregaController
   /**
  * POST /v1/frota/entregas/{id}/checkout
  * Finalizar uma entrega com checkout
+ *
+ * 🔥 MUDANÇA 2026-09-18 (Bloco 4 - Opção A + C):
+ *   - Opção A: embarque marcado como 'problema' quando há divergência
+ *     (mantém comportamento atual — o gestor acerta em 'problema')
+ *   - Opção C (NOVO): após o checkout, se TODAS as entregas do embarque
+ *     já estiverem em estado terminal, o embarque é auto-finalizado
+ *     para 'finalizado', destravando o fluxo do acerto.
  */
 public function checkout(Request $request, Response $response, array $args): Response
 {
@@ -676,16 +683,78 @@ public function checkout(Request $request, Response $response, array $args): Res
             }
         }
 
-        // Atualizar status do embarque se houver problema
+        // ================================================================
+        // ATUALIZAR STATUS DO EMBARQUE
+        // ================================================================
+        // Regra (Bloco 4 - Opção A + C, 2026-09-18):
+        //
+        //  1) Se este checkout teve divergência (faltante/devolução),
+        //     marca o embarque como 'problema' para o gestor revisar
+        //     no acerto (Opção A).
+        //
+        //  2) DEPOIS, verifica se TODAS as entregas do embarque já
+        //     estão em estado terminal ('entregue', 'entregue_com_problema',
+        //     'falha', 'cancelada'). Se sim, faz a transição automática
+        //     para 'finalizado' (Opção C).
+        //
+        //  Isso permite que o gestor acerte tanto embarques 'finalizado'
+        //  quanto embarques 'problema', sem travar o fluxo.
+        // ================================================================
+
+        // 1) Marcar como 'problema' se houver divergência nesta entrega
         if ($temFaltante || $temDevolucao) {
             $stmt = $this->pdo->prepare("
-                UPDATE frota_embarque 
-                SET status = 'problema',
-                    updated_at = NOW()
-                WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :id)
+                UPDATE frota_embarque
+                   SET status = 'problema',
+                       updated_at = NOW()
+                 WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :id)
             ");
             $stmt->execute(['id' => $id]);
         }
+
+        // 2) Auto-finalizar se TODAS as entregas já terminaram
+        // ----------------------------------------------------------------
+        // Busca o embarque_id desta entrega
+        $stmt = $this->pdo->prepare("
+            SELECT embarque_id FROM frota_entrega WHERE id = :id
+        ");
+        $stmt->execute(['id' => $id]);
+        $embarqueIdDaEntrega = (int)$stmt->fetchColumn();
+
+        if ($embarqueIdDaEntrega > 0) {
+            // Conta quantas entregas ainda NÃO estão em estado terminal
+            $stmt = $this->pdo->prepare("
+                SELECT COUNT(*)
+                  FROM frota_entrega
+                 WHERE embarque_id = :embarque_id
+                   AND status NOT IN ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
+            ");
+            $stmt->execute(['embarque_id' => $embarqueIdDaEntrega]);
+            $entregasAbertas = (int)$stmt->fetchColumn();
+
+            // Se não há mais nenhuma entrega em aberto, finaliza o embarque
+            if ($entregasAbertas === 0) {
+                // Só faz transição se o embarque ainda está em status "vivo"
+                $stmt = $this->pdo->prepare("
+                    UPDATE frota_embarque
+                       SET status = 'finalizado',
+                           data_retorno = CURRENT_DATE,
+                           horario_retorno = NOW(),
+                           updated_at = NOW()
+                     WHERE id = :embarque_id
+                       AND status IN ('planejado', 'em_andamento', 'problema')
+                ");
+                $stmt->execute(['embarque_id' => $embarqueIdDaEntrega]);
+
+                if ($stmt->rowCount() > 0) {
+                    error_log(
+                        '[Checkout] Embarque #' . $embarqueIdDaEntrega .
+                        ' auto-finalizado (todas as entregas concluídas).'
+                    );
+                }
+            }
+        }
+        // ----------------------------------------------------------------
 
         // Registrar problema em frota_entrega_problema
         if ($temFaltante || $temDevolucao) {
@@ -749,6 +818,13 @@ public function checkout(Request $request, Response $response, array $args): Res
 
         $this->pdo->commit();
 
+        // Busca o status final do embarque após o commit (pode ter sido alterado)
+        $stmtStatusFinal = $this->pdo->prepare("
+            SELECT status FROM frota_embarque WHERE id = :id
+        ");
+        $stmtStatusFinal->execute(['id' => $embarqueIdDaEntrega]);
+        $embarqueStatusFinal = $stmtStatusFinal->fetchColumn() ?: null;
+
         $payload = [
             'success' => true,
             'message' => ($temFaltante || $temDevolucao) 
@@ -757,7 +833,10 @@ public function checkout(Request $request, Response $response, array $args): Res
             'data' => [
                 'entrega_id' => $id,
                 'status' => $statusEntrega,
-                'embarque_status' => ($temFaltante || $temDevolucao) ? 'problema' : null
+                'embarque_id' => $embarqueIdDaEntrega,
+                'embarque_status' => $embarqueStatusFinal,
+                'embarque_auto_finalizado' => ($embarqueStatusFinal === 'finalizado'),
+                'embarque_status_anterior' => ($temFaltante || $temDevolucao) ? 'problema' : 'em_andamento'
             ]
         ];
         $this->saveOfflineOperation($operationId, $id, 'checkout', $payload, 200);

@@ -498,10 +498,18 @@ function abrirAcerto(embarqueId) {
             console.log('✅ Renderizando detalhes do acerto...');
             renderizarDetalhesAcerto(data.data);
             
-            if (data.data.acerto_existente) {
+                       if (data.data.acerto_existente) {
                 acertoAtual.id = data.data.acerto_existente.id;
                 acertoAtual.status = data.data.acerto_existente.status;
-                atualizarBotoesAcerto(data.data.acerto_existente.status);
+                atualizarBotoesAcerto(
+                    data.data.acerto_existente.status,
+                    data.data.embarque_status
+                );
+            } else {
+                // Sem acerto existente → ainda precisa avaliar se o botão
+                // "Iniciar Acerto" pode ficar habilitado com base no
+                // embarque_status (Opção A do Bloco 4)
+                atualizarBotoesAcerto(null, data.data.embarque_status);
             }
             
             const numeroEl = document.getElementById('acerto-numero');
@@ -619,7 +627,13 @@ function alternarDetalhesEntrega(button) {
         : '<i class="fa-solid fa-list-check"></i> Conferir itens';
 }
 
-// RENDERIZAR DETALHES DO ACERTO
+// ================================================================
+// RENDERIZAR DETALHES DO ACERTO — v3 (Bloco 4, Etapa 2 + reimpressão)
+//
+// Mudanças v3 (2026-09-18):
+//   - Botão "Gerar Comprovante" + Badge verde com botão de reimpressão
+//   - Regra de exclusividade mútua entre faltante e devolução mantida
+//   - Fallback de link "Gerar faltante também" quando há ambos
 // ================================================================
 function renderizarDetalhesAcerto(dados) {
     console.log('📌 renderizarDetalhesAcerto chamado com dados:', dados);
@@ -634,21 +648,21 @@ function renderizarDetalhesAcerto(dados) {
             .map(id => id.trim())
             .filter(id => id && id !== '0' && id !== 'null')
             .map(id => ({ erp_embarque_id: id }));
-    
+
     const numeroEl = document.getElementById('acerto-numero');
     if (numeroEl) {
         numeroEl.textContent = dados.numero_embarque || 'N/A';
     }
-    
+
     const conteudo = document.getElementById('acerto-conteudo');
     if (!conteudo) {
         console.error('❌ Elemento acerto-conteudo não encontrado');
         return;
     }
     const topoModal = document.getElementById('acerto-topo');
-    
+
     console.log('✅ Preparando HTML...');
-    
+
     try {
         const inputBusca = document.getElementById('acerto-busca-pedido');
         if (inputBusca) inputBusca.value = '';
@@ -657,10 +671,10 @@ function renderizarDetalhesAcerto(dados) {
             resultadoBusca.hidden = true;
             resultadoBusca.innerHTML = '';
         }
-        
-        const totalProblemas = dados.resumo_problemas ? 
+
+        const totalProblemas = dados.resumo_problemas ?
             dados.resumo_problemas.reduce((acc, p) => acc + parseInt(p.total), 0) : 0;
-        
+
         const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
         const bgCard = isDark ? 'bg-gray-800' : 'bg-white';
         const borderCard = isDark ? 'border-gray-700' : 'border-gray-100';
@@ -734,7 +748,7 @@ function renderizarDetalhesAcerto(dados) {
                 </summary>
                 <div class="acerto-timeline-body max-h-64 overflow-y-auto">
         `;
-        
+
         if (dados.timeline && dados.timeline.length > 0) {
             dados.timeline.forEach((item, index) => {
                 const isLast = index === dados.timeline.length - 1;
@@ -763,7 +777,7 @@ function renderizarDetalhesAcerto(dados) {
         } else {
             html += `<div class="${textSub} text-sm text-center py-4">Nenhuma atividade registrada</div>`;
         }
-        
+
         html += `
                 </div>
             </details>
@@ -781,14 +795,14 @@ function renderizarDetalhesAcerto(dados) {
                     <span class="text-xs ${textSub}">(${dados.entregas?.length || 0})</span>
                 </div>
         `;
-        
+
         if (dados.entregas && dados.entregas.length > 0) {
             dados.entregas.forEach((entrega, index) => {
                 const temProblemas = entrega.problemas && entrega.problemas.length > 0;
                 const temChecklist = entrega.checklist && entrega.checklist.length > 0;
                 const temFotos = entrega.fotos && entrega.fotos.length > 0;
                 const temRomaneio = entrega.foto_romaneio_url;
-                
+
                 const statusMap = {
                     'pendente': { label: 'Pendente', class: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' },
                     'em_entrega': { label: 'Em Rota', class: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
@@ -798,7 +812,7 @@ function renderizarDetalhesAcerto(dados) {
                     'cancelada': { label: 'Cancelada', class: 'bg-gray-100 text-gray-700 dark:bg-gray-700/30 dark:text-gray-400' }
                 };
                 const statusInfo = statusMap[entrega.status] || { label: entrega.status || 'N/A', class: 'bg-gray-100 text-gray-700' };
-                
+
                 let pedidosNumeros = [];
                 if (entrega.pedidos_ids) {
                     const ids = entrega.pedidos_ids.split(',').map(id => id.trim());
@@ -810,7 +824,7 @@ function renderizarDetalhesAcerto(dados) {
                 if (pedidosNumeros.length === 0) {
                     pedidosNumeros = [String(entrega.id)];
                 }
-                
+
                 let erpEmbarquesNumeros = [];
                 if (entrega.erp_embarques_ids) {
                     const ids = entrega.erp_embarques_ids.split(',').map(id => id.trim());
@@ -819,19 +833,19 @@ function renderizarDetalhesAcerto(dados) {
                 if (erpEmbarquesNumeros.length === 0 && dados.erp_embarque_id) {
                     erpEmbarquesNumeros = [String(dados.erp_embarque_id)];
                 }
-                
-                const pedidosDisplay = pedidosNumeros.map(num => 
+
+                const pedidosDisplay = pedidosNumeros.map(num =>
                     `<span class="pedido-tag inline-flex items-center bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 font-bold px-2.5 py-0.5 rounded-lg text-sm font-mono border border-blue-200 dark:border-blue-800">
                         #${escapeHtml(num)}
                     </span>`
                 ).join(' ');
-                
-                const erpEmbarquesDisplay = erpEmbarquesNumeros.map(num => 
+
+                const erpEmbarquesDisplay = erpEmbarquesNumeros.map(num =>
                     `<span class="erp-embarque-tag inline-flex items-center bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 font-bold px-2.5 py-0.5 rounded-lg text-sm font-mono border border-purple-200 dark:border-purple-800">
                         <i class="fa-solid fa-truck mr-1"></i> #${escapeHtml(num)}
                     </span>`
                 ).join(' ');
-                
+
                 const qtdPedidos = pedidosNumeros.length;
                 const labelPedidos = qtdPedidos > 1 ? `${qtdPedidos} pedidos` : '1 pedido';
                 const termosBusca = [
@@ -846,7 +860,7 @@ function renderizarDetalhesAcerto(dados) {
                     ...pedidosNumeros,
                     ...erpEmbarquesNumeros
                 ].filter(Boolean).join(' ');
-                
+
                 let itensHtml = '';
                 if (temChecklist) {
                     itensHtml = `
@@ -861,7 +875,7 @@ function renderizarDetalhesAcerto(dados) {
                                     const qtdEnt = parseFloat(item.quantidade_entregue || 0);
                                     const isOk = item.status === 'entregue';
                                     const nomeProduto = item.descricao || item.nome_produto || item.produto_nome || item.referencia || 'Item';
-                                    
+
                                     return `
                                         <div class="acerto-item-grid ${isOk ? 'is-ok' : 'has-divergence'}">
                                             <button type="button" class="acerto-item-photo" ${item.foto_url ? `data-foto-url="${escapeHtml(item.foto_url)}" data-foto-label="${escapeHtml(nomeProduto)}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"` : ''}>
@@ -890,10 +904,10 @@ function renderizarDetalhesAcerto(dados) {
                     fotosHtml = `
                         <div class="mt-3 flex gap-2 flex-wrap">
                             ${entrega.fotos.slice(0, 4).map(foto => `
-                                <div data-foto-url="${escapeHtml(foto.url_foto)}" data-foto-label="${escapeHtml(foto.descricao || 'Foto')}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)" 
+                                <div data-foto-url="${escapeHtml(foto.url_foto)}" data-foto-label="${escapeHtml(foto.descricao || 'Foto')}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"
                                      class="w-12 h-12 rounded-lg overflow-hidden cursor-pointer border-2 ${isDark ? 'border-gray-700 hover:border-emerald-400' : 'border-gray-200 hover:border-emerald-500'} transition-all hover:scale-105"
                                      title="${escapeHtml(foto.descricao || 'Foto')}">
-                                    <img src="${escapeHtml(foto.url_foto)}" class="w-full h-full object-cover" 
+                                    <img src="${escapeHtml(foto.url_foto)}" class="w-full h-full object-cover"
                                          onerror="this.style.display='none';this.parentElement.innerHTML='<div class=\\'w-12 h-12 flex items-center justify-center bg-gray-100 dark:bg-gray-800 text-gray-400\\'><i class=\\'fa-regular fa-image\\'></i></div>'">
                                 </div>
                             `).join('')}
@@ -905,14 +919,14 @@ function renderizarDetalhesAcerto(dados) {
                 let romaneioHtml = '';
                 if (temRomaneio) {
                     romaneioHtml = `
-                        <button data-foto-url="${escapeHtml(entrega.foto_romaneio_url)}" data-foto-label="Romaneio Assinado" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)" 
+                        <button data-foto-url="${escapeHtml(entrega.foto_romaneio_url)}" data-foto-label="Romaneio Assinado" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"
                                 class="inline-flex items-center gap-1.5 text-xs text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 font-medium bg-blue-50 dark:bg-blue-900/20 px-3 py-1 rounded-lg border border-blue-200 dark:border-blue-800 transition-colors">
                             <i class="fa-regular fa-file-pdf"></i> Romaneio
                         </button>
                     `;
                 }
 
-                const temItensProblema = entrega.checklist && entrega.checklist.some(item => 
+                const temItensProblema = entrega.checklist && entrega.checklist.some(item =>
                     item.status !== 'entregue' && item.quantidade_entregue < item.quantidade_prevista
                 );
                 const totalItens = temChecklist ? entrega.checklist.length : 0;
@@ -922,6 +936,129 @@ function renderizarDetalhesAcerto(dados) {
                 const conferenciaStatus = (temProblemas || divergencias > 0) ? 'divergencia' : (entrega.status === 'entregue' ? 'entregue' : 'pendente');
                 const clienteNomeArg = jsStringArg(entrega.cliente_nome || '');
                 const entregaConferida = isEntregaConferida(entrega.id);
+
+                // ============================================================
+                // 🔥 DEVOLUÇÃO (comprovante) — v3 com botão de reimpressão
+                // ============================================================
+                const problemasArr = Array.isArray(entrega.problemas) ? entrega.problemas : [];
+                const problemasDevolucao = problemasArr.filter(p =>
+                    String(p.tipo_problema || '').toLowerCase() === 'devolucao'
+                );
+                const problemasFaltante = problemasArr.filter(p =>
+                    String(p.tipo_problema || '').toLowerCase() === 'faltante'
+                );
+
+                let botaoDevolucaoHtml = '';
+
+                if (problemasDevolucao.length > 0) {
+                    problemasDevolucao.forEach(p => {
+                        const tipoTratamento = String(p.tratamento_tipo || '').toLowerCase();
+                        const ehTratamentoComprovante = (tipoTratamento === 'devolucao_comprovante' || tipoTratamento === '');
+                        if (!ehTratamentoComprovante) return;
+
+                        const numeroComprovante = p.tratamento_numero_comprovante;
+                        const tratamentoId = p.tratamento_id;
+
+                        if (numeroComprovante && tratamentoId) {
+                            // ============================================================
+                            // Comprovante já emitido → badge + botão reimprimir
+                            // ============================================================
+                            const emitidoEm = p.tratamento_comprovante_emitido_em || '';
+
+                            botaoDevolucaoHtml += `
+                                <span class="inline-flex items-center gap-1 text-xs font-semibold
+                                             bg-emerald-100 text-emerald-700
+                                             dark:bg-emerald-900/30 dark:text-emerald-300
+                                             pl-3 pr-1 py-1 rounded-lg
+                                             border border-emerald-200 dark:border-emerald-800">
+                                    <i class="fa-solid fa-circle-check"></i>
+                                    <span class="pr-1">${escapeHtml(numeroComprovante)}</span>
+
+                                    <button type="button"
+                                            class="inline-flex items-center justify-center
+                                                   w-6 h-6 rounded-md
+                                                   text-emerald-700 hover:text-white
+                                                   hover:bg-emerald-600
+                                                   dark:text-emerald-300 dark:hover:text-emerald-900 dark:hover:bg-emerald-400
+                                                   transition-colors"
+                                            title="Reimprimir comprovante ${escapeHtml(numeroComprovante)}${emitidoEm ? ' (emitido em ' + escapeHtml(emitidoEm) + ')' : ''}"
+                                            onclick="reimprimirComprovanteDevolucao(${tratamentoId}, this)">
+                                        <i class="fa-solid fa-print" style="font-size:0.7rem;"></i>
+                                    </button>
+                                </span>
+                            `;
+                        } else if (tratamentoId) {
+                            // ============================================================
+                            // Tratamento existe mas sem comprovante → botão gerar
+                            // ============================================================
+                            botaoDevolucaoHtml += `
+                                <button type="button"
+                                        class="inline-flex items-center gap-1.5 text-xs font-medium
+                                               bg-blue-600 hover:bg-blue-700 text-white
+                                               px-3 py-1.5 rounded-lg transition-colors"
+                                        title="Gerar comprovante de devolução para faturamento"
+                                        onclick="gerarComprovanteDevolucao(${tratamentoId}, this)">
+                                    <i class="fa-solid fa-file-invoice"></i> Gerar Comprovante
+                                </button>
+                            `;
+                        }
+                    });
+                }
+
+                // Fallback: se a entrega tem problema "devolucao" mas NÃO veio com
+                // tratamento (backend antigo ou ainda não processado), avisamos.
+                if (problemasDevolucao.length > 0 && botaoDevolucaoHtml === '') {
+                    botaoDevolucaoHtml = `
+                        <span class="inline-flex items-center gap-1.5 text-xs font-medium
+                                     bg-amber-100 text-amber-700
+                                     dark:bg-amber-900/30 dark:text-amber-300
+                                     px-3 py-1.5 rounded-lg
+                                     border border-amber-200 dark:border-amber-800"
+                              title="Tratamento de devolução ainda não foi criado no backend">
+                            <i class="fa-solid fa-triangle-exclamation"></i> Devolução sem tratamento
+                        </span>
+                    `;
+                }
+
+                // ============================================================
+                // 🔥 REGRA DE EXCLUSIVIDADE MÚTUA
+                // ============================================================
+                const temDevolucaoNaEntrega = problemasDevolucao.length > 0;
+                const temFaltanteNaEntrega = problemasFaltante.length > 0 || temItensProblema;
+
+                let botaoFaltanteHtml = '';
+
+                if (!temDevolucaoNaEntrega && temFaltanteNaEntrega) {
+                    if (temItensProblema) {
+                        botaoFaltanteHtml = `
+                            <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors"
+                                    onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
+                                <i class="fa-solid fa-plus"></i> Gerar Pedido
+                            </button>
+                        `;
+                    } else if (temProblemas) {
+                        botaoFaltanteHtml = `
+                            <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors"
+                                    onclick="abrirPedidoProblema(${acertoAtual.id || 'null'}, ${entrega.id}, ${clienteNomeArg})">
+                                <i class="fa-solid fa-plus"></i> Gerar Pedido
+                            </button>
+                        `;
+                    }
+                }
+
+                // Se a entrega tem AMBOS, oferece link discreto para faltante
+                let linkFaltanteSecundarioHtml = '';
+                if (temDevolucaoNaEntrega && temFaltanteNaEntrega) {
+                    linkFaltanteSecundarioHtml = `
+                        <button class="inline-flex items-center gap-1.5 text-[11px] font-medium
+                                       text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300
+                                       underline-offset-2 hover:underline"
+                                onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
+                            <i class="fa-solid fa-plus"></i> Gerar faltante também
+                        </button>
+                    `;
+                }
+
                 const detalhesAdministrativosHtml = `
                     <details class="acerto-entry-more">
                         <summary>
@@ -953,7 +1090,7 @@ function renderizarDetalhesAcerto(dados) {
 
                 const cardBorderColor = temProblemas ? 'border-orange-200 dark:border-orange-800' : (isDark ? 'border-gray-700' : 'border-gray-200');
                 const cardBg = temProblemas ? (isDark ? 'bg-orange-900/5' : 'bg-orange-50/30') : (isDark ? 'bg-gray-800' : 'bg-white');
-                
+
                 html += `
                     <div class="acerto-delivery-card ${entregaConferida ? 'is-conferido' : ''} rounded-xl border ${cardBorderColor} ${cardBg} shadow-sm hover:shadow-md transition-all mb-4 overflow-hidden" data-entrega-card data-entrega-id="${entrega.id}" data-conferencia="${conferenciaStatus}" data-conferido="${entregaConferida ? '1' : '0'}" data-order="${index + 1}" data-search="${escapeHtml(termosBusca)}" data-divergencia="${(temProblemas || temItensProblema) ? '1' : '0'}" data-cliente="${escapeHtml(entrega.cliente_nome || '')}" data-pedidos="${escapeHtml(pedidosNumeros.join(', '))}" style="--delivery-order:${index + 1};">
                         <div class="p-4 ${temProblemas ? 'border-b border-orange-200 dark:border-orange-800' : 'border-b ' + (isDark ? 'border-gray-700' : 'border-gray-200')}">
@@ -973,24 +1110,22 @@ function renderizarDetalhesAcerto(dados) {
                                         ${entregaConferida ? getConferidoTagHtml() : ''}
                                     </div>
                                     <div class="text-sm ${textSub} mt-1">
-                                        <i class="fa-solid fa-location-dot text-gray-400 text-xs"></i> 
+                                        <i class="fa-solid fa-location-dot text-gray-400 text-xs"></i>
                                         ${escapeHtml(entrega.endereco || '')} ${escapeHtml(entrega.numero || '')} - ${escapeHtml(entrega.cidade || '')}/${escapeHtml(entrega.uf || '')}
                                     </div>
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2 flex-shrink-0">
                                     ${romaneioHtml}
-                                    ${temItensProblema ? `
-    <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
-            onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
-        <i class="fa-solid fa-plus"></i> Gerar Pedido
-    </button>
-` : ''}
-${(temProblemas && !temItensProblema) ? `
-    <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors" 
-            onclick="abrirPedidoProblema(${acertoAtual.id || 'null'}, ${entrega.id}, ${clienteNomeArg})">
-        <i class="fa-solid fa-plus"></i> Gerar Pedido
-    </button>
-` : ''}
+
+                                    <!-- 🔥 DEVOLUÇÃO: comprovante / badge com reimpressão -->
+                                    ${botaoDevolucaoHtml}
+
+                                    <!-- 🔥 FALTANTE: botão "Gerar Pedido" -->
+                                    ${botaoFaltanteHtml}
+
+                                    <!-- 🔥 Se tem ambos, mostra link secundário discreto -->
+                                    ${linkFaltanteSecundarioHtml}
+
                                     ${temChecklist ? `<button type="button" class="btn-detalhes-entrega inline-flex items-center gap-1.5 text-xs font-medium ${isDark ? 'bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} px-3 py-1.5 rounded-lg transition-colors" onclick="alternarDetalhesEntrega(this)" aria-expanded="false"><i class="fa-solid fa-list-check"></i> Conferir itens</button>` : ''}
                                 </div>
                             </div>
@@ -1001,7 +1136,7 @@ ${(temProblemas && !temItensProblema) ? `
                                 ${detalhesAdministrativosHtml}
                             </div>
                         </div>
-                        
+
                         <div class="acerto-delivery-body p-4">
                             ${temProblemas ? `
                                 <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 mb-3 border border-orange-200 dark:border-orange-800">
@@ -1018,12 +1153,12 @@ ${(temProblemas && !temItensProblema) ? `
                                     `).join('')}
                                 </div>
                             ` : ''}
-                            
+
                             ${itensHtml}
-                            
+
                             ${fotosHtml}
                         <div class="acerto-client-footer">
-    ${temItensProblema ? `<button type="button" class="danger" onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"><i class="fa-solid fa-file-circle-plus"></i> Gerar pedido de divergência</button>` : ''}
+    ${(!temDevolucaoNaEntrega && temItensProblema) ? `<button type="button" class="danger" onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"><i class="fa-solid fa-file-circle-plus"></i> Gerar pedido de divergência</button>` : ''}
     <button type="button" class="success" onclick="marcarEntregaConferida(${entrega.id}, this)"><i class="fa-solid fa-check-double"></i> Pedido conferido</button>
 </div>
                         </div>
@@ -1038,7 +1173,7 @@ ${(temProblemas && !temItensProblema) ? `
                 </div>
             `;
         }
-        
+
         html += '</div>';
 
         if (dados.pedidos_acerto && dados.pedidos_acerto.length > 0) {
@@ -1055,7 +1190,7 @@ ${(temProblemas && !temItensProblema) ? `
                             const totalItens = pedidoItens.length;
                             const isCriadoERP = pedido.status === 'criado_erp';
                             const isPendente = pedido.status === 'pendente';
-                            
+
                             return `
                                 <div class="${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm hover:shadow-md transition-all">
                                     <div class="flex flex-wrap justify-between items-center gap-2">
@@ -1069,7 +1204,7 @@ ${(temProblemas && !temItensProblema) ? `
                                         <div class="flex items-center gap-2 flex-wrap">
                                             <span class="text-sm font-medium ${textTitle}">${formatMoney(pedido.valor_total || 0)}</span>
                                             ${isPendente ? `
-                                                <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors" 
+                                                <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-purple-600 hover:bg-purple-700 text-white px-3 py-1.5 rounded-lg transition-colors"
                                                         onclick="gerarPedidoERP(${pedido.id})">
                                                     <i class="fa-solid fa-cloud-upload"></i> Gerar ERP
                                                 </button>
@@ -1141,12 +1276,12 @@ ${(temProblemas && !temItensProblema) ? `
                 </div>
             `;
         }
-        
+
         console.log('✅ HTML gerado com sucesso, inserindo no DOM...');
         conteudo.innerHTML = html;
         filtrarEntregasAcerto();
         console.log('✅ Conteúdo renderizado com sucesso!');
-        
+
     } catch (error) {
         console.error('❌ Erro ao renderizar detalhes:', error);
         conteudo.innerHTML = `
@@ -1187,10 +1322,13 @@ function iniciarAcerto() {
                 body: JSON.stringify(data)
             })
             .then(data => {
-                if (data.success) {
+              if (data.success) {
                     acertoAtual.id = data.data.acerto_id;
                     acertoAtual.status = 'em_andamento';
-                    atualizarBotoesAcerto('em_andamento');
+                    atualizarBotoesAcerto(
+                        'em_andamento',
+                        data.data.embarque_status || window.acertoDadosAtual?.embarque_status
+                    );
                     Swal.fire({
                         icon: 'success',
                         title: 'Acerto iniciado!',
@@ -1308,7 +1446,10 @@ function cancelarAcerto() {
             .then(data => {
                 if (data.success) {
                     acertoAtual.status = 'cancelado';
-                    atualizarBotoesAcerto('cancelado');
+                       atualizarBotoesAcerto(
+                        'cancelado',
+                        window.acertoDadosAtual?.embarque_status
+                    );
                     Swal.fire({
                         icon: 'info',
                         title: 'Acerto cancelado',
@@ -2209,7 +2350,229 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
         Swal.fire('Erro', err.message, 'error');
     });
 }
+// ================================================================
+// GERAR COMPROVANTE DE DEVOLUÇÃO (Bloco 4, Etapa 3) — v2 CORRIGIDA
+// Chama POST /v1/frota/acerto/tratamento/{id}/gerar-comprovante
+//
+// ⚠️ O ID recebido é SEMPRE o frota_problema_tratamento.id (não o problema.id)
+//
+// 🔥 Correção v2 (2026-09-18):
+//   - Substituído `mostrarNotificacao()` (não existe neste arquivo)
+//     por `Swal.mixin({ toast: true })`, seguindo o padrão do módulo
+//   - Aumentado o delay antes de recarregar a modal (600ms → 1500ms)
+//     para dar tempo da janela de impressão abrir e o usuário clicar em
+//     imprimir. Assim o badge verde aparece depois, sem "matar" a impressão.
+// ================================================================
+async function gerarComprovanteDevolucao(tratamentoId, botaoOrigem) {
+    if (!tratamentoId || isNaN(parseInt(tratamentoId))) {
+        showError('ID de tratamento inválido.');
+        return;
+    }
 
+    const token = getToken();
+    if (!token) {
+        showError('Token não encontrado. Faça login novamente.');
+        return;
+    }
+
+    // ================================================================
+    // 1. Confirmação
+    // ================================================================
+    const confirmacao = await Swal.fire({
+        title: 'Gerar comprovante de devolução?',
+        html: `
+            <div style="text-align:left; font-size:0.9rem;">
+                <p>O comprovante será numerado sequencialmente (formato <code>DEV-AAAA-NNNNNN</code>) e ficará disponível para faturamento.</p>
+                <p style="color:#64748b; margin-top:8px;">Esta ação <b>não pode ser desfeita</b>.</p>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sim, gerar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#2563eb',
+        cancelButtonColor: '#64748b'
+    });
+
+    if (!confirmacao.isConfirmed) return;
+
+    // ================================================================
+    // 2. Desabilita o botão enquanto processa
+    // ================================================================
+    const textoOriginal = botaoOrigem ? botaoOrigem.innerHTML : null;
+    if (botaoOrigem) {
+        botaoOrigem.disabled = true;
+        botaoOrigem.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gerando...';
+    }
+
+    try {
+        // ================================================================
+        // 3. Chamada à API
+        // ================================================================
+        const url = `${API_BASE}/frota/acerto/tratamento/${encodeURIComponent(tratamentoId)}/gerar-comprovante`;
+        console.log('📡 POST', url);
+
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            }
+        });
+
+        // Trata respostas não-JSON com segurança
+        const contentType = response.headers.get('content-type') || '';
+        let dados;
+        if (contentType.includes('application/json')) {
+            dados = await response.json();
+        } else {
+            const texto = await response.text();
+            throw new Error(`Resposta inesperada do servidor (HTTP ${response.status}): ${texto.substring(0, 200)}`);
+        }
+
+        if (!response.ok || !dados.success) {
+            throw new Error(dados.error || dados.message || `Erro HTTP ${response.status}`);
+        }
+
+        // ================================================================
+        // 4. Sucesso — toast + impressão (Etapa 4)
+        // ================================================================
+        const payload = dados.data || dados.dados || {};
+        console.log('✅ Comprovante gerado:', payload);
+
+        const numero = payload.numero_comprovante || '';
+
+        // 🔥 Toast via SweetAlert (padrão do módulo — mostrarNotificacao não existe aqui)
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true,
+            didOpen: (toast) => {
+                toast.addEventListener('mouseenter', Swal.stopTimer);
+                toast.addEventListener('mouseleave', Swal.resumeTimer);
+            }
+        });
+
+        Toast.fire({
+            icon: 'success',
+            title: `Comprovante ${numero || ''} gerado com sucesso!`
+        });
+
+        // 🔥 Etapa 4 — abre janela de impressão
+        imprimirComprovanteDevolucao(payload);
+
+        // 🔥 Recarrega os detalhes (só depois de um tempo suficiente para
+        // o usuário interagir com a janela de impressão — assim o badge verde
+        // aparece quando ele fechar)
+        if (acertoAtual.embarque_id) {
+            setTimeout(() => {
+                abrirAcerto(acertoAtual.embarque_id);
+            }, 1500);
+        }
+
+    } catch (error) {
+        console.error('❌ Erro ao gerar comprovante:', error);
+
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha ao gerar comprovante',
+            html: `
+                <div style="text-align:left;">
+                    <p style="color:#dc2626; font-size:0.9rem; background:#fef2f2; padding:8px 12px; border-radius:8px;">
+                        ${escapeHtml(error.message || 'Erro desconhecido')}
+                    </p>
+                    <p style="color:#64748b; font-size:0.85rem; margin-top:12px;">
+                        Se o tratamento estiver em <code>pendente</code>, ele precisa primeiro ser movido para
+                        <code>aguardando_fat</code> no backend antes de gerar o comprovante.
+                    </p>
+                </div>
+            `,
+            confirmButtonColor: '#dc2626'
+        });
+
+    } finally {
+        // ================================================================
+        // 5. Restaura o botão (se ainda estiver no DOM)
+        // ================================================================
+        if (botaoOrigem && document.body.contains(botaoOrigem)) {
+            botaoOrigem.disabled = false;
+            if (textoOriginal) botaoOrigem.innerHTML = textoOriginal;
+        }
+    }
+}
+// ================================================================
+// REIMPRIMIR COMPROVANTE DE DEVOLUÇÃO
+// Busca os dados do comprovante já emitido e reabre a janela de impressão.
+// Não gera um novo comprovante, só reimprime o existente.
+// ================================================================
+async function reimprimirComprovanteDevolucao(tratamentoId, botaoOrigem) {
+    if (!tratamentoId || isNaN(parseInt(tratamentoId))) {
+        showError('ID de tratamento inválido.');
+        return;
+    }
+
+    const token = getToken();
+    if (!token) {
+        showError('Token não encontrado. Faça login novamente.');
+        return;
+    }
+
+    // Desabilita o botão enquanto processa
+    const textoOriginal = botaoOrigem ? botaoOrigem.innerHTML : null;
+    if (botaoOrigem) {
+        botaoOrigem.disabled = true;
+        botaoOrigem.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    }
+
+    try {
+        const url = `${API_BASE}/frota/acerto/tratamento/${encodeURIComponent(tratamentoId)}/comprovante`;
+        console.log('📡 GET', url);
+
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Accept': 'application/json'
+            }
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        let dados;
+        if (contentType.includes('application/json')) {
+            dados = await response.json();
+        } else {
+            const texto = await response.text();
+            throw new Error(`Resposta inesperada (HTTP ${response.status}): ${texto.substring(0, 200)}`);
+        }
+
+        if (!response.ok || !dados.success) {
+            throw new Error(dados.error || dados.message || `Erro HTTP ${response.status}`);
+        }
+
+        const payload = dados.data || {};
+        console.log('✅ Comprovante para reimpressão:', payload);
+
+        // Reabre a janela de impressão com os dados existentes
+        imprimirComprovanteDevolucao(payload);
+
+    } catch (error) {
+        console.error('❌ Erro ao reimprimir comprovante:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha ao reimprimir',
+            text: error.message || 'Erro desconhecido',
+            confirmButtonColor: '#dc2626'
+        });
+    } finally {
+        if (botaoOrigem && document.body.contains(botaoOrigem)) {
+            botaoOrigem.disabled = false;
+            if (textoOriginal) botaoOrigem.innerHTML = textoOriginal;
+        }
+    }
+}
 // ================================================================
 // GERAR PEDIDO ERP DIRETO
 // ================================================================
@@ -2387,23 +2750,69 @@ function gerarPedidoERP(pedidoAcertoId) {
     });
 }
 
-function atualizarBotoesAcerto(status) {
-    const btnIniciar = document.getElementById('btn-iniciar-acerto');
+// ================================================================
+// ATUALIZAR BOTÕES DE ACERTO (Bloco 4 - Opção A, 2026-09-18)
+//
+// Aceita 2 status de embarque que permitem iniciar acerto:
+//   - finalizado → fluxo normal
+//   - problema   → embarque com divergência tratada pelo gestor
+//
+// Qualquer outro status mostra o botão desabilitado com tooltip
+// explicativo (planejado, em_andamento, cancelado).
+// ================================================================
+function atualizarBotoesAcerto(status, embarqueStatus) {
+    const btnIniciar   = document.getElementById('btn-iniciar-acerto');
     const btnFinalizar = document.getElementById('btn-finalizar-acerto');
-    const btnCancelar = document.getElementById('btn-cancelar-acerto');
-    
-    if (btnIniciar) btnIniciar.style.display = 'none';
+    const btnCancelar  = document.getElementById('btn-cancelar-acerto');
+
+    if (btnIniciar)   btnIniciar.style.display   = 'none';
     if (btnFinalizar) btnFinalizar.style.display = 'none';
-    if (btnCancelar) btnCancelar.style.display = 'none';
-    
+    if (btnCancelar)  btnCancelar.style.display  = 'none';
+
+    // ============================================================
+    // Estado: acerto já existe (em_andamento ou pendente)
+    // ============================================================
     if (status === 'em_andamento' || status === 'pendente') {
         if (btnFinalizar) btnFinalizar.style.display = 'inline-flex';
-        if (btnCancelar) btnCancelar.style.display = 'inline-flex';
-    } else if (!status) {
-        if (btnIniciar) btnIniciar.style.display = 'inline-flex';
+        if (btnCancelar)  btnCancelar.style.display  = 'inline-flex';
+        return;
+    }
+
+    // ============================================================
+    // Estado: nenhum acerto → mostra botão "Iniciar Acerto"
+    // ============================================================
+    if (!status) {
+        if (!btnIniciar) return;
+
+        // Status que liberam o início do acerto (Bloco 4 - Opção A)
+        const statusPermitidos = ['finalizado', 'problema', null, undefined, ''];
+        const podeIniciar = statusPermitidos.includes(embarqueStatus);
+
+        // Restaura o conteúdo padrão do botão (pode ter sido alterado antes)
+        const labelPadrao = '<i class="fa-solid fa-play"></i> Iniciar Acerto';
+
+        if (podeIniciar) {
+            btnIniciar.style.display = 'inline-flex';
+            btnIniciar.disabled = false;
+            btnIniciar.title = embarqueStatus === 'problema'
+                ? 'Embarque com divergências — o acerto tratará faltantes/devoluções'
+                : 'Iniciar acerto do embarque';
+            btnIniciar.innerHTML = labelPadrao;
+        } else {
+            const msgPorStatus = {
+                'planejado':    'Aguardando o motorista iniciar a rota',
+                'em_andamento': 'Aguardando conclusão das entregas pelo motorista',
+                'cancelado':    'Embarque cancelado — não pode ser acertado'
+            };
+            const motivo = msgPorStatus[embarqueStatus] || 'Embarque não está pronto para acerto';
+
+            btnIniciar.style.display = 'inline-flex';
+            btnIniciar.disabled = true;
+            btnIniciar.title = motivo;
+            btnIniciar.innerHTML = '<i class="fa-solid fa-lock"></i> Acerto bloqueado';
+        }
     }
 }
-
 function atualizarContadores(embarques) {
     const total = document.getElementById('total-acertos');
     if (total && embarques) {
@@ -2994,6 +3403,406 @@ function imprimirComprovanteConferencia() {
 }
 
 // ================================================================
+// IMPRIMIR COMPROVANTE DE DEVOLUÇÃO (Bloco 4, Etapa 4)
+// Monta HTML estruturado e dispara window.print() em nova janela.
+// O CSS @media print está embutido inline para não depender do
+// acerto-embarque.css (que é carregado só na página principal).
+// ================================================================
+function imprimirComprovanteDevolucao(dados) {
+    if (!dados || typeof dados !== 'object') {
+        showError('Dados do comprovante inválidos.');
+        return;
+    }
+
+    // ================================================================
+    // Helpers locais
+    // ================================================================
+    const esc = (v) => String(v ?? '').replace(/[&<>'"]/g, (c) => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+    }[c]));
+
+    const fmtData = (s) => {
+        if (!s) return '—';
+        try {
+            const d = new Date(s);
+            if (isNaN(d.getTime())) return String(s);
+            return d.toLocaleDateString('pt-BR') + ' ' + d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+        } catch { return String(s); }
+    };
+
+    const fmtMoeda = (v) => {
+        const n = parseFloat(v);
+        if (isNaN(n)) return 'R$ 0,00';
+        return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    const fmtQtd = (v) => {
+        const n = parseFloat(v);
+        if (isNaN(n)) return '0';
+        return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/\.?0+$/, '');
+    };
+
+    // ================================================================
+    // Extrai campos (aceita vários nomes possíveis por compatibilidade)
+    // ================================================================
+    const numero        = dados.numero_comprovante || dados.numero || dados.comprovante_numero || '—';
+    const emitidoEm     = dados.comprovante_emitido_em || dados.emitido_em || dados.created_at || new Date().toISOString();
+    const emitenteNome  = dados.emitente_nome || dados.gestor_nome || dados.usuario_nome || 'Gestor';
+    const embarqueId    = dados.embarque_id || dados.embarqueId || (acertoAtual && acertoAtual.embarque_id) || '—';
+    const numeroEmb     = dados.numero_embarque || dados.embarque_numero || `#${embarqueId}`;
+
+    // Cliente / entrega
+    const clienteNome   = dados.cliente_nome || dados.entrega_cliente_nome || '—';
+    const clienteEnd    = [
+        dados.endereco || dados.entrega_endereco || '',
+        dados.numero_end || dados.entrega_numero || '',
+        dados.bairro || dados.entrega_bairro || '',
+        dados.cidade || dados.entrega_cidade || '',
+        dados.uf || dados.entrega_uf || ''
+    ].filter(Boolean).join(', ');
+
+    const codigoRastreio = dados.codigo_rastreamento || dados.entrega_codigo_rastreamento || '';
+    const entregaId      = dados.entrega_id || dados.entregaId || '—';
+
+    // Embarque / motorista / veículo
+    const motoristaNome  = dados.motorista_nome || dados.motorista || '—';
+    const motoristaCpf   = dados.motorista_cpf || '';
+    const veiculoPlaca   = dados.veiculo_placa || dados.placa || '—';
+    const veiculoModelo  = dados.veiculo_modelo || dados.modelo || '';
+
+    // Itens devolvidos
+    const itens = Array.isArray(dados.itens)
+        ? dados.itens
+        : (Array.isArray(dados.itens_devolvidos) ? dados.itens_devolvidos : []);
+
+    const linhasItens = itens.length > 0
+        ? itens.map((it, idx) => {
+            const ref     = it.referencia || it.ref || '—';
+            const desc    = it.descricao || it.desc || '—';
+            const qtdPrev = fmtQtd(it.quantidade_prevista ?? it.qtd_prevista ?? 0);
+            const qtdEnt  = fmtQtd(it.quantidade_entregue ?? it.qtd_entregue ?? 0);
+            const qtdDev  = fmtQtd(it.quantidade_devolvida ?? it.qtd_devolvida ?? it.quantidade ?? 0);
+            const motivo  = it.motivo || it.observacao || '—';
+            const valor   = parseFloat(it.valor_total ?? it.valor ?? 0);
+            const valorFmt = valor > 0 ? fmtMoeda(valor) : '—';
+
+            return `
+                <tr>
+                    <td style="text-align:center;">${idx + 1}</td>
+                    <td>${esc(ref)}</td>
+                    <td>${esc(desc)}</td>
+                    <td style="text-align:right;">${qtdPrev}</td>
+                    <td style="text-align:right;">${qtdEnt}</td>
+                    <td style="text-align:right; font-weight:700; color:#b45309;">${qtdDev}</td>
+                    <td>${esc(motivo)}</td>
+                    <td style="text-align:right;">${valorFmt}</td>
+                </tr>
+            `;
+        }).join('')
+        : '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:20px;">Nenhum item informado</td></tr>';
+
+    // Totais
+    const totalItens     = itens.length;
+    const totalUnidades  = itens.reduce((acc, it) => acc + parseFloat(it.quantidade_devolvida ?? it.qtd_devolvida ?? it.quantidade ?? 0), 0);
+    const totalValor     = itens.reduce((acc, it) => acc + parseFloat(it.valor_total ?? it.valor ?? 0), 0);
+
+    // ================================================================
+    // HTML completo
+    // ================================================================
+    const html = `
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <title>Comprovante de Devolução — ${esc(numero)}</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            color: #1f2937;
+            margin: 0;
+            padding: 24px;
+            background: #fff;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            border-bottom: 3px solid #166534;
+            padding-bottom: 14px;
+            margin-bottom: 18px;
+        }
+        .header h1 {
+            margin: 0 0 4px;
+            font-size: 1.4rem;
+            color: #14532d;
+        }
+        .header .sub {
+            font-size: 0.85rem;
+            color: #6b7280;
+            margin: 0;
+        }
+        .header .numero {
+            text-align: right;
+        }
+        .header .numero strong {
+            display: block;
+            font-size: 1.15rem;
+            font-family: 'Courier New', monospace;
+            color: #166534;
+            letter-spacing: 1px;
+        }
+        .header .numero span {
+            font-size: 0.72rem;
+            color: #6b7280;
+        }
+        .secao {
+            margin-bottom: 16px;
+        }
+        .secao h2 {
+            font-size: 0.78rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #166534;
+            border-bottom: 1px solid #d1d5db;
+            padding-bottom: 4px;
+            margin: 0 0 8px;
+        }
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 6px 24px;
+            font-size: 0.86rem;
+        }
+        .grid-2 div strong { color: #374151; }
+        .grid-2 div span { color: #1f2937; }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin-top: 4px;
+        }
+        thead th {
+            background: #f0fdf4;
+            color: #166534;
+            font-size: 0.72rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            padding: 7px 8px;
+            border: 1px solid #d1d5db;
+            text-align: left;
+        }
+        tbody td {
+            padding: 6px 8px;
+            border: 1px solid #e5e7eb;
+            vertical-align: top;
+        }
+        tbody tr:nth-child(even) { background: #fafafa; }
+        .totais {
+            display: flex;
+            justify-content: flex-end;
+            gap: 32px;
+            margin-top: 10px;
+            font-size: 0.88rem;
+        }
+        .totais div { text-align: right; }
+        .totais div strong {
+            display: block;
+            color: #166534;
+            font-size: 1.05rem;
+        }
+        .totais div span {
+            font-size: 0.7rem;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .declaracao {
+            margin-top: 26px;
+            font-size: 0.85rem;
+            line-height: 1.55;
+            color: #374151;
+            background: #f9fafb;
+            border-left: 4px solid #16a34a;
+            padding: 12px 14px;
+            border-radius: 4px;
+        }
+        .assinaturas {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 40px;
+            margin-top: 60px;
+        }
+        .assinaturas .linha {
+            border-top: 1px solid #1f2937;
+            padding-top: 6px;
+            text-align: center;
+            font-size: 0.78rem;
+            color: #6b7280;
+        }
+        .rodape {
+            margin-top: 30px;
+            padding-top: 10px;
+            border-top: 1px solid #e5e7eb;
+            font-size: 0.7rem;
+            color: #9ca3af;
+            text-align: center;
+        }
+        @media print {
+            body { padding: 12px; }
+            .header { page-break-after: avoid; }
+            table { page-break-inside: auto; }
+            tr { page-break-inside: avoid; page-break-after: auto; }
+            thead { display: table-header-group; }
+            .assinaturas { page-break-inside: avoid; }
+        }
+        @page { margin: 12mm; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div>
+            <h1>Comprovante de Devolução</h1>
+            <p class="sub">Documento para faturamento — não gera pedido no ERP</p>
+        </div>
+        <div class="numero">
+            <strong>${esc(numero)}</strong>
+            <span>Emitido em ${fmtData(emitidoEm)}</span>
+        </div>
+    </div>
+
+    <div class="secao">
+        <h2>Emitente</h2>
+        <div class="grid-2">
+            <div><strong>Gestor responsável:</strong> <span>${esc(emitenteNome)}</span></div>
+            <div><strong>Embarque:</strong> <span>${esc(numeroEmb)}</span></div>
+        </div>
+    </div>
+
+    <div class="secao">
+        <h2>Entrega / Cliente</h2>
+        <div class="grid-2">
+            <div><strong>Cliente:</strong> <span>${esc(clienteNome)}</span></div>
+            <div><strong>Entrega #:</strong> <span>${esc(entregaId)}</span></div>
+            <div style="grid-column: 1 / -1;"><strong>Endereço:</strong> <span>${esc(clienteEnd || '—')}</span></div>
+            ${codigoRastreio ? `<div><strong>Código de rastreio:</strong> <span>${esc(codigoRastreio)}</span></div>` : ''}
+        </div>
+    </div>
+
+    <div class="secao">
+        <h2>Embarque</h2>
+        <div class="grid-2">
+            <div><strong>Motorista:</strong> <span>${esc(motoristaNome)}</span></div>
+            <div><strong>CPF:</strong> <span>${esc(motoristaCpf || '—')}</span></div>
+            <div><strong>Veículo:</strong> <span>${esc(veiculoPlaca)}</span></div>
+            <div><strong>Modelo:</strong> <span>${esc(veiculoModelo || '—')}</span></div>
+        </div>
+    </div>
+
+    <div class="secao">
+        <h2>Itens Devolvidos</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th style="width:32px; text-align:center;">#</th>
+                    <th style="width:90px;">Referência</th>
+                    <th>Descrição</th>
+                    <th style="width:70px; text-align:right;">Prev.</th>
+                    <th style="width:70px; text-align:right;">Entregue</th>
+                    <th style="width:80px; text-align:right;">Devolvido</th>
+                    <th style="width:130px;">Motivo</th>
+                    <th style="width:90px; text-align:right;">Valor</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${linhasItens}
+            </tbody>
+        </table>
+
+        <div class="totais">
+            <div>
+                <strong>${totalItens}</strong>
+                <span>Itens</span>
+            </div>
+            <div>
+                <strong>${fmtQtd(totalUnidades)}</strong>
+                <span>Unidades</span>
+            </div>
+            <div>
+                <strong>${fmtMoeda(totalValor)}</strong>
+                <span>Valor total</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="declaracao">
+        Declaro, para fins de faturamento, que os itens acima relacionados foram <strong>devolvidos</strong>
+        pelo cliente no ato da entrega do embarque <strong>${esc(numeroEmb)}</strong>, e que os mesmos serão
+        tratados pelo setor de faturamento conforme política comercial vigente.
+    </div>
+
+    <div class="assinaturas">
+        <div class="linha">Assinatura do Motorista</div>
+        <div class="linha">Assinatura do Gestor / Conferente</div>
+    </div>
+
+    <div class="rodape">
+        Documento gerado eletronicamente pelo Portal Nutricional • ${fmtData(new Date().toISOString())}
+    </div>
+
+    <script>
+        // Auto-print ao abrir
+        window.addEventListener('load', function () {
+            setTimeout(function () {
+                try { window.print(); } catch (e) { console.warn('Print bloqueado:', e); }
+            }, 250);
+        });
+    </script>
+</body>
+</html>
+    `.trim();
+
+    // ================================================================
+    // Abre em nova janela e escreve o HTML
+    // ================================================================
+    const win = window.open('', '_blank', 'width=1000,height=800,menubar=no,toolbar=no,location=no,status=no,scrollbars=yes,resizable=yes');
+
+    if (!win) {
+        // Popup bloqueado — oferece download como fallback
+        Swal.fire({
+            icon: 'warning',
+            title: 'Popup bloqueado',
+            html: `
+                <p>O navegador bloqueou a janela de impressão.</p>
+                <p style="font-size:0.85rem;color:#64748b;">Permita popups para este site ou use o botão abaixo para baixar o HTML e abrir manualmente.</p>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fa-solid fa-download"></i> Baixar HTML',
+            cancelButtonText: 'Fechar',
+            confirmButtonColor: '#2563eb'
+        }).then((r) => {
+            if (r.isConfirmed) {
+                const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `comprovante-devolucao-${numero}.html`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+            }
+        });
+        return;
+    }
+
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+}
+
+// ================================================================
 // FINALIZA O EMBARQUE AUTOMATICAMENTE APÓS A IMPRESSÃO
 // ================================================================
 function finalizarAposComprovanteImpresso() {
@@ -3179,3 +3988,7 @@ window.aplicarFiltroConferencia = aplicarFiltroConferencia;
 window.marcarEntregaConferida = marcarEntregaConferida;
 window.marcarEmbarqueConferido = marcarEmbarqueConferido;
 window.imprimirComprovanteConferencia = imprimirComprovanteConferencia;
+window.gerarComprovanteDevolucao = gerarComprovanteDevolucao;
+window.imprimirComprovanteDevolucao = imprimirComprovanteDevolucao;
+window.renderizarDetalhesAcerto = renderizarDetalhesAcerto;
+window.reimprimirComprovanteDevolucao = reimprimirComprovanteDevolucao;

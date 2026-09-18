@@ -47,7 +47,7 @@ if (!function_exists('getPDO')) {
         static $pdo = null;
         if ($pdo === null) {
             $dsn = sprintf(
-                "pgsql:host=%s;port=%s;dbname=%s;options='-c client_encoding=utf8'",
+                  "pgsql:host=%s;port=%s;dbname=%s",
                 $_ENV['DB_HOST'],
                 $_ENV['DB_PORT'] ?? '5432',
                 $_ENV['DB_NAME']

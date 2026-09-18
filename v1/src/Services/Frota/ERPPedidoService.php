@@ -61,7 +61,12 @@ class ERPPedidoService
     
     /**
      * Cria um pedido no ERP
-     * 
+     *
+     * 🔥 MUDANÇA 2026-09-18 (Bloco 3, Passo 3.1):
+     *   - Aceita `tipo_faltante` ('com_estoque' | 'sem_estoque' | null) no payload
+     *   - Propaga `tipo_faltante` para dentro de cada item em `itensProcessados`
+     *   - Campo é aditivo e não altera a estrutura do ERP legado
+     *
      * @param array $dados Dados do pedido
      * @return array Resultado da operação
      */
@@ -75,7 +80,21 @@ class ERPPedidoService
             if (!$validacao['success']) {
                 return $validacao;
             }
-            
+
+            // ================================================================
+            // 1.1 RESOLVER TIPO_FALTANTE (Bloco 3.1)
+            //     Pode vir no payload direto OU ser derivado do tipo_tratamento
+            // ================================================================
+            $tipoFaltante = $dados['tipo_faltante'] ?? null;
+
+            if ($tipoFaltante === null && !empty($dados['tipo_tratamento'])) {
+                $mapTipoFaltante = [
+                    'faltante_com_estoque' => 'com_estoque',
+                    'faltante_sem_estoque' => 'sem_estoque'
+                ];
+                $tipoFaltante = $mapTipoFaltante[$dados['tipo_tratamento']] ?? null;
+            }
+
             // ================================================================
             // 2. BUSCAR DADOS COMPLEMENTARES
             // ================================================================
@@ -83,18 +102,18 @@ class ERPPedidoService
             if (!$cliente) {
                 return $this->respostaErro("Cliente {$dados['idcliente']} não encontrado");
             }
-            
+
             $transacao = $this->buscarTransacao($dados['idtransacao']);
             if (!$transacao) {
                 return $this->respostaErro("Transação {$dados['idtransacao']} não encontrada");
             }
-            
+
             // ================================================================
             // 3. GERAR SEQUENCIAIS
             // ================================================================
-          $idPedidoPDA = $this->gerarIdPedidoPDA();
+            $idPedidoPDA = $this->gerarIdPedidoPDA();
             $sequencialPortal = $idPedidoPDA;
-            
+
             // ================================================================
             // 4. PROCESSAR ITENS
             // ================================================================
@@ -102,17 +121,17 @@ class ERPPedidoService
             $valorTotalItens = 0;
             $pesoBrutoTotal = 0;
             $pesoLiquidoTotal = 0;
-            
+
             foreach ($dados['itens'] as $item) {
                 $infoItem = $this->buscarInfoItem($item['iditem'], $dados['idfilial'] ?? 1);
                 if (!$infoItem) {
                     return $this->respostaErro("Item {$item['iditem']} não encontrado no estoque");
                 }
-                
+
                 $quantidade = (float)($item['quantidade'] ?? 1);
                 $valorUnitario = (float)($infoItem['valorprecovenda'] ?? $item['valor_unitario'] ?? 0);
                 $valorTotalItem = $quantidade * $valorUnitario;
-                
+
                 // Verificar saldo
                 $saldo = $this->verificarSaldoItem($item['iditem'], $dados['idfilial'] ?? 1);
                 if (!$this->sandboxMode && $quantidade > $saldo) {
@@ -121,7 +140,7 @@ class ERPPedidoService
                         "Disponível: {$saldo}, Solicitado: {$quantidade}"
                     );
                 }
-                
+
                 $itensProcessados[] = [
                     'iditem' => (int)$item['iditem'],
                     'quantidade' => $quantidade,
@@ -140,19 +159,21 @@ class ERPPedidoService
                     'valorcustomedio' => (float)($infoItem['valorcustomediounitario'] ?? 0),
                     'idimposto' => (int)($infoItem['idimposto'] ?? 0),
                     'idsituacaotributaria' => (int)($infoItem['idsituacaotributaria'] ?? 0),
-                    'percipi' => (float)($infoItem['perc_ipi'] ?? 0)
+                    'percipi' => (float)($infoItem['perc_ipi'] ?? 0),
+                    // 🔥 NOVO (Bloco 3.1) — propagação do tipo_faltante para uso em relatórios/KPIs futuros
+                    'tipo_faltante' => $tipoFaltante
                 ];
-                
+
                 $valorTotalItens += $valorTotalItem;
                 $pesoBrutoTotal += (float)($infoItem['pesobruto'] ?? 0) * $quantidade;
                 $pesoLiquidoTotal += (float)($infoItem['pesoliquido'] ?? 0) * $quantidade;
             }
-            
+
             // ================================================================
             // 5. MONTAR DADOS COMPLETOS DO PEDIDO
             // ================================================================
             $nomeCliente = $cliente['fantasia'] ?? $cliente['razao'] ?? 'PORTAL[' . $sequencialPortal . ']';
-            
+
             $dadosPedido = array_merge($this->config, [
                 'idpedidopda' => $idPedidoPDA,
                 'sequencial_portal' => $sequencialPortal,
@@ -174,14 +195,18 @@ class ERPPedidoService
                 'valortotalpedido' => $valorTotalItens,
                 'pesobruto' => $pesoBrutoTotal,
                 'pesoliquido' => $pesoLiquidoTotal,
-                'itens' => $itensProcessados
+                'itens' => $itensProcessados,
+                // 🔥 NOVO (Bloco 3.1) — mantém os tipos no payload consolidado
+                'tipo_problema'   => $dados['tipo_problema'] ?? null,
+                'tipo_tratamento' => $dados['tipo_tratamento'] ?? null,
+                'tipo_faltante'   => $tipoFaltante
             ]);
-            
+
             // ================================================================
             // 6. REGISTRAR LOG DA OPERAÇÃO
             // ================================================================
             $this->registrarLog('PRE_VALIDACAO', $dadosPedido);
-            
+
             // ================================================================
             // 7. MODO SANDBOX
             // ================================================================
@@ -198,12 +223,12 @@ class ERPPedidoService
                     ]
                 ];
             }
-            
+
             // ================================================================
             // 8. MODO PRODUÇÃO
             // ================================================================
             return $this->executarInsercao($dadosPedido);
-            
+
         } catch (\Exception $e) {
             $this->registrarLog('ERRO_GERAL', [
                 'error' => $e->getMessage(),
@@ -366,128 +391,159 @@ class ERPPedidoService
         }
     }
     
-  /**
- * Monta observação com informações do acerto
- * 🔥 CORRIGIDO: Usa os dados do motorista, veículo e tipo de problema
- */
-private function montarObservacao(array $dados): string
-{
-    $parts = [];
-    
-    // ============================================================
-    // TIPO DE PROBLEMA EM DESTAQUE
-    // ============================================================
-    if (!empty($dados['tipo_problema'])) {
-        $tipoLabel = strtoupper($dados['tipo_problema']);
-         $tipoEmoji = ''; 
-        $parts[] = "{$tipoEmoji} TIPO: {$tipoLabel}";
-    }
-    
-    // ============================================================
-    // DADOS DO ACERTO
-    // ============================================================
-    if (!empty($dados['acerto_id'])) {
-        $parts[] = "ACERTO: #" . $dados['acerto_id'];
-    }
-    
-    if (!empty($dados['embarque_id'])) {
-        $parts[] = "EMBARQUE: #" . $dados['embarque_id'];
-    }
-    
-    if (!empty($dados['entrega_id'])) {
-        $parts[] = "ENTREGA: #" . $dados['entrega_id'];
-    }
-    
-    // ============================================================
-    // DADOS DO MOTORISTA
-    // ============================================================
-    if (!empty($dados['motorista_nome'])) {
-        $parts[] = "MOTORISTA: " . $dados['motorista_nome'];
-    }
-    if (!empty($dados['motorista_cpf'])) {
-        $parts[] = "CPF: " . $dados['motorista_cpf'];
-    }
-    
-    // ============================================================
-    // DADOS DO VEÍCULO
-    // ============================================================
-    if (!empty($dados['veiculo_placa'])) {
-        $parts[] = "VEÍCULO: " . $dados['veiculo_placa'];
-    }
-    if (!empty($dados['veiculo_modelo'])) {
-        $parts[] = "MODELO: " . $dados['veiculo_modelo'];
-    }
-    if (!empty($dados['veiculo_marca'])) {
-        $parts[] = "MARCA: " . $dados['veiculo_marca'];
-    }
-    
-    // ============================================================
-    // DATAS E HORÁRIOS
-    // ============================================================
-    if (!empty($dados['data_entrega'])) {
-        $parts[] = "DATA ENTREGA: " . $dados['data_entrega'];
-    }
-    if (!empty($dados['hora_entrega'])) {
-        $parts[] = "HORA: " . $dados['hora_entrega'];
-    }
-    if (!empty($dados['data_checkin'])) {
-        $parts[] = "CHECK-IN: " . $dados['data_checkin'];
-    }
-    
-    // ============================================================
-    // CLIENTE E RECEBEDOR
-    // ============================================================
-    if (!empty($dados['cliente_nome'])) {
-        $parts[] = "CLIENTE: " . $dados['cliente_nome'];
-    }
-    if (!empty($dados['nome_recebedor'])) {
-        $parts[] = "RECEBEDOR: " . $dados['nome_recebedor'];
-    }
-    
-    // ============================================================
-    // MOTIVO E OBSERVAÇÕES
-    // ============================================================
-    if (!empty($dados['motivo'])) {
-        $parts[] = "MOTIVO: " . $dados['motivo'];
-    }
-    
-    if (!empty($dados['pedido_original'])) {
-        $parts[] = "PEDIDO ORIGINAL: " . $dados['pedido_original'];
-    }
-    
-    // Observação adicional
-    if (!empty($dados['observacao'])) {
-        $parts[] = $dados['observacao'];
-    }
-    
-    // ============================================================
-    // ITENS AFETADOS
-    // ============================================================
-    if (!empty($dados['itens']) && is_array($dados['itens'])) {
-        $itensList = [];
-        foreach ($dados['itens'] as $item) {
-            $ref = $item['referencia'] ?? 'Item';
-            $qtd = $item['quantidade'] ?? 0;
-            $itensList[] = "{$ref}: {$qtd} un";
+    /**
+     * Monta observação com informações do acerto
+     *
+     * 🔥 MUDANÇA 2026-09-18 (Bloco 3, Passo 3.2):
+     *   - Prioriza `tipo_tratamento` sobre `tipo_problema` para o rótulo principal
+     *   - Inclui `TIPO_FALTANTE` quando aplicável (com_estoque / sem_estoque)
+     *   - Mantém compatibilidade: se `tipo_tratamento` não vier, usa `tipo_problema`
+     *
+     *   ATENÇÃO: esta função só é chamada quando o payload NÃO contém o campo
+     *   `observacao`. O AcertoEmbarqueController envia a observação completa
+     *   diretamente, então esta rotina é usada apenas em fluxos alternativos
+     *   (ex: endpoint /testar, integrações futuras).
+     */
+    private function montarObservacao(array $dados): string
+    {
+        $parts = [];
+
+        // ============================================================
+        // TIPO DE PROBLEMA / TRATAMENTO EM DESTAQUE
+        // 🔥 MUDANÇA (Bloco 3.2): prioriza tipo_tratamento
+        // ============================================================
+        $tipoTratamento = $dados['tipo_tratamento'] ?? null;
+        $tipoProblema   = $dados['tipo_problema']   ?? null;
+        $tipoFaltante   = $dados['tipo_faltante']   ?? null;
+
+        $tipoLabel = null;
+        $tipoEmoji = '';
+
+        if (!empty($tipoTratamento)) {
+            $mapLabel = [
+                'faltante_com_estoque'  => 'FALTANTE C/ ESTOQUE',
+                'faltante_sem_estoque'  => 'FALTANTE S/ ESTOQUE',
+                'devolucao_comprovante' => 'DEVOLUCAO (COMPROVANTE)'
+            ];
+            $tipoLabel = $mapLabel[$tipoTratamento] ?? strtoupper($tipoTratamento);
+        } elseif (!empty($tipoProblema)) {
+            $tipoLabel = strtoupper($tipoProblema);
         }
-        if (!empty($itensList)) {
-            $parts[] = "ITENS: " . implode('; ', $itensList);
+
+        if ($tipoLabel !== null) {
+            $parts[] = "{$tipoEmoji} TIPO: {$tipoLabel}";
         }
+
+        // Reforça com o tipo_faltante quando aplicável
+        if (!empty($tipoFaltante)) {
+            $parts[] = "TIPO_FALTANTE: " . strtoupper($tipoFaltante);
+        }
+
+        // ============================================================
+        // DADOS DO ACERTO
+        // ============================================================
+        if (!empty($dados['acerto_id'])) {
+            $parts[] = "ACERTO: #" . $dados['acerto_id'];
+        }
+
+        if (!empty($dados['embarque_id'])) {
+            $parts[] = "EMBARQUE: #" . $dados['embarque_id'];
+        }
+
+        if (!empty($dados['entrega_id'])) {
+            $parts[] = "ENTREGA: #" . $dados['entrega_id'];
+        }
+
+        // ============================================================
+        // DADOS DO MOTORISTA
+        // ============================================================
+        if (!empty($dados['motorista_nome'])) {
+            $parts[] = "MOTORISTA: " . $dados['motorista_nome'];
+        }
+        if (!empty($dados['motorista_cpf'])) {
+            $parts[] = "CPF: " . $dados['motorista_cpf'];
+        }
+
+        // ============================================================
+        // DADOS DO VEÍCULO
+        // ============================================================
+        if (!empty($dados['veiculo_placa'])) {
+            $parts[] = "VEÍCULO: " . $dados['veiculo_placa'];
+        }
+        if (!empty($dados['veiculo_modelo'])) {
+            $parts[] = "MODELO: " . $dados['veiculo_modelo'];
+        }
+        if (!empty($dados['veiculo_marca'])) {
+            $parts[] = "MARCA: " . $dados['veiculo_marca'];
+        }
+
+        // ============================================================
+        // DATAS E HORÁRIOS
+        // ============================================================
+        if (!empty($dados['data_entrega'])) {
+            $parts[] = "DATA ENTREGA: " . $dados['data_entrega'];
+        }
+        if (!empty($dados['hora_entrega'])) {
+            $parts[] = "HORA: " . $dados['hora_entrega'];
+        }
+        if (!empty($dados['data_checkin'])) {
+            $parts[] = "CHECK-IN: " . $dados['data_checkin'];
+        }
+
+        // ============================================================
+        // CLIENTE E RECEBEDOR
+        // ============================================================
+        if (!empty($dados['cliente_nome'])) {
+            $parts[] = "CLIENTE: " . $dados['cliente_nome'];
+        }
+        if (!empty($dados['nome_recebedor'])) {
+            $parts[] = "RECEBEDOR: " . $dados['nome_recebedor'];
+        }
+
+        // ============================================================
+        // MOTIVO E OBSERVAÇÕES
+        // ============================================================
+        if (!empty($dados['motivo'])) {
+            $parts[] = "MOTIVO: " . $dados['motivo'];
+        }
+
+        if (!empty($dados['pedido_original'])) {
+            $parts[] = "PEDIDO ORIGINAL: " . $dados['pedido_original'];
+        }
+
+        // Observação adicional
+        if (!empty($dados['observacao'])) {
+            $parts[] = $dados['observacao'];
+        }
+
+        // ============================================================
+        // ITENS AFETADOS
+        // ============================================================
+        if (!empty($dados['itens']) && is_array($dados['itens'])) {
+            $itensList = [];
+            foreach ($dados['itens'] as $item) {
+                $ref = $item['referencia'] ?? 'Item';
+                $qtd = $item['quantidade'] ?? 0;
+                $itensList[] = "{$ref}: {$qtd} un";
+            }
+            if (!empty($itensList)) {
+                $parts[] = "ITENS: " . implode('; ', $itensList);
+            }
+        }
+
+        // ============================================================
+        // USUÁRIO
+        // ============================================================
+        if (!empty($dados['usuario'])) {
+            $parts[] = "USUÁRIO: " . $dados['usuario'];
+        }
+
+        // ============================================================
+        // LIMITAR TAMANHO
+        // ============================================================
+        $observacao = implode(' | ', $parts);
+        return substr($observacao, 0, 1000);
     }
-    
-    // ============================================================
-    // USUÁRIO
-    // ============================================================
-    if (!empty($dados['usuario'])) {
-        $parts[] = "USUÁRIO: " . $dados['usuario'];
-    }
-    
-    // ============================================================
-    // LIMITAR TAMANHO
-    // ============================================================
-    $observacao = implode(' | ', $parts);
-    return substr($observacao, 0, 1000);
-}
     
     /**
      * Escapa valores para SQL

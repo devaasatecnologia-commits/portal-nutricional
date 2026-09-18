@@ -420,6 +420,16 @@ $app->group('/v1', function ($group) {
                 $acerto->get('/pedido/{id}', [$controller, 'getPedidoAcerto']);
 
                 // ============================================================
+                // 🔥 NOVO 2026-09-18 (Bloco 2, Passo 2.4/2.5):
+                // COMPROVANTE DE DEVOLUÇÃO (numeração DEV-AAAA-NNNNNN)
+                // ============================================================
+                // Gera comprovante para faturamento a partir de um tratamento
+                // do tipo 'devolucao_comprovante' (Camada 2)
+                $acerto->post('/tratamento/{id}/gerar-comprovante',
+                    [$controller, 'gerarComprovanteDevolucao']);
+                $acerto->get('/tratamento/{id}/comprovante',
+                    [$controller, 'buscarComprovanteDevolucao']);   
+
                 // INTEGRAÇÃO COM ERP
                 // ============================================================
                 // Criar pedido no ERP a partir do pedido de acerto
