@@ -1,4 +1,4 @@
-﻿var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
+var API_BASE = window.API_BASE || (window.location.pathname.startsWith('/API/') ? '/API' : '') + '/v1';
 // ================================================================
 // ACERTO DE EMBARQUE - JAVASCRIPT COMPLETO (CORRIGIDO)
 // ================================================================
