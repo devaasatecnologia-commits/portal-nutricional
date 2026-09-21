@@ -140,7 +140,7 @@ public function listarParaAcerto(Request $request, Response $response): Response
     ]);
 }
     
- /**
+/**
  * GET /v1/frota/acerto/{embarqueId}/detalhes
  * Busca todos os detalhes do embarque para acerto
  * 🔥 COMPLETO COM PEDIDOS DE ACERTO
@@ -152,6 +152,12 @@ public function listarParaAcerto(Request $request, Response $response): Response
  *     tratamento_numero_comprovante, tratamento_comprovante_emitido_em,
  *     tratamento_acerto_pedido_id
  *   - Permite ao frontend decidir se mostra "Gerar Pedido" ou "Gerar Comprovante"
+ *
+ * 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 6):
+ *   - Inclui `tipo_tratamento`, `id_transacao_erp`, `id_filial_erp`
+ *     no SELECT de `pedidos_acerto` para o gerarPedidoERP() conseguir
+ *     derivar a transação correta (19/20)
+ *   - Expõe também esses campos no JOIN de `problemas[]` (tratamento_*)
  */
 public function getDetalhesAcerto(Request $request, Response $response, array $args): Response
 {
@@ -277,7 +283,10 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             $stmt->execute(['entrega_id' => $entrega['id']]);
             $entrega['fotos'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Problemas (com tratamento vinculado — Bloco 4)
+            // ================================================================
+            // PROBLEMAS (com tratamento vinculado — Bloco 4)
+            // 🔥 Inclui id_transacao_erp e id_filial_erp do tratamento
+            // ================================================================
             $stmt = $pdo->prepare("
                 SELECT 
                     p.id,
@@ -294,6 +303,8 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
                     p.created_at,
                     t.id                     AS tratamento_id,
                     t.tipo_tratamento        AS tratamento_tipo,
+                    t.id_transacao_erp       AS tratamento_id_transacao_erp,
+                    t.id_filial_erp          AS tratamento_id_filial_erp,
                     t.status                 AS tratamento_status,
                     t.numero_comprovante     AS tratamento_numero_comprovante,
                     t.comprovante_emitido_em AS tratamento_comprovante_emitido_em,
@@ -368,7 +379,10 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         }
         $embarque['total_problemas'] = $totalProblemas;
 
-        // 🔥 7. PEDIDOS DE ACERTO CRIADOS
+        // ================================================================
+        // 7. PEDIDOS DE ACERTO CRIADOS
+        // 🔥 Inclui tipo_tratamento, id_transacao_erp e id_filial_erp
+        // ================================================================
         $stmt = $pdo->prepare("
             SELECT 
                 ap.id,
@@ -379,6 +393,8 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
                 ap.cliente_nome,
                 ap.tipo_problema,
                 ap.tipo_tratamento,
+                ap.id_transacao_erp,
+                ap.id_filial_erp,
                 ap.itens_afetados,
                 ap.motivo,
                 ap.observacoes,
@@ -433,9 +449,14 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
     }
 }
     
-    /**
+  /**
  * GET /v1/frota/acerto/pedido/{id}
  * Busca detalhes de um pedido de acerto específico
+ *
+ * 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 6):
+ *   - Adiciona `tipo_tratamento`, `id_transacao_erp` e `id_filial_erp`
+ *     no SELECT para o frontend conseguir derivar a transação correta
+ *     no gerarPedidoERP().
  */
 public function getPedidoAcerto(Request $request, Response $response, array $args): Response
 {
@@ -458,6 +479,9 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
                 ap.numero_pedido,
                 ap.cliente_nome,
                 ap.tipo_problema,
+                ap.tipo_tratamento,
+                ap.id_transacao_erp,
+                ap.id_filial_erp,
                 ap.itens_afetados,
                 ap.motivo,
                 ap.observacoes,
@@ -736,6 +760,14 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
  *   - Compatibilidade: se `tipo_tratamento` não vier, deriva do `tipo_problema`
  *   - Para DEVOLUÇÃO: NÃO cria pedido de acerto, só registra o tratamento
  *     e retorna `proximo_passo: 'gerar_comprovante'`
+ *
+ * 🔥 MUDANÇA 2026-09-21 (Bloco 4.1 — Bloqueio de duplicação):
+ *   - Antes de criar um novo pedido de FALTANTE, verifica se já existe
+ *     um pedido de acerto ativo (pendente/processando/criado_erp) para
+ *     a mesma entrega neste acerto.
+ *   - Se existir, retorna HTTP 409 com `code: 'PEDIDO_JA_EXISTE'` e o
+ *     `pedido_id` existente pra o frontend redirecionar o usuário.
+ *   - NÃO se aplica a devolução (devolução não gera pedido de acerto).
  */
 public function criarPedidoProblema(Request $request, Response $response): Response
 {
@@ -753,7 +785,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
     $problemaId = (int)($input['problema_id'] ?? 0);
 
     // ============================================================
-    // 🔥 NOVO: Resolver tipo_tratamento
+    // Resolver tipo_tratamento
     // ============================================================
     $tipoTratamentoRecebido = trim((string)($input['tipo_tratamento'] ?? ''));
 
@@ -766,7 +798,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
     // Compatibilidade retroativa: se não veio, derivar do tipo_problema
     if ($tipoTratamentoRecebido === '') {
         if ($tipoProblema === 'faltante') {
-            $tipoTratamentoRecebido = 'faltante_com_estoque'; // padrão seguro
+            $tipoTratamentoRecebido = 'faltante_com_estoque';
         } elseif ($tipoProblema === 'devolucao') {
             $tipoTratamentoRecebido = 'devolucao_comprovante';
         }
@@ -835,7 +867,6 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         $idTransacaoErp = 20;
         $tipoFaltante = 'sem_estoque';
     }
-    // devolucao_comprovante → idTransacaoErp permanece NULL
 
     try {
         $pdo = $this->pdo;
@@ -861,6 +892,73 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         }
 
         $embarqueId = $acerto['embarque_id'];
+
+        // ============================================================
+        // 🔥 NOVO 2026-09-21 (Bloco 4.1): BLOQUEIO DE DUPLICAÇÃO
+        // ------------------------------------------------------------
+        // Só se aplica a FALTANTE (devolução não gera pedido de acerto).
+        // Verifica se já existe um pedido de acerto ativo para a MESMA
+        // entrega neste acerto, independente do tipo de tratamento.
+        // ============================================================
+        if ($tipoTratamentoRecebido === 'faltante_com_estoque'
+            || $tipoTratamentoRecebido === 'faltante_sem_estoque') {
+
+            $stmtDup = $pdo->prepare("
+                SELECT 
+                    ap.id,
+                    ap.tipo_tratamento,
+                    ap.id_transacao_erp,
+                    ap.status,
+                    ap.valor_total,
+                    ap.created_at,
+                    ap.pedido_erp_criado_id,
+                    ap.numero_pedido_criado
+                FROM frota_acerto_pedido ap
+                WHERE ap.acerto_id = :acerto_id
+                  AND ap.entrega_id = :entrega_id
+                  AND ap.tipo_problema = 'faltante'
+                  AND ap.status IN ('pendente', 'processando', 'criado_erp')
+                ORDER BY ap.id DESC
+                LIMIT 1
+            ");
+            $stmtDup->execute([
+                'acerto_id' => $acertoId,
+                'entrega_id' => $entregaId
+            ]);
+            $pedidoDuplicado = $stmtDup->fetch(\PDO::FETCH_ASSOC);
+
+            if ($pedidoDuplicado) {
+                $pdo->rollBack();
+
+                $labelStatus = [
+                    'pendente'    => 'pendente (ainda não enviado ao ERP)',
+                    'processando' => 'em processamento no ERP',
+                    'criado_erp'  => 'já criado no ERP',
+                ][$pedidoDuplicado['status']] ?? $pedidoDuplicado['status'];
+
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => sprintf(
+                        "Já existe um pedido de faltante #%d para esta entrega (status: %s, valor: R$ %s). " .
+                        "Consulte o card 'Pedidos de Acerto' para continuar.",
+                        $pedidoDuplicado['id'],
+                        $labelStatus,
+                        number_format((float)($pedidoDuplicado['valor_total'] ?? 0), 2, ',', '.')
+                    ),
+                    'code' => 'PEDIDO_JA_EXISTE',
+                    'pedido_id' => (int)$pedidoDuplicado['id'],
+                    'pedido_status' => $pedidoDuplicado['status'],
+                    'pedido_tipo_tratamento' => $pedidoDuplicado['tipo_tratamento'],
+                    'pedido_valor_total' => (float)($pedidoDuplicado['valor_total'] ?? 0),
+                    'pedido_criado_em' => $pedidoDuplicado['created_at'],
+                    'pedido_erp_id' => $pedidoDuplicado['pedido_erp_criado_id'],
+                    'pedido_numero_erp' => $pedidoDuplicado['numero_pedido_criado']
+                ], 409);
+            }
+        }
+        // ============================================================
+        // FIM DO BLOCO NOVO
+        // ============================================================
 
         // ============================================================
         // 2. BUSCAR DADOS DA ENTREGA
@@ -1092,10 +1190,8 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         $clienteNome = $clientesPedidos[0]['cliente_nome'] ?: $entrega['cliente_nome'];
 
         // ============================================================
-        // 🆕 7. GRAVAR CAMADA 2 (TRATAMENTO) — frota_problema_tratamento
+        // 7. GRAVAR CAMADA 2 (TRATAMENTO) — frota_problema_tratamento
         // ============================================================
-        // Só grava se tivermos um `problema_id` válido vindo do frontend.
-        // Se não vier, mantemos compatibilidade (tratamento implícito nos espelhos).
         $tratamentoId = null;
 
         if ($problemaId > 0) {
@@ -1107,9 +1203,6 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
             $problemaExiste = $stmtProblema->fetchColumn();
 
             if ($problemaExiste) {
-                // Status inicial:
-                //   faltante (com/sem estoque) → 'pendente' (aguardando criar pedido ERP)
-                //   devolução                    → 'aguardando_fat' (aguardando comprovante)
                 $statusInicial = ($tipoTratamentoRecebido === 'devolucao_comprovante')
                     ? 'aguardando_fat'
                     : 'pendente';
@@ -1149,7 +1242,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
                     'tipo_tratamento' => $tipoTratamentoRecebido,
                     'id_transacao_erp' => $idTransacaoErp,
                     'id_filial_erp' => (int)($input['id_filial'] ?? 1),
-                    'transacao_descricao' => null, // preenchido no Passo 2.2
+                    'transacao_descricao' => null,
                     'valor_afetado' => $valorTotal,
                     'status' => $statusInicial,
                     'decidido_por' => $usuarioId,
@@ -1163,9 +1256,6 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         // ============================================================
         // 8. DECISÃO DE FLUXO: DEVOLUÇÃO ENCERRA AQUI
         // ============================================================
-        // Para DEVOLUÇÃO: NÃO cria pedido de acerto.
-        // Só registra o tratamento (Camada 2) com status 'aguardando_fat'.
-        // O comprovante será gerado por endpoint separado (Passo 2.4).
         if ($tipoTratamentoRecebido === 'devolucao_comprovante') {
             $this->registrarLog(
                 $embarqueId,
@@ -1192,7 +1282,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         }
 
         // ============================================================
-        // 9. FALTANTE (com/sem estoque): CRIAR PEDIDO DE ACERTO
+        // 9. FALTANTE: CRIAR PEDIDO DE ACERTO
         // ============================================================
         $stmt = $pdo->prepare("
             INSERT INTO frota_acerto_pedido (
@@ -1254,7 +1344,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
             'tipo_tratamento' => $tipoTratamentoRecebido,
             'id_transacao_erp' => $idTransacaoErp,
             'id_filial_erp' => (int)($input['id_filial'] ?? 1),
-            'transacao_descricao' => null // preenchido no Passo 2.2
+            'transacao_descricao' => null
         ]);
 
         $pedidoAcertoId = $stmt->fetchColumn();
@@ -1268,7 +1358,7 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
         }
 
         // ============================================================
-        // 10. VINCULAR TRATAMENTO AO PEDIDO (Camada 2 → Camada 3)
+        // 10. VINCULAR TRATAMENTO AO PEDIDO
         // ============================================================
         if ($tratamentoId) {
             $stmtLink = $pdo->prepare("
@@ -1405,25 +1495,26 @@ public function criarPedidoProblema(Request $request, Response $response): Respo
 /**
  * POST /v1/frota/acerto/tratamento/{id}/gerar-comprovante
  *
- * 🔥 NOVO 2026-09-18 (Bloco 2, Passo 2.4):
- *   Gera o número de comprovante de devolução (DEV-AAAA-NNNNNN) para um
- *   tratamento com tipo_tratamento = 'devolucao_comprovante'.
+ * Gera o número de comprovante de devolução (DEV-AAAA-NNNNNN) para um
+ * tratamento com tipo_tratamento = 'devolucao_comprovante'.
  *
- *   Regras:
- *     - 1 comprovante por tratamento (granularidade individual)
- *     - Numeração por filial + ano (UNIQUE id_filial, ano)
- *     - Formato: DEV-AAAA-NNNNNN (6 dígitos zero-padded)
- *     - Itens vêm de frota_checklist_entrega WHERE status = 'devolvido'
- *     - NÃO cria pedido ERP; apenas registra para o faturamento consumir
- *     - Após emitir, o tratamento muda de 'aguardando_fat' → 'comprovante_emitido'
+ * Regras:
+ *   - 1 comprovante por tratamento (granularidade individual)
+ *   - Numeração por filial + ano (UNIQUE id_filial, ano)
+ *   - Formato: DEV-AAAA-NNNNNN (6 dígitos zero-padded)
+ *   - Itens vêm de frota_checklist_entrega WHERE status = 'devolvido'
+ *   - NÃO cria pedido ERP; apenas registra para o faturamento consumir
+ *   - Após emitir, o tratamento muda de 'aguardando_fat' → 'comprovante_emitido'
  *
- *   🔥 CORRIGIDO 2026-09-18 (após teste real):
- *     - Removido SELECT das colunas `nome` e `cpf` em `usuario`
- *       (essas colunas NÃO existem na tabela — quebrava a transação)
- *     - Agora busca apenas `username` e usa o nome do JWT como fallback
- *     - `registrarLog()` movido para FORA da transação (não derruba o commit)
- *
- *   Retorno: dados estruturados para o frontend montar o HTML do comprovante.
+ * 🔥 CORRIGIDO 2026-09-21 (v3):
+ *   - Motorista e veículo vêm PRIMEIRO de frota_embarque (fonte original),
+ *     com fallback via frota_acerto_embarque (histórico)
+ *   - Aceita ae.status IN ('pendente', 'em_andamento', 'finalizado')
+ *   - Retorna payload ACHATADO (top-level) além do aninhado:
+ *     - cliente_nome, motorista_nome, veiculo_placa no top-level
+ *     - endereco_completo já formatado
+ *     - itens e itens_devolvidos (mesmo array)
+ *   - Frontend lê direto sem precisar acessar `.entrega.X` / `.embarque.X`
  */
 public function gerarComprovanteDevolucao(Request $request, Response $response, array $args): Response
 {
@@ -1440,7 +1531,6 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
         ], 400);
     }
 
-    // Variáveis que precisam existir depois do try/catch para o log
     $embarqueIdParaLog = 0;
     $numeroComprovanteParaLog = '';
     $emitenteNome = $usuarioNome;
@@ -1451,6 +1541,8 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
 
         // ============================================================
         // 1. BUSCAR TRATAMENTO + CONTEXTO COMPLETO
+        // 🔥 Motorista/veículo vêm PRIMEIRO de frota_embarque
+        //    (fonte original), com COALESCE pra frota_acerto_embarque
         // ============================================================
         $stmt = $pdo->prepare("
             SELECT
@@ -1488,31 +1580,40 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
                 ent.nome_recebedor,
                 ent.horario_checkin,
                 ent.horario_entrega,
-                -- Embarque
-                e.id                       AS embarque_id,
+                -- Embarque (fonte original)
+                e.id                       AS embarque_id_real,
                 e.numero_embarque,
                 e.nome_embarque,
-                -- Acerto
+                e.motorista_id             AS embarque_motorista_id,
+                e.veiculo_id               AS embarque_veiculo_id,
+                -- Acerto (opcional — dados de gestor/data)
                 ae.id                      AS acerto_id,
                 ae.gestor_nome,
                 ae.data_inicio_acerto,
-                -- Motorista
-                m.nome                     AS motorista_nome,
-                m.cpf                      AS motorista_cpf,
-                m.telefone                 AS motorista_telefone,
-                -- Veículo
-                v.placa                    AS veiculo_placa,
-                v.modelo                   AS veiculo_modelo,
-                v.marca                    AS veiculo_marca,
-                v.cor                      AS veiculo_cor
+                -- Motorista: PRIMEIRO via embarque, fallback via acerto
+                COALESCE(m_emb.nome,     m_ac.nome)     AS motorista_nome,
+                COALESCE(m_emb.cpf,      m_ac.cpf)      AS motorista_cpf,
+                COALESCE(m_emb.telefone, m_ac.telefone) AS motorista_telefone,
+                -- Veículo: PRIMEIRO via embarque, fallback via acerto
+                COALESCE(v_emb.placa,    v_ac.placa)    AS veiculo_placa,
+                COALESCE(v_emb.modelo,   v_ac.modelo)   AS veiculo_modelo,
+                COALESCE(v_emb.marca,    v_ac.marca)    AS veiculo_marca,
+                COALESCE(v_emb.cor,      v_ac.cor)      AS veiculo_cor
             FROM frota_problema_tratamento t
             INNER JOIN frota_entrega_problema p ON p.id = t.problema_id
             INNER JOIN frota_entrega ent        ON ent.id = p.entrega_id
             INNER JOIN frota_embarque e         ON e.id = ent.embarque_id
+            -- Acerto (opcional) — aceita pendente/em_andamento/finalizado
             LEFT JOIN frota_acerto_embarque ae  ON ae.embarque_id = e.id
-                                                AND ae.status IN ('em_andamento', 'finalizado')
-            LEFT JOIN frota_motorista m         ON m.id = ae.motorista_id
-            LEFT JOIN frota_veiculo v           ON v.id = ae.veiculo_id
+                                                AND ae.status IN ('pendente', 'em_andamento', 'finalizado')
+            -- Motorista via embarque (fonte original)
+            LEFT JOIN frota_motorista m_emb     ON m_emb.id = e.motorista_id
+            -- Motorista via acerto (fallback histórico)
+            LEFT JOIN frota_motorista m_ac      ON m_ac.id = ae.motorista_id
+            -- Veículo via embarque (fonte original)
+            LEFT JOIN frota_veiculo v_emb       ON v_emb.id = e.veiculo_id
+            -- Veículo via acerto (fallback histórico)
+            LEFT JOIN frota_veiculo v_ac        ON v_ac.id = ae.veiculo_id
             WHERE t.id = :id
             ORDER BY ae.id DESC NULLS LAST
             LIMIT 1
@@ -1595,7 +1696,6 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
 
         // ============================================================
         // 5. BUSCAR ITENS DEVOLVIDOS (frota_checklist_entrega)
-        //    Filtro: status = 'devolvido'
         // ============================================================
         $stmtItens = $pdo->prepare("
             SELECT
@@ -1617,9 +1717,7 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
 
         // ============================================================
         // 6. DADOS DO EMITENTE
-        // 🔥 CORRIGIDO 2026-09-18: a tabela `usuario` NÃO possui as
-        //    colunas `nome` e `cpf`. Buscamos apenas `username`.
-        //    Se falhar, mantemos o nome vindo do JWT ($usuarioNome).
+        // 🔥 a tabela `usuario` só tem `username`
         // ============================================================
         if ($usuarioId > 0) {
             try {
@@ -1635,7 +1733,6 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
                     $emitenteNome = $u['username'];
                 }
             } catch (\Exception $e) {
-                // mantém o nome do JWT
                 error_log('[Acerto] Aviso: não foi possível buscar username do emitente: ' . $e->getMessage());
             }
         }
@@ -1680,13 +1777,10 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
 
         // ============================================================
         // 8. COMMIT PRIMEIRO
-        // 🔥 CORRIGIDO 2026-09-18: o log é feito DEPOIS do commit.
-        //    Se o log falhar, o comprovante já foi emitido e não
-        //    derruba a operação principal.
         // ============================================================
         $pdo->commit();
 
-        $embarqueIdParaLog = (int)$tratamento['embarque_id'];
+        $embarqueIdParaLog = (int)$tratamento['embarque_id_real'];
         $numeroComprovanteParaLog = $numeroComprovante;
 
         // ============================================================
@@ -1704,83 +1798,133 @@ public function gerarComprovanteDevolucao(Request $request, Response $response, 
         }
 
         // ============================================================
-        // 10. MONTAR RESPOSTA ESTRUTURADA PARA O FRONT
+        // 10. FORMATAR ITENS
         // ============================================================
         $itensFormatados = array_map(function ($it) {
-            $qtd = (float)($it['quantidade_prevista'] ?? 0)
-                 - (float)($it['quantidade_entregue'] ?? 0);
+            $qtdDev = (float)($it['quantidade_prevista'] ?? 0)
+                    - (float)($it['quantidade_entregue'] ?? 0);
             return [
                 'item_id'              => (int)($it['item_id'] ?? 0),
                 'referencia'           => $it['referencia'] ?? '',
                 'descricao'            => $it['descricao'] ?? '',
                 'quantidade_prevista'  => (float)($it['quantidade_prevista'] ?? 0),
                 'quantidade_entregue'  => (float)($it['quantidade_entregue'] ?? 0),
-                'quantidade_devolvida' => max(0, $qtd),
+                'quantidade_devolvida' => max(0, $qtdDev),
                 'motivo'               => $it['motivo'] ?? null,
-                'foto_url'             => $it['foto_url'] ?? null
+                'foto_url'             => $it['foto_url'] ?? null,
+                'valor_total'          => 0
             ];
         }, $itensDevolvidos);
+
+        // ============================================================
+        // 11. MONTAR ENDEREÇO COMPLETO
+        // ============================================================
+        $enderecoCompleto = trim(implode(', ', array_filter([
+            trim(($tratamento['endereco'] ?? '') . ' ' . ($tratamento['endereco_numero'] ?? '')),
+            $tratamento['bairro'] ?? '',
+            trim(($tratamento['cidade'] ?? '') . '/' . ($tratamento['uf'] ?? '')),
+            $tratamento['cep'] ?? ''
+        ])));
+
+        // ============================================================
+        // 12. MONTAR PAYLOAD (achatado + aninhado)
+        // ============================================================
+        $payload = [
+            // ------ CAMPOS DE TOPO (achatados) ------
+            'tratamento_id'          => $tratamentoId,
+            'numero_comprovante'     => $numeroComprovante,
+            'comprovante_emitido_em' => date('Y-m-d H:i:s'),
+            'emitido_em'             => date('Y-m-d H:i:s'),
+            'emitente_nome'          => $emitenteNome,
+            'status'                 => 'comprovante_emitido',
+            'tipo_tratamento'        => $tratamento['tipo_tratamento'],
+
+            // Cliente/entrega (achatado)
+            'entrega_id'             => (int)$tratamento['entrega_id'],
+            'cliente_nome'           => $tratamento['cliente_nome'] ?? '',
+            'endereco'               => $tratamento['endereco'] ?? '',
+            'numero_end'             => $tratamento['endereco_numero'] ?? '',
+            'bairro'                 => $tratamento['bairro'] ?? '',
+            'cidade'                 => $tratamento['cidade'] ?? '',
+            'uf'                     => $tratamento['uf'] ?? '',
+            'endereco_completo'      => $enderecoCompleto,
+            'codigo_rastreamento'    => $tratamento['codigo_rastreamento'] ?? '',
+
+            // Embarque/motorista/veículo (achatado)
+            'embarque_id'            => (int)$tratamento['embarque_id_real'],
+            'numero_embarque'        => $tratamento['numero_embarque'] ?? '',
+            'motorista_nome'         => $tratamento['motorista_nome'] ?? '',
+            'motorista_cpf'          => $tratamento['motorista_cpf'] ?? '',
+            'motorista_fone'         => $tratamento['motorista_telefone'] ?? '',
+            'veiculo_placa'          => $tratamento['veiculo_placa'] ?? '',
+            'veiculo_modelo'         => $tratamento['veiculo_modelo'] ?? '',
+            'veiculo_marca'          => $tratamento['veiculo_marca'] ?? '',
+
+            // Itens
+            'itens'                  => $itensFormatados,
+            'itens_devolvidos'       => $itensFormatados,
+            'valor_total'            => (float)($tratamento['valor_afetado'] ?? 0),
+
+            // ------ ESTRUTURA ANINHADA (compatibilidade) ------
+            'emitido_por' => [
+                'id'   => $usuarioId,
+                'nome' => $emitenteNome
+            ],
+            'filial' => [
+                'id_filial'  => $idFilial,
+                'ano'        => $ano,
+                'sequencial' => $ultimoNumero
+            ],
+            'tratamento' => [
+                'id'               => $tratamentoId,
+                'problema_id'      => (int)$tratamento['problema_id'],
+                'tipo_tratamento'  => $tratamento['tipo_tratamento'],
+                'id_transacao_erp' => $tratamento['id_transacao_erp'],
+                'valor_afetado'    => (float)($tratamento['valor_afetado'] ?? 0),
+                'decidido_em'      => $tratamento['decidido_em']
+            ],
+            'problema' => [
+                'id'                 => (int)$tratamento['problema_origem_id'],
+                'tipo_problema'      => $tratamento['problema_tipo'],
+                'descricao'          => $tratamento['descricao_problema'],
+                'quantidade_afetada' => (float)($tratamento['quantidade_afetada'] ?? 0),
+                'item_id'            => (int)($tratamento['problema_item_id'] ?? 0),
+                'referencia'         => $tratamento['problema_referencia']
+            ],
+            'entrega' => [
+                'id'                  => (int)$tratamento['entrega_id'],
+                'cliente_nome'        => $tratamento['cliente_nome'] ?? '',
+                'endereco'            => $tratamento['endereco'] ?? '',
+                'numero_end'          => $tratamento['endereco_numero'] ?? '',
+                'bairro'              => $tratamento['bairro'] ?? '',
+                'cidade'              => $tratamento['cidade'] ?? '',
+                'uf'                  => $tratamento['uf'] ?? '',
+                'cep'                 => $tratamento['cep'] ?? '',
+                'endereco_completo'   => $enderecoCompleto,
+                'codigo_rastreamento' => $tratamento['codigo_rastreamento'] ?? '',
+                'nome_recebedor'      => $tratamento['nome_recebedor'] ?? '',
+                'horario_checkin'     => $tratamento['horario_checkin'] ?? '',
+                'horario_entrega'     => $tratamento['horario_entrega'] ?? ''
+            ],
+            'embarque' => [
+                'id'              => (int)$tratamento['embarque_id_real'],
+                'numero_embarque' => $tratamento['numero_embarque'] ?? '',
+                'nome_embarque'   => $tratamento['nome_embarque'] ?? '',
+                'motorista_nome'  => $tratamento['motorista_nome'] ?? '',
+                'motorista_cpf'   => $tratamento['motorista_cpf'] ?? '',
+                'motorista_fone'  => $tratamento['motorista_telefone'] ?? '',
+                'veiculo_placa'   => $tratamento['veiculo_placa'] ?? '',
+                'veiculo_modelo'  => $tratamento['veiculo_modelo'] ?? '',
+                'veiculo_marca'   => $tratamento['veiculo_marca'] ?? '',
+                'veiculo_cor'     => $tratamento['veiculo_cor'] ?? ''
+            ],
+            'observacoes' => $obsAtual
+        ];
 
         return $this->json($response, [
             'success' => true,
             'message' => "Comprovante {$numeroComprovante} emitido com sucesso.",
-            'data' => [
-                'tratamento_id'      => $tratamentoId,
-                'numero_comprovante' => $numeroComprovante,
-                'emitido_em'         => date('Y-m-d H:i:s'),
-                'emitido_por'        => [
-                    'id'   => $usuarioId,
-                    'nome' => $emitenteNome
-                ],
-                'filial' => [
-                    'id_filial'  => $idFilial,
-                    'ano'        => $ano,
-                    'sequencial' => $ultimoNumero
-                ],
-                'tratamento' => [
-                    'id'               => $tratamentoId,
-                    'problema_id'      => (int)$tratamento['problema_id'],
-                    'tipo_tratamento'  => $tratamento['tipo_tratamento'],
-                    'id_transacao_erp' => $tratamento['id_transacao_erp'],
-                    'valor_afetado'    => (float)($tratamento['valor_afetado'] ?? 0),
-                    'decidido_em'      => $tratamento['decidido_em']
-                ],
-                'problema' => [
-                    'id'                 => (int)$tratamento['problema_origem_id'],
-                    'tipo_problema'      => $tratamento['problema_tipo'],
-                    'descricao'          => $tratamento['descricao_problema'],
-                    'quantidade_afetada' => (float)($tratamento['quantidade_afetada'] ?? 0),
-                    'item_id'            => (int)($tratamento['problema_item_id'] ?? 0),
-                    'referencia'         => $tratamento['problema_referencia']
-                ],
-                'entrega' => [
-                    'id'                  => (int)$tratamento['entrega_id'],
-                    'cliente_nome'        => $tratamento['cliente_nome'],
-                    'endereco'            => trim(sprintf('%s %s', $tratamento['endereco'] ?? '', $tratamento['endereco_numero'] ?? '')),
-                    'bairro'              => $tratamento['bairro'],
-                    'cidade'              => $tratamento['cidade'],
-                    'uf'                  => $tratamento['uf'],
-                    'cep'                 => $tratamento['cep'],
-                    'codigo_rastreamento' => $tratamento['codigo_rastreamento'],
-                    'nome_recebedor'      => $tratamento['nome_recebedor'],
-                    'horario_checkin'     => $tratamento['horario_checkin'],
-                    'horario_entrega'     => $tratamento['horario_entrega']
-                ],
-                'embarque' => [
-                    'id'              => (int)$tratamento['embarque_id'],
-                    'numero_embarque' => $tratamento['numero_embarque'],
-                    'nome_embarque'   => $tratamento['nome_embarque'],
-                    'motorista_nome'  => $tratamento['motorista_nome'],
-                    'motorista_cpf'   => $tratamento['motorista_cpf'],
-                    'motorista_fone'  => $tratamento['motorista_telefone'],
-                    'veiculo_placa'   => $tratamento['veiculo_placa'],
-                    'veiculo_modelo'  => $tratamento['veiculo_modelo'],
-                    'veiculo_marca'   => $tratamento['veiculo_marca'],
-                    'veiculo_cor'     => $tratamento['veiculo_cor']
-                ],
-                'itens_devolvidos' => $itensFormatados,
-                'observacoes'      => $obsAtual
-            ]
+            'data' => $payload
         ]);
 
     } catch (\Exception $e) {

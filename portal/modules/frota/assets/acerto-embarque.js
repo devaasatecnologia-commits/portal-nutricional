@@ -359,20 +359,27 @@ function renderizarResumoAcertos(embarques) {
 }
 
 // ================================================================
-// ABRIR ACERTO (MODAL) - VERSÃO CORRIGIDA
+// ABRIR ACERTO (MODAL)
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.2):
+//   - Reset do botão "Conferido Total" para VISÍVEL ao abrir
+//   - Reset do botão "Visualizar Comprovante" para ESCONDIDO
+//   - Após carregar os detalhes, se o acerto já está finalizado,
+//     `atualizarBotoesAcerto('finalizado')` alterna os botões:
+//     esconde "Conferido Total" e mostra "Visualizar Comprovante"
 // ================================================================
 function abrirAcerto(embarqueId) {
     if (!embarqueId) {
         showError('ID do embarque não informado');
         return;
     }
-    
+
     console.log('📌 abrirAcerto chamado com ID:', embarqueId);
-    
+
     acertoAtual.embarque_id = embarqueId;
     acertoAtual.id = null;
     acertoAtual.status = null;
-    
+
     const conteudo = document.getElementById('acerto-conteudo');
     const topoModal = document.getElementById('acerto-topo');
     if (topoModal) topoModal.innerHTML = '';
@@ -384,11 +391,19 @@ function abrirAcerto(embarqueId) {
             </div>
         `;
     }
-    
+
+    // ============================================================
+    // RESET DOS BOTÕES DO FOOTER
+    // 🔥 MUDANÇA (Bloco 4.2): inclui btnConferidoTotal e
+    //    btnVisualizarComprovante no reset padrão
+    // ============================================================
     const btnIniciar = document.getElementById('btn-iniciar-acerto');
     const btnFinalizar = document.getElementById('btn-finalizar-acerto');
     const btnCancelar = document.getElementById('btn-cancelar-acerto');
-    
+    const btnConferidoTotal = document.getElementById('btn-conferido-total');
+    const btnVisualizarComprovante = document.getElementById('btn-visualizar-comprovante');
+
+    // Estado inicial: só "Iniciar Acerto" fica visível
     if (btnIniciar) {
         btnIniciar.style.display = 'inline-flex';
         btnIniciar.style.visibility = 'visible';
@@ -404,19 +419,29 @@ function abrirAcerto(embarqueId) {
         btnCancelar.style.visibility = 'hidden';
         btnCancelar.style.opacity = '0';
     }
-    
+    // "Conferido Total" começa VISÍVEL (será escondido se o acerto
+    // já estiver finalizado, no callback da API)
+    if (btnConferidoTotal) {
+        btnConferidoTotal.style.display = 'inline-flex';
+    }
+    // "Visualizar Comprovante" começa ESCONDIDO
+    if (btnVisualizarComprovante) {
+        btnVisualizarComprovante.style.display = 'none';
+    }
+    // ============================================================
+
     const modal = document.getElementById('modalAcerto');
     if (!modal) {
         showError('Modal de acerto não encontrado');
         return;
     }
-    
+
     const oldBackdrops = document.querySelectorAll('.modal-backdrop');
     oldBackdrops.forEach(b => b.remove());
-    
+
     document.body.classList.remove('modal-open');
     document.body.style.overflow = '';
-    
+
     modal.style.display = 'block';
     modal.style.visibility = 'visible';
     modal.style.opacity = '1';
@@ -428,7 +453,7 @@ function abrirAcerto(embarqueId) {
     modal.style.zIndex = '1050';
     modal.style.overflow = 'hidden';
     modal.style.outline = '0';
-    
+
     const backdrop = document.createElement('div');
     backdrop.className = 'modal-backdrop fade show';
     backdrop.style.position = 'fixed';
@@ -439,12 +464,12 @@ function abrirAcerto(embarqueId) {
     backdrop.style.zIndex = '1040';
     backdrop.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
     document.body.appendChild(backdrop);
-    
+
     document.body.style.overflow = 'hidden';
     document.body.classList.add('modal-open');
-    
+
     modal.classList.add('show');
-    
+
     const modalDialog = modal.querySelector('.modal-dialog');
     if (modalDialog) {
         modalDialog.style.width = '100vw';
@@ -455,7 +480,7 @@ function abrirAcerto(embarqueId) {
         modalDialog.style.display = 'flex';
         modalDialog.style.flexDirection = 'column';
     }
-    
+
     const modalContent = modal.querySelector('.modal-content');
     if (modalContent) {
         modalContent.style.height = '100vh';
@@ -464,7 +489,7 @@ function abrirAcerto(embarqueId) {
         modalContent.style.display = 'flex';
         modalContent.style.flexDirection = 'column';
     }
-    
+
     const modalBody = modal.querySelector('.modal-body');
     if (modalBody) {
         modalBody.style.overflowY = 'auto';
@@ -472,51 +497,58 @@ function abrirAcerto(embarqueId) {
         modalBody.style.maxHeight = 'none';
         modalBody.style.padding = '20px 28px';
     }
-    
-    const handleEsc = function(e) {
+
+    const handleEsc = function (e) {
         if (e.key === 'Escape') {
             fecharModalAcerto();
         }
     };
     document.addEventListener('keydown', handleEsc);
     modal._handleEsc = handleEsc;
-    
-    backdrop.addEventListener('click', function(e) {
+
+    backdrop.addEventListener('click', function (e) {
         if (e.target === backdrop) {
             fecharModalAcerto();
         }
     });
-    
+
     const url = API_BASE + '/frota/acerto/' + embarqueId + '/detalhes';
     console.log('📡 Buscando: GET ' + url);
-    
+
     fetchAuth(url)
     .then(data => {
         console.log('📦 Dados recebidos da API:', data);
-        
+
         if (data.success) {
             console.log('✅ Renderizando detalhes do acerto...');
             renderizarDetalhesAcerto(data.data);
-            
-                       if (data.data.acerto_existente) {
+
+            // ============================================================
+            // ATUALIZAR BOTÕES CONFORME STATUS DO ACERTO
+            // 🔥 MUDANÇA (Bloco 4.2):
+            //   - Se acerto já existe (em_andamento/pendente/finalizado)
+            //     → `atualizarBotoesAcerto` cuida de alternar os botões
+            //   - Se não existe acerto → ainda avalia se "Iniciar Acerto"
+            //     pode ser habilitado com base no embarque_status
+            //     (Opção A do Bloco 4)
+            // ============================================================
+            if (data.data.acerto_existente) {
                 acertoAtual.id = data.data.acerto_existente.id;
                 acertoAtual.status = data.data.acerto_existente.status;
+
                 atualizarBotoesAcerto(
                     data.data.acerto_existente.status,
                     data.data.embarque_status
                 );
             } else {
-                // Sem acerto existente → ainda precisa avaliar se o botão
-                // "Iniciar Acerto" pode ficar habilitado com base no
-                // embarque_status (Opção A do Bloco 4)
                 atualizarBotoesAcerto(null, data.data.embarque_status);
             }
-            
+
             const numeroEl = document.getElementById('acerto-numero');
             if (numeroEl) {
                 numeroEl.textContent = data.data.numero_embarque || embarqueId;
             }
-            
+
             const statusBadge = document.getElementById('acerto-status-badge');
             if (statusBadge && data.data.embarque_status) {
                 const statusMap = {
@@ -526,12 +558,15 @@ function abrirAcerto(embarqueId) {
                     'cancelado': { label: '🚫 Cancelado', class: 'bg-red-100 text-red-700' },
                     'problema': { label: '⚠️ Problema', class: 'bg-orange-100 text-orange-700' }
                 };
-                const info = statusMap[data.data.embarque_status] || { label: data.data.embarque_status, class: 'bg-gray-100 text-gray-700' };
+                const info = statusMap[data.data.embarque_status] || {
+                    label: data.data.embarque_status,
+                    class: 'bg-gray-100 text-gray-700'
+                };
                 statusBadge.textContent = info.label;
                 statusBadge.className = 'ml-2 px-3 py-1 rounded-full text-xs font-bold ' + info.class;
                 statusBadge.style.display = 'inline-block';
             }
-            
+
             console.log('✅ Detalhes renderizados com sucesso!');
         } else {
             console.error('❌ Erro na resposta da API:', data.error);
@@ -556,7 +591,7 @@ function abrirAcerto(embarqueId) {
             `;
         }
     });
-    
+
     window.modalAcertoRef = {
         modal: modal,
         backdrop: backdrop,
@@ -628,12 +663,20 @@ function alternarDetalhesEntrega(button) {
 }
 
 // ================================================================
-// RENDERIZAR DETALHES DO ACERTO — v3 (Bloco 4, Etapa 2 + reimpressão)
+// RENDERIZAR DETALHES DO ACERTO — v5 (Bloco 4 + 4.1)
 //
-// Mudanças v3 (2026-09-18):
-//   - Botão "Gerar Comprovante" + Badge verde com botão de reimpressão
-//   - Regra de exclusividade mútua entre faltante e devolução mantida
-//   - Fallback de link "Gerar faltante também" quando há ambos
+// Mudanças v4 (2026-09-21):
+//   - DEVOLUÇÃO SEM TRATAMENTO agora tem botão "Tratar devolução"
+//   - Card de pedido de acerto exibe badge "Transação 19 / 20"
+//   - Fallback visual mais claro quando o backend não devolve
+//     `tipo_tratamento`
+//
+// 🔥 MUDANÇA v5 (2026-09-21, Bloco 4.1):
+//   - Substitui "Gerar Pedido" (laranja) por badge informativo azul
+//     quando já existe pedido de faltante ativo para a entrega.
+//   - O badge é CLICÁVEL e rola até o card do pedido existente.
+//   - Reduz frustração de "clicar e receber aviso" → o usuário já vê
+//     de antemão que o pedido foi criado.
 // ================================================================
 function renderizarDetalhesAcerto(dados) {
     console.log('📌 renderizarDetalhesAcerto chamado com dados:', dados);
@@ -661,8 +704,6 @@ function renderizarDetalhesAcerto(dados) {
     }
     const topoModal = document.getElementById('acerto-topo');
 
-    console.log('✅ Preparando HTML...');
-
     try {
         const inputBusca = document.getElementById('acerto-busca-pedido');
         if (inputBusca) inputBusca.value = '';
@@ -681,7 +722,7 @@ function renderizarDetalhesAcerto(dados) {
         const textTitle = isDark ? 'text-white' : 'text-gray-800';
         const textSub = isDark ? 'text-gray-400' : 'text-gray-500';
         const textValue = isDark ? 'text-gray-300' : 'text-gray-800';
-        const bgHover = isDark ? 'hover:bg-gray-700/30' : 'hover:bg-gray-50';
+
         const embarquesVinculadosHtml = embarquesErp.length > 0
             ? `
                 <div class="acerto-linked-inline">
@@ -693,11 +734,13 @@ function renderizarDetalhesAcerto(dados) {
                 </div>
             `
             : '';
+
         const headerMotorista = document.getElementById('acerto-header-motorista');
         const headerVeiculo = document.getElementById('acerto-header-veiculo');
         const headerVinculados = document.getElementById('acerto-header-vinculados');
         const headerMetrics = document.getElementById('acerto-header-metrics');
         const statusBadge = document.getElementById('acerto-status-badge');
+
         if (headerMotorista) headerMotorista.textContent = dados.motorista_nome || 'Motorista não identificado';
         if (headerVeiculo) {
             headerVeiculo.innerHTML = `<i class="fa-solid fa-truck"></i> ${escapeHtml(dados.placa || 'Sem veículo')}${dados.modelo ? ' · ' + escapeHtml(dados.modelo) : ''}${dados.motorista_telefone ? ' · ' + escapeHtml(dados.motorista_telefone) : ''}`;
@@ -938,7 +981,12 @@ function renderizarDetalhesAcerto(dados) {
                 const entregaConferida = isEntregaConferida(entrega.id);
 
                 // ============================================================
-                // 🔥 DEVOLUÇÃO (comprovante) — v3 com botão de reimpressão
+                // 🔥 DEVOLUÇÃO (comprovante) — v4
+                //   4 casos:
+                //     A) comprovante emitido → badge verde + reimprimir
+                //     B) tratamento existe, sem comprovante → botão gerar
+                //     C) devolução SEM tratamento → botão "Tratar devolução"
+                //     D) sem problema de devolução → nada
                 // ============================================================
                 const problemasArr = Array.isArray(entrega.problemas) ? entrega.problemas : [];
                 const problemasDevolucao = problemasArr.filter(p =>
@@ -949,6 +997,7 @@ function renderizarDetalhesAcerto(dados) {
                 );
 
                 let botaoDevolucaoHtml = '';
+                let devolucaoSemTratamento = false;
 
                 if (problemasDevolucao.length > 0) {
                     problemasDevolucao.forEach(p => {
@@ -960,11 +1009,8 @@ function renderizarDetalhesAcerto(dados) {
                         const tratamentoId = p.tratamento_id;
 
                         if (numeroComprovante && tratamentoId) {
-                            // ============================================================
-                            // Comprovante já emitido → badge + botão reimprimir
-                            // ============================================================
+                            // CASO A) Comprovante já emitido → badge + reimprimir
                             const emitidoEm = p.tratamento_comprovante_emitido_em || '';
-
                             botaoDevolucaoHtml += `
                                 <span class="inline-flex items-center gap-1 text-xs font-semibold
                                              bg-emerald-100 text-emerald-700
@@ -973,7 +1019,6 @@ function renderizarDetalhesAcerto(dados) {
                                              border border-emerald-200 dark:border-emerald-800">
                                     <i class="fa-solid fa-circle-check"></i>
                                     <span class="pr-1">${escapeHtml(numeroComprovante)}</span>
-
                                     <button type="button"
                                             class="inline-flex items-center justify-center
                                                    w-6 h-6 rounded-md
@@ -988,9 +1033,7 @@ function renderizarDetalhesAcerto(dados) {
                                 </span>
                             `;
                         } else if (tratamentoId) {
-                            // ============================================================
-                            // Tratamento existe mas sem comprovante → botão gerar
-                            // ============================================================
+                            // CASO B) Tratamento existe, sem comprovante → botão gerar
                             botaoDevolucaoHtml += `
                                 <button type="button"
                                         class="inline-flex items-center gap-1.5 text-xs font-medium
@@ -1001,35 +1044,77 @@ function renderizarDetalhesAcerto(dados) {
                                     <i class="fa-solid fa-file-invoice"></i> Gerar Comprovante
                                 </button>
                             `;
+                        } else {
+                            // CASO C) Devolução SEM tratamento → botão para tratar
+                            devolucaoSemTratamento = true;
                         }
                     });
-                }
 
-                // Fallback: se a entrega tem problema "devolucao" mas NÃO veio com
-                // tratamento (backend antigo ou ainda não processado), avisamos.
-                if (problemasDevolucao.length > 0 && botaoDevolucaoHtml === '') {
-                    botaoDevolucaoHtml = `
-                        <span class="inline-flex items-center gap-1.5 text-xs font-medium
-                                     bg-amber-100 text-amber-700
-                                     dark:bg-amber-900/30 dark:text-amber-300
-                                     px-3 py-1.5 rounded-lg
-                                     border border-amber-200 dark:border-amber-800"
-                              title="Tratamento de devolução ainda não foi criado no backend">
-                            <i class="fa-solid fa-triangle-exclamation"></i> Devolução sem tratamento
-                        </span>
-                    `;
+                    // Se caiu no caso C, mostra botão "Tratar devolução"
+                    if (devolucaoSemTratamento && botaoDevolucaoHtml === '') {
+                        const primeiroProblema = problemasDevolucao[0];
+                        const problemaIdArg = Number(primeiroProblema.id || 0);
+                        botaoDevolucaoHtml = `
+                            <button type="button"
+                                    class="inline-flex items-center gap-1.5 text-xs font-medium
+                                           bg-amber-500 hover:bg-amber-600 text-white
+                                           px-3 py-1.5 rounded-lg transition-colors"
+                                    title="Registrar tratamento de devolução (gera comprovante para faturamento)"
+                                    onclick="tratarDevolucao(${entrega.id}, ${problemaIdArg}, ${clienteNomeArg}, this)">
+                                <i class="fa-solid fa-file-circle-plus"></i> Tratar devolução
+                            </button>
+                        `;
+                    }
                 }
 
                 // ============================================================
-                // 🔥 REGRA DE EXCLUSIVIDADE MÚTUA
+                // 🔥 REGRA DE EXCLUSIVIDADE MÚTUA (faltante x devolução)
+                //
+                // 🔥 MUDANÇA v5 (Bloco 4.1):
+                //   Se já existe pedido de faltante ATIVO para esta entrega,
+                //   substitui o botão laranja "Gerar Pedido" por um badge
+                //   informativo azul CLICÁVEL (rola até o card do pedido).
                 // ============================================================
                 const temDevolucaoNaEntrega = problemasDevolucao.length > 0;
                 const temFaltanteNaEntrega = problemasFaltante.length > 0 || temItensProblema;
 
+                // 🔥 Verifica se já existe pedido de faltante para esta entrega
+                const pedidosAcertoExistentes = dados.pedidos_acerto || [];
+                const pedidoFaltanteExistente = pedidosAcertoExistentes.find(p =>
+                    Number(p.entrega_id) === Number(entrega.id)
+                    && p.tipo_problema === 'faltante'
+                    && ['pendente', 'processando', 'criado_erp'].includes(p.status)
+                ) || null;
+
                 let botaoFaltanteHtml = '';
 
                 if (!temDevolucaoNaEntrega && temFaltanteNaEntrega) {
-                    if (temItensProblema) {
+                    if (pedidoFaltanteExistente) {
+                        // 🔥 JÁ EXISTE PEDIDO → badge informativo clicável
+                        const statusEmoji = {
+                            'pendente': '⏳',
+                            'processando': '🔄',
+                            'criado_erp': '✅'
+                        }[pedidoFaltanteExistente.status] || 'ⓘ';
+
+                        const statusTexto = {
+                            'pendente': 'pendente',
+                            'processando': 'processando',
+                            'criado_erp': 'criado no ERP'
+                        }[pedidoFaltanteExistente.status] || pedidoFaltanteExistente.status;
+
+                        botaoFaltanteHtml = `
+                            <button type="button"
+                                    class="inline-flex items-center gap-1.5 text-xs font-medium
+                                           bg-blue-600 hover:bg-blue-700 text-white
+                                           px-3 py-1.5 rounded-lg transition-colors"
+                                    title="Ver pedido #${pedidoFaltanteExistente.id} (${escapeHtml(statusTexto)})"
+                                    onclick="scrollParaPedido(${pedidoFaltanteExistente.id})">
+                                ${statusEmoji} Pedido #${pedidoFaltanteExistente.id}
+                                <i class="fa-solid fa-arrow-down" style="font-size:0.7rem;"></i>
+                            </button>
+                        `;
+                    } else if (temItensProblema) {
                         botaoFaltanteHtml = `
                             <button class="inline-flex items-center gap-1.5 text-xs font-medium bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded-lg transition-colors"
                                     onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
@@ -1049,14 +1134,26 @@ function renderizarDetalhesAcerto(dados) {
                 // Se a entrega tem AMBOS, oferece link discreto para faltante
                 let linkFaltanteSecundarioHtml = '';
                 if (temDevolucaoNaEntrega && temFaltanteNaEntrega) {
-                    linkFaltanteSecundarioHtml = `
-                        <button class="inline-flex items-center gap-1.5 text-[11px] font-medium
-                                       text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300
-                                       underline-offset-2 hover:underline"
-                                onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
-                            <i class="fa-solid fa-plus"></i> Gerar faltante também
-                        </button>
-                    `;
+                    if (pedidoFaltanteExistente) {
+                        // Já existe → link azul pro pedido
+                        linkFaltanteSecundarioHtml = `
+                            <button class="inline-flex items-center gap-1.5 text-[11px] font-medium
+                                           text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300
+                                           underline-offset-2 hover:underline"
+                                    onclick="scrollParaPedido(${pedidoFaltanteExistente.id})">
+                                <i class="fa-solid fa-arrow-down"></i> Ver pedido #${pedidoFaltanteExistente.id}
+                            </button>
+                        `;
+                    } else {
+                        linkFaltanteSecundarioHtml = `
+                            <button class="inline-flex items-center gap-1.5 text-[11px] font-medium
+                                           text-orange-600 hover:text-orange-700 dark:text-orange-400 dark:hover:text-orange-300
+                                           underline-offset-2 hover:underline"
+                                    onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})">
+                                <i class="fa-solid fa-plus"></i> Gerar faltante também
+                            </button>
+                        `;
+                    }
                 }
 
                 const detalhesAdministrativosHtml = `
@@ -1116,16 +1213,9 @@ function renderizarDetalhesAcerto(dados) {
                                 </div>
                                 <div class="flex flex-wrap items-center gap-2 flex-shrink-0">
                                     ${romaneioHtml}
-
-                                    <!-- 🔥 DEVOLUÇÃO: comprovante / badge com reimpressão -->
                                     ${botaoDevolucaoHtml}
-
-                                    <!-- 🔥 FALTANTE: botão "Gerar Pedido" -->
                                     ${botaoFaltanteHtml}
-
-                                    <!-- 🔥 Se tem ambos, mostra link secundário discreto -->
                                     ${linkFaltanteSecundarioHtml}
-
                                     ${temChecklist ? `<button type="button" class="btn-detalhes-entrega inline-flex items-center gap-1.5 text-xs font-medium ${isDark ? 'bg-emerald-900/30 text-emerald-300 hover:bg-emerald-900/50' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'} px-3 py-1.5 rounded-lg transition-colors" onclick="alternarDetalhesEntrega(this)" aria-expanded="false"><i class="fa-solid fa-list-check"></i> Conferir itens</button>` : ''}
                                 </div>
                             </div>
@@ -1155,12 +1245,11 @@ function renderizarDetalhesAcerto(dados) {
                             ` : ''}
 
                             ${itensHtml}
-
                             ${fotosHtml}
                         <div class="acerto-client-footer">
-    ${(!temDevolucaoNaEntrega && temItensProblema) ? `<button type="button" class="danger" onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"><i class="fa-solid fa-file-circle-plus"></i> Gerar pedido de divergência</button>` : ''}
-    <button type="button" class="success" onclick="marcarEntregaConferida(${entrega.id}, this)"><i class="fa-solid fa-check-double"></i> Pedido conferido</button>
-</div>
+                            ${(!temDevolucaoNaEntrega && temItensProblema) ? `<button type="button" class="danger" onclick="criarPedidoParaItensProblema(${entrega.id}, ${clienteNomeArg})"><i class="fa-solid fa-file-circle-plus"></i> Gerar pedido de divergência</button>` : ''}
+                            <button type="button" class="success" onclick="marcarEntregaConferida(${entrega.id}, this)"><i class="fa-solid fa-check-double"></i> Pedido conferido</button>
+                        </div>
                         </div>
                     </div>
                 `;
@@ -1176,6 +1265,10 @@ function renderizarDetalhesAcerto(dados) {
 
         html += '</div>';
 
+        // ============================================================
+        // 8. PEDIDOS DE ACERTO
+        // 🔥 Exibe "Transação 19/20" derivada de tipo_tratamento
+        // ============================================================
         if (dados.pedidos_acerto && dados.pedidos_acerto.length > 0) {
             html += `
                 <div class="mt-6">
@@ -1187,18 +1280,39 @@ function renderizarDetalhesAcerto(dados) {
                     <div class="space-y-2">
                         ${dados.pedidos_acerto.map(pedido => {
                             const pedidoItens = pedido.itens_afetados || [];
-                            const totalItens = pedidoItens.length;
+                            const totalItensPedido = pedidoItens.length;
                             const isCriadoERP = pedido.status === 'criado_erp';
                             const isPendente = pedido.status === 'pendente';
 
+                            // 🔥 Badge de transação derivado de tipo_tratamento
+                            const mapTransacaoPorTratamento = {
+                                'faltante_com_estoque': 19,
+                                'faltante_sem_estoque': 20
+                            };
+                            const transacao = mapTransacaoPorTratamento[pedido.tipo_tratamento] || null;
+                            const transacaoBadge = transacao
+                                ? `<span class="text-xs px-2 py-0.5 rounded-full ${transacao === 19 ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'} ml-2">
+                                       <i class="fa-solid fa-right-left"></i> Transação ${transacao}
+                                   </span>`
+                                : '';
+
+                            const tipoLabel = pedido.tipo_tratamento === 'faltante_com_estoque'
+                                ? '⚠️ Faltante c/ estoque'
+                                : pedido.tipo_tratamento === 'faltante_sem_estoque'
+                                    ? '⚠️ Faltante s/ estoque'
+                                    : pedido.tipo_problema === 'faltante'
+                                        ? '⚠️ Faltante'
+                                        : '🔄 Devolução';
+
                             return `
-                                <div class="${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm hover:shadow-md transition-all">
+                                <div class="${bgCard} rounded-xl p-4 border ${borderCard} shadow-sm hover:shadow-md transition-all" data-pedido-id="${pedido.id}">
                                     <div class="flex flex-wrap justify-between items-center gap-2">
                                         <div>
                                             <span class="font-bold ${textTitle}">#${pedido.id}</span>
                                             <span class="text-xs px-2 py-0.5 rounded-full ${pedido.tipo_problema === 'faltante' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400'} ml-2">
-                                                ${pedido.tipo_problema === 'faltante' ? '⚠️ Faltante' : '🔄 Devolução'}
+                                                ${tipoLabel}
                                             </span>
+                                            ${transacaoBadge}
                                             <span class="text-xs ${textSub} ml-2">${formatDateTime(pedido.created_at)}</span>
                                         </div>
                                         <div class="flex items-center gap-2 flex-wrap">
@@ -1222,14 +1336,14 @@ function renderizarDetalhesAcerto(dados) {
                                             )}
                                         </div>
                                     </div>
-                                    ${pedidoItens.length > 0 ? `
+                                    ${totalItensPedido > 0 ? `
                                         <div class="mt-2 flex flex-wrap gap-1">
                                             ${pedidoItens.slice(0, 5).map(item => `
                                                 <span class="text-xs ${isDark ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'} px-2 py-0.5 rounded-full">
                                                     ${escapeHtml(item.referencia || 'Item')} (${escapeHtml(item.quantidade || 0)})
                                                 </span>
                                             `).join('')}
-                                            ${pedidoItens.length > 5 ? `<span class="text-xs ${textSub}">+${pedidoItens.length - 5} itens</span>` : ''}
+                                            ${totalItensPedido > 5 ? `<span class="text-xs ${textSub}">+${totalItensPedido - 5} itens</span>` : ''}
                                         </div>
                                     ` : ''}
                                     ${pedido.observacoes ? `
@@ -1277,7 +1391,6 @@ function renderizarDetalhesAcerto(dados) {
             `;
         }
 
-        console.log('✅ HTML gerado com sucesso, inserindo no DOM...');
         conteudo.innerHTML = html;
         filtrarEntregasAcerto();
         console.log('✅ Conteúdo renderizado com sucesso!');
@@ -1292,6 +1405,247 @@ function renderizarDetalhesAcerto(dados) {
         `;
     }
 }
+// ================================================================
+// ROLAR ATÉ O CARD DE UM PEDIDO DE ACERTO
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4.1 v2):
+//   Usado pelos badges "Pedido #X" nos cards de entrega para
+//   rolar até o card correspondente na seção "Pedidos de Acerto".
+//
+//   Reaproveita a mesma estratégia de busca de `mostrarAvisoPedidoExistente`:
+//     1. data-pedido-id específico
+//     2. Fallback restrito: seção "Pedidos de Acerto"
+//     3. Fallback final: qualquer card fora de entrega
+// ================================================================
+function scrollParaPedido(pedidoId) {
+    if (!pedidoId) return;
+
+    // 1. Tenta pelo data-pedido-id (mais preciso)
+    let card = document.querySelector(`#acerto-conteudo [data-pedido-id="${pedidoId}"]`);
+
+    // 2. Fallback: procura na seção "Pedidos de Acerto"
+    if (!card) {
+        const headings = document.querySelectorAll('#acerto-conteudo h6');
+        for (const h of headings) {
+            if (h.textContent.includes('Pedidos de Acerto')) {
+                const container = h.closest('.mt-6');
+                if (container) {
+                    const cards = container.querySelectorAll('.rounded-xl');
+                    for (const c of cards) {
+                        const headingSpan = c.querySelector('span');
+                        if (headingSpan && headingSpan.textContent.includes(`#${pedidoId}`)) {
+                            card = c;
+                            break;
+                        }
+                    }
+                }
+                break;
+            }
+        }
+    }
+
+    // 3. Fallback final: qualquer card que NÃO seja de entrega
+    if (!card) {
+        const cards = document.querySelectorAll('#acerto-conteudo .rounded-xl');
+        for (const c of cards) {
+            if (!c.hasAttribute('data-entrega-card') && c.textContent.includes(`#${pedidoId}`)) {
+                card = c;
+                break;
+            }
+        }
+    }
+
+    if (!card) {
+        // Se não achou, avisa via toast
+        const Toast = Swal.mixin({
+            toast: true,
+            position: 'top-end',
+            showConfirmButton: false,
+            timer: 3000,
+            timerProgressBar: true
+        });
+        Toast.fire({
+            icon: 'info',
+            title: `Pedido #${pedidoId} está em "Pedidos de Acerto"`
+        });
+        return;
+    }
+
+    card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    card.style.transition = 'box-shadow 0.4s ease';
+    card.style.boxShadow = '0 0 0 4px rgba(124, 58, 237, 0.35)';
+    setTimeout(() => {
+        card.style.boxShadow = '';
+    }, 2000);
+}
+// ================================================================
+// TRATAR DEVOLUÇÃO (registrar tratamento + preparar p/ comprovante)
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4 - Etapa 5 v4):
+//   Quando o motorista registra uma devolução no checkout, ela só
+//   existe como FATO (frota_entrega_problema). O TRATAMENTO (Camada 2)
+//   precisa ser criado pelo gestor para liberar o botão "Gerar Comprovante".
+//
+//   Esta função chama POST /frota/acerto/pedido-problema com
+//   tipo_problema='devolucao' e tipo_tratamento='devolucao_comprovante'.
+//   O backend (criarPedidoProblema) reconhece esse combo e:
+//     - Cria o registro em frota_problema_tratamento com status='aguardando_fat'
+//     - NÃO cria pedido de acerto (devolução não gera ERP)
+//     - Retorna `proximo_passo: 'gerar_comprovante'`
+// ================================================================
+async function tratarDevolucao(entregaId, problemaId, clienteNome, botaoOrigem) {
+    if (!entregaId) {
+        showError('ID da entrega não informado');
+        return;
+    }
+
+    const acertoId = acertoAtual.id || document.getElementById('pp-acerto-id')?.value || 0;
+    if (!acertoId) {
+        Swal.fire('Erro', 'ID do acerto não encontrado. Inicie o acerto primeiro.', 'error');
+        return;
+    }
+
+    const token = getToken();
+    if (!token) {
+        showError('Token não encontrado');
+        return;
+    }
+
+    const confirmacao = await Swal.fire({
+        title: 'Tratar devolução',
+        html: `
+            <div style="text-align:left; font-size:0.9rem;">
+                <p>Esta devolução será registrada como <b>tratamento para faturamento</b>.</p>
+                <p style="color:#64748b; margin-top:6px;">
+                    Próximo passo: gerar o comprovante (DEV-AAAA-NNNNNN).
+                </p>
+                <p style="color:#dc2626; margin-top:10px; font-size:0.85rem;">
+                    <i class="fa-solid fa-info-circle"></i>
+                    Devolução <b>NÃO gera pedido ERP</b> — só comprovante.
+                </p>
+            </div>
+        `,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sim, tratar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#f59e0b',
+        cancelButtonColor: '#64748b'
+    });
+
+    if (!confirmacao.isConfirmed) return;
+
+    const textoOriginal = botaoOrigem ? botaoOrigem.innerHTML : null;
+    if (botaoOrigem) {
+        botaoOrigem.disabled = true;
+        botaoOrigem.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Tratando...';
+    }
+
+    try {
+        // Buscar os itens devolvidos da entrega para enviar no payload
+        const entregaResp = await fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Accept': 'application/json'
+            }
+        });
+        const entregaData = await entregaResp.json();
+
+        if (!entregaData.success) {
+            throw new Error(entregaData.error || 'Não foi possível carregar a entrega');
+        }
+
+        // Filtra itens devolvidos do checklist
+        const itensDevolvidos = (entregaData.data.checklist || []).filter(item =>
+            String(item.status || '').toLowerCase() === 'devolvido'
+        );
+
+        if (itensDevolvidos.length === 0) {
+            throw new Error('Nenhum item devolvido encontrado no checklist desta entrega.');
+        }
+
+        const itens = itensDevolvidos.map(item => ({
+            iditem: item.item_id || 0,
+            referencia: item.referencia || '',
+            descricao: item.descricao || '',
+            quantidade: parseFloat(item.quantidade_prevista || 0) - parseFloat(item.quantidade_entregue || 0),
+            unidade: item.unidade || 'UN'
+        }));
+
+        const payload = {
+            acerto_id: parseInt(acertoId),
+            entrega_id: parseInt(entregaId),
+            problema_id: problemaId ? parseInt(problemaId) : 0,
+            tipo_problema: 'devolucao',
+            tipo_tratamento: 'devolucao_comprovante',
+            motivo: 'Devolução registrada no checkout',
+            observacoes: 'Tratamento criado pelo gestor no acerto',
+            itens: itens
+        };
+
+        console.log('📤 Enviando tratamento de devolução:', payload);
+
+        const response = await fetch(API_BASE + '/frota/acerto/pedido-problema', {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        let data;
+        if (contentType.includes('application/json')) {
+            data = await response.json();
+        } else {
+            const texto = await response.text();
+            throw new Error(`Resposta inesperada (HTTP ${response.status}): ${texto.substring(0, 200)}`);
+        }
+
+        if (!response.ok || !data.success) {
+            throw new Error(data.error || `Erro HTTP ${response.status}`);
+        }
+
+        const tratamentoId = data.data?.tratamento_id;
+
+        Swal.fire({
+            icon: 'success',
+            title: '✅ Devolução tratada!',
+            html: `
+                <div style="text-align:left; padding:8px;">
+                    <p>Tratamento #${tratamentoId} registrado com sucesso.</p>
+                    <p style="font-size:0.85rem; color:#64748b; margin-top:6px;">
+                        O botão <b>"Gerar Comprovante"</b> já está disponível no card.
+                    </p>
+                </div>
+            `,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#10b981'
+        });
+
+        // Recarrega o modal para o botão "Gerar Comprovante" aparecer
+        if (acertoAtual.embarque_id) {
+            setTimeout(() => abrirAcerto(acertoAtual.embarque_id), 500);
+        }
+
+    } catch (error) {
+        console.error('❌ Erro ao tratar devolução:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha ao tratar devolução',
+            text: error.message || 'Erro desconhecido',
+            confirmButtonColor: '#dc2626'
+        });
+    } finally {
+        if (botaoOrigem && document.body.contains(botaoOrigem)) {
+            botaoOrigem.disabled = false;
+            if (textoOriginal) botaoOrigem.innerHTML = textoOriginal;
+        }
+    }
+}
+
+
 
 // ================================================================
 // INICIAR ACERTO
@@ -1478,6 +1832,157 @@ function cancelarAcerto() {
 }
 
 // ================================================================
+// VERIFICAR SE JÁ EXISTE PEDIDO DE FALTANTE PARA A ENTREGA
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4.1):
+//   Evita que o usuário crie pedido duplicado para a mesma entrega.
+//   Retorna o objeto do pedido existente OU null.
+//
+//   Uso:
+//     const existente = verificarPedidoFaltanteExistente(entregaId);
+//     if (existente) { mostrarAvisoPedidoExistente(existente); return; }
+// ================================================================
+function verificarPedidoFaltanteExistente(entregaId) {
+    if (!entregaId) return null;
+
+    const pedidos = window.acertoDadosAtual?.pedidos_acerto || [];
+    return pedidos.find(p =>
+        Number(p.entrega_id) === Number(entregaId)
+        && p.tipo_problema === 'faltante'
+        && ['pendente', 'processando', 'criado_erp'].includes(p.status)
+    ) || null;
+}
+// ================================================================
+// MOSTRAR AVISO DE PEDIDO JÁ EXISTENTE
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4.1):
+//   SweetAlert informativo com os dados do pedido existente e botão
+//   "Ver no card" que rola a tela até o card do pedido.
+//
+// 🔥 MELHORIA 2026-09-21 (Bloco 4.1 v2):
+//   - Fallback de scroll mais restrito: busca APENAS dentro da seção
+//     "Pedidos de Acerto", evitando falsos positivos (cards de entrega
+//     que por acaso contenham "#N" no texto)
+//   - Cobre caso do `#acerto-conteudo` ainda não estar no DOM
+// ================================================================
+function mostrarAvisoPedidoExistente(pedido) {
+    if (!pedido) return;
+
+    const statusLabel = {
+        'pendente':    '⏳ Pendente (ainda não enviado ao ERP)',
+        'processando': '🔄 Em processamento no ERP',
+        'criado_erp':  '✅ Já criado no ERP'
+    }[pedido.status] || pedido.status;
+
+    const tipoLabel = pedido.tipo_tratamento === 'faltante_com_estoque'
+        ? '⚠️ Faltante com estoque (Transação 19)'
+        : pedido.tipo_tratamento === 'faltante_sem_estoque'
+            ? '⚠️ Faltante sem estoque (Transação 20)'
+            : '⚠️ Faltante';
+
+    const erpInfo = pedido.pedido_erp_criado_id
+        ? `<p style="font-size:0.85rem;color:#059669;margin:4px 0 0;">
+              <i class="fa-solid fa-link"></i> ERP: <b>${escapeHtml(pedido.pedido_erp_criado_id)}</b>
+              ${pedido.numero_pedido_criado ? ` (${escapeHtml(pedido.numero_pedido_criado)})` : ''}
+           </p>`
+        : '';
+
+    Swal.fire({
+        icon: 'info',
+        title: `Pedido #${pedido.id} já existe`,
+        html: `
+            <div style="text-align:left; font-size:0.9rem;">
+                <p>Esta entrega <b>já possui um pedido de faltante</b> criado neste acerto.</p>
+
+                <div style="background:#f1f5f9;border-radius:10px;padding:12px;margin:12px 0;">
+                    <p style="margin:0 0 6px;"><b>Tipo:</b> ${escapeHtml(tipoLabel)}</p>
+                    <p style="margin:0 0 6px;"><b>Status:</b> ${escapeHtml(statusLabel)}</p>
+                    <p style="margin:0 0 6px;"><b>Valor:</b> ${formatMoney(pedido.valor_total || 0)}</p>
+                    <p style="margin:0 0 6px;"><b>Criado em:</b> ${formatDateTime(pedido.created_at)}</p>
+                    ${erpInfo}
+                </div>
+
+                <p style="color:#64748b; font-size:0.85rem; margin-top:8px;">
+                    <i class="fa-solid fa-info-circle"></i>
+                    Para ver o pedido completo, consulte o card
+                    <b>"Pedidos de Acerto"</b> abaixo na tela.
+                </p>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-arrow-down"></i> Ver pedido',
+        cancelButtonText: 'Fechar',
+        confirmButtonColor: '#7c3aed',
+        cancelButtonColor: '#64748b'
+    }).then(result => {
+        if (!result.isConfirmed) return;
+
+        // ============================================================
+        // Estratégia de busca do card (3 níveis de fallback):
+        //   1. data-pedido-id específico (mais preciso)
+        //   2. Fallback restrito: procura na seção "Pedidos de Acerto"
+        //   3. Fallback final: qualquer card que contenha "#<id>"
+        // ============================================================
+        let card = document.querySelector(`#acerto-conteudo [data-pedido-id="${pedido.id}"]`);
+
+        // Fallback 1: procura na seção "Pedidos de Acerto"
+        if (!card) {
+            const headings = document.querySelectorAll('#acerto-conteudo h6');
+            for (const h of headings) {
+                if (h.textContent.includes('Pedidos de Acerto')) {
+                    const container = h.closest('.mt-6');
+                    if (container) {
+                        const cards = container.querySelectorAll('.rounded-xl');
+                        for (const c of cards) {
+                            // Verifica se tem "Pedido #<id>" ou "#<id>" no heading
+                            const headingSpan = c.querySelector('span');
+                            if (headingSpan && headingSpan.textContent.includes(`#${pedido.id}`)) {
+                                card = c;
+                                break;
+                            }
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Fallback 2 (último recurso): qualquer card que contenha "#<id>"
+        if (!card) {
+            const cards = document.querySelectorAll('#acerto-conteudo .rounded-xl');
+            for (const c of cards) {
+                // Só considera se o card NÃO tem data-entrega-id (evita pegar cards de entrega)
+                if (!c.hasAttribute('data-entrega-card') && c.textContent.includes(`#${pedido.id}`)) {
+                    card = c;
+                    break;
+                }
+            }
+        }
+
+        if (card) {
+            card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            card.style.transition = 'box-shadow 0.4s ease';
+            card.style.boxShadow = '0 0 0 4px rgba(124, 58, 237, 0.35)';
+            setTimeout(() => {
+                card.style.boxShadow = '';
+            }, 2000);
+        } else {
+            // Aviso final se por algum motivo não achou o card
+            const Toast = Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000,
+                timerProgressBar: true
+            });
+            Toast.fire({
+                icon: 'info',
+                title: 'Card do pedido está na seção "Pedidos de Acerto"'
+            });
+        }
+    });
+}
+// ================================================================
 // ABRIR MODAL DE PEDIDO DE PROBLEMA
 //
 // 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
@@ -1485,6 +1990,10 @@ function cancelarAcerto() {
 //     (`faltante_com_estoque`) toda vez que o modal abre.
 //   - Garante que o select esteja sempre visível (modal só serve
 //     para faltante — o hidden `pp-tipo-problema` é sempre 'faltante').
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.1):
+//   - Antes de abrir o modal, verifica se já existe pedido de faltante
+//     para a entrega. Se sim, mostra aviso e NÃO abre o modal.
 // ================================================================
 function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
     if (!acertoId || isNaN(parseInt(acertoId)) || parseInt(acertoId) <= 0) {
@@ -1503,18 +2012,26 @@ function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
         return;
     }
 
+    // ============================================================
+    // 🔥 NOVO (Bloco 4.1): Verificar se já existe pedido de faltante
+    // ============================================================
+    const pedidoExistente = verificarPedidoFaltanteExistente(entregaId);
+    if (pedidoExistente) {
+        mostrarAvisoPedidoExistente(pedidoExistente);
+        return;   // não abre o modal
+    }
+    // ============================================================
+
     const ppAcertoId = document.getElementById('pp-acerto-id');
     const ppEntregaId = document.getElementById('pp-entrega-id');
     const ppClienteNome = document.getElementById('pp-cliente-nome');
     const ppItensBody = document.getElementById('pp-itens-body');
     const ppTotalValor = document.getElementById('pp-total-valor');
 
-    // ============================================================
-    // 🔥 NOVO (Etapa 5): Reset do select tipo_tratamento
-    // ============================================================
+    // Reset do select tipo_tratamento
     const ppTipoTratamento = document.getElementById('pp-tipo-tratamento');
     if (ppTipoTratamento) {
-        ppTipoTratamento.value = 'faltante_com_estoque';  // padrão
+        ppTipoTratamento.value = 'faltante_com_estoque';
     }
 
     // Sempre visível (modal só serve pra faltante)
@@ -1761,11 +2278,14 @@ function recalcularTotalPedido() {
 // SALVAR PEDIDO DE PROBLEMA
 //
 // 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
-//   - Lê o select `#pp-tipo-tratamento` (`faltante_com_estoque` /
-//     `faltante_sem_estoque`) e envia no payload como `tipo_tratamento`.
-//   - Backend usa esse campo pra decidir a transação ERP (19 ou 20).
+//   - Lê o select `#pp-tipo-tratamento` e envia no payload como
+//     `tipo_tratamento`.
 //   - Validação: se o select não existir ou estiver vazio, assume
-//     `faltante_com_estoque` (padrão retrocompatível).
+//     `faltante_com_estoque`.
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.1):
+//   - Rede de segurança: revalida se já existe pedido de faltante
+//     antes de enviar pro backend.
 // ================================================================
 function salvarPedidoProblema() {
     const acertoId = document.getElementById('pp-acerto-id')?.value;
@@ -1775,16 +2295,28 @@ function salvarPedidoProblema() {
     const observacoes = document.getElementById('pp-observacoes')?.value || '';
 
     // ============================================================
-    // 🔥 NOVO (Etapa 5): Ler tipo_tratamento do select
+    // 🔥 NOVO (Bloco 4.1): Rede de segurança antes de enviar
     // ============================================================
+    const pedidoExistente = verificarPedidoFaltanteExistente(entregaId);
+    if (pedidoExistente) {
+        // Fecha o modal (se estiver aberto)
+        const modal = document.getElementById('modalPedidoProblema');
+        if (modal && typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+            const inst = bootstrap.Modal.getInstance(modal);
+            if (inst) inst.hide();
+        }
+        mostrarAvisoPedidoExistente(pedidoExistente);
+        return;
+    }
+    // ============================================================
+
+    // Ler tipo_tratamento do select
     let tipoTratamento = document.getElementById('pp-tipo-tratamento')?.value || '';
 
-    // Validação: se vazio, assume o padrão
     if (!tipoTratamento) {
         tipoTratamento = 'faltante_com_estoque';
     }
 
-    // Validar que é um valor conhecido
     const tiposValidos = ['faltante_com_estoque', 'faltante_sem_estoque'];
     if (!tiposValidos.includes(tipoTratamento)) {
         Swal.fire('Erro', 'Tipo de tratamento inválido: ' + tipoTratamento, 'error');
@@ -1817,9 +2349,6 @@ function salvarPedidoProblema() {
         return;
     }
 
-    // ============================================================
-    // Confirmação com o tipo de tratamento em destaque
-    // ============================================================
     const tipoTratamentoLabel = tipoTratamento === 'faltante_sem_estoque'
         ? 'Faltante SEM estoque (ERP 20)'
         : 'Faltante COM estoque (ERP 19)';
@@ -1844,7 +2373,7 @@ function salvarPedidoProblema() {
                 acerto_id: parseInt(acertoId),
                 entrega_id: parseInt(entregaId),
                 tipo_problema: tipo,
-                tipo_tratamento: tipoTratamento,   // 🔥 NOVO
+                tipo_tratamento: tipoTratamento,
                 motivo: motivo,
                 observacoes: observacoes,
                 itens: itens
@@ -2169,14 +2698,28 @@ function verDetalhesEntrega(entregaId) {
 //
 // 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
 //   - Adiciona um segundo Swal para perguntar o tipo_tratamento
-//     antes de enviar o pedido (faltante_com_estoque / faltante_sem_estoque).
+//     antes de enviar o pedido.
 //   - Envia `tipo_tratamento` no payload.
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.1):
+//   - Verifica se já existe pedido de faltante para a entrega antes
+//     de iniciar o fluxo. Se sim, mostra aviso e não prossegue.
 // ================================================================
 function criarPedidoParaItensProblema(entregaId, clienteNome) {
     if (!entregaId) {
         showError('ID da entrega não informado');
         return;
     }
+
+    // ============================================================
+    // 🔥 NOVO (Bloco 4.1): Verificar se já existe pedido de faltante
+    // ============================================================
+    const pedidoExistente = verificarPedidoFaltanteExistente(entregaId);
+    if (pedidoExistente) {
+        mostrarAvisoPedidoExistente(pedidoExistente);
+        return;
+    }
+    // ============================================================
 
     const token = getToken();
     if (!token) {
@@ -2327,9 +2870,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     return;
                 }
 
-                // ============================================================
-                // 🔥 NOVO (Etapa 5): Perguntar tipo de faltante
-                // ============================================================
+                // Perguntar tipo de faltante
                 const escolha = await Swal.fire({
                     title: 'Tipo de faltante',
                     html: `
@@ -2365,7 +2906,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     acerto_id: parseInt(acertoId),
                     entrega_id: parseInt(entregaId),
                     tipo_problema: 'faltante',
-                    tipo_tratamento: tipoTratamento,   // 🔥 NOVO
+                    tipo_tratamento: tipoTratamento,
                     motivo: 'Faltante no checkout',
                     observacoes: 'Pedido gerado automaticamente a partir dos itens faltantes',
                     itens: itens.map(item => ({
@@ -2435,7 +2976,20 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                             }, 500);
                         }
                     } else {
-                        Swal.fire('Erro', data.error || 'Falha ao criar pedido', 'error');
+                        // 🔥 NOVO (Bloco 4.1): Trata o 409 do backend amigavelmente
+                        if (data.code === 'PEDIDO_JA_EXISTE' && data.pedido_id) {
+                            mostrarAvisoPedidoExistente({
+                                id: data.pedido_id,
+                                status: data.pedido_status,
+                                tipo_tratamento: data.pedido_tipo_tratamento,
+                                valor_total: data.pedido_valor_total,
+                                created_at: data.pedido_criado_em,
+                                pedido_erp_criado_id: data.pedido_erp_id,
+                                numero_pedido_criado: data.pedido_numero_erp
+                            });
+                        } else {
+                            Swal.fire('Erro', data.error || 'Falha ao criar pedido', 'error');
+                        }
                     }
                 })
                 .catch(err => {
@@ -2907,44 +3461,58 @@ function gerarPedidoERP(pedidoAcertoId) {
 }
 
 // ================================================================
-// ATUALIZAR BOTÕES DE ACERTO (Bloco 4 - Opção A, 2026-09-18)
+// ATUALIZAR BOTÕES DE ACERTO
 //
-// Aceita 2 status de embarque que permitem iniciar acerto:
-//   - finalizado → fluxo normal
-//   - problema   → embarque com divergência tratada pelo gestor
+// 🔥 MUDANÇA 2026-09-18 (Bloco 4 - Opção A):
+//   - Aceita 2 status de embarque que permitem iniciar acerto:
+//     'finalizado' e 'problema'
 //
-// Qualquer outro status mostra o botão desabilitado com tooltip
-// explicativo (planejado, em_andamento, cancelado).
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.2):
+//   - Quando o acerto está FINALIZADO (embarque conferido):
+//     • Esconde o botão "Conferido Total"
+//     • Mostra o botão "Visualizar Comprovante"
 // ================================================================
 function atualizarBotoesAcerto(status, embarqueStatus) {
     const btnIniciar   = document.getElementById('btn-iniciar-acerto');
     const btnFinalizar = document.getElementById('btn-finalizar-acerto');
     const btnCancelar  = document.getElementById('btn-cancelar-acerto');
+    const btnConferidoTotal = document.getElementById('btn-conferido-total');
+    const btnVisualizarComprovante = document.getElementById('btn-visualizar-comprovante');
 
     if (btnIniciar)   btnIniciar.style.display   = 'none';
     if (btnFinalizar) btnFinalizar.style.display = 'none';
     if (btnCancelar)  btnCancelar.style.display  = 'none';
+    if (btnConferidoTotal) btnConferidoTotal.style.display = 'none';
+    if (btnVisualizarComprovante) btnVisualizarComprovante.style.display = 'none';
 
     // ============================================================
-    // Estado: acerto já existe (em_andamento ou pendente)
+    // Estado: acerto FINALIZADO → só "Visualizar Comprovante" + "Fechar"
     // ============================================================
-    if (status === 'em_andamento' || status === 'pendente') {
-        if (btnFinalizar) btnFinalizar.style.display = 'inline-flex';
-        if (btnCancelar)  btnCancelar.style.display  = 'inline-flex';
+    if (status === 'finalizado') {
+        if (btnVisualizarComprovante) btnVisualizarComprovante.style.display = 'inline-flex';
         return;
     }
 
     // ============================================================
-    // Estado: nenhum acerto → mostra botão "Iniciar Acerto"
+    // Estado: acerto em andamento ou pendente
+    //   → "Finalizar" + "Cancelar" + "Conferido Total" + "Fechar"
+    // ============================================================
+    if (status === 'em_andamento' || status === 'pendente') {
+        if (btnFinalizar) btnFinalizar.style.display = 'inline-flex';
+        if (btnCancelar)  btnCancelar.style.display  = 'inline-flex';
+        if (btnConferidoTotal) btnConferidoTotal.style.display = 'inline-flex';
+        return;
+    }
+
+    // ============================================================
+    // Estado: nenhum acerto → mostra "Iniciar Acerto"
     // ============================================================
     if (!status) {
         if (!btnIniciar) return;
 
-        // Status que liberam o início do acerto (Bloco 4 - Opção A)
         const statusPermitidos = ['finalizado', 'problema', null, undefined, ''];
         const podeIniciar = statusPermitidos.includes(embarqueStatus);
 
-        // Restaura o conteúdo padrão do botão (pode ter sido alterado antes)
         const labelPadrao = '<i class="fa-solid fa-play"></i> Iniciar Acerto';
 
         if (podeIniciar) {
@@ -2966,6 +3534,14 @@ function atualizarBotoesAcerto(status, embarqueStatus) {
             btnIniciar.disabled = true;
             btnIniciar.title = motivo;
             btnIniciar.innerHTML = '<i class="fa-solid fa-lock"></i> Acerto bloqueado';
+        }
+
+        // Mesmo sem acerto, se já foi conferido localmente, mostra "Visualizar"
+        if (btnConferidoTotal && !isEmbarqueFinalizadoTotal(acertoAtual.embarque_id)) {
+            btnConferidoTotal.style.display = 'inline-flex';
+        } else if (btnVisualizarComprovante && isEmbarqueFinalizadoTotal(acertoAtual.embarque_id)) {
+            btnVisualizarComprovante.style.display = 'inline-flex';
+            if (btnConferidoTotal) btnConferidoTotal.style.display = 'none';
         }
     }
 }
@@ -3405,6 +3981,17 @@ function marcarEntregaConferida(entregaId, button) {
     filtrarEntregasAcerto();
 }
 
+// ================================================================
+// MARCAR EMBARQUE COMO CONFERIDO (Conferido Total)
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.2):
+//   - Regra ajustada: uma entrega com divergência é considerada
+//     "tratada" se tiver **UMA** destas condições:
+//       (a) Pedido de FALTANTE criado (frota_acerto_pedido) → ERP
+//       (b) Comprovante de DEVOLUÇÃO emitido (número DEV-AAAA-NNNNNN)
+//   - Antes, só checava (a), o que bloqueava indevidamente entregas
+//     que só tinham devolução (que NÃO gera pedido ERP).
+// ================================================================
 function marcarEmbarqueConferido() {
     const cards = Array.from(document.querySelectorAll('#acerto-conteudo [data-entrega-card]'));
     if (!cards.length) {
@@ -3416,11 +4003,40 @@ function marcarEmbarqueConferido() {
 
     const dados = window.acertoDadosAtual || {};
     const pedidosAcerto = dados.pedidos_acerto || [];
+
+    // ============================================================
+    // 🔥 AJUSTE Bloco 4.2: considera "tratada" se tiver
+    //    PEDIDO DE FALTANTE **ou** COMPROVANTE DE DEVOLUÇÃO
+    // ============================================================
     const cardsComDivergenciaSemPedido = cards.filter(card => {
         if (card.dataset.divergencia !== '1') return false;
+
         const entregaId = Number(card.dataset.entregaId);
-        return !pedidosAcerto.some(p => Number(p.entrega_id) === entregaId);
+        const entrega = (dados.entregas || []).find(e => Number(e.id) === entregaId);
+        if (!entrega) return false;
+
+        // (a) Tem pedido de faltante criado?
+        const temPedidoFaltante = pedidosAcerto.some(p =>
+            Number(p.entrega_id) === entregaId
+        );
+
+        if (temPedidoFaltante) return false; // tratada, ok
+
+        // (b) Tem comprovante de devolução emitido?
+        const problemas = Array.isArray(entrega.problemas) ? entrega.problemas : [];
+        const temComprovanteDevolucao = problemas.some(p => {
+            const tipo = String(p.tipo_problema || '').toLowerCase();
+            if (tipo !== 'devolucao') return false;
+            // Considera tratado SOMENTE se o comprovante foi emitido
+            return Boolean(p.tratamento_numero_comprovante && p.tratamento_id);
+        });
+
+        if (temComprovanteDevolucao) return false; // tratada, ok
+
+        // Chegou aqui: tem divergência e nenhum tratamento finalizado
+        return true;
     });
+    // ============================================================
 
     if (naoConferidas.length > 0) {
         const nomes = naoConferidas.slice(0, 5).map(c => c.dataset.cliente || '#' + c.dataset.entregaId).join(', ');
@@ -3437,8 +4053,13 @@ function marcarEmbarqueConferido() {
         const nomes = cardsComDivergenciaSemPedido.slice(0, 5).map(c => c.dataset.cliente || '#' + c.dataset.entregaId).join(', ');
         Swal.fire({
             icon: 'warning',
-            title: 'Divergências sem pedido gerado',
-            html: `Existe(m) <b>${cardsComDivergenciaSemPedido.length}</b> entrega(s) com divergência sem pedido de faltante/devolução criado:<br><span style="font-size:13px;">${escapeHtml(nomes)}${cardsComDivergenciaSemPedido.length > 5 ? '…' : ''}</span><br><br>Gere o pedido de acerto antes de concluir o "Conferido Total".`,
+            title: 'Divergências sem tratamento finalizado',
+            html: `
+                Existe(m) <b>${cardsComDivergenciaSemPedido.length}</b> entrega(s) com divergência sem pedido de faltante <b>ou</b> comprovante de devolução:
+                <br><span style="font-size:13px;">${escapeHtml(nomes)}${cardsComDivergenciaSemPedido.length > 5 ? '…' : ''}</span>
+                <br><br>
+                Gere o <b>pedido de faltante</b> ou o <b>comprovante de devolução</b> antes de concluir o "Conferido Total".
+            `,
             confirmButtonText: 'Entendi'
         });
         return;
@@ -3474,8 +4095,18 @@ function marcarEmbarqueConferido() {
 
 // ================================================================
 // COMPROVANTE DE CONFERÊNCIA TOTAL
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.2):
+//   - Aceita parâmetro `opcoes = { modoVisualizacao: false }`.
+//   - Quando `modoVisualizacao = true`:
+//     • NÃO altera o status do acerto no servidor ao imprimir
+//     • Botão "Imprimir" chama window.print() direto
+//   - Quando `false` (fluxo normal):
+//     • Após imprimir, chama finalizarAposComprovanteImpresso()
 // ================================================================
-function gerarComprovanteConferenciaTotal(dados, cards) {
+function gerarComprovanteConferenciaTotal(dados, cards, opcoes = {}) {
+    const modoVisualizacao = opcoes.modoVisualizacao === true;
+
     const dataAtual = new Date();
     const dataFormatada = dataAtual.toLocaleDateString('pt-BR') + ' ' + dataAtual.toLocaleTimeString('pt-BR');
     const motorista = dados.motorista_nome || dados.motorista || document.getElementById('acerto-header-motorista')?.textContent?.replace(/^[^A-Za-zÀ-ÿ0-9]*/, '') || 'N/A';
@@ -3537,11 +4168,32 @@ function gerarComprovanteConferenciaTotal(dados, cards) {
 
     const modalEl = document.getElementById('modalComprovanteConferencia');
     const corpo = document.getElementById('comprovante-conferencia-corpo');
+
     if (modalEl && corpo) {
         corpo.innerHTML = html;
+
+        // Ajusta o botão "Imprimir" conforme o modo
+        const footer = modalEl.querySelector('.modal-footer');
+        if (footer) {
+            const btnImprimir = footer.querySelector('button[onclick="imprimirComprovanteConferencia()"]');
+            if (btnImprimir) {
+                btnImprimir.setAttribute('onclick', modoVisualizacao
+                    ? 'imprimirComprovanteConferenciaVisualizacao()'
+                    : 'imprimirComprovanteConferencia()');
+            }
+        }
+
+        // Se não é modo visualização, guarda o flag pra o afterprint saber
+        if (!modoVisualizacao) {
+            modalEl.dataset.aguardandoFinalizacao = '1';
+        } else {
+            modalEl.dataset.aguardandoFinalizacao = '0';
+        }
+
         const modalInstance = new bootstrap.Modal(modalEl);
         modalInstance.show();
     } else {
+        // Fallback: abre em nova janela
         const win = window.open('', '_blank');
         win.document.write(`<html><head><title>Comprovante</title></head><body>${html}</body></html>`);
         win.document.close();
@@ -3549,7 +4201,24 @@ function gerarComprovanteConferenciaTotal(dados, cards) {
     }
 }
 
+// ================================================================
+// IMPRIMIR COMPROVANTE DE CONFERÊNCIA
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4.2):
+//   - Verifica `modalEl.dataset.aguardandoFinalizacao`:
+//     • '1' → depois de imprimir, chama finalizarAposComprovanteImpresso()
+//     • '0' → apenas imprime (modo visualização)
+// ================================================================
 function imprimirComprovanteConferencia() {
+    const modalEl = document.getElementById('modalComprovanteConferencia');
+    const aguardandoFinalizacao = modalEl?.dataset.aguardandoFinalizacao === '1';
+
+    if (!aguardandoFinalizacao) {
+        // Modo visualização: só imprime
+        window.print();
+        return;
+    }
+
     const onAfterPrint = () => {
         window.removeEventListener('afterprint', onAfterPrint);
         finalizarAposComprovanteImpresso();
@@ -3557,12 +4226,57 @@ function imprimirComprovanteConferencia() {
     window.addEventListener('afterprint', onAfterPrint);
     window.print();
 }
+// ================================================================
+// IMPRIMIR COMPROVANTE DE CONFERÊNCIA EM MODO VISUALIZAÇÃO
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4.2):
+//   Chamada quando o botão "Imprimir" é clicado dentro do modal
+//   aberto via "Visualizar Comprovante" (já finalizado).
+//   NÃO dispara `finalizarAposComprovanteImpresso()` —
+//   apenas imprime.
+// ================================================================
+function imprimirComprovanteConferenciaVisualizacao() {
+    window.print();
+}
 
 // ================================================================
-// IMPRIMIR COMPROVANTE DE DEVOLUÇÃO (Bloco 4, Etapa 4)
+// VISUALIZAR COMPROVANTE DE CONFERÊNCIA (já emitido)
+//
+// 🔥 NOVO 2026-09-21 (Bloco 4.2):
+//   Chamada pelo botão "Visualizar Comprovante" no footer do modal
+//   quando o embarque já foi conferido. Reconstrói o HTML do
+//   comprovante a partir dos dados atuais + cards marcados como
+//   conferidos, e abre o modal sem disparar "finalizar" novamente.
+// ================================================================
+function visualizarComprovanteConferencia() {
+    const dados = window.acertoDadosAtual || {};
+    const cards = Array.from(document.querySelectorAll('#acerto-conteudo [data-entrega-card]'));
+
+    if (!cards.length) {
+        showError('Nenhuma entrega encontrada para gerar o comprovante.');
+        return;
+    }
+
+    // Reconstrói o comprovante a partir dos dados atuais
+    // (mesma lógica de `gerarComprovanteConferenciaTotal`, mas sem
+    // disparar finalização automática no afterprint)
+    gerarComprovanteConferenciaTotal(dados, cards, { modoVisualizacao: true });
+}
+
+// ================================================================
+// IMPRIMIR COMPROVANTE DE DEVOLUÇÃO (Bloco 4, Etapa 4) — v3 CORRIGIDA
+//
 // Monta HTML estruturado e dispara window.print() em nova janela.
 // O CSS @media print está embutido inline para não depender do
 // acerto-embarque.css (que é carregado só na página principal).
+//
+// 🔥 CORRIGIDO 2026-09-21 (v3):
+//   - Aceita payload ACHATADO (novo backend: cliente_nome, motorista_nome,
+//     veiculo_placa no top-level) E ANINHADO (compatibilidade)
+//   - Prioridade: top-level > aninhado
+//   - `itens` e `itens_devolvidos` são equivalentes
+//   - `endereco_completo` já formatado tem prioridade
+//   - Adiciona CPF do motorista e código de rastreamento na saída
 // ================================================================
 function imprimirComprovanteDevolucao(dados) {
     if (!dados || typeof dados !== 'object') {
@@ -3599,38 +4313,53 @@ function imprimirComprovanteDevolucao(dados) {
     };
 
     // ================================================================
-    // Extrai campos (aceita vários nomes possíveis por compatibilidade)
+    // 🔥 CORRIGIDO 2026-09-21:
+    //   Aceita AMBAS as estruturas: achatada (novo backend) e aninhada
+    //   (compatibilidade com chamadas antigas).
+    //   Prioridade: top-level > aninhado.
     // ================================================================
+    const entrega  = dados.entrega  || {};
+    const embarque = dados.embarque || {};
+
+    // Número e emitente
     const numero        = dados.numero_comprovante || dados.numero || dados.comprovante_numero || '—';
     const emitidoEm     = dados.comprovante_emitido_em || dados.emitido_em || dados.created_at || new Date().toISOString();
-    const emitenteNome  = dados.emitente_nome || dados.gestor_nome || dados.usuario_nome || 'Gestor';
-    const embarqueId    = dados.embarque_id || dados.embarqueId || (acertoAtual && acertoAtual.embarque_id) || '—';
-    const numeroEmb     = dados.numero_embarque || dados.embarque_numero || `#${embarqueId}`;
+    const emitenteNome  = (dados.emitido_por && dados.emitido_por.nome)
+                            || dados.emitente_nome
+                            || dados.gestor_nome
+                            || 'Gestor';
+
+    // Embarque
+    const embarqueId    = dados.embarque_id || embarque.id || (acertoAtual && acertoAtual.embarque_id) || '—';
+    const numeroEmb     = dados.numero_embarque || embarque.numero_embarque || `#${embarqueId}`;
 
     // Cliente / entrega
-    const clienteNome   = dados.cliente_nome || dados.entrega_cliente_nome || '—';
-    const clienteEnd    = [
-        dados.endereco || dados.entrega_endereco || '',
-        dados.numero_end || dados.entrega_numero || '',
-        dados.bairro || dados.entrega_bairro || '',
-        dados.cidade || dados.entrega_cidade || '',
-        dados.uf || dados.entrega_uf || ''
-    ].filter(Boolean).join(', ');
+    const clienteNome   = dados.cliente_nome || entrega.cliente_nome || '—';
+    const clienteEnd    = dados.endereco_completo
+                            || entrega.endereco_completo
+                            || [
+                                (dados.endereco || entrega.endereco || '') + ' ' + (dados.numero_end || entrega.numero_end || ''),
+                                dados.bairro || entrega.bairro || '',
+                                (dados.cidade || entrega.cidade || '') + '/' + (dados.uf || entrega.uf || '')
+                              ].filter(Boolean).join(', ').trim();
 
-    const codigoRastreio = dados.codigo_rastreamento || dados.entrega_codigo_rastreamento || '';
-    const entregaId      = dados.entrega_id || dados.entregaId || '—';
+    const codigoRastreio = dados.codigo_rastreamento || entrega.codigo_rastreamento || '';
+    const entregaId      = dados.entrega_id || entrega.id || '—';
 
-    // Embarque / motorista / veículo
-    const motoristaNome  = dados.motorista_nome || dados.motorista || '—';
-    const motoristaCpf   = dados.motorista_cpf || '';
-    const veiculoPlaca   = dados.veiculo_placa || dados.placa || '—';
-    const veiculoModelo  = dados.veiculo_modelo || dados.modelo || '';
+    // Motorista / veículo
+    const motoristaNome  = dados.motorista_nome || embarque.motorista_nome || '—';
+    const motoristaCpf   = dados.motorista_cpf  || embarque.motorista_cpf  || '';
+    const veiculoPlaca   = dados.veiculo_placa  || embarque.veiculo_placa  || '—';
+    const veiculoModelo  = dados.veiculo_modelo || embarque.veiculo_modelo || '';
 
-    // Itens devolvidos
+    // Itens (aceita 'itens' e 'itens_devolvidos')
     const itens = Array.isArray(dados.itens)
         ? dados.itens
         : (Array.isArray(dados.itens_devolvidos) ? dados.itens_devolvidos : []);
 
+    // ================================================================
+    // Linhas da tabela de itens
+    // ================================================================
     const linhasItens = itens.length > 0
         ? itens.map((it, idx) => {
             const ref     = it.referencia || it.ref || '—';
@@ -3657,7 +4386,9 @@ function imprimirComprovanteDevolucao(dados) {
         }).join('')
         : '<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:20px;">Nenhum item informado</td></tr>';
 
+    // ================================================================
     // Totais
+    // ================================================================
     const totalItens     = itens.length;
     const totalUnidades  = itens.reduce((acc, it) => acc + parseFloat(it.quantidade_devolvida ?? it.qtd_devolvida ?? it.quantidade ?? 0), 0);
     const totalValor     = itens.reduce((acc, it) => acc + parseFloat(it.valor_total ?? it.valor ?? 0), 0);
@@ -3907,7 +4638,6 @@ function imprimirComprovanteDevolucao(dados) {
     </div>
 
     <script>
-        // Auto-print ao abrir
         window.addEventListener('load', function () {
             setTimeout(function () {
                 try { window.print(); } catch (e) { console.warn('Print bloqueado:', e); }
@@ -4148,3 +4878,9 @@ window.gerarComprovanteDevolucao = gerarComprovanteDevolucao;
 window.imprimirComprovanteDevolucao = imprimirComprovanteDevolucao;
 window.renderizarDetalhesAcerto = renderizarDetalhesAcerto;
 window.reimprimirComprovanteDevolucao = reimprimirComprovanteDevolucao;
+window.tratarDevolucao = tratarDevolucao;
+window.verificarPedidoFaltanteExistente = verificarPedidoFaltanteExistente;
+window.mostrarAvisoPedidoExistente = mostrarAvisoPedidoExistente;
+window.scrollParaPedido = scrollParaPedido;
+window.visualizarComprovanteConferencia = visualizarComprovanteConferencia;
+window.imprimirComprovanteConferenciaVisualizacao = imprimirComprovanteConferenciaVisualizacao;

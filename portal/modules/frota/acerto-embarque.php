@@ -246,23 +246,29 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
             
             <!-- FOOTER -->
-            <div class="modal-footer" id="acerto-footer">
-                <button type="button" class="btn btn-primary-nutri" onclick="iniciarAcerto()" id="btn-iniciar-acerto">
-                    <i class="fa-solid fa-play"></i> Iniciar Acerto
-                </button>
-                <button type="button" class="btn btn-success-nutri" onclick="finalizarAcerto()" id="btn-finalizar-acerto" style="display: none;">
-                    <i class="fa-solid fa-check-double"></i> Finalizar Acerto
-                </button>
-                <button type="button" class="btn btn-secondary-nutri" onclick="marcarEmbarqueConferido()" id="btn-conferido-total">
-                    <i class="fa-solid fa-clipboard-check"></i> Conferido Total
-                </button>
-                <button type="button" class="btn btn-danger-nutri" onclick="cancelarAcerto()" id="btn-cancelar-acerto" style="display: none;">
-                    <i class="fa-solid fa-ban"></i> Cancelar
-                </button>
-                <button type="button" class="btn btn-secondary-nutri" data-bs-dismiss="modal">
-                    Fechar
-                </button>
-            </div>
+          <div class="modal-footer" id="acerto-footer">
+    <button type="button" class="btn btn-primary-nutri" onclick="iniciarAcerto()" id="btn-iniciar-acerto">
+        <i class="fa-solid fa-play"></i> Iniciar Acerto
+    </button>
+    <button type="button" class="btn btn-success-nutri" onclick="finalizarAcerto()" id="btn-finalizar-acerto" style="display: none;">
+        <i class="fa-solid fa-check-double"></i> Finalizar Acerto
+    </button>
+    <button type="button" class="btn btn-secondary-nutri" onclick="marcarEmbarqueConferido()" id="btn-conferido-total">
+        <i class="fa-solid fa-clipboard-check"></i> Conferido Total
+    </button>
+
+    <!-- 🔥 NOVO (Bloco 4.2): botão para visualizar comprovante quando já foi conferido -->
+    <button type="button" class="btn btn-primary-nutri" onclick="visualizarComprovanteConferencia()" id="btn-visualizar-comprovante" style="display: none;">
+        <i class="fa-solid fa-file-circle-check"></i> Visualizar Comprovante
+    </button>
+
+    <button type="button" class="btn btn-danger-nutri" onclick="cancelarAcerto()" id="btn-cancelar-acerto" style="display: none;">
+        <i class="fa-solid fa-ban"></i> Cancelar
+    </button>
+    <button type="button" class="btn btn-secondary-nutri" data-bs-dismiss="modal">
+        Fechar
+    </button>
+</div>
         </div>
     </div>
 </div>

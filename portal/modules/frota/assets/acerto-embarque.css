@@ -1919,22 +1919,367 @@ body.modal-open {
     font-size: 0.8rem;
     color: #6b7280;
 }
-
+/* ================================================================
+   IMPRESSÃO DO COMPROVANTE DE CONFERÊNCIA — v4 CORRIGIDA
+   
+   🔥 CORRIGIDO 2026-09-21 (Bloco 4.2 v4):
+   - Removida a regra "Força exibição do modal" que fazia o 
+     `#modalAcerto` reaparecer no papel (era a causa raiz do bug).
+   - Especificidade reforçada com prefixo `html body` para vencer
+     qualquer regra `.modal.show { display: block }`.
+   - `#modalAcerto` e `#modalPedidoProblema` são movidos pra fora
+     da tela com `position: absolute; left: -99999px` (evita que 
+     ocupem espaço mesmo com display: none por bug de browser).
+   - Todo elemento do `<body>` que não seja o comprovante é 
+     escondido via `> *:not(...)`.
+   - Preserva o `@page { margin: 12mm }`.
+   ================================================================ */
 @media print {
-    body * {
-        visibility: hidden;
+
+    /* ============================================================
+       1) RESET GERAL
+       ============================================================ */
+    html,
+    body {
+        background: #ffffff !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: auto !important;
+        overflow: visible !important;
     }
-    #comprovante-conferencia-corpo,
-    #comprovante-conferencia-corpo * {
-        visibility: visible;
-    }
-    #comprovante-conferencia-corpo {
-        position: absolute;
-        left: 0;
-        top: 0;
-        width: 100%;
-    }
-    .no-print {
+
+    /* ============================================================
+       2) ESCONDE TODO ELEMENTO DO BODY, EXCETO O COMPROVANTE
+          → `> *` só pega filhos diretos do body.
+          → Exclui o comprovante, scripts e styles.
+          → Não esbarra em `.modal.show` porque essa regra já foi
+            removida do final do arquivo.
+       ============================================================ */
+    html body > *:not(#modalComprovanteConferencia):not(script):not(style):not(link):not(meta):not(title) {
         display: none !important;
     }
+
+    /* ============================================================
+       3) FORÇA EXCLUSÃO DOS MODAIS "DE FUNDO"
+          → `#modalAcerto` (tela principal) NUNCA deve ser impresso.
+          → `#modalPedidoProblema` (criar pedido) também não.
+          → Prefixo `html body` + várias variações pra vencer 
+            `.modal.show`, `[style*="display: block"]` e outros.
+       ============================================================ */
+    html body #modalAcerto,
+    html body #modalAcerto.show,
+    html body #modalAcerto[style],
+    html body #modalAcerto[style*="display: block"],
+    html body #modalAcerto[style*="display:block"],
+    html body #modalPedidoProblema,
+    html body #modalPedidoProblema.show,
+    html body #modalPedidoProblema[style],
+    html body #modalPedidoProblema[style*="display: block"],
+    html body #modalPedidoProblema[style*="display:block"] {
+        display: none !important;
+        visibility: hidden !important;
+        opacity: 0 !important;
+        position: absolute !important;
+        left: -99999px !important;
+        top: -99999px !important;
+        width: 0 !important;
+        height: 0 !important;
+        max-width: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+    }
+
+    /* ============================================================
+       4) ESCONDE OVERLAYS, BACKDROPS E NOTIFICAÇÕES
+       ============================================================ */
+    html body .modal-backdrop,
+    html body .swal2-container,
+    html body .toast-notification,
+    html body .spinner-overlay,
+    html body #zoom-backdrop,
+    html body .tooltip,
+    html body .popover {
+        display: none !important;
+        visibility: hidden !important;
+    }
+
+    /* ============================================================
+       5) O MODAL DO COMPROVANTE VIRA UM BLOCO "NORMAL"
+          → `position: static` devolve ao fluxo de impressão.
+          → `width: 100%` ocupa toda a página.
+       ============================================================ */
+    html body #modalComprovanteConferencia,
+    html body #modalComprovanteConferencia.show,
+    html body #modalComprovanteConferencia[style] {
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+        position: static !important;
+        top: auto !important;
+        left: auto !important;
+        right: auto !important;
+        bottom: auto !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        z-index: auto !important;
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        outline: none !important;
+        transform: none !important;
+    }
+
+    html body #modalComprovanteConferencia .modal-dialog {
+        display: block !important;
+        position: static !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        max-width: 100% !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        transform: none !important;
+    }
+
+    html body #modalComprovanteConferencia .modal-content {
+        display: block !important;
+        position: static !important;
+        border: none !important;
+        box-shadow: none !important;
+        border-radius: 0 !important;
+        background: #ffffff !important;
+        width: 100% !important;
+        height: auto !important;
+        max-height: none !important;
+        overflow: visible !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+
+    /* Esconde header e footer do modal (botões, X, título) */
+    html body #modalComprovanteConferencia .modal-header,
+    html body #modalComprovanteConferencia .modal-footer,
+    html body #modalComprovanteConferencia .no-print,
+    html body #modalComprovanteConferencia .btn-close {
+        display: none !important;
+        visibility: hidden !important;
+        height: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* Corpo do modal vira o "papel" — sem scroll, sem borda */
+    html body #modalComprovanteConferencia .modal-body,
+    html body #comprovante-conferencia-corpo {
+        display: block !important;
+        position: static !important;
+        border: none !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        max-height: none !important;
+        overflow: visible !important;
+        width: 100% !important;
+    }
+
+    /* ============================================================
+       6) ESTILOS DO CONTEÚDO DO COMPROVANTE
+       ============================================================ */
+    .comprovante-conferencia {
+        color: #1f2937 !important;
+        font-family: Arial, Helvetica, sans-serif !important;
+        font-size: 11pt !important;
+        line-height: 1.4 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: #ffffff !important;
+    }
+
+    /* ---- Logo (se você adicionar) ---- */
+    .comprovante-logo {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        gap: 10pt !important;
+        margin-bottom: 10pt !important;
+        padding-bottom: 8pt !important;
+        border-bottom: 0.5pt dashed #d1d5db !important;
+        page-break-inside: avoid !important;
+    }
+
+    .comprovante-logo-icon {
+        width: 36pt !important;
+        height: 36pt !important;
+        border-radius: 50% !important;
+        background: #16a34a !important;
+        color: #ffffff !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        font-size: 16pt !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .comprovante-logo-text strong {
+        font-size: 14pt !important;
+        color: #14532d !important;
+        font-weight: 800 !important;
+    }
+
+    .comprovante-logo-text span {
+        font-size: 8pt !important;
+        color: #16a34a !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        text-transform: uppercase !important;
+    }
+
+    .comprovante-logo-img {
+        max-height: 40pt !important;
+        width: auto !important;
+    }
+
+    /* ---- Header ---- */
+    .comprovante-header {
+        text-align: center !important;
+        border-bottom: 2pt solid #16a34a !important;
+        padding-bottom: 10pt !important;
+        margin-bottom: 14pt !important;
+        page-break-after: avoid !important;
+    }
+
+    .comprovante-header h2 {
+        margin: 0 0 4pt !important;
+        font-size: 15pt !important;
+        color: #14532d !important;
+        font-weight: 700 !important;
+    }
+
+    .comprovante-header p {
+        margin: 0 !important;
+        font-size: 10pt !important;
+        color: #6b7280 !important;
+    }
+
+    /* ---- Dados (motorista, veículo, etc) ---- */
+    .comprovante-dados {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr !important;
+        gap: 4pt 16pt !important;
+        margin-bottom: 14pt !important;
+        font-size: 10pt !important;
+    }
+
+    .comprovante-dados > div {
+        page-break-inside: avoid !important;
+    }
+
+    /* ---- Tabela ---- */
+    .comprovante-tabela {
+        width: 100% !important;
+        border-collapse: collapse !important;
+        margin-bottom: 14pt !important;
+        font-size: 10pt !important;
+        page-break-inside: auto !important;
+    }
+
+    .comprovante-tabela th,
+    .comprovante-tabela td {
+        border: 0.5pt solid #d1d5db !important;
+        padding: 5pt 8pt !important;
+        text-align: left !important;
+        vertical-align: top !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .comprovante-tabela th {
+        background: #f0fdf4 !important;
+        color: #166534 !important;
+        font-weight: 700 !important;
+        font-size: 9pt !important;
+        text-transform: uppercase !important;
+    }
+
+    .comprovante-tabela thead {
+        display: table-header-group !important;
+    }
+
+    .comprovante-tabela tr {
+        page-break-inside: avoid !important;
+        page-break-after: auto !important;
+    }
+
+    /* ---- Observações de divergência ---- */
+    .comprovante-obs {
+        background: #fff7ed !important;
+        border: 0.5pt solid #fed7aa !important;
+        border-radius: 4pt !important;
+        padding: 8pt 12pt !important;
+        font-size: 10pt !important;
+        margin-bottom: 14pt !important;
+        page-break-inside: avoid !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+
+    .comprovante-obs ul {
+        margin: 4pt 0 0 !important;
+        padding-left: 16pt !important;
+    }
+
+    .comprovante-obs li {
+        page-break-inside: avoid !important;
+    }
+
+    /* ---- Declaração ---- */
+    .comprovante-declaracao {
+        font-size: 10pt !important;
+        line-height: 1.5 !important;
+        margin-bottom: 28pt !important;
+        page-break-inside: avoid !important;
+    }
+
+    /* ---- Assinatura ---- */
+    .comprovante-assinatura {
+        text-align: center !important;
+        max-width: 320pt !important;
+        margin: 24pt auto 0 !important;
+        page-break-inside: avoid !important;
+    }
+
+    .comprovante-assinatura .linha-assinatura {
+        border-top: 0.5pt solid #1f2937 !important;
+        margin-bottom: 4pt !important;
+        padding-top: 4pt !important;
+    }
+
+    .comprovante-assinatura span {
+        font-size: 9pt !important;
+        color: #6b7280 !important;
+    }
+
+    /* ============================================================
+       7) REMOVE EFEITOS VISUAIS
+       ============================================================ */
+    * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+        animation: none !important;
+        transition: none !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+}
+
+/* Configuração da página impressa (margens) */
+@page {
+    size: auto;
+    margin: 12mm;
 }
