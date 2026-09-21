@@ -312,7 +312,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         <input type="text" class="form-control" id="pp-cliente-nome" readonly>
                     </div>
 
-                    <div class="mb-3">
+                                 <div class="mb-3">
                         <label class="form-label">Motivo</label>
                         <select class="form-select" id="pp-motivo">
                             <option value="cliente_ausente">Cliente ausente</option>
@@ -321,6 +321,24 @@ require_once __DIR__ . '/../../estrutura/header.php';
                             <option value="avaria">Avaria no produto</option>
                             <option value="outro">Outro</option>
                         </select>
+                    </div>
+
+                    <!-- ============================================================
+                         🔥 NOVO (Bloco 4 - Etapa 5, 2026-09-21):
+                         Define qual transação ERP será usada ao gerar o pedido
+                         ============================================================ -->
+                    <div class="mb-3" id="pp-tipo-tratamento-wrapper">
+                        <label class="form-label">
+                            <i class="fa-solid fa-tags"></i> Tipo de Faltante *
+                        </label>
+                        <select class="form-select" id="pp-tipo-tratamento" required>
+                            <option value="faltante_com_estoque">Faltante com estoque (gera pedido ERP · transação 19)</option>
+                            <option value="faltante_sem_estoque">Faltante sem estoque (gera pedido ERP · transação 20)</option>
+                        </select>
+                        <small class="text-muted" style="display:block;margin-top:4px;font-size:0.72rem;color:var(--nutri-text-secondary);">
+                            <i class="fa-solid fa-circle-info"></i>
+                            Define qual tipo de transação será usada no ERP ao gerar o pedido.
+                        </small>
                     </div>
 
                     <div class="mb-3">

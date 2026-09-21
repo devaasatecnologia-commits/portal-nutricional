@@ -1479,6 +1479,12 @@ function cancelarAcerto() {
 
 // ================================================================
 // ABRIR MODAL DE PEDIDO DE PROBLEMA
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
+//   - Reseta o select `#pp-tipo-tratamento` para o padrão
+//     (`faltante_com_estoque`) toda vez que o modal abre.
+//   - Garante que o select esteja sempre visível (modal só serve
+//     para faltante — o hidden `pp-tipo-problema` é sempre 'faltante').
 // ================================================================
 function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
     if (!acertoId || isNaN(parseInt(acertoId)) || parseInt(acertoId) <= 0) {
@@ -1496,25 +1502,40 @@ function abrirPedidoProblema(acertoId, entregaId, clienteNome) {
         showError('Dados incompletos para criar pedido');
         return;
     }
-    
+
     const ppAcertoId = document.getElementById('pp-acerto-id');
     const ppEntregaId = document.getElementById('pp-entrega-id');
     const ppClienteNome = document.getElementById('pp-cliente-nome');
     const ppItensBody = document.getElementById('pp-itens-body');
     const ppTotalValor = document.getElementById('pp-total-valor');
-    
+
+    // ============================================================
+    // 🔥 NOVO (Etapa 5): Reset do select tipo_tratamento
+    // ============================================================
+    const ppTipoTratamento = document.getElementById('pp-tipo-tratamento');
+    if (ppTipoTratamento) {
+        ppTipoTratamento.value = 'faltante_com_estoque';  // padrão
+    }
+
+    // Sempre visível (modal só serve pra faltante)
+    const ppTipoTratamentoWrapper = document.getElementById('pp-tipo-tratamento-wrapper');
+    if (ppTipoTratamentoWrapper) {
+        ppTipoTratamentoWrapper.style.display = 'block';
+    }
+
+    // Reset de outros campos
     if (ppAcertoId) ppAcertoId.value = acertoId;
     if (ppEntregaId) ppEntregaId.value = entregaId;
     if (ppClienteNome) ppClienteNome.value = clienteNome || 'Cliente não identificado';
     if (ppItensBody) ppItensBody.innerHTML = '';
     if (ppTotalValor) ppTotalValor.textContent = '0,00';
-    
+
     const modal = document.getElementById('modalPedidoProblema');
     if (!modal) {
         showError('Modal de pedido não encontrado');
         return;
     }
-    
+
     try {
         if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
             const modalInstance = new bootstrap.Modal(modal);
@@ -1738,6 +1759,13 @@ function recalcularTotalPedido() {
 
 // ================================================================
 // SALVAR PEDIDO DE PROBLEMA
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
+//   - Lê o select `#pp-tipo-tratamento` (`faltante_com_estoque` /
+//     `faltante_sem_estoque`) e envia no payload como `tipo_tratamento`.
+//   - Backend usa esse campo pra decidir a transação ERP (19 ou 20).
+//   - Validação: se o select não existir ou estiver vazio, assume
+//     `faltante_com_estoque` (padrão retrocompatível).
 // ================================================================
 function salvarPedidoProblema() {
     const acertoId = document.getElementById('pp-acerto-id')?.value;
@@ -1745,19 +1773,36 @@ function salvarPedidoProblema() {
     const tipo = document.getElementById('pp-tipo-problema')?.value || 'faltante';
     const motivo = document.getElementById('pp-motivo')?.value || '';
     const observacoes = document.getElementById('pp-observacoes')?.value || '';
-    
+
+    // ============================================================
+    // 🔥 NOVO (Etapa 5): Ler tipo_tratamento do select
+    // ============================================================
+    let tipoTratamento = document.getElementById('pp-tipo-tratamento')?.value || '';
+
+    // Validação: se vazio, assume o padrão
+    if (!tipoTratamento) {
+        tipoTratamento = 'faltante_com_estoque';
+    }
+
+    // Validar que é um valor conhecido
+    const tiposValidos = ['faltante_com_estoque', 'faltante_sem_estoque'];
+    if (!tiposValidos.includes(tipoTratamento)) {
+        Swal.fire('Erro', 'Tipo de tratamento inválido: ' + tipoTratamento, 'error');
+        return;
+    }
+
     if (!acertoId || !entregaId) {
         showError('Dados do acerto ou entrega não encontrados');
         return;
     }
-    
+
     const itens = [];
     document.querySelectorAll('#pp-itens-body tr').forEach(row => {
         const qtdInput = row.querySelector('input[type="number"]');
         const itemId = parseInt(row.dataset.itemId);
         const quantidade = parseFloat(qtdInput?.value) || 0;
         const valorUnitario = parseFloat(row.dataset.valorUnitario) || 0;
-        
+
         if (itemId && quantidade > 0) {
             itens.push({
                 iditem: itemId,
@@ -1766,15 +1811,28 @@ function salvarPedidoProblema() {
             });
         }
     });
-    
+
     if (itens.length === 0) {
         Swal.fire('Aviso', 'Adicione pelo menos um item com quantidade válida', 'warning');
         return;
     }
-    
+
+    // ============================================================
+    // Confirmação com o tipo de tratamento em destaque
+    // ============================================================
+    const tipoTratamentoLabel = tipoTratamento === 'faltante_sem_estoque'
+        ? 'Faltante SEM estoque (ERP 20)'
+        : 'Faltante COM estoque (ERP 19)';
+
     Swal.fire({
-        title: 'Confirmar',
-        text: 'Deseja criar este pedido de ' + tipo + ' com ' + itens.length + ' item(ns)?',
+        title: 'Confirmar pedido de faltante',
+        html: `
+            <div style="text-align:left; font-size:0.9rem;">
+                <p><b>Tipo:</b> ${escapeHtml(tipoTratamentoLabel)}</p>
+                <p><b>Itens:</b> ${itens.length}</p>
+                <p><b>Motivo:</b> ${escapeHtml(motivo || '-')}</p>
+            </div>
+        `,
         icon: 'question',
         showCancelButton: true,
         confirmButtonColor: '#1a3c34',
@@ -1786,15 +1844,16 @@ function salvarPedidoProblema() {
                 acerto_id: parseInt(acertoId),
                 entrega_id: parseInt(entregaId),
                 tipo_problema: tipo,
+                tipo_tratamento: tipoTratamento,   // 🔥 NOVO
                 motivo: motivo,
                 observacoes: observacoes,
                 itens: itens
             };
-            
+
             const url = API_BASE + '/frota/acerto/pedido-problema';
-            
+
             console.log('📡 Enviando: POST ' + url, data);
-            
+
             fetchAuth(url, {
                 method: 'POST',
                 body: JSON.stringify(data)
@@ -2107,26 +2166,31 @@ function verDetalhesEntrega(entregaId) {
 
 // ================================================================
 // CRIAR PEDIDO PARA ITENS COM PROBLEMA
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 5):
+//   - Adiciona um segundo Swal para perguntar o tipo_tratamento
+//     antes de enviar o pedido (faltante_com_estoque / faltante_sem_estoque).
+//   - Envia `tipo_tratamento` no payload.
 // ================================================================
 function criarPedidoParaItensProblema(entregaId, clienteNome) {
     if (!entregaId) {
         showError('ID da entrega não informado');
         return;
     }
-    
+
     const token = getToken();
     if (!token) {
         showError('Token não encontrado');
         return;
     }
-    
+
     Swal.fire({
         title: 'Carregando...',
         text: 'Buscando itens com problema',
         allowOutsideClick: false,
         didOpen: () => { Swal.showLoading(); }
     });
-    
+
     fetch(`${API_BASE}/frota/entregas/${entregaId}`, {
         headers: {
             'Authorization': 'Bearer ' + token,
@@ -2136,24 +2200,24 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
     .then(res => res.json())
     .then(data => {
         Swal.close();
-        
+
         if (!data.success) {
             Swal.fire('Erro', data.error || 'Erro ao carregar itens', 'error');
             return;
         }
-        
+
         const entrega = data.data;
-        
-        const itensProblema = entrega.checklist.filter(item => 
-            item.status !== 'entregue' && 
+
+        const itensProblema = entrega.checklist.filter(item =>
+            item.status !== 'entregue' &&
             item.quantidade_entregue < item.quantidade_prevista
         );
-        
+
         if (itensProblema.length === 0) {
             Swal.fire('Aviso', 'Nenhum item com problema encontrado nesta entrega.', 'info');
             return;
         }
-        
+
         const itensFaltantes = itensProblema.map(item => {
             const qtdPrev = parseFloat(item.quantidade_prevista || 0);
             const qtdEnt = parseFloat(item.quantidade_entregue || 0);
@@ -2164,7 +2228,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                 quantidade_entregue_original: qtdEnt
             };
         });
-        
+
         let itensHtml = itensFaltantes.map((item, index) => `
             <div style="background: #fef2f2; border-radius: 8px; padding: 10px 14px; margin-bottom: 8px; border: 1px solid #fca5a5;">
                 <div style="display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px;">
@@ -2194,10 +2258,10 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                 ${item.motivo ? `<div style="font-size: 0.7rem; color: #dc2626; margin-top: 4px;">Motivo: ${escapeHtml(item.motivo)}</div>` : ''}
             </div>
         `).join('');
-        
+
         const totalFaltante = itensFaltantes.reduce((sum, item) => sum + item.quantidade_faltante, 0);
         const totalItens = itensFaltantes.length;
-        
+
         Swal.fire({
             title: '📝 Criar Pedido de Faltante',
             html: `
@@ -2209,17 +2273,17 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                             <span style="color: #dc2626; font-weight: 700;">📦 ${totalFaltante} unidades</span>
                         </div>
                     </div>
-                    
+
                     <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 12px;">
-                        <i class="fa-solid fa-info-circle"></i> 
+                        <i class="fa-solid fa-info-circle"></i>
                         Será criado um pedido de <strong>faltante</strong> com as quantidades não entregues.
                         Clique em <strong>"Confirmar"</strong> para criar o pedido no sistema.
                     </p>
-                    
+
                     <div style="max-height: 300px; overflow-y: auto; padding-right: 4px;">
                         ${itensHtml}
                     </div>
-                    
+
                     <div style="margin-top: 12px; padding: 10px 14px; background: #fef3c7; border-radius: 8px; border: 1px solid #fcd34d;">
                         <span style="font-weight: 600; color: #92400e;">
                             ⚠️ Total: ${totalItens} itens | ${totalFaltante} unidades faltantes
@@ -2243,27 +2307,65 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                     motivo: item.motivo || 'Faltante no checkout',
                     unidade: item.unidade || 'UN'
                 }));
-                
-                return itensParaEnviar;
+
+                return {
+                    itens: itensParaEnviar,
+                    tipoTratamento: 'faltante_com_estoque'
+                };
             }
-        }).then(result => {
+        }).then(async result => {
             if (result.isConfirmed && result.value) {
-                const itens = result.value;
-                if (itens.length === 0) {
+                const itens = result.value.itens || result.value;
+                if (!itens || itens.length === 0) {
                     Swal.fire('Erro', 'Nenhum item válido para criar pedido', 'error');
                     return;
                 }
-                
+
                 const acertoId = acertoAtual.id || document.getElementById('pp-acerto-id')?.value || 0;
                 if (!acertoId) {
                     Swal.fire('Erro', 'ID do acerto não encontrado. Inicie o acerto primeiro.', 'error');
                     return;
                 }
-                
+
+                // ============================================================
+                // 🔥 NOVO (Etapa 5): Perguntar tipo de faltante
+                // ============================================================
+                const escolha = await Swal.fire({
+                    title: 'Tipo de faltante',
+                    html: `
+                        <div style="text-align:left; font-size:0.9rem;">
+                            <p>Este pedido será criado como <b>faltante</b>. Escolha a transação:</p>
+                            <div style="margin-top:8px;">
+                                <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;">
+                                    <input type="radio" name="swal-tipo-trat" value="faltante_com_estoque" checked>
+                                    <span><b>Com estoque</b> (transação ERP 19)</span>
+                                </label>
+                                <label style="display:flex;align-items:center;gap:8px;padding:8px;border:1px solid #e5e7eb;border-radius:8px;cursor:pointer;margin-top:6px;">
+                                    <input type="radio" name="swal-tipo-trat" value="faltante_sem_estoque">
+                                    <span><b>Sem estoque</b> (transação ERP 20)</span>
+                                </label>
+                            </div>
+                        </div>
+                    `,
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Continuar',
+                    cancelButtonText: 'Cancelar',
+                    confirmButtonColor: '#1a3c34',
+                    preConfirm: () => {
+                        const sel = document.querySelector('input[name="swal-tipo-trat"]:checked');
+                        return sel ? sel.value : 'faltante_com_estoque';
+                    }
+                });
+
+                if (!escolha.isConfirmed) return;
+                const tipoTratamento = escolha.value || 'faltante_com_estoque';
+
                 const payload = {
                     acerto_id: parseInt(acertoId),
                     entrega_id: parseInt(entregaId),
                     tipo_problema: 'faltante',
+                    tipo_tratamento: tipoTratamento,   // 🔥 NOVO
                     motivo: 'Faltante no checkout',
                     observacoes: 'Pedido gerado automaticamente a partir dos itens faltantes',
                     itens: itens.map(item => ({
@@ -2274,16 +2376,16 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                         unidade: item.unidade || 'UN'
                     }))
                 };
-                
+
                 console.log('📤 Enviando pedido de faltante:', payload);
-                
+
                 Swal.fire({
                     title: 'Criando pedido...',
                     text: 'Aguarde',
                     allowOutsideClick: false,
                     didOpen: () => { Swal.showLoading(); }
                 });
-                
+
                 fetch(API_BASE + '/frota/acerto/pedido-problema', {
                     method: 'POST',
                     headers: {
@@ -2303,7 +2405,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                 })
                 .then(data => {
                     Swal.close();
-                    
+
                     if (data.success) {
                         Swal.fire({
                             icon: 'success',
@@ -2312,12 +2414,12 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                                 <div style="text-align: left; padding: 8px;">
                                     <p>Pedido de <strong>faltante</strong> criado para a entrega #${escapeHtml(entregaId)}</p>
                                     <p style="font-size: 0.85rem; color: #64748b;">
-                                        Total: <strong>${itens.length}</strong> itens | 
+                                        Total: <strong>${itens.length}</strong> itens |
                                         <strong>${totalFaltante}</strong> unidades
                                     </p>
                                     <div style="margin-top: 8px; background: #f0fdf4; padding: 8px 12px; border-radius: 8px;">
                                         <span style="font-size: 0.8rem; color: #065f46;">
-                                            <i class="fa-solid fa-check-circle"></i> 
+                                            <i class="fa-solid fa-check-circle"></i>
                                             Agora você pode gerar o pedido no ERP clicando em "Gerar Pedido ERP"
                                         </span>
                                     </div>
@@ -2326,7 +2428,7 @@ function criarPedidoParaItensProblema(entregaId, clienteNome) {
                             confirmButtonText: 'OK',
                             confirmButtonColor: '#10b981'
                         });
-                        
+
                         if (acertoAtual.embarque_id) {
                             setTimeout(() => {
                                 abrirAcerto(acertoAtual.embarque_id);
@@ -2575,6 +2677,15 @@ async function reimprimirComprovanteDevolucao(tratamentoId, botaoOrigem) {
 }
 // ================================================================
 // GERAR PEDIDO ERP DIRETO
+//
+// 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 6):
+//   - Deriva `id_transacao` de `tipo_tratamento` (mesma lógica do backend),
+//     não mais de `tipo_problema`.
+//   - Mapa: faltante_com_estoque → 19, faltante_sem_estoque → 20.
+//   - Fallback retrocompatível: se `tipo_tratamento` não vier, mantém
+//     o comportamento antigo (faltante → 19, devolucao → 20).
+//   - Bloqueia envio se o tipo for desconhecido (evita mandar transação
+//     errada pro ERP).
 // ================================================================
 function gerarPedidoERP(pedidoAcertoId) {
     if (!pedidoAcertoId) {
@@ -2612,10 +2723,55 @@ function gerarPedidoERP(pedidoAcertoId) {
 
         const pedido = pedidoData.data;
         const tipoProblema = pedido.tipo_problema || 'faltante';
-        const tipoLabel = tipoProblema === 'faltante' ? 'Faltante (Transação 19)' : 'Devolução (Transação 20)';
-        const tipoEmoji = tipoProblema === 'faltante' ? '⚠️' : '🔄';
+        const tipoTratamento = pedido.tipo_tratamento || '';
 
-        const transacaoAutomatica = tipoProblema === 'faltante' ? 19 : 20;
+        // ============================================================
+        // 🔥 MUDANÇA 2026-09-21 (Bloco 4 - Etapa 6):
+        //   Deriva a transação do `tipo_tratamento`
+        // ============================================================
+        const mapTransacaoPorTratamento = {
+            'faltante_com_estoque': 19,
+            'faltante_sem_estoque': 20,
+            // devolucao_comprovante NÃO gera pedido ERP (não tem transação)
+        };
+
+        let transacaoAutomatica = null;
+        let tipoLabel = '';
+        let tipoEmoji = '';
+
+        if (tipoTratamento && mapTransacaoPorTratamento[tipoTratamento] != null) {
+            transacaoAutomatica = mapTransacaoPorTratamento[tipoTratamento];
+            if (tipoTratamento === 'faltante_com_estoque') {
+                tipoLabel = 'Faltante com estoque (Transação 19)';
+                tipoEmoji = '⚠️';
+            } else if (tipoTratamento === 'faltante_sem_estoque') {
+                tipoLabel = 'Faltante sem estoque (Transação 20)';
+                tipoEmoji = '⚠️';
+            }
+        } else {
+            // Fallback retrocompatível (sem tipo_tratamento no pedido)
+            if (tipoProblema === 'faltante') {
+                transacaoAutomatica = 19;
+                tipoLabel = 'Faltante (Transação 19 - padrão)';
+                tipoEmoji = '⚠️';
+            } else if (tipoProblema === 'devolucao') {
+                transacaoAutomatica = 20;
+                tipoLabel = 'Devolução (Transação 20 - legado)';
+                tipoEmoji = '🔄';
+            } else {
+                // Tipo desconhecido: bloqueia
+                Swal.fire({
+                    icon: 'error',
+                    title: 'Tipo de tratamento desconhecido',
+                    html: `Não foi possível determinar a transação ERP.<br>
+                           <code>tipo_problema: ${escapeHtml(tipoProblema)}</code><br>
+                           <code>tipo_tratamento: ${escapeHtml(tipoTratamento || '(vazio)')}</code>`,
+                    confirmButtonColor: '#dc2626'
+                });
+                return;
+            }
+        }
+
         const filialPadrao = 1;
         const sandbox = false;
 
@@ -2641,27 +2797,27 @@ function gerarPedidoERP(pedidoAcertoId) {
                             <span style="font-weight: 600;">💰 ${formatMoney(pedido.valor_total || 0)}</span>
                         </div>
                     </div>
-                    
+
                     <div style="background: #dbeafe; border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; border: 1px solid #93c5fd;">
                         <div style="font-size: 0.8rem; color: #1e40af;">
                             <strong>🔧 Configuração Automática:</strong>
                             <ul style="margin: 6px 0 0 20px; padding: 0;">
-                                <li>Transação: <strong>${transacaoAutomatica}</strong> (${escapeHtml(tipoProblema)})</li>
+                                <li>Transação: <strong>${transacaoAutomatica}</strong> (${escapeHtml(tipoTratamento || tipoProblema)})</li>
                                 <li>Filial: <strong>${filialPadrao}</strong></li>
                                 <li>Modo: <strong>🚀 Produção</strong></li>
                             </ul>
                         </div>
                     </div>
-                    
+
                     ${itensResumo ? `
                         <div style="max-height: 200px; overflow-y: auto; background: #f8fafc; border-radius: 8px; padding: 8px 12px; margin-bottom: 12px;">
                             <p style="font-weight: 600; font-size: 0.8rem; margin-bottom: 4px;">📦 Itens (${itens.length}):</p>
                             ${itensResumo}
                         </div>
                     ` : ''}
-                    
+
                     <p style="font-size: 0.8rem; color: #dc2626; margin-top: 8px;">
-                        <i class="fa-solid fa-triangle-exclamation"></i> 
+                        <i class="fa-solid fa-triangle-exclamation"></i>
                         O pedido será inserido diretamente no ERP. Confirme para continuar.
                     </p>
                 </div>

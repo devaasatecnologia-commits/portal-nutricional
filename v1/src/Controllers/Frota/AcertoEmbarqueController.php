@@ -509,6 +509,13 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
     /**
      * POST /v1/frota/acerto/iniciar
      * Inicia um acerto de embarque
+     *
+     * 🔥 MUDANÇA 2026-09-18 (Bloco 4 - Opção A):
+     *   - Aceita dois status de embarque para iniciar acerto:
+     *       • 'finalizado' → fluxo normal (motorista concluiu tudo)
+     *       • 'problema'   → embarque com divergência, tratado no acerto
+     *   - Mensagens específicas por status de bloqueio
+     *   - Payload de erro devolve 'embarque_status' para o frontend
      */
     public function iniciarAcerto(Request $request, Response $response): Response
     {
@@ -516,20 +523,20 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         $usuarioNome = $user['username'] ?? $user['nome'] ?? 'Gestor';
-        
+
         $embarqueId = (int)($input['embarque_id'] ?? 0);
-        
+
         if ($embarqueId <= 0) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'ID do embarque é obrigatório'
             ], 400);
         }
-        
+
         try {
             $pdo = $this->pdo;
             $pdo->beginTransaction();
-            
+
             // Verificar se já existe acerto ativo
             $stmt = $pdo->prepare("
                 SELECT id FROM frota_acerto_embarque 
@@ -543,7 +550,7 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
                     'error' => 'Já existe um acerto em andamento para este embarque'
                 ], 400);
             }
-            
+
             // Buscar dados do embarque
             $stmt = $pdo->prepare("
                 SELECT 
@@ -562,7 +569,7 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
             ");
             $stmt->execute(['id' => $embarqueId]);
             $embarque = $stmt->fetch(\PDO::FETCH_ASSOC);
-            
+
             if (!$embarque) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
                 return $this->json($response, [
@@ -571,14 +578,45 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
                 ], 404);
             }
 
-            if ($embarque['embarque_status'] !== 'finalizado') {
+            // ================================================================
+            // VALIDAÇÃO DE STATUS DO EMBARQUE
+            // ================================================================
+            // Regra (Bloco 4 - Opção A, 2026-09-18):
+            //
+            //  Aceitar dois estados para iniciar o acerto:
+            //
+            //   - 'finalizado' → fluxo normal (motorista concluiu todas
+            //     as entregas; nada pendente).
+            //
+            //   - 'problema'   → embarque com divergência (faltante ou
+            //     devolução) que será tratada pelo gestor no próprio acerto.
+            //     Nesse caso, o gestor é quem "fecha" o embarque, decidindo
+            //     os tratamentos (compras no ERP, comprovantes, etc).
+            //
+            //  Qualquer outro estado (planejado, em_andamento, cancelado)
+            //  continua bloqueado — o acerto não pode ser iniciado enquanto
+            //  o motorista ainda está em rota ou o embarque foi cancelado.
+            // ================================================================
+            $statusPermitidos = ['finalizado', 'problema'];
+
+            if (!in_array($embarque['embarque_status'], $statusPermitidos, true)) {
                 if ($pdo->inTransaction()) $pdo->rollBack();
+
+                $msgPorStatus = [
+                    'planejado'    => 'O embarque ainda não foi iniciado. Aguarde o motorista sair para a rota.',
+                    'em_andamento' => 'O motorista ainda está em rota. Aguarde a conclusão das entregas.',
+                    'cancelado'    => 'Este embarque foi cancelado e não pode ser acertado.',
+                    'default'      => 'O acerto só pode ser iniciado em embarques finalizados ou com problemas.',
+                ];
+                $msg = $msgPorStatus[$embarque['embarque_status']] ?? $msgPorStatus['default'];
+
                 return $this->json($response, [
                     'success' => false,
-                    'error' => 'O acerto só pode ser iniciado após a finalização do embarque pelo motorista.'
+                    'error' => $msg,
+                    'embarque_status' => $embarque['embarque_status'],
                 ], 400);
             }
-            
+
             // Criar acerto
             $stmt = $pdo->prepare("
                 INSERT INTO frota_acerto_embarque (
@@ -616,23 +654,24 @@ public function getPedidoAcerto(Request $request, Response $response, array $arg
                 'total_pedidos' => $embarque['total_entregas'],
                 'valor_total' => $embarque['valor_total']
             ]);
-            
+
             $acertoId = $stmt->fetchColumn();
-            
+
             // Registrar log - usando a tabela correta
             $this->registrarLog($embarqueId, 'acerto_iniciado', "Acerto iniciado pelo gestor {$usuarioNome}", $usuarioId);
-            
+
             $pdo->commit();
-            
+
             return $this->json($response, [
                 'success' => true,
                 'message' => 'Acerto iniciado com sucesso',
                 'data' => [
                     'acerto_id' => $acertoId,
-                    'embarque_id' => $embarqueId
+                    'embarque_id' => $embarqueId,
+                    'embarque_status' => $embarque['embarque_status']
                 ]
             ]);
-            
+
         } catch (\Exception $e) {
             if (isset($pdo) && $pdo->inTransaction()) {
                 $pdo->rollBack();
