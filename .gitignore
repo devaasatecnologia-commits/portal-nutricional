@@ -23,3 +23,11 @@ uploads/
 *.apos_passo_*
 *.bak_antes_*
 payload.json
+
+# Configuracoes locais com credenciais (NAO commitar)
+conect.php
+config.php
+email_config.php
+sql.php
+template.php
+uteis.php
