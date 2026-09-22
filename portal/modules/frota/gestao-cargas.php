@@ -402,19 +402,111 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
     <!-- ================================================================
        ABA: EFICIÊNCIA (motorista ↔ veículo com toggle)
-       Conteúdo será preenchido no Bloco 5.C
+       🔥 IMPLEMENTADO 2026-09-22 (Bloco 5.C.1)
+       - Toggle: Motoristas | Veículos
+       - Filtro de período compartilhado
+       - 3 destaques dinâmicos
+       - Ranking completo com badge Cobli
     ================================================================ -->
     <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
-        <div class="section-card">
-            <div class="section-body" style="text-align:center; padding:60px 20px;">
-                <i class="fa-solid fa-ranking-star" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                    Ranking unificado (Motoristas ↔ Veículos) em construção — chega no Bloco 5.C.
-                </p>
+
+        <!-- ============================================================
+             TOGGLE + FILTRO DE PERÍODO
+             ============================================================ -->
+        <div class="cargas-eficiencia-toolbar">
+            <div class="cargas-toggle" id="cargas-toggle-dimensao" role="tablist">
+                <button type="button" class="cargas-toggle-btn active" data-dim="motoristas"
+                        onclick="alternarDimensaoEficiencia('motoristas', this)" role="tab" aria-selected="true">
+                    <i class="fa-solid fa-user"></i> Motoristas
+                </button>
+                <button type="button" class="cargas-toggle-btn" data-dim="veiculos"
+                        onclick="alternarDimensaoEficiencia('veiculos', this)" role="tab" aria-selected="false">
+                    <i class="fa-solid fa-truck"></i> Veículos
+                </button>
+            </div>
+
+            <div class="cargas-eficiencia-filtros">
+                <label class="cargas-priority">
+                    <span>Período</span>
+                    <select id="eficiencia-dias" onchange="recarregarAbaEficiencia()">
+                        <option value="7">Últimos 7 dias</option>
+                        <option value="30" selected>Últimos 30 dias</option>
+                        <option value="90">Últimos 90 dias</option>
+                        <option value="365">Últimos 12 meses</option>
+                    </select>
+                </label>
+
+                <label class="toggle-eficiencia" title="Esconde itens sem trajetos válidos (amostra insuficiente)">
+                    <input type="checkbox" id="toggle-eficiencia-geral" onchange="alternarFiltroEficienciaGeral(this.checked)">
+                    <span class="toggle-eficiencia-slider"></span>
+                    <span class="toggle-eficiencia-label">
+                        <i class="fa-solid fa-filter-circle-xmark"></i>
+                        Ocultar sem eficiência
+                    </span>
+                </label>
+
+                <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="recarregarAbaEficiencia()">
+                    <i class="fa-solid fa-rotate-right"></i> Atualizar
+                </button>
             </div>
         </div>
-    </div>
 
+        <!-- ============================================================
+             DESTAQUES (3 cards)
+             ============================================================ -->
+        <div class="section-card mb-6">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-medal"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Destaques</span>
+                        <span class="text-xs text-slate-400 block" id="eficiencia-destaques-periodo">Últimos 30 dias</span>
+                    </div>
+                </div>
+            </div>
+            <div class="section-body" id="eficiencia-destaques">
+                <div class="cargas-em-construcao-mini">Carregando destaques...</div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             RANKING COMPLETO (tabela única, colunas ajustadas por dimensão)
+             ============================================================ -->
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Ranking Completo</span>
+                        <span class="text-xs text-slate-400 block" id="eficiencia-info-registros">Carregando...</span>
+                    </div>
+                </div>
+                <div class="eficiencia-legenda-cobli">
+                    <span class="cobli-status-badge ao-vivo"><span class="cobli-dot"></span> Ao vivo</span>
+                    <span class="cobli-status-badge ultima"><span class="cobli-dot"></span> Última conhecida</span>
+                    <span class="cobli-status-badge sem-vinculo"><span class="cobli-dot"></span> Sem vínculo</span>
+                </div>
+            </div>
+            <div class="section-body p-0 overflow-x-auto">
+                <table class="table-frota w-full" id="tabela-eficiencia">
+                    <thead id="tabela-eficiencia-thead">
+                        <!-- Cabeçalho renderizado por JS conforme a dimensão -->
+                    </thead>
+                    <tbody id="lista-eficiencia">
+                        <tr>
+                            <td colspan="12" class="text-center py-8">
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="skeleton skeleton-title mx-auto"></div>
+                                    <div class="skeleton skeleton-text w-48 mx-auto"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div> <!-- /#tab-eficiencia -->
     <!-- ================================================================
        ABA: ANÁLISES (ex-"Gráficos")
     ================================================================ -->
