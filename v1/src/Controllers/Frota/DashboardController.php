@@ -1841,7 +1841,7 @@ JOIN frota_entrega e ON e.embarque_id = em.id
             $stmt->execute();
             $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // =================================================================
+                      // =================================================================
             // Pós-processamento
             // =================================================================
             foreach ($dados as &$v) {
@@ -1878,6 +1878,16 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 // Flags de confiabilidade
                 $v['amostra_insuficiente'] = ($v['trajetos_analisados'] === 0);
                 $v['amostra_pequena']      = ($v['trajetos_analisados'] >= 1 && $v['trajetos_analisados'] < 3);
+
+                // ============================================================
+                // 🔥 NOVO 2026-09-22 (Bloco 5.C.3.A):
+                // Score de desempenho do VEÍCULO — mesma fórmula do motorista.
+                // Reutilizamos calcularScoreMotorista() porque a estrutura dos
+                // dados é idêntica (total_entregas, entregas_concluidas,
+                // entregas_com_problema, taxa_no_prazo, taxa_divergencia,
+                // problemas_pendentes, problemas_resolvidos, indice_eficiencia_trajeto).
+                // ============================================================
+                $v['score_desempenho'] = $this->calcularScoreMotorista($v);
             }
             unset($v);
 

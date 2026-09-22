@@ -1174,7 +1174,7 @@ function mudarAbaCargas(aba, btn) {
 
     // ⏳ Eficiência (será implementada no Bloco 5.C)
     if (aba === 'eficiencia') {
-        // TODO: carregarAbaEficiencia() no Bloco 5.C
+        carregarAbaEficiencia();
     }
 
     // ⏳ Análises (será ajustado no Bloco 5.E)
@@ -2467,6 +2467,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Restaura filtros de eficiência ANTES de carregar dados
     // ================================================================
     restaurarFiltrosEficiencia();
+    restaurarFiltroEficienciaGeral(); 
 
     // Carregar dados
     carregarDados();
@@ -3095,3 +3096,384 @@ window.dashIrPara                = dashIrPara;
 window.dashIrParaMapaComEmbarque = dashIrParaMapaComEmbarque;
 window.dashAbrirModalAcerto      = dashAbrirModalAcerto;
 window.mudarSubAbaCargas         = mudarSubAbaCargas;
+
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.C.2):
+// ABA EFICIÊNCIA — Ranking unificado motorista ↔ veículo
+// ================================================================
+
+// Estado da aba Eficiência
+let eficienciaState = {
+    dimensao: 'motoristas',       // 'motoristas' | 'veiculos'
+    dias: 30,
+    carregando: false,
+    dados: {
+        motoristas: [],
+        veiculos: []
+    },
+    filtroOcultarSemEficiencia: false,
+    carregada: false
+};
+
+// ---------------------------------------------------------------
+// Toggle entre Motoristas e Veículos
+// ---------------------------------------------------------------
+function alternarDimensaoEficiencia(dimensao, btn) {
+    if (!['motoristas', 'veiculos'].includes(dimensao)) return;
+
+    eficienciaState.dimensao = dimensao;
+
+    // Atualiza botões do toggle
+    document.querySelectorAll('#cargas-toggle-dimensao .cargas-toggle-btn').forEach(b => {
+        const ativo = b === btn;
+        b.classList.toggle('active', ativo);
+        b.setAttribute('aria-selected', ativo ? 'true' : 'false');
+    });
+
+    // Se já temos dados em cache, re-renderiza sem chamar API
+    if (eficienciaState.dados[dimensao]?.length) {
+        renderizarDestaquesEficiencia(eficienciaState.dados[dimensao], dimensao);
+        renderizarTabelaEficiencia(eficienciaState.dados[dimensao], dimensao);
+    } else {
+        // Senão, busca do backend
+        carregarAbaEficiencia(true);
+    }
+}
+
+// ---------------------------------------------------------------
+// Recarrega forçando nova busca (botão Atualizar ou filtro)
+// ---------------------------------------------------------------
+function recarregarAbaEficiencia() {
+    const selectDias = document.getElementById('eficiencia-dias');
+    if (selectDias) {
+        eficienciaState.dias = parseInt(selectDias.value) || 30;
+    }
+
+    // Invalida cache da dimensão atual
+    eficienciaState.dados[eficienciaState.dimensao] = [];
+    carregarAbaEficiencia(true);
+}
+
+// ---------------------------------------------------------------
+// Toggle "Ocultar sem eficiência"
+// ---------------------------------------------------------------
+function alternarFiltroEficienciaGeral(checked) {
+    eficienciaState.filtroOcultarSemEficiencia = !!checked;
+    try {
+        localStorage.setItem('frota_eficiencia_ocultar_sem_eficiencia', checked ? '1' : '0');
+    } catch (e) {}
+
+    // Re-renderiza sem chamar API
+    const dados = eficienciaState.dados[eficienciaState.dimensao] || [];
+    if (dados.length) {
+        renderizarDestaquesEficiencia(dados, eficienciaState.dimensao);
+        renderizarTabelaEficiencia(dados, eficienciaState.dimensao);
+    }
+}
+
+// ---------------------------------------------------------------
+// Orquestrador — carrega dados da dimensão atual
+// ---------------------------------------------------------------
+async function carregarAbaEficiencia(forcar = false) {
+    if (eficienciaState.carregando) return;
+
+    const token = getAuthToken();
+    if (!token) return;
+
+    const dim = eficienciaState.dimensao;
+    const dias = eficienciaState.dias;
+
+    // Cache: se já temos e não é forçado, só re-renderiza
+    if (!forcar && eficienciaState.dados[dim]?.length) {
+        renderizarDestaquesEficiencia(eficienciaState.dados[dim], dim);
+        renderizarTabelaEficiencia(eficienciaState.dados[dim], dim);
+        return;
+    }
+
+    eficienciaState.carregando = true;
+
+    // Atualiza período no cabeçalho
+    const periodosLabels = {
+        7: 'Últimos 7 dias',
+        30: 'Últimos 30 dias',
+        90: 'Últimos 90 dias',
+        365: 'Últimos 12 meses'
+    };
+    const periodoEl = document.getElementById('eficiencia-destaques-periodo');
+    if (periodoEl) periodoEl.textContent = periodosLabels[dias] || `Últimos ${dias} dias`;
+
+    // Esqueleto de carregamento
+    const destaquesEl = document.getElementById('eficiencia-destaques');
+    if (destaquesEl) {
+        destaquesEl.innerHTML = '<div class="cargas-em-construcao-mini">Carregando destaques...</div>';
+    }
+    const infoEl = document.getElementById('eficiencia-info-registros');
+    if (infoEl) infoEl.textContent = 'Carregando...';
+
+    // Endpoint muda conforme dimensão
+    const endpoint = dim === 'motoristas'
+        ? `${CONFIG.API_BASE}/gestao-cargas/ranking-motoristas?dias=${dias}`
+        : `${CONFIG.API_BASE}/gestao-cargas/ranking-veiculos?dias=${dias}`;
+
+    try {
+        const resp = await fetch(endpoint, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+        const payload = await resp.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro desconhecido');
+
+        eficienciaState.dados[dim] = payload.data || [];
+        eficienciaState.carregada = true;
+
+        renderizarDestaquesEficiencia(eficienciaState.dados[dim], dim);
+        renderizarTabelaEficiencia(eficienciaState.dados[dim], dim);
+
+    } catch (error) {
+        console.error('Erro ao carregar eficiência:', error);
+        if (destaquesEl) {
+            destaquesEl.innerHTML = `<div class="cargas-em-construcao-mini" style="color:#dc2626;">
+                Erro ao carregar: ${escapeHtml(error.message)}
+            </div>`;
+        }
+        if (infoEl) infoEl.textContent = 'Erro ao carregar';
+    } finally {
+        eficienciaState.carregando = false;
+    }
+}
+
+// ---------------------------------------------------------------
+// Renderizar os 3 cards de destaques
+// ---------------------------------------------------------------
+function renderizarDestaquesEficiencia(dados, dimensao) {
+    const container = document.getElementById('eficiencia-destaques');
+    if (!container) return;
+
+    // Aplica filtro "ocultar sem eficiência"
+    const filtrados = aplicarFiltroEficienciaGeral(dados);
+
+    if (!filtrados.length) {
+        container.innerHTML = '<div class="cargas-em-construcao-mini">Nenhum dado no período selecionado.</div>';
+        return;
+    }
+
+    const nomeKey = dimensao === 'motoristas' ? 'motorista_nome' : 'placa';
+
+    // 1. Maior taxa de divergência
+    const maisDivergencia = [...filtrados].sort((a, b) =>
+        (b.taxa_divergencia || 0) - (a.taxa_divergencia || 0)
+    )[0];
+
+    // 2. Mais entregas atrasadas
+    const maisAtrasos = [...filtrados].sort((a, b) =>
+        (b.entregas_atrasadas || 0) - (a.entregas_atrasadas || 0)
+    )[0];
+
+    // 3. Melhor desempenho (menor índice de ineficiência)
+    const melhorDesempenho = [...filtrados].sort((a, b) =>
+        (a.indice_ineficiencia || 0) - (b.indice_ineficiencia || 0)
+    )[0];
+
+    const label = dimensao === 'motoristas' ? 'motorista' : 'veículo';
+
+    container.innerHTML = `
+        <div class="motoristas-destaques-grid">
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    Maior taxa de divergência
+                </div>
+                <div class="destaque-nome">${escapeHtml(maisDivergencia?.[nomeKey] || '-')}</div>
+                <div class="destaque-valor">${(maisDivergencia?.taxa_divergencia ?? 0).toFixed(1)}%</div>
+            </div>
+            <div class="motorista-destaque-card critico">
+                <div class="destaque-label">
+                    <i class="fa-regular fa-clock"></i>
+                    Mais entregas atrasadas
+                </div>
+                <div class="destaque-nome">${escapeHtml(maisAtrasos?.[nomeKey] || '-')}</div>
+                <div class="destaque-valor">${maisAtrasos?.entregas_atrasadas ?? 0}</div>
+            </div>
+            <div class="motorista-destaque-card sucesso">
+                <div class="destaque-label">
+                    <i class="fa-solid fa-medal"></i>
+                    Melhor desempenho
+                </div>
+                <div class="destaque-nome">${escapeHtml(melhorDesempenho?.[nomeKey] || '-')}</div>
+                <div class="destaque-valor">${(melhorDesempenho?.indice_ineficiencia ?? 0).toFixed(1)} pts</div>
+            </div>
+        </div>
+    `;
+}
+
+// ---------------------------------------------------------------
+// Renderizar a tabela de ranking (cabeçalho dinâmico)
+// ---------------------------------------------------------------
+function renderizarTabelaEficiencia(dados, dimensao) {
+    const thead = document.getElementById('tabela-eficiencia-thead');
+    const tbody = document.getElementById('lista-eficiencia');
+    const infoEl = document.getElementById('eficiencia-info-registros');
+    if (!thead || !tbody) return;
+
+    // Aplica filtro "ocultar sem eficiência"
+    const filtrados = aplicarFiltroEficienciaGeral(dados);
+
+    // Cabeçalho dinâmico
+        const isMotoristas = dimensao === 'motoristas';
+    // 🔥 ATUALIZADO 2026-09-22 (Bloco 5.C.3.B):
+    //    Score ERP e Score Cobli agora aparecem também para veículos
+    thead.innerHTML = `
+        <tr>
+            <th class="text-center" style="width: 45px;">#</th>
+            <th>${isMotoristas ? 'Motorista' : 'Veículo'}</th>
+            <th class="text-center">Embarques</th>
+            <th class="text-center">Entregas</th>
+            <th class="text-center">Divergência</th>
+            <th class="text-center">No Prazo</th>
+            <th class="text-center">Score ERP</th>
+            <th class="text-center">Score Cobli</th>
+            <th class="text-center">Cobli</th>
+            <th class="text-center">Índice</th>
+        </tr>
+    `;
+
+    if (infoEl) {
+        infoEl.textContent = `${filtrados.length} ${isMotoristas ? 'motorista' : 'veículo'}${filtrados.length === 1 ? '' : 's'} no período`;
+    }
+
+    if (!filtrados.length) {
+        const colspan = 10;
+        tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-center py-8">Nenhum registro encontrado.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtrados.map((item, idx) => {
+        const nome = isMotoristas ? (item.motorista_nome || '-') : (item.placa || '-');
+        const sub = isMotoristas
+            ? (item.motorista_telefone || '')
+            : `${item.marca || ''} ${item.modelo || ''}`.trim();
+        const indice = Number(item.indice_ineficiencia || 0);
+        const nivel = indice >= 60 ? 'alto' : (indice >= 30 ? 'medio' : 'baixo');
+
+        const taxaDivClass = (item.taxa_divergencia || 0) >= 15 ? 'critico'
+                          : (item.taxa_divergencia || 0) >= 5 ? 'alerta' : 'ok';
+        const taxaPrazoClass = (item.taxa_no_prazo || 0) >= 90 ? 'ok'
+                            : (item.taxa_no_prazo || 0) >= 70 ? 'alerta' : 'critico';
+
+        const score = Number(item.score_desempenho || 0);
+        const scoreNivel = score >= 80 ? 'alto' : (score >= 50 ? 'medio' : 'baixo');
+
+        return `
+            <tr class="tabela-${dimensao}-linha" onclick="abrirDetalhe${isMotoristas ? 'Motorista' : 'Veiculo'}Eficiencia(${item.id})">
+                <td class="text-center">${idx + 1}</td>
+                <td>
+                    <div class="motorista-nome-cell">
+                        <strong>${escapeHtml(nome)}</strong>
+                        ${sub ? `<span>${escapeHtml(sub)}</span>` : ''}
+                    </div>
+                </td>
+                <td class="text-center">${item.total_embarques ?? 0}</td>
+                <td class="text-center">${item.total_entregas ?? 0}</td>
+                <td class="text-center">
+                    <span class="badge-taxa ${taxaDivClass}">${(item.taxa_divergencia ?? 0).toFixed(1)}%</span>
+                </td>
+                <td class="text-center">
+                    <span class="badge-taxa ${taxaPrazoClass}">${(item.taxa_no_prazo ?? 0).toFixed(1)}%</span>
+                </td>
+                      <td class="text-center">
+                    <span class="score-mini-badge nivel-${scoreNivel}">${score.toFixed(1)}</span>
+                </td>
+                <td class="text-center">
+                    <span class="cobli-score-placeholder" title="Score Cobli — disponível no Bloco 6">
+                        <i class="fa-solid fa-clock"></i> Em breve
+                    </span>
+                </td>
+                <td class="text-center">
+                    ${gerarBadgeCobli(item)}
+                </td>
+                <td>
+                    <div class="indice-ineficiencia-bar">
+                        <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
+                        <div class="indice-ineficiencia-bar-label">${indice.toFixed(1)}</div>
+                    </div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// ---------------------------------------------------------------
+// Badge de status Cobli (mockado no 5.C.2, real no Bloco 6)
+// ---------------------------------------------------------------
+function gerarBadgeCobli(item) {
+    // TODO Bloco 6: usar item.cobli_status (ao-vivo | ultima | sem-vinculo)
+    //                vindo do backend já enriquecido
+    //
+    // Mock temporário: distribui os 3 status com base no id
+    const id = Number(item.id || 0);
+    const status = (id % 3 === 0) ? 'sem-vinculo'
+                 : (id % 3 === 1) ? 'ao-vivo'
+                 : 'ultima';
+
+    const labels = {
+        'ao-vivo': 'Ao vivo',
+        'ultima': 'Última',
+        'sem-vinculo': 'Sem vínculo'
+    };
+
+    return `
+        <span class="cobli-status-badge ${status}" title="Status Cobli (mock — dados reais no Bloco 6)">
+            <span class="cobli-dot"></span>
+            ${labels[status]}
+        </span>
+    `;
+}
+
+// ---------------------------------------------------------------
+// Filtro "Ocultar sem eficiência" aplicado aos dados
+// ---------------------------------------------------------------
+function aplicarFiltroEficienciaGeral(dados) {
+    if (!eficienciaState.filtroOcultarSemEficiencia) return dados;
+    return dados.filter(item => !item.amostra_insuficiente);
+}
+
+// ---------------------------------------------------------------
+// Atalho: abre o modal de detalhe do motorista/veículo
+// (reaproveita abrirDetalheMotorista e abrirDetalheVeiculo que já existem)
+// ---------------------------------------------------------------
+function abrirDetalheMotoristaEficiencia(id) {
+    // Sincroniza o cache do ranking antigo para reaproveitar abrirDetalheMotorista
+    rankingMotoristasData = eficienciaState.dados.motoristas;
+    abrirDetalheMotorista(id);
+}
+
+function abrirDetalheVeiculoEficiencia(id) {
+    rankingVeiculosData = eficienciaState.dados.veiculos;
+    abrirDetalheVeiculo(id);
+}
+
+// ---------------------------------------------------------------
+// Restaurar filtro salvo no localStorage ao carregar
+// ---------------------------------------------------------------
+function restaurarFiltroEficienciaGeral() {
+    try {
+        const salvo = localStorage.getItem('frota_eficiencia_ocultar_sem_eficiencia') === '1';
+        eficienciaState.filtroOcultarSemEficiencia = salvo;
+        const checkbox = document.getElementById('toggle-eficiencia-geral');
+        if (checkbox) checkbox.checked = salvo;
+    } catch (e) {
+        console.warn('Não foi possível restaurar filtro de eficiência:', e);
+    }
+}
+
+// ---------------------------------------------------------------
+// Expor globalmente
+// ---------------------------------------------------------------
+window.alternarDimensaoEficiencia       = alternarDimensaoEficiencia;
+window.recarregarAbaEficiencia           = recarregarAbaEficiencia;
+window.carregarAbaEficiencia             = carregarAbaEficiencia;
+window.alternarFiltroEficienciaGeral     = alternarFiltroEficienciaGeral;
+window.abrirDetalheMotoristaEficiencia   = abrirDetalheMotoristaEficiencia;
+window.abrirDetalheVeiculoEficiencia     = abrirDetalheVeiculoEficiencia;
