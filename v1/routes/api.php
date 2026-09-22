@@ -262,6 +262,7 @@ $app->group('/v1', function ($group) {
                 $controller = new \Nutricional\Controllers\Frota\CobliController();
 
                 $cobli->get('/status', [$controller, 'status']);
+                $cobli->get('/roadmap', [$controller, 'roadmap']);
                 $cobli->post('/configurar', [$controller, 'configurar'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
                 $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);

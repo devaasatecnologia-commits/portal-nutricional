@@ -601,6 +601,24 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div>
+                <!-- Roadmap Cobli (colapsável) -->
+            <div class="cargas-roadmap-cobli" id="cobli-roadmap">
+                <div class="cargas-roadmap-header" onclick="alternarRoadmapCobli()">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-list-check"></i></div>
+                        <div>
+                            <span class="font-bold">Roadmap de Integração Cobli</span>
+                            <span class="text-xs text-slate-400 block" id="cobli-roadmap-resumo">Carregando status...</span>
+                        </div>
+                    </div>
+                    <i class="fa-solid fa-chevron-down cargas-roadmap-chevron"></i>
+                </div>
+                <div class="cargas-roadmap-body" id="cobli-roadmap-body" hidden>
+                    <div id="cobli-roadmap-itens" class="cargas-roadmap-lista">
+                        <div class="cargas-em-construcao-mini">Carregando checklist...</div>
+                    </div>
+                </div>
+            </div>
 </div>
 
 <!-- Sub-painel: Histórico -->

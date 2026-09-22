@@ -1045,6 +1045,132 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
         }
     }
 
+        /**
+     * GET /v1/frota/cobli/roadmap
+     * Retorna o checklist de integração da Cobli com status dinâmico
+     * baseado no que já está configurado no banco.
+     */
+    public function roadmap(Request $request, Response $response): Response
+    {
+        try {
+            $itens = [];
+
+            // 1. Chave de API configurada?
+            $apiKeyConfigurada = $this->cobli->isConfigurado();
+            $itens[] = [
+                'titulo'    => 'Chave de API configurada',
+                'descricao' => $apiKeyConfigurada
+                    ? 'A chave cobli_api_key está salva em frota_configuracao.'
+                    : 'Configure a chave em frota_configuracao (chave: cobli_api_key).',
+                'status'    => $apiKeyConfigurada ? 'ok' : 'pendente'
+            ];
+
+            // 2. Conexão validada?
+            $conexaoOk = false;
+            if ($apiKeyConfigurada) {
+                $teste = $this->cobli->testarConexao();
+                $conexaoOk = $teste['success'] ?? false;
+            }
+            $itens[] = [
+                'titulo'    => 'Conexão com a API validada',
+                'descricao' => $conexaoOk
+                    ? 'A API da Cobli respondeu com sucesso.'
+                    : 'Não foi possível validar a conexão (verifique a chave e a rede).',
+                'status'    => $conexaoOk ? 'ok' : ($apiKeyConfigurada ? 'pendente' : 'bloqueado')
+            ];
+
+            // 3. Veículos vinculados?
+            $totalVeiculos = 0;
+            $totalVinculados = 0;
+            try {
+                $stmt = $this->pdo->query("SELECT COUNT(*) FROM frota_veiculo WHERE status != 'inativo'");
+                $totalVeiculos = (int)$stmt->fetchColumn();
+
+                $stmt = $this->pdo->query("SELECT COUNT(*) FROM frota_cobli_dispositivo WHERE ativo = TRUE");
+                $totalVinculados = (int)$stmt->fetchColumn();
+            } catch (\Exception $e) {
+                // ignora
+            }
+
+            $itens[] = [
+                'titulo'    => 'Veículos vinculados à Cobli',
+                'descricao' => "{$totalVinculados} de {$totalVeiculos} veículo(s) com dispositivo ativo.",
+                'status'    => ($totalVinculados > 0 && $totalVinculados >= $totalVeiculos) ? 'ok'
+                            : ($totalVinculados > 0 ? 'pendente' : 'bloqueado')
+            ];
+
+            // 4. Webhook configurado?
+            $webhookSecret = $this->getConfigLocal('cobli_webhook_secret', '');
+            $itens[] = [
+                'titulo'    => 'Webhook configurado (secret)',
+                'descricao' => !empty($webhookSecret)
+                    ? 'O secret do webhook está configurado.'
+                    : 'Configure cobli_webhook_secret para receber eventos em tempo real.',
+                'status'    => !empty($webhookSecret) ? 'ok' : 'pendente'
+            ];
+
+            // 5. Eventos de risco sincronizados?
+            $totalEventos = 0;
+            try {
+                $stmt = $this->pdo->query("
+                    SELECT COUNT(*) FROM frota_cobli_evento_risco
+                    WHERE ocorrido_em >= CURRENT_DATE - INTERVAL '30 days'
+                ");
+                $totalEventos = (int)$stmt->fetchColumn();
+            } catch (\Exception $e) {
+                // ignora
+            }
+
+            $itens[] = [
+                'titulo'    => 'Eventos de risco sincronizados',
+                'descricao' => $totalEventos > 0
+                    ? "{$totalEventos} evento(s) de risco nos últimos 30 dias."
+                    : 'Nenhum evento de risco sincronizado. Rode a sincronização manualmente.',
+                'status'    => $totalEventos > 0 ? 'ok' : 'pendente'
+            ];
+
+            // 6. Posições capturadas?
+            $totalPosicoes = 0;
+            try {
+                $stmt = $this->pdo->query("
+                    SELECT COUNT(*) FROM frota_cobli_posicao
+                    WHERE capturado_em >= CURRENT_DATE - INTERVAL '7 days'
+                ");
+                $totalPosicoes = (int)$stmt->fetchColumn();
+            } catch (\Exception $e) {
+                // ignora
+            }
+
+            $itens[] = [
+                'titulo'    => 'Posições capturadas recentemente',
+                'descricao' => $totalPosicoes > 0
+                    ? "{$totalPosicoes} posição(ões) nos últimos 7 dias."
+                    : 'Nenhuma posição capturada nos últimos 7 dias.',
+                'status'    => $totalPosicoes > 0 ? 'ok' : 'pendente'
+            ];
+
+            // Cálculo de progresso
+            $concluidos = count(array_filter($itens, fn($i) => $i['status'] === 'ok'));
+
+            return $this->json($response, [
+                'success' => true,
+                'data'    => [
+                    'itens'     => $itens,
+                    'progresso' => [
+                        'concluidos' => $concluidos,
+                        'total'      => count($itens)
+                    ]
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no roadmap Cobli: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error'   => 'Erro ao carregar roadmap'
+            ], 500);
+        }
+    }
+
     /**
      * Converte um valor booleano (ou nulo) para o formato aceito pelo PDO/Postgres,
      * evitando erro "invalid input syntax for type boolean" quando o driver

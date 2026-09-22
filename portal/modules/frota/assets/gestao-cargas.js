@@ -3763,6 +3763,90 @@ document.addEventListener('DOMContentLoaded', function () {
         carregarSubAbaAoVivo(true);
     });
 });
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.4):
+// ROADMAP COBLI — checklist de integração
+// ================================================================
+
+let roadmapCobliCarregado = false;
+
+/**
+ * Alterna a visibilidade do roadmap (colapsável).
+ * Carrega sob demanda na primeira abertura.
+ */
+function alternarRoadmapCobli() {
+    const box = document.getElementById('cobli-roadmap');
+    const body = document.getElementById('cobli-roadmap-body');
+    if (!box || !body) return;
+
+    const aberto = !body.hidden;
+    body.hidden = aberto;
+    box.classList.toggle('aberto', !aberto);
+
+    if (!aberto && !roadmapCobliCarregado) {
+        carregarRoadmapCobli();
+    }
+}
+
+/**
+ * Busca o checklist de integração Cobli e renderiza.
+ */
+async function carregarRoadmapCobli() {
+    const token = getAuthToken();
+    const lista = document.getElementById('cobli-roadmap-itens');
+    const resumo = document.getElementById('cobli-roadmap-resumo');
+    if (!lista) return;
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/roadmap`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao buscar roadmap');
+
+        const itens = payload.data?.itens || [];
+        const progresso = payload.data?.progresso || { concluidos: 0, total: 0 };
+
+        if (resumo) {
+            resumo.textContent = `${progresso.concluidos}/${progresso.total} etapas concluídas`;
+        }
+
+        if (!itens.length) {
+            lista.innerHTML = '<div class="cargas-em-construcao-mini">Nenhum item no roadmap.</div>';
+            return;
+        }
+
+        lista.innerHTML = itens.map(item => {
+            const classe = item.status === 'ok' ? 'ok'
+                        : item.status === 'pendente' ? 'pendente'
+                        : 'bloqueado';
+            const icone = item.status === 'ok' ? 'fa-check'
+                        : item.status === 'pendente' ? 'fa-clock'
+                        : 'fa-lock';
+            return `
+                <div class="cargas-roadmap-item ${classe}">
+                    <div class="cargas-roadmap-icon">
+                        <i class="fa-solid ${icone}"></i>
+                    </div>
+                    <div class="cargas-roadmap-texto">
+                        <strong>${escapeHtml(item.titulo || '-')}</strong>
+                        <small>${escapeHtml(item.descricao || '')}</small>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        roadmapCobliCarregado = true;
+    } catch (error) {
+        console.error('Erro ao carregar roadmap Cobli:', error);
+        if (lista) {
+            lista.innerHTML = `<div class="cargas-em-construcao-mini" style="color:#dc2626;">
+                Erro ao carregar roadmap: ${escapeHtml(error.message)}
+            </div>`;
+        }
+        if (resumo) resumo.textContent = 'Erro ao carregar';
+    }
+}
 // ---------------------------------------------------------------
 // Expor globalmente
 // ---------------------------------------------------------------
@@ -3772,3 +3856,6 @@ window.carregarAbaEficiencia             = carregarAbaEficiencia;
 window.alternarFiltroEficienciaGeral     = alternarFiltroEficienciaGeral;
 window.abrirDetalheMotoristaEficiencia   = abrirDetalheMotoristaEficiencia;
 window.abrirDetalheVeiculoEficiencia     = abrirDetalheVeiculoEficiencia;
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.4): exportações do Roadmap Cobli
+window.alternarRoadmapCobli = alternarRoadmapCobli;
+window.carregarRoadmapCobli = carregarRoadmapCobli;
