@@ -676,56 +676,7 @@ public function __construct()
             default:          return 1;
         }
     }
-    /**
-     * GET /v1/frota/cobli/debug-ranking?dias=30&tipo=DRIVER
-     *
-     * 🔥 TEMPORÁRIO — debug do parse do ranking
-     * Retorna o payload CRU da Cobli + o payload achatado pelo parser,
-     * pra diagnosticar por que `rows` está vindo vazio.
-     */
-    public function debugRanking(Request $request, Response $response): Response
-    {
-        $params = $request->getQueryParams();
-        $dias = max(1, min((int)($params['dias'] ?? 30), 90));
-        $tipo = strtoupper($params['tipo'] ?? 'DRIVER');
 
-        $periodoInicio = date('Y-m-d', strtotime("-{$dias} days"));
-        $periodoFim    = date('Y-m-d');
-        $startIso = $periodoInicio . 'T00:00:00-03:00';
-        $endIso   = $periodoFim    . 'T23:59:59-03:00';
-
-        $resultado = $this->cobli->buscarRankingSeguranca(
-            $startIso,
-            $endIso,
-            $tipo,
-            ['size' => 200]
-        );
-
-        // Diagnóstico do parse
-        $data = $resultado['data'] ?? [];
-        $rows = $data['rows'] ?? [];
-        $primeiroRow = is_array($rows) && !empty($rows) ? $rows[0] : null;
-
-        return $this->json($response, [
-            'success'      => $resultado['success'] ?? false,
-            'status_cobli' => $resultado['status']  ?? 0,
-            'error'        => $resultado['error']   ?? null,
-
-            'periodo'      => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
-            'start_iso'    => $startIso,
-            'end_iso'      => $endIso,
-            'tipo'         => $tipo,
-
-            'data_keys'    => is_array($data) ? array_keys($data) : 'não é array',
-            'count'        => $data['count']              ?? null,
-            'avg_score'    => $data['average_fleet_score'] ?? null,
-            'rows_is_array' => is_array($rows),
-            'rows_count'   => is_array($rows) ? count($rows) : -1,
-            'primeiro_row' => $primeiroRow,
-
-            'payload_cru'  => $resultado,
-        ]);
-    }
     /**
      * Formata a lista de score para o frontend.
      * Aceita tanto linhas do banco quanto linhas cruas da Cobli.
