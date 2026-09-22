@@ -88,6 +88,29 @@ public function __construct()
                     UNIQUE (cobli_driver_id)
                 )
             ");
+                        $this->pdo->exec("
+                CREATE TABLE IF NOT EXISTS frota_cobli_score_cache (
+                    id SERIAL PRIMARY KEY,
+                    aggregation_type VARCHAR(20) NOT NULL,
+                    entity_id VARCHAR(80) NOT NULL,
+                    entity_nome VARCHAR(255),
+                    score NUMERIC(5,2),
+                    variacao NUMERIC(5,2),
+                    km_rodados NUMERIC(10,2),
+                    tempo_minutos INTEGER,
+                    kms_por_evento NUMERIC(10,2),
+                    total_eventos INTEGER,
+                    rank INTEGER,
+                    periodo_inicio DATE,
+                    periodo_fim DATE,
+                    score_detail JSONB,
+                    dados_brutos JSONB,
+                    atualizado_em TIMESTAMP NOT NULL DEFAULT NOW(),
+                    UNIQUE (aggregation_type, entity_id, periodo_inicio, periodo_fim)
+                )
+            ");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_score_entity ON frota_cobli_score_cache(aggregation_type, entity_id)");
+            $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_score_periodo ON frota_cobli_score_cache(periodo_inicio, periodo_fim)");
         } catch (\Exception $e) {
             error_log('Erro ao garantir tabelas Cobli: ' . $e->getMessage());
         }
@@ -428,7 +451,321 @@ public function __construct()
             return $this->json($response, ['success' => false, 'error' => 'Erro ao vincular automaticamente'], 500);
         }
     }
+    /**
+     * GET /v1/frota/cobli/ranking-seguranca?dias=30&tipo=DRIVER
+     *
+     * Retorna o ranking de condução (score) da frota.
+     * Consulta a Cobli, grava no cache local e devolve unificado.
+     *
+     * Cache de 1h por (tipo, período).
+     *
+     * 🔥 NOVO 2026-09-22 (Bloco 6.1)
+     */
+        public function rankingSeguranca(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $dias   = max(1, min((int)($params['dias'] ?? 30), 90));
+        $tipo   = strtoupper($params['tipo'] ?? 'DRIVER');
 
+        error_log('[Cobli-ranking] ===== INICIO =====');
+        error_log('[Cobli-ranking] dias=' . $dias . ' tipo=' . $tipo);
+
+        if (!in_array($tipo, ['DRIVER', 'VEHICLE'], true)) {
+            return $this->json($response, ['success' => false, 'error' => 'tipo inválido'], 400);
+        }
+
+        $periodoInicio = date('Y-m-d', strtotime("-{$dias} days"));
+        $periodoFim    = date('Y-m-d');
+
+        // ---------- Cache lookup ----------
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT * FROM frota_cobli_score_cache
+                WHERE aggregation_type = :tipo
+                  AND periodo_inicio = :inicio
+                  AND periodo_fim = :fim
+                  AND atualizado_em >= NOW() - INTERVAL '1 hour'
+                ORDER BY rank ASC
+            ");
+            $stmt->execute(['tipo' => $tipo, 'inicio' => $periodoInicio, 'fim' => $periodoFim]);
+            $cache = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (!empty($cache)) {
+                error_log('[Cobli-ranking] cache hit: ' . count($cache));
+                return $this->json($response, [
+                    'success' => true, 'fonte' => 'cache',
+                    'periodo' => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
+                    'agrupamento' => $tipo,
+                    'data' => $this->formatarRankingSeguranca($cache)
+                ]);
+            }
+        } catch (\Exception $e) {
+            error_log('[Cobli-ranking] ERRO cache lookup: ' . $e->getMessage());
+        }
+
+        // ---------- Cobli ----------
+        $startIso = $periodoInicio . 'T00:00:00-03:00';
+        $endIso   = $periodoFim    . 'T23:59:59-03:00';
+
+        $resultado = $this->cobli->buscarRankingSeguranca($startIso, $endIso, $tipo, ['size' => 200]);
+
+        if (!$resultado['success']) {
+            error_log('[Cobli-ranking] cobli erro: ' . ($resultado['error'] ?? 'n/a'));
+            return $this->json($response, ['success' => false, 'error' => $resultado['error'] ?? 'Erro'], 502);
+        }
+
+        $dataCru = $resultado['data'] ?? [];
+        $rows = $dataCru['rows'] ?? [];
+        if (!is_array($rows)) $rows = [];
+
+        error_log('[Cobli-ranking] rows cruas da Cobli: ' . count($rows));
+
+        // ============================================================
+        // 🔥 CONSOLIDAÇÃO: agrupa por entity_id
+        // Mantém o registro de maior prioridade:
+        //   1. product_type = TELEMETRY (base histórica)
+        //   2. Se não houver, o primeiro encontrado
+        // ============================================================
+        $consolidado = [];
+        $duplicados  = 0;
+
+        foreach ($rows as $row) {
+            $entity = ($tipo === 'DRIVER') ? ($row['driver'] ?? null) : ($row['vehicle'] ?? null);
+            $entityId = is_array($entity) ? ($entity['id'] ?? '') : '';
+            if ($entityId === '') continue;
+
+            if (isset($consolidado[$entityId])) {
+                $duplicados++;
+                $productAtual    = $consolidado[$entityId]['product_type'] ?? '';
+                $productNovo     = $row['product_type'] ?? '';
+
+                // Regra de prioridade: TELEMETRY > CAM > CAM_PRO
+                $pesoAtual = $this->pesoProductType($productAtual);
+                $pesoNovo  = $this->pesoProductType($productNovo);
+
+                if ($pesoNovo > $pesoAtual) {
+                    $consolidado[$entityId] = $row;
+                }
+                continue;
+            }
+
+            $consolidado[$entityId] = $row;
+        }
+
+        $rowsFinal = array_values($consolidado);
+        error_log('[Cobli-ranking] rows consolidadas: ' . count($rowsFinal) . " (duplicados: {$duplicados})");
+
+        // ---------- INSERT ----------
+        $inseridos = 0;
+        $pulados   = 0;
+        $erros     = [];
+
+        try {
+            $this->pdo->beginTransaction();
+
+            $this->pdo->prepare("
+                DELETE FROM frota_cobli_score_cache
+                WHERE aggregation_type = :tipo AND periodo_inicio = :inicio AND periodo_fim = :fim
+            ")->execute(['tipo' => $tipo, 'inicio' => $periodoInicio, 'fim' => $periodoFim]);
+
+            $stmtIns = $this->pdo->prepare("
+                INSERT INTO frota_cobli_score_cache (
+                    aggregation_type, entity_id, entity_nome,
+                    score, variacao, km_rodados, tempo_minutos,
+                    kms_por_evento, total_eventos, rank,
+                    periodo_inicio, periodo_fim, score_detail, dados_brutos,
+                    atualizado_em
+                ) VALUES (
+                    :tipo, :entity_id, :entity_nome,
+                    :score, :variacao, :km, :tempo,
+                    :kms_por_evento, :total_eventos, :rank,
+                    :inicio, :fim, CAST(:score_detail AS jsonb), CAST(:dados_brutos AS jsonb),
+                    NOW()
+                )
+            ");
+
+            foreach ($rowsFinal as $idx => $row) {
+                $entity   = ($tipo === 'DRIVER') ? ($row['driver'] ?? null) : ($row['vehicle'] ?? null);
+                $entityId = is_array($entity) ? ($entity['id'] ?? '') : '';
+                $entityNm = is_array($entity) ? ($entity['name'] ?? null) : null;
+
+                if ($entityId === '') {
+                    $pulados++;
+                    continue;
+                }
+
+                $scoreDetailJson = json_encode($row['score_detail'] ?? [], JSON_UNESCAPED_UNICODE);
+                $dadosBrutosJson = json_encode($row, JSON_UNESCAPED_UNICODE);
+
+                if ($scoreDetailJson === false || $dadosBrutosJson === false) {
+                    $erros[] = "#{$idx} ({$entityNm}): json_encode falhou";
+                    continue;
+                }
+
+                try {
+                    $stmtIns->execute([
+                        'tipo'           => $tipo,
+                        'entity_id'      => $entityId,
+                        'entity_nome'    => $entityNm,
+                        'score'          => isset($row['score']) ? (float)$row['score'] : null,
+                        'variacao'       => isset($row['variation']) ? (float)$row['variation'] : null,
+                        'km'             => isset($row['driven_distance_in_km']) ? (float)$row['driven_distance_in_km'] : null,
+                        'tempo'          => isset($row['driven_time_in_minutes']) ? (int)$row['driven_time_in_minutes'] : null,
+                        'kms_por_evento' => isset($row['kms_per_event']) ? (float)$row['kms_per_event'] : null,
+                        'total_eventos'  => isset($row['total_events_count']) ? (int)$row['total_events_count'] : null,
+                        'rank'           => isset($row['rank']) ? (int)$row['rank'] : null,
+                        'inicio'         => $periodoInicio,
+                        'fim'            => $periodoFim,
+                        'score_detail'   => $scoreDetailJson,
+                        'dados_brutos'   => $dadosBrutosJson
+                    ]);
+                    $inseridos++;
+                } catch (\PDOException $pdoEx) {
+                    // SAVEPOINT para não abortar a transação inteira
+                    error_log("[Cobli-ranking] PDO ERRO #{$idx}: " . $pdoEx->getMessage());
+                    $erros[] = "#{$idx} ({$entityNm}): " . $pdoEx->getMessage();
+                }
+            }
+
+            $this->pdo->commit();
+            error_log("[Cobli-ranking] COMMIT OK. Inseridos={$inseridos}, Pulados={$pulados}, Erros=" . count($erros));
+
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            error_log('[Cobli-ranking] ERRO GERAL INSERT: ' . $e->getMessage());
+        }
+
+        // ---------- Releitura ----------
+        $stmt = $this->pdo->prepare("
+            SELECT * FROM frota_cobli_score_cache
+            WHERE aggregation_type = :tipo AND periodo_inicio = :inicio AND periodo_fim = :fim
+            ORDER BY rank ASC
+        ");
+        $stmt->execute(['tipo' => $tipo, 'inicio' => $periodoInicio, 'fim' => $periodoFim]);
+        $persistidos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        return $this->json($response, [
+            'success'             => true,
+            'fonte'               => 'cobli',
+            'periodo'             => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
+            'agrupamento'         => $tipo,
+            'rows_cruas'          => count($rows),
+            'rows_consolidadas'   => count($rowsFinal),
+            'duplicados'          => $duplicados,
+            'inseridos'           => $inseridos,
+            'pulados'             => $pulados,
+            'erros'               => $erros,
+            'persistidos'         => count($persistidos),
+            'average_fleet_score' => $dataCru['average_fleet_score'] ?? null,
+            'last_rank_update'    => $dataCru['last_rank_update']    ?? null,
+            'data'                => $this->formatarRankingSeguranca($persistidos)
+        ]);
+    }
+
+    /**
+     * Peso de prioridade para escolher qual linha manter quando
+     * o mesmo motorista/veículo aparece múltiplas vezes.
+     * Maior peso = mantém.
+     */
+    private function pesoProductType(?string $productType): int
+    {
+        switch (strtoupper($productType ?? '')) {
+            case 'TELEMETRY': return 3;
+            case 'CAM':       return 2;
+            case 'CAM_PRO':   return 2;
+            default:          return 1;
+        }
+    }
+    /**
+     * GET /v1/frota/cobli/debug-ranking?dias=30&tipo=DRIVER
+     *
+     * 🔥 TEMPORÁRIO — debug do parse do ranking
+     * Retorna o payload CRU da Cobli + o payload achatado pelo parser,
+     * pra diagnosticar por que `rows` está vindo vazio.
+     */
+    public function debugRanking(Request $request, Response $response): Response
+    {
+        $params = $request->getQueryParams();
+        $dias = max(1, min((int)($params['dias'] ?? 30), 90));
+        $tipo = strtoupper($params['tipo'] ?? 'DRIVER');
+
+        $periodoInicio = date('Y-m-d', strtotime("-{$dias} days"));
+        $periodoFim    = date('Y-m-d');
+        $startIso = $periodoInicio . 'T00:00:00-03:00';
+        $endIso   = $periodoFim    . 'T23:59:59-03:00';
+
+        $resultado = $this->cobli->buscarRankingSeguranca(
+            $startIso,
+            $endIso,
+            $tipo,
+            ['size' => 200]
+        );
+
+        // Diagnóstico do parse
+        $data = $resultado['data'] ?? [];
+        $rows = $data['rows'] ?? [];
+        $primeiroRow = is_array($rows) && !empty($rows) ? $rows[0] : null;
+
+        return $this->json($response, [
+            'success'      => $resultado['success'] ?? false,
+            'status_cobli' => $resultado['status']  ?? 0,
+            'error'        => $resultado['error']   ?? null,
+
+            'periodo'      => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
+            'start_iso'    => $startIso,
+            'end_iso'      => $endIso,
+            'tipo'         => $tipo,
+
+            'data_keys'    => is_array($data) ? array_keys($data) : 'não é array',
+            'count'        => $data['count']              ?? null,
+            'avg_score'    => $data['average_fleet_score'] ?? null,
+            'rows_is_array' => is_array($rows),
+            'rows_count'   => is_array($rows) ? count($rows) : -1,
+            'primeiro_row' => $primeiroRow,
+
+            'payload_cru'  => $resultado,
+        ]);
+    }
+    /**
+     * Formata a lista de score para o frontend.
+     * Aceita tanto linhas do banco quanto linhas cruas da Cobli.
+     */
+    private function formatarRankingSeguranca(array $linhas): array
+    {
+        return array_map(function ($row) {
+            // Se veio do banco, os campos estão achatados.
+            // Se veio da Cobli, ainda estão dentro de driver/vehicle.
+            $entityId = $row['entity_id'] ?? null;
+            $entityNm = $row['entity_nome'] ?? null;
+
+            if (!$entityId && isset($row['driver']['id'])) {
+                $entityId = $row['driver']['id'];
+                $entityNm = $row['driver']['name'] ?? null;
+            } elseif (!$entityId && isset($row['vehicle']['id'])) {
+                $entityId = $row['vehicle']['id'];
+                $entityNm = $row['vehicle']['name'] ?? null;
+            }
+
+            // score_detail pode vir como string JSON (banco) ou array (Cobli)
+            $detail = $row['score_detail'] ?? [];
+            if (is_string($detail)) {
+                $detail = json_decode($detail, true) ?: [];
+            }
+
+            return [
+                'rank'             => isset($row['rank']) ? (int)$row['rank'] : null,
+                'entity_id'        => $entityId,
+                'entity_nome'      => $entityNm,
+                'score'            => isset($row['score'])          ? (float)$row['score']          : null,
+                'variacao'         => isset($row['variacao'])       ? (float)$row['variacao']       : (isset($row['variation']) ? (float)$row['variation'] : null),
+                'km_rodados'       => isset($row['km_rodados'])     ? (float)$row['km_rodados']     : (isset($row['driven_distance_in_km']) ? (float)$row['driven_distance_in_km'] : null),
+                'tempo_minutos'    => isset($row['tempo_minutos'])  ? (int)$row['tempo_minutos']    : (isset($row['driven_time_in_minutes']) ? (int)$row['driven_time_in_minutes'] : null),
+                'kms_por_evento'   => isset($row['kms_por_evento']) ? (float)$row['kms_por_evento'] : (isset($row['kms_per_event']) ? (float)$row['kms_per_event'] : null),
+                'total_eventos'    => isset($row['total_eventos'])  ? (int)$row['total_eventos']    : (isset($row['total_events_count']) ? (int)$row['total_events_count'] : null),
+                'score_detail'     => $detail,
+            ];
+        }, $linhas);
+    }
     private function normalizarPlaca(?string $placa): string
     {
         return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $placa ?? ''));

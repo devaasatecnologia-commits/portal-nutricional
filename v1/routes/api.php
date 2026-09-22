@@ -261,7 +261,6 @@ $app->group('/v1', function ($group) {
             // ==================================================================
             $frota->group('/cobli', function ($cobli) {
                 $controller = new \Nutricional\Controllers\Frota\CobliController();
-
                 $cobli->get('/status', [$controller, 'status']);
                 $cobli->get('/roadmap', [$controller, 'roadmap']);
                 $cobli->post('/configurar', [$controller, 'configurar'])->add(new FrotaGestaoMiddleware());
@@ -282,6 +281,8 @@ $app->group('/v1', function ($group) {
                 $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
 
                 $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco'])->add(new FrotaGestaoMiddleware());
+                $cobli->get('/ranking-seguranca', [$controller, 'rankingSeguranca']);
+              
             });
 
             // ==================================================================
