@@ -1326,3 +1326,67 @@
 .cargas-analise-card.full .analise-chart-wrap {
     height: 300px;
 }
+/* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.C.2):
+   Estilos da aba Eficiência
+   ================================================================ */
+
+/* Toolbar com toggle + filtros */
+.cargas-eficiencia-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+    padding: 14px 18px;
+    border-radius: 14px;
+    background: var(--nutri-card-bg);
+    border: 1px solid var(--nutri-border);
+    box-shadow: var(--nutri-shadow);
+}
+
+.cargas-eficiencia-filtros {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Legenda de status Cobli no cabeçalho do ranking */
+.eficiencia-legenda-cobli {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+/* Placeholder do Score Cobli (até o Bloco 6) */
+.cobli-score-placeholder {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.12);
+    color: var(--nutri-text-secondary);
+    font-size: 0.65rem;
+    font-weight: 700;
+    font-style: italic;
+}
+
+/* Responsivo */
+@media (max-width: 768px) {
+    .cargas-eficiencia-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .cargas-eficiencia-filtros {
+        width: 100%;
+        justify-content: space-between;
+    }
+    .eficiencia-legenda-cobli {
+        width: 100%;
+        justify-content: flex-start;
+    }
+}
