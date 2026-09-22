@@ -717,6 +717,133 @@ public function __construct()
             ];
         }, $linhas);
     }
+        /**
+     * POST /v1/frota/cobli/vincular-motoristas-auto
+     *
+     * Vincula automaticamente motoristas locais aos motoristas da Cobli,
+     * casando por CPF (normalizado — só dígitos).
+     *
+     * Só cria vínculos novos — não sobrescreve vínculos existentes.
+     *
+     * Regra:
+     *   1. Busca todos os motoristas da Cobli (paginado)
+     *   2. Indexa por CPF (só dígitos), ignorando inativos na Cobli
+     *   3. Busca motoristas locais ativos SEM vínculo em frota_cobli_motorista
+     *   4. Casa por CPF e grava em frota_cobli_motorista
+     *   5. Retorna vinculados[] + nao_encontrados[]
+     *
+     * 🔥 NOVO 2026-09-22 (Bloco 6.5-fix)
+     */
+    public function vincularMotoristasAuto(Request $request, Response $response): Response
+    {
+        try {
+            // 1. Buscar lista COMPLETA de motoristas da Cobli
+            $resultado = $this->cobli->listarMotoristas();
+
+            if (!$resultado['success']) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error'   => $resultado['error'] ?? 'Falha ao buscar motoristas na Cobli'
+                ], 502);
+            }
+
+            $motoristasCobli = $resultado['data'] ?? [];
+            if (!is_array($motoristasCobli)) {
+                $motoristasCobli = [];
+            }
+
+            error_log('[Cobli-vincular] Total motoristas na Cobli: ' . count($motoristasCobli));
+
+            // 2. Indexar por CPF (só dígitos), ignorando inativos
+            $porCpf = [];
+            foreach ($motoristasCobli as $mc) {
+                $ativo = $mc['active'] ?? true;
+                if (!$ativo) continue;
+
+                $cpf = preg_replace('/\D/', '', (string)($mc['cpf'] ?? ''));
+                $uuid = trim((string)($mc['id'] ?? ''));
+                if ($cpf !== '' && $uuid !== '') {
+                    $porCpf[$cpf] = [
+                        'id'    => $uuid,
+                        'nome'  => $mc['name'] ?? null,
+                        'email' => null
+                    ];
+                }
+            }
+
+            // 3. Buscar motoristas locais SEM vínculo (só ativos)
+            $stmt = $this->pdo->query("
+                SELECT fm.id, fm.nome, fm.cpf, fm.erp_id
+                FROM frota_motorista fm
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM frota_cobli_motorista cm
+                    WHERE cm.motorista_id = fm.id
+                )
+                AND fm.cpf IS NOT NULL
+                AND fm.cpf != ''
+                AND fm.status = 'ativo'
+            ");
+            $motoristasLocais = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // 4. Tentar vincular
+            $vinculados = [];
+            $naoEncontrados = [];
+
+            $stmtIns = $this->pdo->prepare("
+                INSERT INTO frota_cobli_motorista (motorista_id, cobli_driver_id)
+                VALUES (:motorista_id, :cobli_driver_id)
+                ON CONFLICT (motorista_id) DO NOTHING
+            ");
+
+            foreach ($motoristasLocais as $ml) {
+                $cpf = preg_replace('/\D/', '', (string)$ml['cpf']);
+                if ($cpf === '') continue;
+
+                if (isset($porCpf[$cpf])) {
+                    try {
+                        $stmtIns->execute([
+                            'motorista_id'    => (int)$ml['id'],
+                            'cobli_driver_id' => $porCpf[$cpf]['id']
+                        ]);
+                        $vinculados[] = [
+                            'motorista_id'    => (int)$ml['id'],
+                            'motorista_nome'  => $ml['nome'],
+                            'cobli_driver_id' => $porCpf[$cpf]['id'],
+                            'cobli_nome'      => $porCpf[$cpf]['nome']
+                        ];
+                    } catch (\Exception $e) {
+                        error_log('[Cobli-vincular] Erro ao vincular motorista ' . $ml['id'] . ': ' . $e->getMessage());
+                    }
+                } else {
+                    $naoEncontrados[] = [
+                        'motorista_id'   => (int)$ml['id'],
+                        'motorista_nome' => $ml['nome'],
+                        'cpf'            => substr($cpf, 0, 3) . '*****' . substr($cpf, -2)
+                    ];
+                }
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'total_cobli'      => count($motoristasCobli),
+                    'total_locais'     => count($motoristasLocais),
+                    'vinculados'       => $vinculados,
+                    'nao_encontrados'  => $naoEncontrados,
+                    'totais' => [
+                        'vinculados'      => count($vinculados),
+                        'nao_encontrados' => count($naoEncontrados)
+                    ]
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('[Cobli-vincular] Erro geral: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error'   => 'Erro ao vincular motoristas: ' . $e->getMessage()
+            ], 500);
+        }
+    }
     private function normalizarPlaca(?string $placa): string
     {
         return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $placa ?? ''));

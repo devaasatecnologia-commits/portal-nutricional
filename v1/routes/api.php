@@ -269,7 +269,7 @@ $app->group('/v1', function ($group) {
                 $cobli->post('/sincronizar-frota', [$controller, 'sincronizarFrota'])->add(new FrotaGestaoMiddleware());
                 $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico'])->add(new FrotaGestaoMiddleware());
                 $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
-
+                $cobli->post('/vincular-motoristas-auto', [$controller, 'vincularMotoristasAuto'])->add(new FrotaGestaoMiddleware());
                 $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo'])->add(new FrotaGestaoMiddleware());
                 $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo'])->add(new FrotaGestaoMiddleware());
                 $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista'])->add(new FrotaGestaoMiddleware());

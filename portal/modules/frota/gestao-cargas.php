@@ -202,6 +202,18 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <small id="dash-kpi-faturamento-sub">carregando</small>
                 </div>
             </div>
+
+                        <!-- KPI 7: Motoristas em risco (score Cobli < 60) -->
+            <div class="cargas-kpi-card red" data-kpi="risco"
+                 onclick="dashAbrirModalMotoristasRisco()"
+                 title="Motoristas com score Cobli abaixo de 60">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-shield-halved"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-risco">--</strong>
+                    <span>Motoristas em risco</span>
+                    <small id="dash-kpi-risco-sub">score &lt; 60</small>
+                </div>
+            </div>
         </div>
 
         <!-- ============================================================

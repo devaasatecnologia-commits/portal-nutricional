@@ -260,6 +260,87 @@ async function sincronizarFrotaCobli() {
     }
 }
 
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 6.5-fix):
+// Vincular motoristas locais aos motoristas da Cobli (por CPF)
+// ================================================================
+async function vincularMotoristasCobli() {
+    const token = getAuthToken();
+    const button = document.getElementById('btn-vincular-motoristas-cobli');
+    const originalHtml = button?.innerHTML;
+
+    if (button) {
+        button.disabled = true;
+        button.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Vinculando...';
+    }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/vincular-motoristas-auto`, {
+            method: 'POST',
+            headers: {
+                'Authorization': 'Bearer ' + token,
+                'Content-Type': 'application/json'
+            }
+        });
+        const payload = await response.json();
+
+        if (!payload.success) {
+            throw new Error(payload.error || 'Erro ao vincular motoristas');
+        }
+
+        const d = payload.data || {};
+        const totais = d.totais || {};
+
+        const vinculadosHtml = (d.vinculados || []).slice(0, 10).map(v =>
+            `<li>${escapeHtml(v.motorista_nome)} → <code>${String(v.cobli_driver_id).substring(0, 8)}...</code></li>`
+        ).join('');
+        const naoEncontradosHtml = (d.nao_encontrados || []).slice(0, 10).map(n =>
+            `<li>${escapeHtml(n.motorista_nome)} <small>(${n.cpf})</small></li>`
+        ).join('');
+
+        await Swal.fire({
+            icon: totais.vinculados > 0 ? 'success' : 'info',
+            title: `${totais.vinculados} motorista(s) vinculado(s)`,
+            html: `
+                <div style="text-align:left; max-height:400px; overflow-y:auto; font-size:0.85rem;">
+                    <p><b>Total na Cobli:</b> ${d.total_cobli}</p>
+                    <p><b>Total locais pendentes:</b> ${d.total_locais}</p>
+                    <hr>
+                    <p><b>✅ Vinculados (${totais.vinculados}):</b></p>
+                    ${vinculadosHtml
+                        ? `<ul style="padding-left:20px;">${vinculadosHtml}</ul>`
+                        : '<p style="color:#94a3b8;">Nenhum</p>'}
+                    <p style="margin-top:12px;"><b>⚠️ Não encontrados na Cobli (${totais.nao_encontrados}):</b></p>
+                    ${naoEncontradosHtml
+                        ? `<ul style="padding-left:20px; color:#b45309;">${naoEncontradosHtml}</ul>`
+                        : '<p style="color:#94a3b8;">Nenhum</p>'}
+                </div>
+            `,
+            confirmButtonColor: '#10b981',
+            confirmButtonText: 'OK'
+        });
+
+        // Recarrega contadores e lista de motoristas
+        if (typeof carregarMotoristasCad === 'function') carregarMotoristasCad();
+        if (typeof carregarContadores === 'function') carregarContadores();
+
+    } catch (error) {
+        console.error('Erro ao vincular motoristas:', error);
+        Swal.fire({
+            icon: 'error',
+            title: 'Falha ao vincular',
+            text: error.message,
+            confirmButtonColor: '#dc2626'
+        });
+    } finally {
+        if (button) {
+            button.disabled = false;
+            button.innerHTML = originalHtml;
+        }
+    }
+}
+window.vincularMotoristasCobli = vincularMotoristasCobli;
+
 function abrirFormVeiculo(veiculo) {
     document.getElementById('veiculo-cad-id').value = veiculo?.id || '';
     document.getElementById('veiculo-cad-placa').value = veiculo?.placa || '';

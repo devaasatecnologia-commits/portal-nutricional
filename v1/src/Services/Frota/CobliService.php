@@ -217,6 +217,67 @@ class CobliService
 
         return ['success' => true, 'data' => $decoded['data'] ?? $decoded, 'status' => $status];
     }
+
+    /**
+     * Lista os motoristas cadastrados na Cobli.
+     *
+     * Endpoint: GET /public/v1/drivers
+     *
+     * Cada item retornado tem:
+     *   - id (UUID — usado como cobli_driver_id)
+     *   - name
+     *   - cpf (só dígitos, sem pontuação)
+     *   - phone_numbers (array)
+     *   - active (bool)
+     *   - driver_code
+     *   - license { number, category, acquired_at, expire_at }
+     *
+     * Faz paginação automática até esgotar (limit=100 por página).
+     *
+     * Retorna:
+     *   [
+     *     'success' => true,
+     *     'data' => [ {...}, {...}, ... ],   // array achatado
+     *     'status' => 200
+     *   ]
+     *
+     * 🔥 NOVO 2026-09-22 (Bloco 6.5-fix)
+     */
+    public function listarMotoristas(int $pageSize = 100): array
+    {
+        $todos = [];
+        $page = 1;
+        $maxPaginas = 20; // trava de segurança
+
+        do {
+            $resultado = $this->request(
+                'GET',
+                "/public/v1/drivers?limit={$pageSize}&page={$page}"
+            );
+
+            if (!$resultado['success']) {
+                return $resultado; // propaga o erro
+            }
+
+            $dadosCru = $resultado['data'] ?? [];
+            $paginaAtual = $dadosCru['data'] ?? [];
+            if (!is_array($paginaAtual)) {
+                $paginaAtual = [];
+            }
+
+            $todos = array_merge($todos, $paginaAtual);
+
+            $temProxima = !empty($dadosCru['pagination']['next']);
+            $page++;
+        } while ($temProxima && $page <= $maxPaginas);
+
+        return [
+            'success' => true,
+            'data'    => $todos,
+            'status'  => 200
+        ];
+    }
+
     private function getConfig($chave, $padrao = null)
     {
         try {

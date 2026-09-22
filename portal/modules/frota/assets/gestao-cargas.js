@@ -33,6 +33,67 @@ let state = {
 };
 
 // ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 6.5):
+// CACHE E ESTADO DO SCORE COBLI
+// ================================================================
+const scoreCobliState = {
+    // Map<entity_id, {score, variacao, rank, kms_por_evento, score_detail, entity_nome}>
+    drivers: new Map(),
+    vehicles: new Map(),
+    ultimaCarga: 0,
+    carregando: false,
+    periodoDias: 30
+};
+
+/**
+ * Determina cor/emoji do badge do score Cobli.
+ *  >= 90  → 🟢 Excelente (verde forte)
+ *  >= 80  → 🟢 Bom (verde)
+ *  >= 70  → 🟡 Regular (amarelo)
+ *  >= 60  → 🟠 Atenção (laranja)
+ *  <  60  → 🔴 Crítico (vermelho)
+ */
+function classificarScoreCobli(score) {
+    const s = Number(score);
+    if (isNaN(s)) return { classe: 'neutro', label: '—', cor: '#64748b' };
+    if (s >= 90) return { classe: 'excelente', label: 'Excelente', cor: '#059669' };
+    if (s >= 80) return { classe: 'bom',       label: 'Bom',       cor: '#10b981' };
+    if (s >= 70) return { classe: 'regular',   label: 'Regular',   cor: '#d4a017' };
+    if (s >= 60) return { classe: 'atencao',   label: 'Atenção',   cor: '#d27b32' };
+    return { classe: 'critico', label: 'Crítico', cor: '#dc2626' };
+}
+
+/**
+ * Traduz o tipo de evento da Cobli para label humano.
+ */
+function labelEventoCobli(tipo) {
+    const labels = {
+        'road_speed_limit':     'Excesso em via',
+        'vehicle_speed_limit':  'Excesso do veículo',
+        'distracted_driving':   'Direção distraída',
+        'tailgating':           'Distância insegura',
+        'yawn':                 'Bocejo',
+        'eyes_closed':          'Olhos fechados',
+        'phone_usage':          'Uso de celular',
+        'smoking':              'Fumar',
+        'fast_acceleration':    'Aceleração brusca',
+        'speedy_turn':          'Curva brusca',
+        'hard_break':           'Frenagem brusca',
+    };
+    return labels[tipo] || tipo.replace(/_/g, ' ');
+}
+
+/**
+ * Retorna os top N eventos que mais derrubaram a nota (discount DESC).
+ */
+function topEventosScoreDetail(scoreDetail, limite = 3) {
+    if (!Array.isArray(scoreDetail)) return [];
+    return scoreDetail
+        .filter(e => Number(e.discount) > 0)
+        .sort((a, b) => Number(b.discount) - Number(a.discount))
+        .slice(0, limite);
+}
+// ================================================================
 // CACHE
 // ================================================================
 let cache = {
@@ -1565,7 +1626,7 @@ function montarHtmlPerfilMotorista(data) {
         </div>
     ` : '';
 
-    return header + pontosHtml + veiculosHtml + embarquesHtml;
+        return header + pontosHtml + montarBlocoSegurancaCobli(mot) + veiculosHtml + embarquesHtml;
 }
 
 function fecharModalRankingEAbrirEmbarque(embarqueId) {
@@ -1575,7 +1636,109 @@ function fecharModalRankingEAbrirEmbarque(embarqueId) {
     setTimeout(() => abrirDetalheEmbarque(embarqueId), 300);
 }
 
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 6.7):
+// BLOCO "SEGURANÇA (COBLI)" — renderiza dentro do modal de perfil
+// ================================================================
+function montarBlocoSegurancaCobli(motorista) {
+    const score = obterScoreCobli(motorista, 'motoristas');
 
+    if (!score) {
+        return `
+            <div class="perfil-secao perfil-seguranca-cobli vazio">
+                <h4><i class="fa-solid fa-shield-halved mr-1"></i> Segurança (Cobli)</h4>
+                <p class="text-slate-500 text-sm" style="padding:12px;">
+                    Sem dados de condução da Cobli para este motorista.
+                    Verifique se o motorista está vinculado (Cadastro de Frota).
+                </p>
+            </div>
+        `;
+    }
+
+    const valor = Number(score.score);
+    const variacao = Number(score.variacao || 0);
+    const info = classificarScoreCobli(valor);
+    const topEventos = topEventosScoreDetail(score.score_detail, 3);
+    const todosEventos = Array.isArray(score.score_detail)
+        ? score.score_detail.filter(e => Number(e.occurrences) > 0)
+        : [];
+
+    const variavelHtml = variacao > 0
+        ? `<span class="cobli-variacao positiva">↑ ${variacao} pts</span>`
+        : variacao < 0
+            ? `<span class="cobli-variacao negativa">↓ ${Math.abs(variacao)} pts</span>`
+            : `<span class="cobli-variacao neutra">— estável</span>`;
+
+    const topEventosHtml = topEventos.length > 0
+        ? topEventos.map(e => `
+            <li>
+                <span class="evento-label">${escapeHtml(labelEventoCobli(e.event_type))}</span>
+                <span class="evento-ocorrencias">${e.occurrences}×</span>
+                <span class="evento-desconto">−${Number(e.discount).toFixed(2)} pts</span>
+            </li>
+        `).join('')
+        : '<li class="sem-eventos">Nenhum evento de risco no período 🎉</li>';
+
+    const outrosEventos = todosEventos
+        .filter(e => !topEventos.some(t => t.event_type === e.event_type))
+        .slice(0, 5)
+        .map(e => `
+            <li>
+                <span class="evento-label">${escapeHtml(labelEventoCobli(e.event_type))}</span>
+                <span class="evento-ocorrencias">${e.occurrences}×</span>
+                <span class="evento-desconto">−${Number(e.discount).toFixed(2)}</span>
+            </li>
+        `).join('');
+
+    return `
+        <div class="perfil-secao perfil-seguranca-cobli">
+            <h4><i class="fa-solid fa-shield-halved mr-1"></i> Segurança (Cobli)</h4>
+
+            <div class="cobli-score-hero">
+                <div class="cobli-score-hero-valor ${info.classe}">
+                    <strong>${valor.toFixed(0)}</strong>
+                    <span>${info.label}</span>
+                </div>
+                <div class="cobli-score-hero-meta">
+                    <div><strong>Rank #${score.rank || '-'}</strong></div>
+                    <div>${variavelHtml}</div>
+                </div>
+            </div>
+
+            <div class="cobli-metricas-grid">
+                <div class="cobli-metrica">
+                    <span>KM rodados</span>
+                    <strong>${Number(score.km_rodados || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 })} km</strong>
+                </div>
+                <div class="cobli-metrica">
+                    <span>Tempo ao volante</span>
+                    <strong>${Math.round(Number(score.tempo_minutos || 0) / 60)}h</strong>
+                </div>
+                <div class="cobli-metrica">
+                    <span>KM por evento</span>
+                    <strong>${Number(score.kms_por_evento || 0).toFixed(0)} km</strong>
+                </div>
+                <div class="cobli-metrica">
+                    <span>Total de eventos</span>
+                    <strong>${Number(score.total_eventos || 0)}</strong>
+                </div>
+            </div>
+
+            <div class="cobli-eventos">
+                <h5>Top eventos que derrubaram a nota</h5>
+                <ul class="cobli-eventos-lista">
+                    ${topEventosHtml}
+                </ul>
+                ${outrosEventos ? `
+                    <details class="cobli-outros-eventos">
+                        <summary>Ver outros eventos (${todosEventos.length - topEventos.length})</summary>
+                        <ul class="cobli-eventos-lista">${outrosEventos}</ul>
+                    </details>
+                ` : ''}
+            </div>
+        </div>
+    `;
+}
 // ================================================================
 // ABA: POR CAMINHÃO (VEÍCULOS)
 // ================================================================
@@ -2834,7 +2997,8 @@ async function carregarAbaDashboard(forcar = false) {
         // 2. Preencher os 6 KPIs
         // ============================================================
         preencherKpisDashboard(kpis, problemas, acerto);
-
+         // 🔥 Bloco 6.6: card "Motoristas em risco"
+        carregarKpiMotoristasRisco();
         // ============================================================
         // 3. Renderizar os 3 gráficos
         // ============================================================
@@ -2858,6 +3022,107 @@ async function carregarAbaDashboard(forcar = false) {
     }
 }
 
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 6.6):
+// KPI "Motoristas em risco" (score Cobli < 60)
+// ================================================================
+async function carregarKpiMotoristasRisco() {
+    const kpiEl = document.getElementById('dash-kpi-risco');
+    const subEl = document.getElementById('dash-kpi-risco-sub');
+    if (!kpiEl) return;
+
+    try {
+        await carregarScoreCobli(false);
+
+        const todos = Array.from(scoreCobliState.drivers.values());
+        const emRisco = todos.filter(d => Number(d.score) < 60);
+
+        kpiEl.textContent = emRisco.length;
+
+        if (todos.length === 0) {
+            if (subEl) subEl.textContent = 'sem dados Cobli';
+        } else if (emRisco.length === 0) {
+            if (subEl) subEl.textContent = `0 de ${todos.length} motoristas`;
+        } else {
+            if (subEl) subEl.textContent = `${emRisco.length} de ${todos.length} motoristas`;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar KPI motoristas em risco:', error);
+        if (kpiEl) kpiEl.textContent = '—';
+        if (subEl) subEl.textContent = 'erro';
+    }
+}
+
+/**
+ * Abre modal detalhando os motoristas em risco.
+ */
+function dashAbrirModalMotoristasRisco() {
+    const todos = Array.from(scoreCobliState.drivers.values());
+    const emRisco = todos.filter(d => Number(d.score) < 60);
+
+    if (todos.length === 0) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Sem dados Cobli',
+            text: 'O ranking de condução ainda não foi sincronizado.',
+            confirmButtonColor: '#10b981'
+        });
+        return;
+    }
+
+    if (emRisco.length === 0) {
+        Swal.fire({
+            icon: 'success',
+            title: 'Nenhum motorista em risco',
+            html: `Todos os <b>${todos.length}</b> motoristas estão com score ≥ 60.`,
+            confirmButtonColor: '#10b981'
+        });
+        return;
+    }
+
+    const linhas = emRisco
+        .sort((a, b) => Number(a.score) - Number(b.score))
+        .map(d => {
+            const info = classificarScoreCobli(d.score);
+            const topEvento = topEventosScoreDetail(d.score_detail, 1)[0];
+            const topEventoLabel = topEvento
+                ? `${topEvento.occurrences}× ${labelEventoCobli(topEvento.event_type)}`
+                : 'sem eventos';
+            return `
+                <div style="display:flex;justify-content:space-between;align-items:center;
+                            padding:10px 12px;border-bottom:1px solid #e5e7eb;gap:10px;text-align:left;">
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-weight:700;font-size:0.88rem;color:#1f2937;">
+                            ${escapeHtml(d.entity_nome || 'Motorista')}
+                        </div>
+                        <div style="font-size:0.72rem;color:#64748b;">
+                            Rank #${d.rank || '-'} · ${topEventoLabel}
+                        </div>
+                    </div>
+                    <span style="font-weight:800;color:${info.cor};font-size:0.95rem;">
+                        ${Number(d.score).toFixed(0)}
+                    </span>
+                </div>
+            `;
+        }).join('');
+
+    Swal.fire({
+        title: `${emRisco.length} motorista${emRisco.length > 1 ? 's' : ''} em risco`,
+        html: `
+            <div style="max-height:420px;overflow-y:auto;border-radius:12px;
+                        border:1px solid #e5e7eb;background:#fff;">
+                ${linhas}
+            </div>
+            <p style="margin-top:12px;font-size:0.75rem;color:#64748b;text-align:left;">
+                <i class="fa-solid fa-info-circle"></i>
+                Score Cobli abaixo de 60. Abra a aba <b>Eficiência</b> para ver o detalhamento.
+            </p>
+        `,
+        width: '560px',
+        confirmButtonText: 'Fechar',
+        confirmButtonColor: '#10b981'
+    });
+}
 // ---------------------------------------------------------------
 // Placeholders antes de carregar (UX)
 // ---------------------------------------------------------------
@@ -3399,6 +3664,14 @@ async function carregarAbaEficiencia(forcar = false) {
     const dim = eficienciaState.dimensao;
     const dias = eficienciaState.dias;
 
+    // ============================================================
+    // 🔥 Bloco 6.5: SEMPRE garante que o score Cobli esteja carregado
+    //     antes de renderizar — não importa se é 1ª vez ou cache hit.
+    // ============================================================
+    if (scoreCobliState.drivers.size === 0 && scoreCobliState.vehicles.size === 0) {
+        await carregarScoreCobli(false);
+    }
+
     // Cache: se já temos e não é forçado, só re-renderiza
     if (!forcar && eficienciaState.dados[dim]?.length) {
         renderizarDestaquesEficiencia(eficienciaState.dados[dim], dim);
@@ -3459,7 +3732,105 @@ async function carregarAbaEficiencia(forcar = false) {
         eficienciaState.carregando = false;
     }
 }
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 6.5):
+// CARREGAR RANKING COBLI (com cache JS de 5 min)
+// ================================================================
+async function carregarScoreCobli(forcar = false) {
+    const token = getAuthToken();
+    if (!token) return;
 
+    const agora = Date.now();
+    // Cache JS de 5 min — o backend já cacheia 1h
+    if (!forcar && (agora - scoreCobliState.ultimaCarga) < 5 * 60 * 1000
+        && scoreCobliState.drivers.size > 0 && scoreCobliState.vehicles.size > 0) {
+        return;
+    }
+
+    if (scoreCobliState.carregando) return;
+    scoreCobliState.carregando = true;
+
+    try {
+        const dias = eficienciaState.dias || 30;
+
+        const [rDrivers, rVehicles] = await Promise.all([
+            fetch(`${CONFIG.API_BASE}/cobli/ranking-seguranca?dias=${dias}&tipo=DRIVER`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({})),
+            fetch(`${CONFIG.API_BASE}/cobli/ranking-seguranca?dias=${dias}&tipo=VEHICLE`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({}))
+        ]);
+
+        scoreCobliState.drivers.clear();
+        scoreCobliState.vehicles.clear();
+
+        (rDrivers.data || []).forEach(item => {
+            if (item.entity_id) {
+                scoreCobliState.drivers.set(String(item.entity_id), item);
+            }
+        });
+
+        (rVehicles.data || []).forEach(item => {
+            if (item.entity_id) {
+                scoreCobliState.vehicles.set(String(item.entity_id), item);
+            }
+        });
+
+        scoreCobliState.ultimaCarga = Date.now();
+        scoreCobliState.periodoDias = dias;
+
+        console.log(`✅ Score Cobli carregado: ${scoreCobliState.drivers.size} motoristas, ${scoreCobliState.vehicles.size} veículos`);
+    } catch (error) {
+        console.error('❌ Erro ao carregar Score Cobli:', error);
+    } finally {
+        scoreCobliState.carregando = false;
+    }
+}
+
+/**
+ * Busca o score Cobli de um motorista/veículo pelo ID interno.
+ * Para motoristas: usa item.cobli_driver_id (UUID da Cobli)
+ * Para veículos:   usa item.cobli_vehicle_id (UUID da Cobli)
+ *
+ * 🔥 CORRIGIDO 2026-09-22 (Bloco 6.5 v2):
+ *   - Backend agora retorna cobli_driver_id e cobli_vehicle_id nos rankings
+ *   - Lookup direto por UUID
+ *   - Log de diagnóstico quando não encontra (útil em dev)
+ */
+function obterScoreCobli(item, dimensao) {
+    if (!item) return null;
+    const mapa = dimensao === 'motoristas' ? scoreCobliState.drivers : scoreCobliState.vehicles;
+    if (!mapa || mapa.size === 0) return null;
+
+    // Chave principal: UUID da Cobli (backend agora retorna)
+    const chaveCobli = dimensao === 'motoristas'
+        ? item.cobli_driver_id
+        : item.cobli_vehicle_id;
+
+    if (chaveCobli) {
+        const hit = mapa.get(String(chaveCobli));
+        if (hit) return hit;
+    }
+
+    // Fallback secundário (caso o backend ainda não tenha o campo)
+    const chavesFallback = [item.entity_id, item.cobli_id].filter(Boolean);
+    for (const chave of chavesFallback) {
+        const hit = mapa.get(String(chave));
+        if (hit) return hit;
+    }
+
+    // Diagnóstico — só em dev (remover quando estabilizar)
+    if (window.console && console.debug) {
+        console.debug(
+            `[Score Cobli] não encontrado para ${dimensao} id=${item.id}`,
+            `chave_cobli=${chaveCobli || 'NULL'}`,
+            `nome=${item.motorista_nome || item.placa || '?'}`
+        );
+    }
+
+    return null;
+}
 // ---------------------------------------------------------------
 // Renderizar os 3 cards de destaques
 // ---------------------------------------------------------------
@@ -3536,10 +3907,10 @@ function renderizarTabelaEficiencia(dados, dimensao) {
     // Aplica filtro "ocultar sem eficiência"
     const filtrados = aplicarFiltroEficienciaGeral(dados);
 
-    // Cabeçalho dinâmico
-        const isMotoristas = dimensao === 'motoristas';
-    // 🔥 ATUALIZADO 2026-09-22 (Bloco 5.C.3.B):
-    //    Score ERP e Score Cobli agora aparecem também para veículos
+    const isMotoristas = dimensao === 'motoristas';
+
+    // Cabeçalho com 10 colunas:
+    // # | Nome | Embarques | Entregas | Divergência | No Prazo | Score ERP | Score Cobli | Cobli (status) | Índice
     thead.innerHTML = `
         <tr>
             <th class="text-center" style="width: 45px;">#</th>
@@ -3549,7 +3920,10 @@ function renderizarTabelaEficiencia(dados, dimensao) {
             <th class="text-center">Divergência</th>
             <th class="text-center">No Prazo</th>
             <th class="text-center">Score ERP</th>
-            <th class="text-center">Score Cobli</th>
+            <th class="text-center" title="Score de condução da Cobli (últimos 30 dias). Fonte: ranking de segurança por telemetria.">
+                Score Cobli
+                <i class="fa-solid fa-circle-info" style="font-size:0.7rem;opacity:0.5;margin-left:3px;"></i>
+            </th>
             <th class="text-center">Cobli</th>
             <th class="text-center">Índice</th>
         </tr>
@@ -3598,17 +3972,11 @@ function renderizarTabelaEficiencia(dados, dimensao) {
                 <td class="text-center">
                     <span class="badge-taxa ${taxaPrazoClass}">${(item.taxa_no_prazo ?? 0).toFixed(1)}%</span>
                 </td>
-                      <td class="text-center">
+                <td class="text-center">
                     <span class="score-mini-badge nivel-${scoreNivel}">${score.toFixed(1)}</span>
                 </td>
-                <td class="text-center">
-                    <span class="cobli-score-placeholder" title="Score Cobli — disponível no Bloco 6">
-                        <i class="fa-solid fa-clock"></i> Em breve
-                    </span>
-                </td>
-                <td class="text-center">
-                    ${gerarBadgeCobli(item)}
-                </td>
+                <td class="text-center">${gerarBadgeScoreCobli(item, dimensao)}</td>
+                <td class="text-center">${gerarBadgeStatusCobli(item, dimensao)}</td>
                 <td>
                     <div class="indice-ineficiencia-bar">
                         <div class="indice-ineficiencia-bar-fill ${nivel}" style="width:${Math.min(indice, 100)}%"></div>
@@ -3619,14 +3987,58 @@ function renderizarTabelaEficiencia(dados, dimensao) {
         `;
     }).join('');
 }
+/**
+ * Gera o badge de SCORE Cobli REAL (Bloco 6.5).
+ * Mostra a nota (0-100) com cor por faixa + variação (↑/↓).
+ */
+function gerarBadgeScoreCobli(item, dimensao = 'motoristas') {
+    const score = obterScoreCobli(item, dimensao);
 
-// ---------------------------------------------------------------
-// Badge de status Cobli (mockado no 5.C.2, real no Bloco 6)
-// ---------------------------------------------------------------
-function gerarBadgeCobli(item) {
-    // TODO Bloco 6: usar item.cobli_status (ao-vivo | ultima | sem-vinculo)
-    //                vindo do backend já enriquecido
-    //
+    // Sem dado → mostra placeholder
+    if (!score || score.score === null || score.score === undefined) {
+        return `<span class="cobli-score-badge neutro" title="Sem dados Cobli para o período">
+            <i class="fa-solid fa-minus"></i> —
+        </span>`;
+    }
+
+    const valor = Number(score.score);
+    const variacao = Number(score.variacao || 0);
+    const info = classificarScoreCobli(valor);
+
+    // Variação: ↑ verde, ↓ vermelho, = neutro
+    let variacaoHtml = '';
+    if (variacao > 0) {
+        variacaoHtml = `<span class="cobli-variacao positiva" title="Subiu ${variacao} pontos">↑${variacao}</span>`;
+    } else if (variacao < 0) {
+        variacaoHtml = `<span class="cobli-variacao negativa" title="Caiu ${Math.abs(variacao)} pontos">↓${Math.abs(variacao)}</span>`;
+    } else {
+        variacaoHtml = `<span class="cobli-variacao neutra" title="Estável">—</span>`;
+    }
+
+    // Top 3 eventos que derrubaram
+    const topEventos = topEventosScoreDetail(score.score_detail, 3);
+    const tooltipEventos = topEventos.length
+        ? topEventos.map(e => `• ${e.occurrences}× ${labelEventoCobli(e.event_type)} (−${Number(e.discount).toFixed(2)})`).join('\n')
+        : 'Nenhum evento de risco no período';
+
+    const tooltip = `${info.label} — score ${valor.toFixed(0)}\nRank #${score.rank || '-'}\n\nTop eventos:\n${tooltipEventos}`;
+
+    return `<div class="cobli-score-cell" title="${escapeHtml(tooltip)}">
+        <span class="cobli-score-badge ${info.classe}">
+            <i class="fa-solid fa-shield-halved"></i> ${valor.toFixed(0)}
+        </span>
+        ${variacaoHtml}
+    </div>`;
+}
+
+/**
+ * Gera o badge de STATUS Cobli (vínculo com veículo/motorista).
+ * Estados: ao-vivo (verde), ultima (âmbar), sem-vinculo (cinza).
+ *
+ * 🔥 Original do Bloco 5.C.2 — restaurada no Bloco 6.5.
+ */
+function gerarBadgeStatusCobli(item, dimensao = 'motoristas') {
+    // TODO Bloco 6.x: usar item.cobli_status vindo do backend enriquecido
     // Mock temporário: distribui os 3 status com base no id
     const id = Number(item.id || 0);
     const status = (id % 3 === 0) ? 'sem-vinculo'
@@ -3640,13 +4052,12 @@ function gerarBadgeCobli(item) {
     };
 
     return `
-        <span class="cobli-status-badge ${status}" title="Status Cobli (mock — dados reais no Bloco 6)">
+        <span class="cobli-status-badge ${status}" title="Status do vínculo com a Cobli">
             <span class="cobli-dot"></span>
             ${labels[status]}
         </span>
     `;
 }
-
 // ---------------------------------------------------------------
 // Filtro "Ocultar sem eficiência" aplicado aos dados
 // ---------------------------------------------------------------
@@ -4212,3 +4623,8 @@ window.recarregarMapaCalor = recarregarMapaCalor;
 window.ampliarGrafico         = ampliarGrafico;
 window.fecharGraficoAmpliado  = fecharGraficoAmpliado;
 window.destruirChartAmpliado  = destruirChartAmpliado;
+window.gerarBadgeScoreCobli            = gerarBadgeScoreCobli;
+window.gerarBadgeStatusCobli           = gerarBadgeStatusCobli;
+window.carregarKpiMotoristasRisco      = carregarKpiMotoristasRisco;
+window.dashAbrirModalMotoristasRisco   = dashAbrirModalMotoristasRisco;
+window.montarBlocoSegurancaCobli       = montarBlocoSegurancaCobli;

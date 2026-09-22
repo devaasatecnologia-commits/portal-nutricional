@@ -1579,19 +1579,22 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 ef.tempo_medio_deslocamento_min,
                 ef.distancia_media_trajeto_km,
                 ef.tempo_ideal_medio_min,
-                ef.indice_eficiencia_trajeto
+                ef.indice_eficiencia_trajeto,
+                  cm.cobli_driver_id
             FROM frota_motorista mo
             LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
                 AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
             LEFT JOIN eficiencia_por_motorista ef ON ef.motorista_id = mo.id
+            LEFT JOIN frota_cobli_motorista cm ON cm.motorista_id = mo.id
             GROUP BY mo.id, mo.nome, mo.telefone, mo.status,
                      ef.trajetos_analisados,
                      ef.tempo_medio_deslocamento_min,
                      ef.distancia_media_trajeto_km,
                      ef.tempo_ideal_medio_min,
-                     ef.indice_eficiencia_trajeto
+                     ef.indice_eficiencia_trajeto,
+                     cm.cobli_driver_id
             HAVING COUNT(DISTINCT em.id) > 0
             ORDER BY total_problemas DESC, entregas_atrasadas DESC
             ";
@@ -1910,19 +1913,22 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 ef.tempo_medio_deslocamento_min,
                 ef.distancia_media_trajeto_km,
                 ef.tempo_ideal_medio_min,
-                ef.indice_eficiencia_trajeto
+                ef.indice_eficiencia_trajeto,
+                cd.cobli_vehicle_id
             FROM frota_veiculo ve
             LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
                 AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
             LEFT JOIN eficiencia_por_veiculo ef ON ef.veiculo_id = ve.id
+            LEFT JOIN frota_cobli_dispositivo cd ON cd.veiculo_id = ve.id AND cd.ativo = TRUE
             GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status,
                      ef.trajetos_analisados,
                      ef.tempo_medio_deslocamento_min,
                      ef.distancia_media_trajeto_km,
                      ef.tempo_ideal_medio_min,
-                     ef.indice_eficiencia_trajeto
+                     ef.indice_eficiencia_trajeto,
+                     cd.cobli_vehicle_id
             HAVING COUNT(DISTINCT em.id) > 0
             ORDER BY total_problemas DESC, entregas_atrasadas DESC
             ";

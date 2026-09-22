@@ -1884,3 +1884,299 @@
 /* ================================================================
    FIM DO BLOCO 5.D.3 (CSS)
    ================================================================ */
+   /* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 6.5):
+   COLUNA SCORE COBLI — Badge + variação
+   ================================================================ */
+.cobli-score-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: help;
+}
+
+.cobli-score-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    font-size: 0.75rem;
+    font-weight: 800;
+    border: 1px solid transparent;
+    white-space: nowrap;
+}
+
+.cobli-score-badge.excelente {
+    background: rgba(5, 150, 105, 0.14);
+    color: #047857;
+    border-color: rgba(5, 150, 105, 0.25);
+}
+.cobli-score-badge.bom {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+.cobli-score-badge.regular {
+    background: rgba(212, 160, 23, 0.14);
+    color: #b45309;
+    border-color: rgba(212, 160, 23, 0.3);
+}
+.cobli-score-badge.atencao {
+    background: rgba(210, 123, 50, 0.14);
+    color: #c2410c;
+    border-color: rgba(210, 123, 50, 0.3);
+}
+.cobli-score-badge.critico {
+    background: rgba(220, 38, 38, 0.14);
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.3);
+    animation: pulse-cobli-critico 2s ease-in-out infinite;
+}
+.cobli-score-badge.neutro {
+    background: rgba(148, 163, 184, 0.12);
+    color: #64748b;
+    border-color: rgba(148, 163, 184, 0.2);
+}
+
+@keyframes pulse-cobli-critico {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.25); }
+    50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0); }
+}
+
+.cobli-variacao {
+    font-size: 0.7rem;
+    font-weight: 800;
+    padding: 1px 4px;
+    border-radius: 4px;
+}
+.cobli-variacao.positiva { color: #059669; background: rgba(5, 150, 105, 0.08); }
+.cobli-variacao.negativa { color: #b91c1c; background: rgba(220, 38, 38, 0.08); }
+.cobli-variacao.neutra   { color: #94a3b8; }
+
+/* Tema escuro */
+[data-theme="dark"] .cobli-score-badge.excelente { color: #6ee7b7; }
+[data-theme="dark"] .cobli-score-badge.bom       { color: #6ee7b7; }
+[data-theme="dark"] .cobli-score-badge.regular   { color: var(--nutri-gold-light); }
+[data-theme="dark"] .cobli-score-badge.atencao   { color: #fdba74; }
+[data-theme="dark"] .cobli-score-badge.critico   { color: #fca5a5; }
+[data-theme="dark"] .cobli-score-badge.neutro    { color: var(--nutri-text-secondary); }
+/* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 6.7):
+   BLOCO "SEGURANÇA (COBLI)" dentro do modal de perfil
+   ================================================================ */
+.perfil-seguranca-cobli {
+    margin: 20px 0;
+    padding: 18px 20px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(var(--nutri-primary-rgb), 0.04), rgba(46, 139, 104, 0.03));
+    border: 1px solid var(--nutri-border);
+}
+
+.perfil-seguranca-cobli.vazio {
+    background: rgba(148, 163, 184, 0.06);
+}
+
+.perfil-seguranca-cobli h4 {
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+    margin: 0 0 14px;
+}
+
+/* Hero (score grande) */
+.cobli-score-hero {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 16px 20px;
+    border-radius: 12px;
+    background: var(--nutri-card-bg);
+    border: 1px solid var(--nutri-border);
+    margin-bottom: 14px;
+}
+
+.cobli-score-hero-valor {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 110px;
+    padding: 12px 20px;
+    border-radius: 12px;
+    border: 3px solid currentColor;
+}
+
+.cobli-score-hero-valor strong {
+    font-size: 2rem;
+    font-weight: 900;
+    line-height: 1;
+    color: inherit;
+}
+
+.cobli-score-hero-valor span {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 4px;
+    color: inherit;
+    opacity: 0.85;
+}
+
+.cobli-score-hero-valor.excelente { color: #059669; }
+.cobli-score-hero-valor.bom       { color: #10b981; }
+.cobli-score-hero-valor.regular   { color: #d4a017; }
+.cobli-score-hero-valor.atencao   { color: #d27b32; }
+.cobli-score-hero-valor.critico   { color: #dc2626; }
+
+.cobli-score-hero-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.cobli-score-hero-meta strong {
+    font-size: 1rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+}
+
+/* Grid de métricas */
+.cobli-metricas-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.cobli-metrica {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--nutri-card-bg);
+    border: 1px solid var(--nutri-border);
+    text-align: center;
+}
+
+.cobli-metrica span {
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--nutri-text-secondary);
+}
+
+.cobli-metrica strong {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+}
+
+/* Lista de eventos de risco */
+.cobli-eventos {
+    margin-top: 10px;
+}
+
+.cobli-eventos h5 {
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--nutri-text-secondary);
+    margin: 0 0 8px;
+}
+
+.cobli-eventos-lista {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.cobli-eventos-lista li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(220, 38, 38, 0.06);
+    border: 1px solid rgba(220, 38, 38, 0.15);
+    font-size: 0.78rem;
+}
+
+.cobli-eventos-lista li .evento-label {
+    flex: 1;
+    font-weight: 700;
+    color: var(--nutri-text);
+}
+
+.cobli-eventos-lista li .evento-ocorrencias {
+    font-weight: 800;
+    color: #dc2626;
+    min-width: 32px;
+    text-align: right;
+}
+
+.cobli-eventos-lista li .evento-desconto {
+    font-weight: 700;
+    color: #b45309;
+    font-size: 0.72rem;
+    min-width: 70px;
+    text-align: right;
+}
+
+.cobli-eventos-lista li.sem-eventos {
+    background: rgba(16, 185, 129, 0.08);
+    border-color: rgba(16, 185, 129, 0.2);
+    color: #059669;
+    justify-content: center;
+    font-weight: 700;
+}
+
+/* Detalhes (outros eventos) */
+.cobli-outros-eventos {
+    margin-top: 8px;
+}
+
+.cobli-outros-eventos summary {
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--nutri-accent);
+    padding: 4px 0;
+    list-style: none;
+}
+.cobli-outros-eventos summary::-webkit-details-marker { display: none; }
+.cobli-outros-eventos summary:hover { text-decoration: underline; }
+.cobli-outros-eventos[open] summary { margin-bottom: 6px; }
+
+/* Tema escuro */
+[data-theme="dark"] .cobli-score-hero-valor.excelente { color: #6ee7b7; }
+[data-theme="dark"] .cobli-score-hero-valor.bom       { color: #6ee7b7; }
+[data-theme="dark"] .cobli-score-hero-valor.regular   { color: var(--nutri-gold-light); }
+[data-theme="dark"] .cobli-score-hero-valor.atencao   { color: #fdba74; }
+[data-theme="dark"] .cobli-score-hero-valor.critico   { color: #fca5a5; }
+
+[data-theme="dark"] .cobli-eventos-lista li {
+    background: rgba(239, 68, 68, 0.12);
+    border-color: rgba(239, 68, 68, 0.25);
+}
+[data-theme="dark"] .cobli-eventos-lista li .evento-ocorrencias { color: #fca5a5; }
+[data-theme="dark"] .cobli-eventos-lista li .evento-desconto    { color: var(--nutri-gold-light); }
+[data-theme="dark"] .cobli-eventos-lista li.sem-eventos {
+    background: rgba(16, 185, 129, 0.14);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #6ee7b7;
+}
+
+/* Responsivo */
+@media (max-width: 640px) {
+    .cobli-metricas-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cobli-score-hero { flex-direction: column; gap: 14px; }
+}

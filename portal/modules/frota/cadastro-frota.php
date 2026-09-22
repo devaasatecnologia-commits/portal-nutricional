@@ -107,6 +107,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <button type="button" id="btn-sincronizar-cobli" class="cargas-clear-filter" onclick="sincronizarFrotaCobli()">
                         <i class="fa-solid fa-cloud-arrow-down"></i> Sincronizar Cobli
                     </button>
+                    <button type="button" id="btn-vincular-motoristas-cobli" class="cargas-clear-filter" onclick="vincularMotoristasCobli()">
+                        <i class="fa-solid fa-user-check"></i> Vincular Motoristas
+                    </button>
                     <button type="button" class="btn-premium" onclick="abrirFormVeiculo()">
                         <i class="fa-solid fa-plus"></i> Novo veículo
                     </button>
