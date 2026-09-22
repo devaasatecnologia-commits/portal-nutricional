@@ -85,163 +85,204 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
     <!-- ================================================================
        ABAS PRINCIPAIS
+       🔥 MUDANÇA 2026-09-22 (Bloco 5.A.1):
+       Abas reduzidas de 6 para 5, alinhadas com a consolidação:
+       - "Visão Geral"          → mantida (renomeada para "Problemas")
+       - "Desempenho Motoristas" → fundida em "Eficiência" (toggle)
+       - "Por Caminhão"         → fundida em "Eficiência" (toggle)
+       - "Gráficos"             → renomeada para "Análises"
+       - "Histórico"            → fundida em "Mapa" (sub-aba)
+       - "Rastreio Cobli"       → fundida em "Mapa" (sub-aba)
+       - NOVA: "Dashboard" (KPIs executivos)
     ================================================================ -->
     <div class="cargas-tabs" id="cargas-tabs" role="tablist">
-        <button type="button" class="cargas-tab active" data-tab="visao-geral" onclick="mudarAbaCargas('visao-geral', this)" role="tab" aria-selected="true">
-            <i class="fa-solid fa-gauge-high"></i> Visão Geral
+        <button type="button" class="cargas-tab" data-tab="dashboard" onclick="mudarAbaCargas('dashboard', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-chart-line"></i> Dashboard
         </button>
-        <button type="button" class="cargas-tab" data-tab="motoristas" onclick="mudarAbaCargas('motoristas', this)" role="tab" aria-selected="false">
-            <i class="fa-solid fa-ranking-star"></i> Desempenho de Motoristas
+        <button type="button" class="cargas-tab active" data-tab="problemas" onclick="mudarAbaCargas('problemas', this)" role="tab" aria-selected="true">
+            <i class="fa-solid fa-triangle-exclamation"></i> Problemas
         </button>
-        <button type="button" class="cargas-tab" data-tab="veiculos" onclick="mudarAbaCargas('veiculos', this)" role="tab" aria-selected="false">
-            <i class="fa-solid fa-truck"></i> Por Caminhão
+        <button type="button" class="cargas-tab" data-tab="eficiencia" onclick="mudarAbaCargas('eficiencia', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-ranking-star"></i> Eficiência
         </button>
-        <button type="button" class="cargas-tab" data-tab="graficos" onclick="mudarAbaCargas('graficos', this)" role="tab" aria-selected="false">
-            <i class="fa-solid fa-chart-pie"></i> Gráficos
+        <button type="button" class="cargas-tab" data-tab="analises" onclick="mudarAbaCargas('analises', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-chart-pie"></i> Análises
         </button>
-        <button type="button" class="cargas-tab" data-tab="historico" onclick="mudarAbaCargas('historico', this)" role="tab" aria-selected="false">
-            <i class="fa-solid fa-clock-rotate-left"></i> Histórico de Embarques
-        </button>
-        <button type="button" class="cargas-tab" data-tab="cobli" onclick="mudarAbaCargas('cobli', this)" role="tab" aria-selected="false">
-            <i class="fa-solid fa-satellite-dish"></i> Rastreio (Cobli)
+        <button type="button" class="cargas-tab" data-tab="mapa" onclick="mudarAbaCargas('mapa', this)" role="tab" aria-selected="false">
+            <i class="fa-solid fa-satellite-dish"></i> Mapa
         </button>
     </div>
 
     <!-- ================================================================
-       ABA: VISÃO GERAL
+       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
+       ABA: DASHBOARD (visão executiva do dia)
+       Conteúdo será preenchido no Bloco 5.B
     ================================================================ -->
-    <div class="cargas-tab-panel" id="tab-visao-geral" role="tabpanel">
-
-    <!-- ================================================================
-       FILTROS RÁPIDOS
-    ================================================================ -->
-    <div class="quick-filters" id="quick-filters">
-        <button type="button" class="quick-filter-pill active" data-filtro="todos" onclick="aplicarFiltro('todos', this)">
-            <i class="fa-solid fa-layer-group"></i> Todos
-        </button>
-        <button type="button" class="quick-filter-pill" data-filtro="pendente" onclick="aplicarFiltro('pendente', this)">
-            <i class="fa-regular fa-clock"></i> Pendentes
-        </button>
-        <button type="button" class="quick-filter-pill" data-filtro="em_analise" onclick="aplicarFiltro('em_analise', this)">
-            <i class="fa-solid fa-magnifying-glass"></i> Em Análise
-        </button>
-        <button type="button" class="quick-filter-pill" data-filtro="resolvido" onclick="aplicarFiltro('resolvido', this)">
-            <i class="fa-solid fa-check-circle"></i> Resolvidos
-        </button>
-        <button type="button" class="quick-filter-pill" data-filtro="cancelado" onclick="aplicarFiltro('cancelado', this)">
-            <i class="fa-solid fa-ban"></i> Cancelados
-        </button>
-    </div>
-    <div class="cargas-filter-bar" role="search" aria-label="Filtrar problemas de entrega">
-        <label class="cargas-search">
-            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-            <input type="search" id="filtro-busca" placeholder="Buscar entrega, cliente ou motorista" autocomplete="off" aria-label="Buscar problemas">
-        </label>
-        <label class="cargas-priority">
-            <span>Prioridade</span>
-            <select id="filtro-prioridade" aria-label="Filtrar por prioridade">
-                <option value="todas">Todas</option>
-                <option value="critica">Crítica</option>
-                <option value="alta">Alta</option>
-                <option value="media">Média</option>
-                <option value="baixa">Baixa</option>
-            </select>
-        </label>
-        <button type="button" class="cargas-clear-filter" id="limpar-filtros" hidden>
-            <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Limpar filtros
-        </button>
-    </div>
-
-    <!-- ================================================================
-       KPI CARDS
-    ================================================================ -->
-    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="kpi-cards">
-        <!-- Gerado via JavaScript -->
-    </div>
-
-    <div class="section-card operational-overview mb-6">
-        <div class="section-header flex justify-between items-center flex-wrap gap-2">
-            <div class="flex items-center gap-3">
-                <div class="section-icon-badge"><i class="fa-solid fa-gauge-high"></i></div>
-                <div><span class="font-bold">Visão operacional</span><span class="text-xs text-slate-400 block">Acompanhamento da operação em tempo real</span></div>
+    <div class="cargas-tab-panel" id="tab-dashboard" role="tabpanel" hidden>
+        <!-- Conteúdo será adicionado no Bloco 5.B -->
+        <div class="section-card">
+            <div class="section-body" style="text-align:center; padding:60px 20px;">
+                <i class="fa-solid fa-chart-line" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                    Painel executivo em construção — KPIs, gráficos e destaques chegam no Bloco 5.B.
+                </p>
             </div>
-            <span class="live-caption"><span></span> Atualizado automaticamente</span>
         </div>
-        <div class="operational-kpis" id="operational-kpis"><div class="operational-loading">Carregando indicadores...</div></div>
     </div>
 
     <!-- ================================================================
-       TABELA DE PROBLEMAS
+       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
+       ABA: EFICIÊNCIA (motorista ↔ veículo com toggle)
+       Conteúdo será preenchido no Bloco 5.C
     ================================================================ -->
-    <div class="section-card">
-        <div class="section-header flex justify-between items-center flex-wrap gap-2">
-            <div class="flex items-center gap-3">
-                <div class="section-icon-badge">
-                    <i class="fa-solid fa-triangle-exclamation"></i>
+    <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
+        <!-- Conteúdo será adicionado no Bloco 5.C -->
+        <div class="section-card">
+            <div class="section-body" style="text-align:center; padding:60px 20px;">
+                <i class="fa-solid fa-ranking-star" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                    Ranking unificado (Motoristas ↔ Veículos) em construção — chega no Bloco 5.C.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
+       ABA: PROBLEMAS (ex-"Visão Geral")
+    ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-problemas" role="tabpanel" hidden>
+
+        <!-- ================================================================
+           FILTROS RÁPIDOS
+        ================================================================ -->
+        <div class="quick-filters" id="quick-filters">
+            <button type="button" class="quick-filter-pill active" data-filtro="todos" onclick="aplicarFiltro('todos', this)">
+                <i class="fa-solid fa-layer-group"></i> Todos
+            </button>
+            <button type="button" class="quick-filter-pill" data-filtro="pendente" onclick="aplicarFiltro('pendente', this)">
+                <i class="fa-regular fa-clock"></i> Pendentes
+            </button>
+            <button type="button" class="quick-filter-pill" data-filtro="em_analise" onclick="aplicarFiltro('em_analise', this)">
+                <i class="fa-solid fa-magnifying-glass"></i> Em Análise
+            </button>
+            <button type="button" class="quick-filter-pill" data-filtro="resolvido" onclick="aplicarFiltro('resolvido', this)">
+                <i class="fa-solid fa-check-circle"></i> Resolvidos
+            </button>
+            <button type="button" class="quick-filter-pill" data-filtro="cancelado" onclick="aplicarFiltro('cancelado', this)">
+                <i class="fa-solid fa-ban"></i> Cancelados
+            </button>
+        </div>
+
+        <div class="cargas-filter-bar" role="search" aria-label="Filtrar problemas de entrega">
+            <label class="cargas-search">
+                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                <input type="search" id="filtro-busca" placeholder="Buscar entrega, cliente ou motorista" autocomplete="off" aria-label="Buscar problemas">
+            </label>
+            <label class="cargas-priority">
+                <span>Prioridade</span>
+                <select id="filtro-prioridade" aria-label="Filtrar por prioridade">
+                    <option value="todas">Todas</option>
+                    <option value="critica">Crítica</option>
+                    <option value="alta">Alta</option>
+                    <option value="media">Média</option>
+                    <option value="baixa">Baixa</option>
+                </select>
+            </label>
+            <button type="button" class="cargas-clear-filter" id="limpar-filtros" hidden>
+                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Limpar filtros
+            </button>
+        </div>
+
+        <!-- ================================================================
+           KPI CARDS
+        ================================================================ -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6" id="kpi-cards">
+            <!-- Gerado via JavaScript -->
+        </div>
+
+        <div class="section-card operational-overview mb-6">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge"><i class="fa-solid fa-gauge-high"></i></div>
+                    <div><span class="font-bold">Visão operacional</span><span class="text-xs text-slate-400 block">Acompanhamento da operação em tempo real</span></div>
                 </div>
-                <div>
-                    <span class="font-bold text-[#1a3c34]">Problemas de Entregas</span>
-                    <span class="text-xs text-slate-400 block" id="info-registros">Carregando...</span>
+                <span class="live-caption"><span></span> Atualizado automaticamente</span>
+            </div>
+            <div class="operational-kpis" id="operational-kpis"><div class="operational-loading">Carregando indicadores...</div></div>
+        </div>
+
+        <!-- ================================================================
+           TABELA DE PROBLEMAS
+        ================================================================ -->
+        <div class="section-card">
+            <div class="section-header flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-3">
+                    <div class="section-icon-badge">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                    </div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Problemas de Entregas</span>
+                        <span class="text-xs text-slate-400 block" id="info-registros">Carregando...</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3 flex-wrap">
+                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="exportarCSV()">
+                        <i class="fa-solid fa-file-export"></i> Exportar CSV
+                    </button>
                 </div>
             </div>
-            <div class="flex items-center gap-3 flex-wrap">
-                <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="exportarCSV()">
-                    <i class="fa-solid fa-file-export"></i> Exportar CSV
-                </button>
+            <div class="section-body p-0 overflow-x-auto">
+                <table class="table-frota w-full" id="tabela-problemas">
+                    <thead>
+                        <tr>
+                            <th class="text-center" style="width: 45px;">#</th>
+                            <th>Entrega</th>
+                            <th>Cliente</th>
+                            <th>Motorista</th>
+                            <th>Problema</th>
+                            <th class="text-center">Qtd</th>
+                            <th class="text-center">Valor</th>
+                            <th class="text-center">Prioridade</th>
+                            <th class="text-center">Status</th>
+                            <th class="text-center" style="width: 120px;">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="lista-problemas">
+                        <tr>
+                            <td colspan="10" class="text-center py-8">
+                                <div class="flex flex-col items-center gap-2">
+                                    <div class="skeleton skeleton-title mx-auto"></div>
+                                    <div class="skeleton skeleton-text w-48 mx-auto"></div>
+                                </div>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <!-- Paginação -->
+            <div class="section-body border-t border-slate-200 flex justify-between items-center flex-wrap gap-2 py-3 px-4">
+                <span class="text-sm text-slate-500" id="info-paginacao">Carregando...</span>
+                <div class="flex gap-1">
+                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50" 
+                            id="btn-anterior" onclick="mudarPagina('anterior')">
+                        <i class="fa-solid fa-chevron-left"></i>
+                    </button>
+                    <span class="px-3 py-1.5 text-sm font-bold text-slate-600" id="pagina-atual">1</span>
+                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50" 
+                            id="btn-proximo" onclick="mudarPagina('proximo')">
+                        <i class="fa-solid fa-chevron-right"></i>
+                    </button>
+                </div>
             </div>
         </div>
-        <div class="section-body p-0 overflow-x-auto">
-            <table class="table-frota w-full" id="tabela-problemas">
-                <thead>
-                    <tr>
-                        <th class="text-center" style="width: 45px;">#</th>
-                        <th>Entrega</th>
-                        <th>Cliente</th>
-                        <th>Motorista</th>
-                        <th>Problema</th>
-                        <th class="text-center">Qtd</th>
-                        <th class="text-center">Valor</th>
-                        <th class="text-center">Prioridade</th>
-                        <th class="text-center">Status</th>
-                        <th class="text-center" style="width: 120px;">Ações</th>
-                    </tr>
-                </thead>
-                <tbody id="lista-problemas">
-                    <tr>
-                        <td colspan="10" class="text-center py-8">
-                            <div class="flex flex-col items-center gap-2">
-                                <div class="skeleton skeleton-title mx-auto"></div>
-                                <div class="skeleton skeleton-text w-48 mx-auto"></div>
-                            </div>
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        <!-- Paginação -->
-        <div class="section-body border-t border-slate-200 flex justify-between items-center flex-wrap gap-2 py-3 px-4">
-            <span class="text-sm text-slate-500" id="info-paginacao">Carregando...</span>
-            <div class="flex gap-1">
-                <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50" 
-                        id="btn-anterior" onclick="mudarPagina('anterior')">
-                    <i class="fa-solid fa-chevron-left"></i>
-                </button>
-                <span class="px-3 py-1.5 text-sm font-bold text-slate-600" id="pagina-atual">1</span>
-                <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50" 
-                        id="btn-proximo" onclick="mudarPagina('proximo')">
-                    <i class="fa-solid fa-chevron-right"></i>
-                </button>
-            </div>
-        </div>
-    </div>
-    </div> <!-- /#tab-visao-geral -->
+    </div> <!-- /#tab-problemas -->
 
     <!-- ================================================================
-       ABA: DESEMPENHO DE MOTORISTAS
+         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
+         Este painel foi FUNDIDO no painel "tab-eficiencia".
+         Mantido como referência até o Bloco 9 (limpeza).
     ================================================================ -->
-    <d    <!-- ================================================================
-       ABA: DESEMPENHO DE MOTORISTAS
-    ================================================================ -->
+    <!--
     <div class="cargas-tab-panel" id="tab-motoristas" role="tabpanel" hidden>
         <div class="section-card mb-6">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
@@ -309,10 +350,14 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div> <!-- /#tab-motoristas -->
+    -->
 
     <!-- ================================================================
-       ABA: POR CAMINHÃO (VEÍCULOS)
+         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
+         Este painel foi FUNDIDO no painel "tab-eficiencia".
+         Mantido como referência até o Bloco 9 (limpeza).
     ================================================================ -->
+    <!--
     <div class="cargas-tab-panel" id="tab-veiculos" role="tabpanel" hidden>
         <div class="section-card mb-6">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
@@ -379,11 +424,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div> <!-- /#tab-veiculos -->
+    -->
 
     <!-- ================================================================
-       ABA: GRÁFICOS
+       ABA: ANÁLISES (ex-"Gráficos")
     ================================================================ -->
-    <div class="cargas-tab-panel" id="tab-graficos" role="tabpanel" hidden>
+    <div class="cargas-tab-panel" id="tab-analises" role="tabpanel" hidden>
         <div class="section-card mb-6">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
                 <div class="flex items-center gap-3">
@@ -424,11 +470,73 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <div class="section-body"><canvas id="chart-top-veiculos" height="220"></canvas></div>
             </div>
         </div>
-    </div> <!-- /#tab-graficos -->
+    </div> <!-- /#tab-analises -->
 
     <!-- ================================================================
-       ABA: HISTÓRICO DE EMBARQUES
+       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
+       ABA: MAPA (Ao Vivo + Histórico + Calor)
+       Conteúdo será preenchido no Bloco 5.D
     ================================================================ -->
+    <div class="cargas-tab-panel" id="tab-mapa" role="tabpanel" hidden>
+        <!-- Sub-abas internas -->
+        <div class="cargas-subtabs" id="cargas-subtabs" role="tablist">
+            <button type="button" class="cargas-subtab active" data-subtab="ao-vivo"
+                    onclick="mudarSubAbaCargas('ao-vivo', this)" role="tab" aria-selected="true">
+                <i class="fa-solid fa-map-location-dot"></i> Ao Vivo
+            </button>
+            <button type="button" class="cargas-subtab" data-subtab="historico"
+                    onclick="mudarSubAbaCargas('historico', this)" role="tab" aria-selected="false">
+                <i class="fa-solid fa-clock-rotate-left"></i> Histórico
+            </button>
+            <button type="button" class="cargas-subtab" data-subtab="calor"
+                    onclick="mudarSubAbaCargas('calor', this)" role="tab" aria-selected="false">
+                <i class="fa-solid fa-fire"></i> Calor
+            </button>
+        </div>
+
+        <!-- Sub-painel: Ao Vivo -->
+        <div class="cargas-subpanel" id="subtab-ao-vivo" role="tabpanel">
+            <div class="section-card">
+                <div class="section-body" style="text-align:center; padding:60px 20px;">
+                    <i class="fa-solid fa-satellite-dish" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                        Mapa ao vivo em construção — chega no Bloco 5.D.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-painel: Histórico -->
+        <div class="cargas-subpanel" id="subtab-historico" role="tabpanel" hidden>
+            <div class="section-card">
+                <div class="section-body" style="text-align:center; padding:60px 20px;">
+                    <i class="fa-solid fa-clock-rotate-left" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                        Histórico de embarques em construção — chega no Bloco 5.D.
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sub-painel: Calor -->
+        <div class="cargas-subpanel" id="subtab-calor" role="tabpanel" hidden>
+            <div class="section-card">
+                <div class="section-body" style="text-align:center; padding:60px 20px;">
+                    <i class="fa-solid fa-fire" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                        Mapa de calor em construção — chega no Bloco 5.D.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div> <!-- /#tab-mapa -->
+
+    <!-- ================================================================
+         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
+         Este painel foi FUNDIDO no painel "tab-mapa" (sub-aba Histórico).
+         Mantido como referência até o Bloco 9 (limpeza).
+    ================================================================ -->
+    <!--
     <div class="cargas-tab-panel" id="tab-historico" role="tabpanel" hidden>
         <div class="cargas-filter-bar" role="search" aria-label="Filtrar histórico de embarques">
             <label class="cargas-search">
@@ -487,10 +595,14 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div> <!-- /#tab-historico -->
+    -->
 
     <!-- ================================================================
-      ABA: RASTREIO COBLI (INTEGRAÇÃO DE RASTREAMENTO VEICULAR REAL)
+         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
+         Este painel foi FUNDIDO no painel "tab-mapa" (sub-abas Ao Vivo + Calor).
+         Mantido como referência até o Bloco 9 (limpeza).
     ================================================================ -->
+    <!--
     <div class="cargas-tab-panel" id="tab-cobli" role="tabpanel" hidden>
        <div class="section-card">
            <div class="section-header flex justify-between items-center flex-wrap gap-2">
@@ -568,6 +680,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
            </div>
        </div>
     </div> <!-- /#tab-cobli -->
+    -->
 </div>
 
 
