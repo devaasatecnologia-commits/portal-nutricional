@@ -2105,27 +2105,32 @@ JOIN frota_entrega e ON e.embarque_id = em.id
             }
             unset($ent);
             $embarque['entregas'] = $entregas;
-
-            // Timeline geral do embarque (logs)
-            $stmtLogs = $this->pdo->prepare("
-                SELECT l.acao, l.descricao, l.created_at,
-                    COALESCE(u.nome, 'Sistema') AS usuario_nome
-                FROM frota_log_embarque l
-                LEFT JOIN usuario u ON u.id = l.usuario_id
-                WHERE l.embarque_id = :id
-                ORDER BY l.created_at ASC
-            ");
+// Timeline geral do embarque (logs)
+// 🔥 FIX 2026-09-22 (Bloco 5.B.2):
+//    - tabela usuario tem PK `idusuario` e coluna `username` (não `id` nem `nome`)
+//    - tabela frota_log_embarque tem coluna `data_hora` (não `created_at`)
+$stmtLogs = $this->pdo->prepare("
+    SELECT l.acao, l.descricao, l.data_hora AS created_at,
+        COALESCE(u.username, 'Sistema') AS usuario_nome
+    FROM frota_log_embarque l
+    LEFT JOIN usuario u ON u.idusuario = l.usuario_id
+    WHERE l.embarque_id = :id
+    ORDER BY l.data_hora ASC
+");
             $stmtLogs->execute(['id' => $id]);
             $embarque['timeline_embarque'] = $stmtLogs->fetchAll(\PDO::FETCH_ASSOC);
 
-            // Histórico de posições GPS (rota completa do embarque)
-            try {
-                $stmtPos = $this->pdo->prepare("
-                    SELECT latitude, longitude, velocidade, created_at
-                    FROM frota_historico_posicao
-                    WHERE embarque_id = :id
-                    ORDER BY created_at ASC
-                ");
+           // Histórico de posições GPS (rota completa do embarque)
+// 🔥 FIX 2026-09-22 (Bloco 5.B.2): tabela frota_historico_posicao
+//    usa coluna `data_hora`, não `created_at`. Renomeia no SELECT
+//    para manter o contrato do frontend (que espera `.created_at`).
+try {
+    $stmtPos = $this->pdo->prepare("
+        SELECT latitude, longitude, velocidade, data_hora AS created_at
+        FROM frota_historico_posicao
+        WHERE embarque_id = :id
+        ORDER BY data_hora ASC
+    ");
                 $stmtPos->execute(['id' => $id]);
                 $embarque['rota_posicoes'] = $stmtPos->fetchAll(\PDO::FETCH_ASSOC);
             } catch (\Exception $ignored) {

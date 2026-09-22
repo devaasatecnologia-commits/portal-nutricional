@@ -1205,3 +1205,124 @@
 /* ================================================================
    FIM DO BLOCO 5.A.3
    ================================================================ */
+
+   /* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.B.2):
+   Estilos do Dashboard executivo (aba "Dashboard")
+   ================================================================ */
+
+/* Ranking (top 5 motoristas) */
+.cargas-ranking-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.cargas-ranking-row {
+    display: grid;
+    grid-template-columns: 32px 1fr auto;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    transition: var(--transition);
+    cursor: pointer;
+}
+.cargas-ranking-row:hover {
+    background: rgba(var(--nutri-primary-rgb), .05);
+}
+.cargas-ranking-pos {
+    font-weight: 900;
+    font-size: 0.85rem;
+    color: var(--nutri-gold);
+    text-align: center;
+}
+.cargas-ranking-info {
+    min-width: 0;
+}
+.cargas-ranking-info strong {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--nutri-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cargas-ranking-info small {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--nutri-text-secondary);
+}
+.cargas-ranking-value {
+    font-weight: 900;
+    font-size: 1rem;
+    color: var(--nutri-accent);
+    white-space: nowrap;
+}
+
+/* Últimos embarques */
+.cargas-ultimos-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+.cargas-ultimo-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 8px;
+    border-radius: 10px;
+    transition: var(--transition);
+    cursor: pointer;
+    flex-wrap: wrap;
+}
+.cargas-ultimo-row:hover {
+    background: rgba(var(--nutri-primary-rgb), .05);
+}
+.cargas-ultimo-info {
+    min-width: 0;
+    flex: 1;
+}
+.cargas-ultimo-info strong {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--nutri-text);
+}
+.cargas-ultimo-info small {
+    display: block;
+    font-size: 0.7rem;
+    color: var(--nutri-text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.cargas-ultimo-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.cargas-ultimo-meta > span:first-child {
+    font-weight: 800;
+    font-size: 0.8rem;
+    color: var(--nutri-text);
+}
+
+/* Placeholder "carregando..." dentro dos cards */
+.cargas-em-construcao-mini {
+    padding: 24px 12px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--nutri-text-secondary);
+    opacity: .75;
+}
+
+/* Ajuste nos gráficos do Dashboard — altura fixa dentro do card */
+.cargas-analise-card .analise-chart-wrap {
+    height: 260px;
+}
+.cargas-analise-card.full .analise-chart-wrap {
+    height: 300px;
+}

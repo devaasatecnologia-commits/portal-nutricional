@@ -1163,25 +1163,28 @@ function mudarAbaCargas(aba, btn) {
         p.hidden = p.id !== `tab-${aba}`;
     });
 
-    if (aba === 'motoristas' && !motoristasCarregados) {
-        carregarRankingMotoristas();
+    // ------------------------------------------------------------
+    // Carregamento sob demanda por aba
+    // ------------------------------------------------------------
+
+    // 🆕 Dashboard (Bloco 5.B.2)
+    if (aba === 'dashboard') {
+        carregarAbaDashboard();
     }
-    if (aba === 'veiculos' && !veiculosCarregados) {
-        carregarRankingVeiculos();
+
+    // ⏳ Eficiência (será implementada no Bloco 5.C)
+    if (aba === 'eficiencia') {
+        // TODO: carregarAbaEficiencia() no Bloco 5.C
     }
-    if (aba === 'graficos' && !graficosCarregados) {
+
+    // ⏳ Análises (será ajustado no Bloco 5.E)
+    if (aba === 'analises' && !graficosCarregados) {
         carregarGraficosCargas();
     }
-    if (aba === 'historico') {
-        carregarHistoricoEmbarques();
-    }
-    if (aba === 'cobli' && !cobliCarregado) {
-        carregarStatusCobli();
-        carregarMapaCobli();
-        cobliCarregado = true;
-    } else if (aba === 'cobli') {
-        // Reabrir a aba: garante que o mapa recalcula o tamanho corretamente
-        setTimeout(() => { if (cobliMapa) cobliMapa.invalidateSize(); }, 100);
+
+    // ⏳ Mapa (será implementado no Bloco 5.D)
+    if (aba === 'mapa') {
+        // TODO: carregarAbaMapa() no Bloco 5.D
     }
 }
 
@@ -2589,3 +2592,506 @@ window.mudarPaginaHistorico = mudarPaginaHistorico;
 window.abrirDetalheEmbarque = abrirDetalheEmbarque;
 window.alternarFiltroEficiencia = alternarFiltroEficiencia;
 window.restaurarFiltrosEficiencia = restaurarFiltrosEficiencia;
+
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.B.2):
+// DASHBOARD EXECUTIVO — Aba "Dashboard"
+// Carrega KPIs, gráficos e destaques com rastreabilidade
+// ================================================================
+
+// Cache de controle — evita recarregar a aba toda vez que o gestor clica
+let dashCarregada = false;
+let dashCharts = {};
+
+// ---------------------------------------------------------------
+// Orquestrador: carrega todos os dados da aba Dashboard em paralelo
+// ---------------------------------------------------------------
+async function carregarAbaDashboard(forcar = false) {
+    if (dashCarregada && !forcar) return;
+
+    const token = getAuthToken();
+    if (!token) return;
+
+    // Esqueleto visual (placeholders)
+    preencherPlaceholdersDashboard();
+
+    try {
+        // ============================================================
+        // 1. Buscar todos os endpoints em paralelo
+        // ============================================================
+        const [
+            kpisResp,
+            problemasResp,
+            acertoResp,
+            graficosResp,
+            embarquesResp
+        ] = await Promise.all([
+            fetch(`${CONFIG.API_BASE}/dashboard/kpis`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({})),
+
+            fetch(`${CONFIG.API_BASE}/dashboard/kpis-problemas`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({})),
+
+            fetch(`${CONFIG.API_BASE}/dashboard/acerto-kpis`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({})),
+
+            fetch(`${CONFIG.API_BASE}/dashboard/graficos`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({})),
+
+            fetch(`${CONFIG.API_BASE}/gestao-cargas/historico-embarques?pagina=1&limite=5`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            }).then(r => r.json()).catch(() => ({}))
+        ]);
+
+        const kpis       = kpisResp.data       || {};
+        const problemas  = problemasResp.data  || {};
+        const acerto     = acertoResp.data     || {};
+        const graficos   = graficosResp.data   || {};
+        const embarques  = embarquesResp.data  || [];
+
+        // ============================================================
+        // 2. Preencher os 6 KPIs
+        // ============================================================
+        preencherKpisDashboard(kpis, problemas, acerto);
+
+        // ============================================================
+        // 3. Renderizar os 3 gráficos
+        // ============================================================
+        renderizarGraficosDashboard(graficos);
+
+        // ============================================================
+        // 4. Ranking top 5 motoristas
+        // ============================================================
+        renderizarTopMotoristasDashboard(graficos.top_motoristas || []);
+
+        // ============================================================
+        // 5. Últimos 5 embarques
+        // ============================================================
+        renderizarUltimosEmbarques(embarques);
+
+        dashCarregada = true;
+
+    } catch (error) {
+        console.error('Erro ao carregar Dashboard:', error);
+        mostrarNotificacao('Erro ao carregar o dashboard executivo', 'error');
+    }
+}
+
+// ---------------------------------------------------------------
+// Placeholders antes de carregar (UX)
+// ---------------------------------------------------------------
+function preencherPlaceholdersDashboard() {
+    const ids = [
+        'dash-kpi-entregas', 'dash-kpi-motoristas', 'dash-kpi-problemas',
+        'dash-kpi-acerto', 'dash-kpi-taxa', 'dash-kpi-faturamento'
+    ];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '...';
+    });
+
+    const subs = [
+        'dash-kpi-entregas-sub', 'dash-kpi-motoristas-sub', 'dash-kpi-problemas-sub',
+        'dash-kpi-acerto-sub', 'dash-kpi-taxa-sub', 'dash-kpi-faturamento-sub'
+    ];
+    subs.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = 'carregando';
+    });
+}
+
+// ---------------------------------------------------------------
+// Preencher os 6 KPIs com dados dos endpoints
+// ---------------------------------------------------------------
+function preencherKpisDashboard(kpis, problemas, acerto) {
+    const num = (v) => new Intl.NumberFormat('pt-BR').format(Number(v || 0));
+    const pct = (v) => `${Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
+    const money = (v) => new Intl.NumberFormat('pt-BR', {
+        style: 'currency', currency: 'BRL', minimumFractionDigits: 0, maximumFractionDigits: 0
+    }).format(Number(v || 0));
+
+    // KPI 1 — Entregas hoje
+    const entregasHoje = kpis.entregas_hoje || 0;
+    const entregasConcluidas = kpis.entregas_concluidas_hoje || 0;
+    setTexto('dash-kpi-entregas', num(entregasHoje));
+    setTexto('dash-kpi-entregas-sub', `${num(entregasConcluidas)} concluídas`);
+
+    // KPI 2 — Motoristas em rota
+    const emRota = kpis.motoristas_em_rota || 0;
+    const ativos = kpis.motoristas_ativos || 0;
+    setTexto('dash-kpi-motoristas', num(emRota));
+    setTexto('dash-kpi-motoristas-sub', `${num(ativos)} ativos`);
+
+    // KPI 3 — Problemas pendentes
+    const problemasPend = problemas.pendentes || 0;
+    const emAnalise = problemas.em_analise || 0;
+    setTexto('dash-kpi-problemas', num(problemasPend));
+    setTexto('dash-kpi-problemas-sub', `${num(emAnalise)} em análise`);
+
+    // KPI 4 — Faltantes / Devoluções
+    const faltantes = acerto.faltantes || {};
+    const devolucoes = acerto.devolucoes || {};
+    const totalAcerto = (faltantes.total || 0) + (devolucoes.total || 0);
+    const faltPend = faltantes.pendentes || 0;
+    const compEmit = devolucoes.comprovantes_emitidos || 0;
+    setTexto('dash-kpi-acerto', num(totalAcerto));
+    setTexto('dash-kpi-acerto-sub', `${num(faltPend)} falt. pendentes · ${num(compEmit)} comprovantes`);
+
+    // KPI 5 — Taxa de acerto (entregas concluídas / entregas hoje)
+    const taxa = entregasHoje > 0
+        ? (entregasConcluidas / entregasHoje) * 100
+        : 0;
+    setTexto('dash-kpi-taxa', pct(taxa));
+    setTexto('dash-kpi-taxa-sub', `${num(entregasConcluidas)}/${num(entregasHoje)} entregas`);
+
+    // KPI 6 — Faturamento do mês
+    const fat = kpis.faturamento_mes || 0;
+    setTexto('dash-kpi-faturamento', money(fat));
+    setTexto('dash-kpi-faturamento-sub', `${num(kpis.total_entregas_mes || 0)} entregas no mês`);
+}
+
+function setTexto(id, valor) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = valor;
+}
+
+// ---------------------------------------------------------------
+// Renderizar os 3 gráficos do Dashboard
+// ---------------------------------------------------------------
+function renderizarGraficosDashboard(data) {
+    if (typeof Chart === 'undefined') return;
+
+    // Destruir anteriores
+    Object.keys(dashCharts).forEach(id => {
+        if (dashCharts[id]) dashCharts[id].destroy();
+    });
+    dashCharts = {};
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const ink = isDark ? '#eaf2ee' : '#18332d';
+
+    // ---------- Gráfico 1: Ritmo de entregas 7 dias ----------
+    const ctx1 = document.getElementById('dash-chart-entregas');
+    if (ctx1) {
+        dashCharts.entregas = new Chart(ctx1, {
+            type: 'line',
+            data: {
+                labels: data.dias || [],
+                datasets: [
+                    {
+                        label: 'Concluídas',
+                        data: data.concluidas || [],
+                        borderColor: '#2e8b68',
+                        backgroundColor: 'rgba(46,139,104,.12)',
+                        fill: true,
+                        tension: .35,
+                        pointRadius: 3
+                    },
+                    {
+                        label: 'Pendentes',
+                        data: data.pendentes || [],
+                        borderColor: '#d27b32',
+                        backgroundColor: 'transparent',
+                        tension: .35,
+                        pointRadius: 3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: ink, usePointStyle: true }
+                    }
+                },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0, color: ink } },
+                    x: { ticks: { color: ink } }
+                }
+            }
+        });
+    }
+
+    // ---------- Gráfico 2: Status das entregas (doughnut) ----------
+    const ctx2 = document.getElementById('dash-chart-status');
+    if (ctx2) {
+        const status = data.status_distribution || {};
+        dashCharts.status = new Chart(ctx2, {
+            type: 'doughnut',
+            data: {
+                labels: ['Concluídas', 'Pendentes', 'Em andamento', 'Falhas', 'Canceladas'],
+                datasets: [{
+                    data: [
+                        status.concluidas   || 0,
+                        status.pendentes    || 0,
+                        status.em_andamento || 0,
+                        status.falha        || 0,
+                        status.canceladas   || 0
+                    ],
+                    backgroundColor: ['#2e8b68', '#d27b32', '#3979a8', '#b84b4b', '#9aa8a2'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '66%',
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: ink, usePointStyle: true, padding: 12 }
+                    }
+                }
+            }
+        });
+    }
+
+    // ---------- Gráfico 3: Ritmo do mês (barras) ----------
+    const ctx3 = document.getElementById('dash-chart-mes');
+    if (ctx3) {
+        // Por enquanto usa dados mock — vai ser ajustado quando tiver endpoint mensal
+        const hoje = new Date();
+        const diasMes = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0).getDate();
+        const labels = [];
+        const valoresMock = [];
+        for (let i = 1; i <= Math.min(diasMes, 30); i++) {
+            labels.push(String(i));
+            // Mock: pico entre 10-50 entregas
+            valoresMock.push(Math.floor(Math.random() * 40) + 10);
+        }
+
+        dashCharts.mes = new Chart(ctx3, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Entregas',
+                    data: valoresMock,
+                    backgroundColor: 'rgba(46,139,104,.7)',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    y: { beginAtZero: true, ticks: { precision: 0, color: ink } },
+                    x: { ticks: { color: ink, maxTicksLimit: 10 } }
+                }
+            }
+        });
+    }
+}
+
+// ---------------------------------------------------------------
+// Ranking top 5 motoristas (clicável)
+// ---------------------------------------------------------------
+function renderizarTopMotoristasDashboard(items) {
+    const target = document.getElementById('dash-top-motoristas');
+    if (!target) return;
+
+    if (!items || !items.length) {
+        target.innerHTML = '<div class="cargas-em-construcao-mini">Nenhum dado de performance disponível.</div>';
+        return;
+    }
+
+    target.innerHTML = items.slice(0, 5).map((item, index) => `
+        <div class="cargas-ranking-row" onclick="abrirDetalheMotorista(${item.id || 0})">
+            <span class="cargas-ranking-pos">${String(index + 1).padStart(2, '0')}</span>
+            <div class="cargas-ranking-info">
+                <strong>${escapeHtml(item.nome || 'Motorista')}</strong>
+                <small>${new Intl.NumberFormat('pt-BR').format(Number(item.total_faturado || 0))} em entregas</small>
+            </div>
+            <span class="cargas-ranking-value">${new Intl.NumberFormat('pt-BR').format(Number(item.total_entregas || 0))}</span>
+        </div>
+    `).join('');
+}
+
+// ---------------------------------------------------------------
+// Últimos 5 embarques (clicável)
+// ---------------------------------------------------------------
+function renderizarUltimosEmbarques(embarques) {
+    const target = document.getElementById('dash-ultimos-embarques');
+    if (!target) return;
+
+    if (!embarques || !embarques.length) {
+        target.innerHTML = '<div class="cargas-em-construcao-mini">Nenhum embarque encontrado.</div>';
+        return;
+    }
+
+    const statusLabels = {
+        planejado: 'Planejado',
+        em_andamento: 'Em andamento',
+        finalizado: 'Finalizado',
+        cancelado: 'Cancelado',
+        problema: 'Com problema'
+    };
+
+    target.innerHTML = embarques.slice(0, 5).map(e => {
+        const status = e.embarque_status || 'planejado';
+        const numero = e.numero_embarque || ('#' + e.id);
+        const motorista = e.motorista_nome || 'Sem motorista';
+        const placa = e.veiculo_placa || '-';
+        const entregas = `${e.entregas_concluidas || 0}/${e.total_entregas || 0}`;
+        const data = e.data_saida ? formatarData(e.data_saida) : '-';
+
+        return `
+            <div class="cargas-ultimo-row" onclick="dashIrParaMapaComEmbarque(${e.id})">
+                <div class="cargas-ultimo-info">
+                    <strong>${escapeHtml(numero)}</strong>
+                    <small>${escapeHtml(motorista)} · ${escapeHtml(placa)} · ${escapeHtml(data)}</small>
+                </div>
+                <div class="cargas-ultimo-meta">
+                    <span>${entregas}</span>
+                    <span class="hist-status-badge ${status}">${statusLabels[status] || status}</span>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+// ---------------------------------------------------------------
+// Navegação rápida entre abas (rastreabilidade dos cards)
+// ---------------------------------------------------------------
+function dashIrPara(aba) {
+    const btn = document.querySelector(`.cargas-tab[data-tab="${aba}"]`);
+    if (btn) {
+        mudarAbaCargas(aba, btn);
+        // Scroll para o topo da seção
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+}
+
+// ---------------------------------------------------------------
+// Abrir aba Mapa já com um embarque selecionado
+// ---------------------------------------------------------------
+function dashIrParaMapaComEmbarque(embarqueId) {
+    dashIrPara('mapa');
+    // Chama a sub-aba Histórico (que será implementada no 5.D)
+    setTimeout(() => {
+        const btnHist = document.querySelector('.cargas-subtab[data-subtab="historico"]');
+        if (btnHist) mudarSubAbaCargas('historico', btnHist);
+        // Se a função abrirDetalheEmbarque já existir, abre o embarque
+        if (typeof abrirDetalheEmbarque === 'function') {
+            setTimeout(() => abrirDetalheEmbarque(embarqueId), 300);
+        }
+    }, 200);
+}
+
+// ---------------------------------------------------------------
+// Modal de detalhamento de faltantes/devoluções
+// ---------------------------------------------------------------
+async function dashAbrirModalAcerto() {
+    const token = getAuthToken();
+    if (!token) return;
+
+    Swal.fire({
+        title: 'Carregando...',
+        didOpen: () => Swal.showLoading(),
+        allowOutsideClick: false
+    });
+
+    try {
+        const resp = await fetch(`${CONFIG.API_BASE}/dashboard/acerto-detalhado?limite=10`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        }).then(r => r.json());
+
+        const itens = (resp.data && resp.data.itens) || [];
+
+        if (!itens.length) {
+            Swal.fire({
+                icon: 'info',
+                title: 'Sem faltantes pendentes',
+                text: 'Não há faltantes/devoluções registrados no momento.',
+                confirmButtonColor: '#10b981'
+            });
+            return;
+        }
+
+        const money = (v) => new Intl.NumberFormat('pt-BR', {
+            style: 'currency', currency: 'BRL'
+        }).format(Number(v || 0));
+
+        const linhas = itens.map(item => {
+            const tipo = item.tipo_tratamento === 'faltante_com_estoque'
+                ? '⚠️ Faltante c/ estoque'
+                : item.tipo_tratamento === 'faltante_sem_estoque'
+                    ? '⚠️ Faltante s/ estoque'
+                    : '🔄 Devolução';
+            const status = item.status || '-';
+            const cor = status === 'criado_erp' ? '#059669'
+                : status === 'pendente' ? '#d97706'
+                : '#2563eb';
+            return `
+                <div style="display:flex; justify-content:space-between; align-items:center;
+                            padding:10px 12px; border-bottom:1px solid #e5e7eb; gap:10px; text-align:left;">
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-weight:700; font-size:0.85rem; color:#1f2937;">
+                            ${escapeHtml(item.cliente_nome || 'Cliente')}
+                        </div>
+                        <div style="font-size:0.72rem; color:#64748b;">
+                            Entrega #${item.entrega_id} · ${tipo}
+                        </div>
+                    </div>
+                    <div style="text-align:right; white-space:nowrap;">
+                        <div style="font-weight:700; color:${cor}; font-size:0.8rem;">${status}</div>
+                        <div style="font-size:0.72rem; color:#64748b;">${money(item.valor_total)}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        Swal.fire({
+            title: 'Faltantes e Devoluções',
+            html: `
+                <div style="max-height:420px; overflow-y:auto; border-radius:12px;
+                            border:1px solid #e5e7eb; background:#fff;">
+                    ${linhas}
+                </div>
+                <p style="margin-top:12px; font-size:0.75rem; color:#64748b; text-align:left;">
+                    <i class="fa-solid fa-info-circle"></i>
+                    Para ver todos os itens, abra o módulo <b>Acerto de Embarque</b>.
+                </p>
+            `,
+            width: '600px',
+            confirmButtonText: 'Fechar',
+            confirmButtonColor: '#10b981'
+        });
+
+    } catch (error) {
+        console.error('Erro ao abrir detalhamento:', error);
+        Swal.fire('Erro', 'Não foi possível carregar os detalhes.', 'error');
+    }
+}
+
+// ---------------------------------------------------------------
+// Sub-abas do Mapa (preparando pro Bloco 5.D)
+// ---------------------------------------------------------------
+function mudarSubAbaCargas(subaba, btn) {
+    // Ativa o botão
+    document.querySelectorAll('.cargas-subtab').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+    });
+
+    // Mostra o painel correspondente
+    document.querySelectorAll('.cargas-subpanel').forEach(p => {
+        p.hidden = p.id !== `subtab-${subaba}`;
+    });
+}
+
+// ---------------------------------------------------------------
+// Expor funções globalmente (usadas por onclick no HTML)
+// ---------------------------------------------------------------
+window.carregarAbaDashboard      = carregarAbaDashboard;
+window.dashIrPara                = dashIrPara;
+window.dashIrParaMapaComEmbarque = dashIrParaMapaComEmbarque;
+window.dashAbrirModalAcerto      = dashAbrirModalAcerto;
+window.mudarSubAbaCargas         = mudarSubAbaCargas;
