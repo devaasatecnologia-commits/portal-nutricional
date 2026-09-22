@@ -847,3 +847,361 @@
         padding: 6px 8px;
     }
 }
+
+/* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.A.3):
+   Estilos dos novos componentes da Gestão de Cargas consolidada
+   ================================================================ */
+
+/* ----------------------------------------------------------------
+   SUB-ABAS INTERNAS (usado no painel "Mapa")
+   ---------------------------------------------------------------- */
+.cargas-subtabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid var(--nutri-border);
+    padding-bottom: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+.cargas-subtabs::-webkit-scrollbar { display: none; }
+
+.cargas-subtab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 9px 16px;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--nutri-text-secondary);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.cargas-subtab:hover {
+    color: var(--nutri-primary);
+    background: rgba(var(--nutri-primary-rgb), 0.06);
+}
+.cargas-subtab.active {
+    background: var(--nutri-gradient-brand);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: var(--nutri-shadow-gold);
+}
+.cargas-subtab.active i {
+    color: var(--nutri-gold-light);
+}
+
+[data-theme="dark"] .cargas-subtab:hover {
+    color: var(--nutri-gold-light);
+}
+
+.cargas-subpanel[hidden] {
+    display: none !important;
+}
+
+/* ----------------------------------------------------------------
+   TOGGLE DE DIMENSÃO (usado na aba "Eficiência")
+   Toggle Motoristas ↔ Veículos
+   ---------------------------------------------------------------- */
+.cargas-toggle {
+    display: inline-flex;
+    gap: 0;
+    padding: 4px;
+    border-radius: 12px;
+    background: rgba(var(--nutri-primary-rgb), 0.05);
+    border: 1px solid var(--nutri-border);
+    margin-bottom: 18px;
+}
+[data-theme="dark"] .cargas-toggle {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.cargas-toggle-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 20px;
+    border: none;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--nutri-text-secondary);
+    font-size: 0.84rem;
+    font-weight: 800;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+.cargas-toggle-btn:hover {
+    color: var(--nutri-primary);
+}
+[data-theme="dark"] .cargas-toggle-btn:hover {
+    color: var(--nutri-gold-light);
+}
+.cargas-toggle-btn.active {
+    background: var(--nutri-gradient-brand);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(var(--nutri-primary-rgb), 0.25);
+}
+.cargas-toggle-btn.active i {
+    color: var(--nutri-gold-light);
+}
+
+/* ----------------------------------------------------------------
+   GRID DE KPIs COMPACTO (usado na aba "Dashboard")
+   ---------------------------------------------------------------- */
+.cargas-kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 14px;
+    margin-bottom: 20px;
+}
+@media (max-width: 1200px) {
+    .cargas-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 720px) {
+    .cargas-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 420px) {
+    .cargas-kpi-grid { grid-template-columns: 1fr; }
+}
+
+.cargas-kpi-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 100px;
+    padding: 18px 18px;
+    border-radius: 14px;
+    border: 1px solid var(--nutri-border);
+    border-left: 4px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    box-shadow: var(--nutri-shadow);
+    transition: var(--transition);
+    cursor: pointer;
+}
+.cargas-kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--nutri-shadow-lg);
+}
+
+.cargas-kpi-icon {
+    width: 44px;
+    height: 44px;
+    display: grid;
+    place-items: center;
+    border-radius: 10px;
+    font-size: 1.1rem;
+    flex-shrink: 0;
+}
+.cargas-kpi-body {
+    min-width: 0;
+    flex: 1;
+}
+.cargas-kpi-body strong {
+    display: block;
+    font-size: 1.7rem;
+    font-weight: 900;
+    line-height: 1.1;
+    color: var(--nutri-text);
+}
+.cargas-kpi-body span {
+    display: block;
+    margin-top: 3px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--nutri-text-secondary);
+}
+.cargas-kpi-body small {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.72rem;
+    color: var(--nutri-text-secondary);
+    opacity: 0.85;
+}
+
+/* Cores dos cards (mesma paleta dos KPI existentes) */
+.cargas-kpi-card.green   { border-left-color: #2e8b68; }
+.cargas-kpi-card.green   .cargas-kpi-icon { color: #2e8b68; background: #e5f4ed; }
+.cargas-kpi-card.blue    { border-left-color: #3979a8; }
+.cargas-kpi-card.blue    .cargas-kpi-icon { color: #3979a8; background: #e6f0f7; }
+.cargas-kpi-card.orange  { border-left-color: #d27b32; }
+.cargas-kpi-card.orange  .cargas-kpi-icon { color: #d27b32; background: #fff0e2; }
+.cargas-kpi-card.purple  { border-left-color: #7562a8; }
+.cargas-kpi-card.purple  .cargas-kpi-icon { color: #7562a8; background: #eeeafb; }
+.cargas-kpi-card.red     { border-left-color: #b84b4b; }
+.cargas-kpi-card.red     .cargas-kpi-icon { color: #b84b4b; background: #fbe8e8; }
+.cargas-kpi-card.gold    { border-left-color: #d4a017; }
+.cargas-kpi-card.gold    .cargas-kpi-icon { color: #d4a017; background: #fff5d6; }
+
+[data-theme="dark"] .cargas-kpi-card.green  .cargas-kpi-icon { background: rgba(46, 139, 104, 0.18); color: #6ee7b7; }
+[data-theme="dark"] .cargas-kpi-card.blue   .cargas-kpi-icon { background: rgba(57, 121, 168, 0.18); color: #93c5fd; }
+[data-theme="dark"] .cargas-kpi-card.orange .cargas-kpi-icon { background: rgba(210, 123, 50, 0.18); color: #fdba74; }
+[data-theme="dark"] .cargas-kpi-card.purple .cargas-kpi-icon { background: rgba(117, 98, 168, 0.18); color: #c4b5fd; }
+[data-theme="dark"] .cargas-kpi-card.red    .cargas-kpi-icon { background: rgba(184, 75, 75, 0.18); color: #fca5a5; }
+[data-theme="dark"] .cargas-kpi-card.gold   .cargas-kpi-icon { background: rgba(212, 160, 23, 0.18); color: var(--nutri-gold-light); }
+
+/* ----------------------------------------------------------------
+   BADGE DE STATUS COBLI (usado nos rankings)
+   Estados: ao-vivo (verde), ultima (âmbar), sem-vinculo (cinza)
+   ---------------------------------------------------------------- */
+.cobli-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 0.65rem;
+    font-weight: 800;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    border: 1px solid transparent;
+}
+
+.cobli-status-badge.ao-vivo {
+    background: rgba(16, 185, 129, 0.12);
+    color: #059669;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+.cobli-status-badge.ao-vivo .cobli-dot {
+    background: #10b981;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.6);
+    animation: cobliPulse 2s infinite;
+}
+
+.cobli-status-badge.ultima {
+    background: rgba(242, 201, 76, 0.16);
+    color: #b45309;
+    border-color: rgba(242, 201, 76, 0.35);
+}
+.cobli-status-badge.ultima .cobli-dot {
+    background: #f59e0b;
+}
+
+.cobli-status-badge.sem-vinculo {
+    background: rgba(148, 163, 184, 0.12);
+    color: #64748b;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+.cobli-status-badge.sem-vinculo .cobli-dot {
+    background: #94a3b8;
+}
+
+.cobli-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+@keyframes cobliPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.55); }
+    70%      { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+}
+
+[data-theme="dark"] .cobli-status-badge.ao-vivo {
+    background: rgba(16, 185, 129, 0.18);
+    color: #6ee7b7;
+}
+[data-theme="dark"] .cobli-status-badge.ultima {
+    background: rgba(242, 201, 76, 0.18);
+    color: var(--nutri-gold-light);
+}
+[data-theme="dark"] .cobli-status-badge.sem-vinculo {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--nutri-text-secondary);
+}
+
+/* ----------------------------------------------------------------
+   GRID DE ANÁLISES (usado na aba "Análises" — Bloco 5.E)
+   ---------------------------------------------------------------- */
+.cargas-analise-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+}
+@media (max-width: 900px) {
+    .cargas-analise-grid { grid-template-columns: 1fr; }
+}
+
+.cargas-analise-card {
+    position: relative;
+    padding: 18px 20px;
+    border-radius: 14px;
+    border: 1px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    box-shadow: var(--nutri-shadow);
+    transition: var(--transition);
+}
+.cargas-analise-card:hover {
+    box-shadow: var(--nutri-shadow-lg);
+}
+.cargas-analise-card.full {
+    grid-column: 1 / -1;
+}
+.cargas-analise-card h3 {
+    margin: 0 0 14px;
+    font-size: 0.9rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+}
+.cargas-analise-card .analise-chart-wrap {
+    position: relative;
+    height: 280px;
+}
+.cargas-analise-card .analise-expand-btn {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    color: var(--nutri-text-secondary);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: var(--transition);
+}
+.cargas-analise-card .analise-expand-btn:hover {
+    color: var(--nutri-primary);
+    border-color: var(--nutri-gold);
+}
+
+[data-theme="dark"] .cargas-analise-card .analise-expand-btn:hover {
+    color: var(--nutri-gold-light);
+}
+
+/* ----------------------------------------------------------------
+   PLACEHOLDER "em construção" (usado nas abas ainda vazias)
+   ---------------------------------------------------------------- */
+.cargas-em-construcao {
+    text-align: center;
+    padding: 70px 24px;
+    color: var(--nutri-text-secondary);
+}
+.cargas-em-construcao i {
+    display: block;
+    font-size: 2.5rem;
+    color: var(--nutri-accent);
+    opacity: 0.4;
+    margin-bottom: 14px;
+}
+.cargas-em-construcao p {
+    margin: 0;
+    font-size: 0.92rem;
+}
+
+/* ================================================================
+   FIM DO BLOCO 5.A.3
+   ================================================================ */
