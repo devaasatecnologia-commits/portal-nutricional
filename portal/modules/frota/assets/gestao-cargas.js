@@ -2095,6 +2095,173 @@ function renderizarGraficosCargas(data) {
     }
 }
 
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.E.1):
+// AMPLIAR GRÁFICO — abre modal fullscreen com o mesmo chart
+// ================================================================
+
+// Instância do Chart.js no modal ampliado
+let chartAmpliadoInstance = null;
+
+/**
+ * Mapeamento: chave lógica → id do canvas original
+ */
+const MAPA_CANVAS_GRAFICOS = {
+    'evolucao':       'chart-evolucao',
+    'tipo':           'chart-tipo',
+    'prioridade':     'chart-prioridade',
+    'topMotoristas':  'chart-top-motoristas',
+    'topVeiculos':    'chart-top-veiculos'
+};
+
+/**
+ * Mapeamento: chave lógica → chave em `chartInstances`
+ */
+const MAPA_INSTANCIA_GRAFICOS = {
+    'evolucao':       'evolucao',
+    'tipo':           'tipo',
+    'prioridade':     'prioridade',
+    'topMotoristas':  'topMotoristas',
+    'topVeiculos':    'topVeiculos'
+};
+
+/**
+ * Abre o modal fullscreen com o gráfico ampliado.
+ * Clona a config do chart original (deep clone manual, sem JSON)
+ * para não compartilhar referência de arrays.
+ */
+function ampliarGrafico(chave, titulo) {
+    if (typeof Chart === 'undefined') {
+        mostrarNotificacao('Chart.js não disponível', 'error');
+        return;
+    }
+
+    const instanciaKey = MAPA_INSTANCIA_GRAFICOS[chave];
+    const chartOriginal = instanciaKey ? chartInstances[instanciaKey] : null;
+
+    if (!chartOriginal) {
+        mostrarNotificacao('Gráfico ainda não foi carregado', 'warning');
+        return;
+    }
+
+    // Atualiza título do modal
+    const tituloEl = document.getElementById('modal-grafico-titulo');
+    if (tituloEl) tituloEl.textContent = titulo || 'Gráfico Ampliado';
+
+    // Abre o modal primeiro para o canvas ter dimensão
+    const modalEl = document.getElementById('modalGraficoAmpliado');
+    if (!modalEl) {
+        mostrarNotificacao('Modal de ampliação não encontrado', 'error');
+        return;
+    }
+
+    if (typeof bootstrap === 'undefined' || !bootstrap.Modal) {
+        mostrarNotificacao('Bootstrap não carregado', 'error');
+        return;
+    }
+
+    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+
+    // Listener único: cria o chart ampliado após o modal terminar de aparecer
+    modalEl.addEventListener('shown.bs.modal', function onShown() {
+        modalEl.removeEventListener('shown.bs.modal', onShown);
+        criarChartAmpliado(chartOriginal);
+    });
+
+    // Listener único: destrói o chart ao fechar o modal
+    modalEl.addEventListener('hidden.bs.modal', function onHidden() {
+        modalEl.removeEventListener('hidden.bs.modal', onHidden);
+        destruirChartAmpliado();
+    });
+
+    modal.show();
+}
+
+/**
+ * Cria o Chart.js no modal ampliado, replicando a config do original.
+ * Faz deep clone de arrays e objetos aninhados para não vazar referência.
+ */
+function criarChartAmpliado(chartOriginal) {
+    destruirChartAmpliado();
+
+    const canvas = document.getElementById('chart-ampliado');
+    if (!canvas) return;
+
+    // Deep clone seguro (sem funções, sem DOM)
+    const cloneConfig = (cfg) => {
+        const out = {
+            type: cfg.type,
+            data: {
+                labels: Array.isArray(cfg.data.labels) ? [...cfg.data.labels] : [],
+                datasets: (cfg.data.datasets || []).map(ds => {
+                    const novoDs = { ...ds };
+                    if (Array.isArray(ds.data)) novoDs.data = [...ds.data];
+                    if (Array.isArray(ds.backgroundColor)) novoDs.backgroundColor = [...ds.backgroundColor];
+                    if (Array.isArray(ds.borderColor)) novoDs.borderColor = [...ds.borderColor];
+                    return novoDs;
+                })
+            },
+            options: { ...(cfg.options || {}) }
+        };
+
+        // Remove maintainAspectRatio: false herdado (queremos que ocupe o modal)
+        out.options.responsive = true;
+        out.options.maintainAspectRatio = false;
+
+        // Aumenta fontes para o modo ampliado
+        out.options.plugins = out.options.plugins || {};
+        if (out.options.plugins.legend) {
+            out.options.plugins.legend.labels = out.options.plugins.legend.labels || {};
+            out.options.plugins.legend.labels.font = { size: 14, weight: '600' };
+        }
+        if (out.options.plugins.title) {
+            out.options.plugins.title.font = { size: 18, weight: '800' };
+        }
+
+        // Aumenta ticks dos eixos
+        if (out.options.scales) {
+            Object.keys(out.options.scales).forEach(eixo => {
+                const s = out.options.scales[eixo];
+                if (s && s.ticks) {
+                    s.ticks = { ...s.ticks, font: { size: 13 } };
+                }
+            });
+        }
+
+        return out;
+    };
+
+    const config = cloneConfig(chartOriginal.config || {});
+
+    chartAmpliadoInstance = new Chart(canvas, config);
+
+    // Força resize após o modal estar 100% visível
+    setTimeout(() => {
+        try { chartAmpliadoInstance.resize(); } catch (e) {}
+    }, 100);
+}
+
+/**
+ * Destrói a instância do chart ampliado (chamado ao fechar o modal).
+ */
+function destruirChartAmpliado() {
+    if (chartAmpliadoInstance) {
+        try { chartAmpliadoInstance.destroy(); } catch (e) {}
+        chartAmpliadoInstance = null;
+    }
+}
+
+/**
+ * Atalho para fechar o modal (chamado pelo X ou backdrop).
+ */
+function fecharGraficoAmpliado() {
+    const modalEl = document.getElementById('modalGraficoAmpliado');
+    if (!modalEl) return;
+    if (typeof bootstrap !== 'undefined' && bootstrap.Modal) {
+        const inst = bootstrap.Modal.getInstance(modalEl);
+        if (inst) inst.hide();
+    }
+}
 
 async function carregarHistoricoEmbarques() {
     const token = getAuthToken();
@@ -4042,3 +4209,6 @@ window.carregarRoadmapCobli = carregarRoadmapCobli;
 window.carregarSubAbaCalor = carregarSubAbaCalor;
 window.carregarMapaCalor   = carregarMapaCalor;
 window.recarregarMapaCalor = recarregarMapaCalor;
+window.ampliarGrafico         = ampliarGrafico;
+window.fecharGraficoAmpliado  = fecharGraficoAmpliado;
+window.destruirChartAmpliado  = destruirChartAmpliado;

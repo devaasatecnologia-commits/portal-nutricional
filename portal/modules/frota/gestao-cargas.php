@@ -507,15 +507,22 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
 
     </div> <!-- /#tab-eficiencia -->
-    <!-- ================================================================
+      <!-- ================================================================
        ABA: ANÁLISES (ex-"Gráficos")
+       🔥 REFATORADO 2026-09-22 (Bloco 5.E.1 + 5.E.2):
+       - Grid responsivo padronizado (2 col full + 4 col meio)
+       - Botão "Ampliar" em cada card (abre modal fullscreen)
+       - Alturas uniformes (260px card / 300px full)
     ================================================================ -->
     <div class="cargas-tab-panel" id="tab-analises" role="tabpanel" hidden>
         <div class="section-card mb-6">
             <div class="section-header flex justify-between items-center flex-wrap gap-2">
                 <div class="flex items-center gap-3">
                     <div class="section-icon-badge"><i class="fa-solid fa-chart-pie"></i></div>
-                    <div><span class="font-bold text-[#1a3c34]">Painel de Gráficos</span></div>
+                    <div>
+                        <span class="font-bold text-[#1a3c34]">Painel de Gráficos</span>
+                        <span class="text-xs text-slate-400 block">Clique em "Ampliar" para visualizar em tela cheia</span>
+                    </div>
                 </div>
                 <label class="cargas-priority">
                     <span>Período</span>
@@ -530,24 +537,78 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
 
         <div class="graficos-grid">
-            <div class="section-card grafico-card grafico-full">
-                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-chart-line"></i></div><span class="font-bold text-[#1a3c34]">Evolução de Problemas: Criados x Resolvidos</span></div></div>
+            <div class="section-card grafico-card grafico-full" data-grafico-card="evolucao">
+                <div class="section-header">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-chart-line"></i></div>
+                        <span class="font-bold text-[#1a3c34]">Evolução de Problemas: Criados x Resolvidos</span>
+                    </div>
+                    <button type="button" class="analise-expand-btn"
+                            onclick="ampliarGrafico('evolucao', 'Evolução de Problemas')"
+                            title="Ampliar gráfico">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
                 <div class="section-body"><canvas id="chart-evolucao" height="90"></canvas></div>
             </div>
-            <div class="section-card grafico-card">
-                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-chart-pie"></i></div><span class="font-bold text-[#1a3c34]">Distribuição por Tipo</span></div></div>
+
+            <div class="section-card grafico-card" data-grafico-card="tipo">
+                <div class="section-header">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-chart-pie"></i></div>
+                        <span class="font-bold text-[#1a3c34]">Distribuição por Tipo</span>
+                    </div>
+                    <button type="button" class="analise-expand-btn"
+                            onclick="ampliarGrafico('tipo', 'Distribuição por Tipo')"
+                            title="Ampliar gráfico">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
                 <div class="section-body"><canvas id="chart-tipo" height="220"></canvas></div>
             </div>
-            <div class="section-card grafico-card">
-                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-layer-group"></i></div><span class="font-bold text-[#1a3c34]">Distribuição por Prioridade</span></div></div>
+
+            <div class="section-card grafico-card" data-grafico-card="prioridade">
+                <div class="section-header">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-layer-group"></i></div>
+                        <span class="font-bold text-[#1a3c34]">Distribuição por Prioridade</span>
+                    </div>
+                    <button type="button" class="analise-expand-btn"
+                            onclick="ampliarGrafico('prioridade', 'Distribuição por Prioridade')"
+                            title="Ampliar gráfico">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
                 <div class="section-body"><canvas id="chart-prioridade" height="220"></canvas></div>
             </div>
-            <div class="section-card grafico-card">
-                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-ranking-star"></i></div><span class="font-bold text-[#1a3c34]">Top 5 Motoristas com Mais Problemas</span></div></div>
+
+            <div class="section-card grafico-card" data-grafico-card="topMotoristas">
+                <div class="section-header">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-ranking-star"></i></div>
+                        <span class="font-bold text-[#1a3c34]">Top 5 Motoristas com Mais Problemas</span>
+                    </div>
+                    <button type="button" class="analise-expand-btn"
+                            onclick="ampliarGrafico('topMotoristas', 'Top 5 Motoristas com Mais Problemas')"
+                            title="Ampliar gráfico">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
                 <div class="section-body"><canvas id="chart-top-motoristas" height="220"></canvas></div>
             </div>
-            <div class="section-card grafico-card">
-                <div class="section-header"><div class="flex items-center gap-3"><div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div><span class="font-bold text-[#1a3c34]">Top 5 Caminhões com Mais Problemas</span></div></div>
+
+            <div class="section-card grafico-card" data-grafico-card="topVeiculos">
+                <div class="section-header">
+                    <div class="flex items-center gap-3">
+                        <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
+                        <span class="font-bold text-[#1a3c34]">Top 5 Caminhões com Mais Problemas</span>
+                    </div>
+                    <button type="button" class="analise-expand-btn"
+                            onclick="ampliarGrafico('topVeiculos', 'Top 5 Caminhões com Mais Problemas')"
+                            title="Ampliar gráfico">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
                 <div class="section-body"><canvas id="chart-top-veiculos" height="220"></canvas></div>
             </div>
         </div>
@@ -810,7 +871,26 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 </div>
-
+<!-- ================================================================
+   MODAL: GRÁFICO AMPLIADO (fullscreen)
+   🔥 NOVO 2026-09-22 (Bloco 5.E.1)
+=============================================================== -->
+<div class="modal fade" id="modalGraficoAmpliado" tabindex="-1" data-bs-backdrop="static" style="display: none;">
+    <div class="modal-dialog modal-fullscreen modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fa-solid fa-chart-pie mr-2"></i>
+                    <span id="modal-grafico-titulo">Gráfico Ampliado</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body grafico-ampliado-body">
+                <canvas id="chart-ampliado"></canvas>
+            </div>
+        </div>
+    </div>
+</div>
 <?php
 require_once __DIR__ . '/../../estrutura/footer.php';
 ?>

@@ -506,14 +506,183 @@
 
 
 /* ================================================================
-   ABA: GR�FICOS PREMIUM
+   ABA: ANÁLISES — GRÁFICOS PREMIUM
+   🔥 REFATORADO 2026-09-22 (Bloco 5.E.1 + 5.E.2):
+   - Grid responsivo padronizado
+   - Alturas uniformes (card 260px / full 300px)
+   - Botão "Ampliar" no cabeçalho de cada card
+   - Modal fullscreen com botão de ampliação
    ================================================================ */
-.graficos-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
-.grafico-card { padding: 0; overflow: hidden; }
-.grafico-card.grafico-full { grid-column: 1 / -1; }
-.grafico-card .section-body { padding: 18px 20px 22px; }
-.grafico-card canvas { max-width: 100%; }
-@media (max-width: 900px) { .graficos-grid { grid-template-columns: 1fr; } }
+
+/* ---------- Grid principal ---------- */
+.graficos-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+@media (max-width: 900px) {
+    .graficos-grid { grid-template-columns: 1fr; }
+}
+
+/* ---------- Card de gráfico ---------- */
+.grafico-card {
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.grafico-card.grafico-full {
+    grid-column: 1 / -1;
+}
+
+.grafico-card .section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+.grafico-card .section-header .flex.items-center {
+    min-width: 0;
+    flex: 1;
+}
+
+.grafico-card .section-header .font-bold {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.grafico-card .section-body {
+    padding: 18px 20px 22px;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 auto;
+}
+
+/* Altura uniforme: card padrão 260px, full 300px */
+.grafico-card .section-body {
+    height: 260px;
+}
+.grafico-card.grafico-full .section-body {
+    height: 300px;
+}
+
+.grafico-card canvas {
+    max-width: 100%;
+    max-height: 100%;
+}
+
+/* ---------- Botão "Ampliar" ---------- */
+.analise-expand-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    border: 1px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    color: var(--nutri-text-secondary);
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+    transition: var(--transition);
+    flex-shrink: 0;
+    font-size: 0.82rem;
+}
+
+.analise-expand-btn:hover {
+    color: var(--nutri-primary);
+    border-color: var(--nutri-gold);
+    background: rgba(var(--nutri-gold-rgb, 212, 160, 23), 0.08);
+    transform: scale(1.05);
+}
+
+.analise-expand-btn:active {
+    transform: scale(0.96);
+}
+
+[data-theme="dark"] .analise-expand-btn:hover {
+    color: var(--nutri-gold-light);
+    background: rgba(242, 201, 76, 0.12);
+}
+
+/* ---------- Modal de gráfico ampliado ---------- */
+#modalGraficoAmpliado .modal-content {
+    background: var(--nutri-card-bg) !important;
+    border: none !important;
+    border-radius: 0 !important;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+}
+
+#modalGraficoAmpliado .modal-header {
+    background: linear-gradient(135deg, var(--nutri-primary), var(--nutri-secondary)) !important;
+    padding: 20px 28px !important;
+    border-bottom: 3px solid var(--nutri-gold) !important;
+    flex-shrink: 0;
+}
+
+#modalGraficoAmpliado .modal-title {
+    color: #ffffff !important;
+    font-size: 1.15rem;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+}
+
+#modalGraficoAmpliado .modal-title i {
+    color: var(--nutri-gold-light);
+    margin-right: 10px;
+}
+
+#modalGraficoAmpliado .btn-close {
+    filter: brightness(0) invert(1);
+    opacity: 0.75;
+    transition: var(--transition);
+}
+
+#modalGraficoAmpliado .btn-close:hover {
+    opacity: 1;
+    transform: rotate(90deg);
+}
+
+#modalGraficoAmpliado .grafico-ampliado-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: 32px 40px !important;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+#modalGraficoAmpliado #chart-ampliado {
+    max-width: 100%;
+    max-height: 100%;
+    width: 100% !important;
+    height: 100% !important;
+}
+
+@media (max-width: 768px) {
+    #modalGraficoAmpliado .grafico-ampliado-body {
+        padding: 16px !important;
+    }
+    #modalGraficoAmpliado .modal-header {
+        padding: 14px 18px !important;
+    }
+    #modalGraficoAmpliado .modal-title {
+        font-size: 0.95rem;
+    }
+}
+
+/* ---------- Dark mode ---------- */
+[data-theme="dark"] .grafico-card {
+    background: var(--nutri-card-bg);
+}
 
 /* ================================================================
    RANKING CLIC�VEL (MOTORISTAS/VE�CULOS)
