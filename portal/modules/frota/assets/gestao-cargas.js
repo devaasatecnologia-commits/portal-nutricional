@@ -1182,9 +1182,16 @@ function mudarAbaCargas(aba, btn) {
         carregarGraficosCargas();
     }
 
-    // ⏳ Mapa (será implementado no Bloco 5.D)
+    // 🗺️ Mapa (Bloco 5.D — em andamento)
     if (aba === 'mapa') {
-        // TODO: carregarAbaMapa() no Bloco 5.D
+        // Verifica qual sub-aba está ativa e carrega
+        const subtabAtiva = document.querySelector('.cargas-subtab.active')?.dataset.subtab || 'ao-vivo';
+
+        if (subtabAtiva === 'historico') {
+            carregarSubAbaHistorico();
+        }
+        // TODO 5.D.1: if (subtabAtiva === 'ao-vivo') carregarSubAbaAoVivo();
+        // TODO 5.D.3: if (subtabAtiva === 'calor')   carregarSubAbaCalor();
     }
 }
 
@@ -2975,15 +2982,15 @@ function dashIrPara(aba) {
 // ---------------------------------------------------------------
 function dashIrParaMapaComEmbarque(embarqueId) {
     dashIrPara('mapa');
-    // Chama a sub-aba Histórico (que será implementada no 5.D)
+    // Chama a sub-aba Histórico (Bloco 5.D.2)
     setTimeout(() => {
         const btnHist = document.querySelector('.cargas-subtab[data-subtab="historico"]');
         if (btnHist) mudarSubAbaCargas('historico', btnHist);
-        // Se a função abrirDetalheEmbarque já existir, abre o embarque
+        // Aguarda a lista carregar antes de abrir o modal
         if (typeof abrirDetalheEmbarque === 'function') {
-            setTimeout(() => abrirDetalheEmbarque(embarqueId), 300);
+            setTimeout(() => abrirDetalheEmbarque(embarqueId), 500);
         }
-    }, 200);
+    }, 250);
 }
 
 // ---------------------------------------------------------------
@@ -3073,7 +3080,11 @@ async function dashAbrirModalAcerto() {
 }
 
 // ---------------------------------------------------------------
-// Sub-abas do Mapa (preparando pro Bloco 5.D)
+// Sub-abas do Mapa — carregamento sob demanda
+// 🔥 ATUALIZADO 2026-09-22 (Bloco 5.D.2):
+//    - Histórico → carrega lista de embarques (JS já existente)
+//    - Ao Vivo   → será implementado no 5.D.1
+//    - Calor     → será implementado no 5.D.3
 // ---------------------------------------------------------------
 function mudarSubAbaCargas(subaba, btn) {
     // Ativa o botão
@@ -3086,6 +3097,30 @@ function mudarSubAbaCargas(subaba, btn) {
     document.querySelectorAll('.cargas-subpanel').forEach(p => {
         p.hidden = p.id !== `subtab-${subaba}`;
     });
+
+    // Carregamento sob demanda
+    if (subaba === 'historico') {
+        carregarSubAbaHistorico();
+    }
+    // TODO 5.D.1: if (subaba === 'ao-vivo') carregarSubAbaAoVivo();
+    // TODO 5.D.3: if (subaba === 'calor')   carregarSubAbaCalor();
+}
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.2):
+// SUB-ABA "HISTÓRICO" — busca de embarques
+// Migrado do antigo tab-historico (JS já existente)
+// ================================================================
+
+let historicoCarregado = false;
+
+/**
+ * Carrega a sub-aba Histórico (lista de embarques com filtros).
+ * A função carregarHistoricoEmbarques() já existe no JS original.
+ */
+async function carregarSubAbaHistorico(forcar = false) {
+    if (historicoCarregado && !forcar) return;
+    await carregarHistoricoEmbarques();
+    historicoCarregado = true;
 }
 
 // ---------------------------------------------------------------
@@ -3096,7 +3131,8 @@ window.dashIrPara                = dashIrPara;
 window.dashIrParaMapaComEmbarque = dashIrParaMapaComEmbarque;
 window.dashAbrirModalAcerto      = dashAbrirModalAcerto;
 window.mudarSubAbaCargas         = mudarSubAbaCargas;
-
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.2): exportações do Mapa
+window.carregarSubAbaHistorico   = carregarSubAbaHistorico;
 // ================================================================
 // 🔥 NOVO 2026-09-22 (Bloco 5.C.2):
 // ABA EFICIÊNCIA — Ranking unificado motorista ↔ veículo

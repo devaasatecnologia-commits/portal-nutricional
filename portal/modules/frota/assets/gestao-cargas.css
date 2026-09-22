@@ -1390,3 +1390,28 @@
         justify-content: flex-start;
     }
 }
+/* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.D.2):
+   Sub-aba "Histórico" — busca de embarques
+   ================================================================ */
+
+/* Reutiliza .hist-embarque-card, .hist-embarque-meta, etc. já existentes */
+
+.cargas-subpanel#subtab-historico .cargas-filter-bar {
+    margin-bottom: 16px;
+}
+
+/* Input de data estilizado (herda do .cargas-priority) */
+.cargas-priority input[type="date"] {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--nutri-text);
+    font: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    min-width: 110px;
+}
+[data-theme="dark"] .cargas-priority input[type="date"] {
+    color-scheme: dark;
+}

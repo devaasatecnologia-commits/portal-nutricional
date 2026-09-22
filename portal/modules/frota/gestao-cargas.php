@@ -586,17 +586,69 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
 
-        <!-- Sub-painel: Histórico -->
-        <div class="cargas-subpanel" id="subtab-historico" role="tabpanel" hidden>
-            <div class="section-card">
-                <div class="section-body" style="text-align:center; padding:60px 20px;">
-                    <i class="fa-solid fa-clock-rotate-left" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                        Histórico de embarques em construção — chega no Bloco 5.D.
-                    </p>
+<!-- Sub-painel: Histórico -->
+<div class="cargas-subpanel" id="subtab-historico" role="tabpanel" hidden>
+    <!-- Filtros -->
+    <div class="cargas-filter-bar" role="search" aria-label="Filtrar histórico de embarques">
+        <label class="cargas-search">
+            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+            <input type="search" id="hist-busca" placeholder="Buscar embarque, cliente, motorista ou placa" autocomplete="off">
+        </label>
+        <label class="cargas-priority">
+            <span>Status</span>
+            <select id="hist-status">
+                <option value="todos">Todos</option>
+                <option value="planejado">Planejado</option>
+                <option value="em_andamento">Em andamento</option>
+                <option value="finalizado">Finalizado</option>
+                <option value="cancelado">Cancelado</option>
+                <option value="problema">Com problema</option>
+            </select>
+        </label>
+        <label class="cargas-priority">
+            <span>De</span>
+            <input type="date" id="hist-data-inicio">
+        </label>
+        <label class="cargas-priority">
+            <span>Até</span>
+            <input type="date" id="hist-data-fim">
+        </label>
+        <button type="button" class="cargas-clear-filter" id="hist-limpar-filtros">
+            <i class="fa-solid fa-rotate-left"></i> Limpar
+        </button>
+    </div>
+
+    <!-- Lista -->
+    <div class="section-card">
+        <div class="section-header flex justify-between items-center flex-wrap gap-2">
+            <div class="flex items-center gap-3">
+                <div class="section-icon-badge"><i class="fa-solid fa-clock-rotate-left"></i></div>
+                <div>
+                    <span class="font-bold text-[#1a3c34]">Histórico de Embarques</span>
+                    <span class="text-xs text-slate-400 block" id="hist-info-registros">Carregando...</span>
                 </div>
             </div>
         </div>
+        <div class="section-body p-0" id="hist-lista-embarques">
+            <div class="text-center py-8">Carregando...</div>
+        </div>
+        <!-- Paginação -->
+        <div class="section-body border-t border-slate-200 flex justify-between items-center flex-wrap gap-2 py-3 px-4">
+            <span class="text-sm text-slate-500" id="hist-info-paginacao">Carregando...</span>
+            <div class="flex gap-1">
+                <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        id="hist-btn-anterior" onclick="mudarPaginaHistorico('anterior')">
+                    <i class="fa-solid fa-chevron-left"></i>
+                </button>
+                <span class="px-3 py-1.5 text-sm font-bold text-slate-600" id="hist-pagina-atual">1</span>
+                <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
+                        id="hist-btn-proximo" onclick="mudarPaginaHistorico('proximo')">
+                    <i class="fa-solid fa-chevron-right"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
         <!-- Sub-painel: Calor -->
         <div class="cargas-subpanel" id="subtab-calor" role="tabpanel" hidden>
