@@ -2570,6 +2570,462 @@ private function getVelocidadeReferenciaKmh(): float
     }
     return 40.0; // fallback seguro
 }
+
+    /**
+     * GET /v1/frota/dashboard/acerto-kpis
+     *
+     * 🔥 NOVO 2026-09-21 (Bloco 6):
+     *   KPIs consolidados de TRATAMENTO do acerto (Camada 2).
+     *   Diferente de kpisProblemas() que olha o FATO (Camada 1 - frota_entrega_problema).
+     *   Aqui olhamos o TRATAMENTO (Camada 2 - frota_problema_tratamento) e
+     *   o DOCUMENTO (Camada 3 - frota_acerto_pedido).
+     *
+     * Query params opcionais:
+     *   - data_inicio (Y-m-d)
+     *   - data_fim    (Y-m-d)
+     *   - id_filial   (int, default 1) — hoje não filtra por filial, placeholder
+     */
+    public function acertoKpis(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dataInicio = $params['data_inicio'] ?? null;
+            $dataFim    = $params['data_fim'] ?? null;
+
+            $filtroData = '';
+            $bindParams = [];
+            if ($dataInicio) {
+                $filtroData .= " AND ap.created_at >= :data_inicio";
+                $bindParams['data_inicio'] = $dataInicio . ' 00:00:00';
+            }
+            if ($dataFim) {
+                $filtroData .= " AND ap.created_at <= :data_fim";
+                $bindParams['data_fim'] = $dataFim . ' 23:59:59';
+            }
+
+            $data = [
+                'faltantes' => [
+                    'total'        => 0,
+                    'com_estoque'  => 0,
+                    'sem_estoque'  => 0,
+                    'pendentes'    => 0,
+                    'criados_erp'  => 0,
+                    'valor_total'  => 0.0,
+                ],
+                'devolucoes' => [
+                    'total'                 => 0,
+                    'aguardando_fat'        => 0,
+                    'comprovantes_emitidos' => 0,
+                ],
+                'tempo_medio_comprovante_horas' => 0.0,
+                'top_clientes' => [],
+            ];
+
+            if ($this->pdo) {
+                // ============================================================
+                // 1. FALTANTES — por tipo de tratamento (Camada 3)
+                // ============================================================
+                $sql = "
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(CASE WHEN tipo_tratamento = 'faltante_com_estoque' THEN 1 END) AS com_estoque,
+                        COUNT(CASE WHEN tipo_tratamento = 'faltante_sem_estoque' THEN 1 END) AS sem_estoque,
+                        COUNT(CASE WHEN status = 'pendente' THEN 1 END)   AS pendentes,
+                        COUNT(CASE WHEN status = 'criado_erp' THEN 1 END) AS criados_erp,
+                        COALESCE(SUM(valor_total), 0) AS valor_total
+                    FROM frota_acerto_pedido ap
+                    WHERE ap.tipo_problema = 'faltante'
+                    {$filtroData}
+                ";
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->execute($bindParams);
+                $faltantes = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $data['faltantes']['total']       = (int)($faltantes['total'] ?? 0);
+                $data['faltantes']['com_estoque'] = (int)($faltantes['com_estoque'] ?? 0);
+                $data['faltantes']['sem_estoque'] = (int)($faltantes['sem_estoque'] ?? 0);
+                $data['faltantes']['pendentes']   = (int)($faltantes['pendentes'] ?? 0);
+                $data['faltantes']['criados_erp'] = (int)($faltantes['criados_erp'] ?? 0);
+                $data['faltantes']['valor_total'] = (float)($faltantes['valor_total'] ?? 0);
+
+                // ============================================================
+                // 2. DEVOLUÇÕES — por status (Camada 2)
+                // ============================================================
+                $stmtDev = $this->pdo->prepare("
+                    SELECT
+                        COUNT(*) AS total,
+                        COUNT(CASE WHEN pt.status = 'aguardando_fat'       THEN 1 END) AS aguardando_fat,
+                        COUNT(CASE WHEN pt.status = 'comprovante_emitido'  THEN 1 END) AS comprovantes_emitidos
+                    FROM frota_problema_tratamento pt
+                    WHERE pt.tipo_tratamento = 'devolucao_comprovante'
+                ");
+                $stmtDev->execute();
+                $devolucoes = $stmtDev->fetch(PDO::FETCH_ASSOC) ?: [];
+
+                $data['devolucoes']['total']                 = (int)($devolucoes['total'] ?? 0);
+                $data['devolucoes']['aguardando_fat']        = (int)($devolucoes['aguardando_fat'] ?? 0);
+                $data['devolucoes']['comprovantes_emitidos'] = (int)($devolucoes['comprovantes_emitidos'] ?? 0);
+
+                // ============================================================
+                // 3. TEMPO MÉDIO ATÉ EMISSÃO DO COMPROVANTE (horas)
+                //    Usa COALESCE(decidido_em, created_at) como base
+                // ============================================================
+                $stmtTempo = $this->pdo->prepare("
+                    SELECT
+                        AVG(EXTRACT(EPOCH FROM (
+                            pt.comprovante_emitido_em - COALESCE(pt.decidido_em, pt.created_at)
+                        )) / 3600) AS media_horas,
+                        COUNT(*) AS total
+                    FROM frota_problema_tratamento pt
+                    WHERE pt.tipo_tratamento = 'devolucao_comprovante'
+                      AND pt.comprovante_emitido_em IS NOT NULL
+                ");
+                $stmtTempo->execute();
+                $tempo = $stmtTempo->fetch(PDO::FETCH_ASSOC) ?: [];
+                $data['tempo_medio_comprovante_horas'] = round((float)($tempo['media_horas'] ?? 0), 2);
+
+                // ============================================================
+                // 4. TOP 5 CLIENTES COM MAIS FALTANTES
+                // ============================================================
+                $sqlTop = "
+                    SELECT
+                        cliente_nome,
+                        COUNT(*) AS total_pedidos,
+                        COALESCE(SUM(valor_total), 0) AS valor_total
+                    FROM frota_acerto_pedido ap
+                    WHERE ap.tipo_problema = 'faltante'
+                    {$filtroData}
+                    GROUP BY cliente_nome
+                    ORDER BY total_pedidos DESC, valor_total DESC
+                    LIMIT 5
+                ";
+                $stmtTop = $this->pdo->prepare($sqlTop);
+                $stmtTop->execute($bindParams);
+                $top = $stmtTop->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+                foreach ($top as $row) {
+                    $data['top_clientes'][] = [
+                        'cliente_nome'  => $row['cliente_nome'],
+                        'total_pedidos' => (int)$row['total_pedidos'],
+                        'valor_total'   => (float)$row['valor_total'],
+                    ];
+                }
+            }
+
+            return $this->json($response, [
+                'success'   => true,
+                'data'      => $data,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no acertoKpis: ' . $e->getMessage());
+            return $this->json($response, [
+                'success'   => false,
+                'error'     => 'Erro ao carregar KPIs do acerto',
+                'timestamp' => date('Y-m-d H:i:s')
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/dashboard/acerto-timeline
+     *
+     * 🔥 NOVO 2026-09-21 (Bloco 6):
+     *   Série temporal de faltantes criados e comprovantes emitidos.
+     *
+     * Query params:
+     *   - dias        (int, default 30, max 365)
+     *   - agrupamento (dia|semana|mes, default 'dia')
+     */
+    public function acertoTimeline(Request $request, Response $response): Response
+    {
+        try {
+            $params      = $request->getQueryParams();
+            $dias        = max(1, min((int)($params['dias'] ?? 30), 365));
+            $agrupamento = strtolower($params['agrupamento'] ?? 'dia');
+
+            $granularidade = match ($agrupamento) {
+                'semana' => 'week',
+                'mes'    => 'month',
+                default  => 'day',
+            };
+
+            $data = [
+                'periodo' => [
+                    'inicio' => date('Y-m-d', strtotime("-{$dias} days")),
+                    'fim'    => date('Y-m-d'),
+                ],
+                'agrupamento' => $agrupamento,
+                'serie'       => [],
+                'totais' => [
+                    'faltantes'    => 0,
+                    'comprovantes' => 0,
+                    'valor'        => 0.0,
+                ],
+            ];
+
+            if ($this->pdo) {
+                // ============================================================
+                // 1. Faltantes criados por período
+                // ============================================================
+                $sqlFaltantes = "
+                    SELECT
+                        TO_CHAR(DATE_TRUNC('{$granularidade}', ap.created_at), 'YYYY-MM-DD') AS periodo,
+                        COUNT(*) AS total,
+                        COALESCE(SUM(ap.valor_total), 0) AS valor
+                    FROM frota_acerto_pedido ap
+                    WHERE ap.tipo_problema = 'faltante'
+                      AND ap.created_at >= NOW() - INTERVAL '{$dias} days'
+                    GROUP BY DATE_TRUNC('{$granularidade}', ap.created_at)
+                    ORDER BY periodo ASC
+                ";
+                $stmtFaltantes = $this->pdo->query($sqlFaltantes);
+                $faltantesPorPeriodo = [];
+                foreach ($stmtFaltantes->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $faltantesPorPeriodo[$row['periodo']] = [
+                        'total' => (int)$row['total'],
+                        'valor' => (float)$row['valor'],
+                    ];
+                }
+
+                // ============================================================
+                // 2. Comprovantes emitidos por período
+                // ============================================================
+                $sqlComprovantes = "
+                    SELECT
+                        TO_CHAR(DATE_TRUNC('{$granularidade}', pt.comprovante_emitido_em), 'YYYY-MM-DD') AS periodo,
+                        COUNT(*) AS total
+                    FROM frota_problema_tratamento pt
+                    WHERE pt.tipo_tratamento = 'devolucao_comprovante'
+                      AND pt.comprovante_emitido_em IS NOT NULL
+                      AND pt.comprovante_emitido_em >= NOW() - INTERVAL '{$dias} days'
+                    GROUP BY DATE_TRUNC('{$granularidade}', pt.comprovante_emitido_em)
+                    ORDER BY periodo ASC
+                ";
+                $stmtComprovantes = $this->pdo->query($sqlComprovantes);
+                $comprovantesPorPeriodo = [];
+                foreach ($stmtComprovantes->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $comprovantesPorPeriodo[$row['periodo']] = (int)$row['total'];
+                }
+
+                // ============================================================
+                // 3. Unifica períodos (union)
+                // ============================================================
+                $periodos = array_unique(array_merge(
+                    array_keys($faltantesPorPeriodo),
+                    array_keys($comprovantesPorPeriodo)
+                ));
+                sort($periodos);
+
+                foreach ($periodos as $periodo) {
+                    $faltantesInfo    = $faltantesPorPeriodo[$periodo] ?? ['total' => 0, 'valor' => 0];
+                    $comprovantesInfo = $comprovantesPorPeriodo[$periodo] ?? 0;
+
+                    $data['serie'][] = [
+                        'data'                   => $periodo,
+                        'faltantes_criados'      => $faltantesInfo['total'],
+                        'comprovantes_emitidos'  => $comprovantesInfo,
+                        'valor_total'            => $faltantesInfo['valor'],
+                    ];
+
+                    $data['totais']['faltantes']    += $faltantesInfo['total'];
+                    $data['totais']['comprovantes'] += $comprovantesInfo;
+                    $data['totais']['valor']        += $faltantesInfo['valor'];
+                }
+
+                $data['totais']['valor'] = round($data['totais']['valor'], 2);
+            }
+
+            return $this->json($response, [
+                'success'   => true,
+                'data'      => $data,
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no acertoTimeline: ' . $e->getMessage());
+            return $this->json($response, [
+                'success'   => false,
+                'error'     => 'Erro ao carregar timeline do acerto',
+                'timestamp' => date('Y-m-d H:i:s')
+            ], 500);
+        }
+    }
+
+    /**
+     * GET /v1/frota/dashboard/acerto-detalhado
+     *
+     * 🔥 NOVO 2026-09-21 (Bloco 6):
+     *   Drill-down dos cards. Lista paginada de pedidos/tratamentos.
+     *
+     * Query params:
+     *   - tipo (faltante|devolucao, default 'faltante')
+     *   - status
+     *   - data_inicio
+     *   - data_fim
+     *   - pagina (default 1)
+     *   - limite (default 20, max 100)
+     */
+    public function acertoDetalhado(Request $request, Response $response): Response
+    {
+        try {
+            $params     = $request->getQueryParams();
+            $tipo       = strtolower($params['tipo'] ?? 'faltante');
+            $status     = $params['status'] ?? null;
+            $dataInicio = $params['data_inicio'] ?? null;
+            $dataFim    = $params['data_fim'] ?? null;
+            $pagina     = max(1, (int)($params['pagina'] ?? 1));
+            $limite     = min(100, max(1, (int)($params['limite'] ?? 20)));
+            $offset     = ($pagina - 1) * $limite;
+
+            if (!in_array($tipo, ['faltante', 'devolucao'], true)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error'   => 'Tipo inválido. Use "faltante" ou "devolucao".'
+                ], 400);
+            }
+
+            $where = [];
+            $bind  = [];
+
+            if ($tipo === 'faltante') {
+                $where[] = "ap.tipo_problema = 'faltante'";
+                if ($status) {
+                    $where[] = "ap.status = :status";
+                    $bind['status'] = $status;
+                }
+                if ($dataInicio) {
+                    $where[] = "ap.created_at >= :data_inicio";
+                    $bind['data_inicio'] = $dataInicio . ' 00:00:00';
+                }
+                if ($dataFim) {
+                    $where[] = "ap.created_at <= :data_fim";
+                    $bind['data_fim'] = $dataFim . ' 23:59:59';
+                }
+
+                $whereSql = implode(' AND ', $where);
+
+                $stmtTotal = $this->pdo->prepare("SELECT COUNT(*) FROM frota_acerto_pedido ap WHERE {$whereSql}");
+                $stmtTotal->execute($bind);
+                $total = (int)$stmtTotal->fetchColumn();
+
+                $sql = "
+                    SELECT
+                        ap.id,
+                        ap.entrega_id,
+                        ap.cliente_nome,
+                        ap.tipo_problema,
+                        ap.tipo_tratamento,
+                        ap.id_transacao_erp,
+                        ap.valor_total,
+                        ap.status,
+                        ap.pedido_erp_criado_id,
+                        ap.numero_pedido_criado,
+                        ap.created_at,
+                        ap.data_criacao_erp
+                    FROM frota_acerto_pedido ap
+                    WHERE {$whereSql}
+                    ORDER BY ap.created_at DESC
+                    LIMIT :limite OFFSET :offset
+                ";
+                $stmt = $this->pdo->prepare($sql);
+                foreach ($bind as $k => $v) {
+                    $stmt->bindValue($k, $v);
+                }
+                $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                $stmt->execute();
+                $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($itens as &$item) {
+                    $item['id']              = (int)$item['id'];
+                    $item['entrega_id']      = (int)$item['entrega_id'];
+                    $item['id_transacao_erp'] = $item['id_transacao_erp'] !== null ? (int)$item['id_transacao_erp'] : null;
+                    $item['valor_total']     = (float)$item['valor_total'];
+                }
+                unset($item);
+            } else {
+                $where[] = "pt.tipo_tratamento = 'devolucao_comprovante'";
+                if ($status) {
+                    $where[] = "pt.status = :status";
+                    $bind['status'] = $status;
+                }
+                if ($dataInicio) {
+                    $where[] = "pt.created_at >= :data_inicio";
+                    $bind['data_inicio'] = $dataInicio . ' 00:00:00';
+                }
+                if ($dataFim) {
+                    $where[] = "pt.created_at <= :data_fim";
+                    $bind['data_fim'] = $dataFim . ' 23:59:59';
+                }
+
+                $whereSql = implode(' AND ', $where);
+
+                $stmtTotal = $this->pdo->prepare("SELECT COUNT(*) FROM frota_problema_tratamento pt WHERE {$whereSql}");
+                $stmtTotal->execute($bind);
+                $total = (int)$stmtTotal->fetchColumn();
+
+                $sql = "
+                    SELECT
+                        pt.id,
+                        pt.problema_id,
+                        pt.tipo_tratamento,
+                        pt.status,
+                        pt.numero_comprovante,
+                        pt.valor_afetado,
+                        pt.decidido_em,
+                        pt.comprovante_emitido_em,
+                        pt.created_at,
+                        ep.entrega_id,
+                        ep.referencia,
+                        ep.descricao_problema
+                    FROM frota_problema_tratamento pt
+                    LEFT JOIN frota_entrega_problema ep ON ep.id = pt.problema_id
+                    WHERE {$whereSql}
+                    ORDER BY pt.created_at DESC
+                    LIMIT :limite OFFSET :offset
+                ";
+                $stmt = $this->pdo->prepare($sql);
+                foreach ($bind as $k => $v) {
+                    $stmt->bindValue($k, $v);
+                }
+                $stmt->bindValue(':limite', $limite, PDO::PARAM_INT);
+                $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
+                $stmt->execute();
+                $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                foreach ($itens as &$item) {
+                    $item['id']           = (int)$item['id'];
+                    $item['problema_id']  = (int)$item['problema_id'];
+                    $item['entrega_id']   = (int)($item['entrega_id'] ?? 0);
+                    $item['valor_afetado'] = (float)($item['valor_afetado'] ?? 0);
+                }
+                unset($item);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data'    => [
+                    'tipo'  => $tipo,
+                    'itens' => $itens,
+                    'paginacao' => [
+                        'pagina'        => $pagina,
+                        'limite'        => $limite,
+                        'total'         => $total,
+                        'total_paginas' => (int)ceil($total / $limite),
+                    ],
+                ],
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no acertoDetalhado: ' . $e->getMessage());
+            return $this->json($response, [
+                'success'   => false,
+                'error'     => 'Erro ao carregar detalhamento do acerto',
+                'timestamp' => date('Y-m-d H:i:s')
+            ], 500);
+        }
+    }
+
     /**
      * Resposta JSON
      */
