@@ -2,6 +2,13 @@
 // ======================================================================
 // MODULO FROTA - GESTAO DE CARGAS (PAINEL DO GESTOR)
 // ======================================================================
+// 🔥 REFATORADO 2026-09-22 (Bloco 5.A + 5.B.1):
+//   - 5 abas: Dashboard / Problemas / Eficiência / Análises / Mapa
+//   - Aba Dashboard preenchida (6 KPIs + 3 gráficos + 2 destaques)
+//   - Aba Mapa com 3 sub-abas: Ao Vivo / Histórico / Calor
+//   - Painéis antigos removidos (motoristas, veiculos, historico, cobli)
+//     foram absorvidos por Eficiência/Mapa
+// ======================================================================
 
 $pageTitle = 'Gestão de Cargas | Frota | Nutricional';
 $version = time();
@@ -84,16 +91,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div>
 
     <!-- ================================================================
-       ABAS PRINCIPAIS
-       🔥 MUDANÇA 2026-09-22 (Bloco 5.A.1):
-       Abas reduzidas de 6 para 5, alinhadas com a consolidação:
-       - "Visão Geral"          → mantida (renomeada para "Problemas")
-       - "Desempenho Motoristas" → fundida em "Eficiência" (toggle)
-       - "Por Caminhão"         → fundida em "Eficiência" (toggle)
-       - "Gráficos"             → renomeada para "Análises"
-       - "Histórico"            → fundida em "Mapa" (sub-aba)
-       - "Rastreio Cobli"       → fundida em "Mapa" (sub-aba)
-       - NOVA: "Dashboard" (KPIs executivos)
+       ABAS PRINCIPAIS (5 abas)
+       - Dashboard: visão executiva do dia (KPIs + gráficos + destaques)
+       - Problemas: lista de problemas de entrega
+       - Eficiência: ranking unificado (motoristas ↔ veículos)
+       - Análises: gráficos e séries temporais
+       - Mapa: rastreio (ao vivo + histórico + calor)
     ================================================================ -->
     <div class="cargas-tabs" id="cargas-tabs" role="tablist">
         <button type="button" class="cargas-tab" data-tab="dashboard" onclick="mudarAbaCargas('dashboard', this)" role="tab" aria-selected="false">
@@ -114,38 +117,158 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div>
 
     <!-- ================================================================
-       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
-       ABA: DASHBOARD (visão executiva do dia)
-       Conteúdo será preenchido no Bloco 5.B
+       ABA: DASHBOARD
+       🔥 IMPLEMENTADO 2026-09-22 (Bloco 5.B.1)
+       Layout:
+         - Linha 1: 6 KPIs compactos
+         - Linha 2: 3 gráficos (ritmo 7d + status + ritmo mensal)
+         - Linha 3: Top 5 motoristas + últimos 5 embarques
+       Todos os cards são clicáveis (rastreabilidade).
     ================================================================ -->
     <div class="cargas-tab-panel" id="tab-dashboard" role="tabpanel" hidden>
-        <!-- Conteúdo será adicionado no Bloco 5.B -->
-        <div class="section-card">
-            <div class="section-body" style="text-align:center; padding:60px 20px;">
-                <i class="fa-solid fa-chart-line" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                    Painel executivo em construção — KPIs, gráficos e destaques chegam no Bloco 5.B.
-                </p>
-            </div>
-        </div>
-    </div>
 
-    <!-- ================================================================
-       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
-       ABA: EFICIÊNCIA (motorista ↔ veículo com toggle)
-       Conteúdo será preenchido no Bloco 5.C
-    ================================================================ -->
-    <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
-        <!-- Conteúdo será adicionado no Bloco 5.C -->
-        <div class="section-card">
-            <div class="section-body" style="text-align:center; padding:60px 20px;">
-                <i class="fa-solid fa-ranking-star" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                    Ranking unificado (Motoristas ↔ Veículos) em construção — chega no Bloco 5.C.
-                </p>
+        <!-- ============================================================
+             LINHA 1 — 6 KPIs COMPACTOS
+             ============================================================ -->
+        <div class="cargas-kpi-grid" id="dash-kpis-grid">
+            <!-- KPI 1: Entregas hoje -->
+            <div class="cargas-kpi-card green" data-kpi="entregas"
+                 onclick="dashIrPara('problemas')"
+                 title="Ver entregas na aba Problemas">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-box-open"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-entregas">--</strong>
+                    <span>Entregas hoje</span>
+                    <small id="dash-kpi-entregas-sub">carregando</small>
+                </div>
+            </div>
+
+            <!-- KPI 2: Motoristas em rota -->
+            <div class="cargas-kpi-card blue" data-kpi="motoristas"
+                 onclick="dashIrPara('eficiencia')"
+                 title="Ver ranking em Eficiência">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-route"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-motoristas">--</strong>
+                    <span>Motoristas em rota</span>
+                    <small id="dash-kpi-motoristas-sub">carregando</small>
+                </div>
+            </div>
+
+            <!-- KPI 3: Problemas pendentes -->
+            <div class="cargas-kpi-card orange" data-kpi="problemas"
+                 onclick="dashIrPara('problemas')"
+                 title="Ver problemas pendentes">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-problemas">--</strong>
+                    <span>Problemas pendentes</span>
+                    <small id="dash-kpi-problemas-sub">carregando</small>
+                </div>
+            </div>
+
+            <!-- KPI 4: Faltantes / Devoluções -->
+            <div class="cargas-kpi-card red" data-kpi="acerto"
+                 onclick="dashAbrirModalAcerto()"
+                 title="Ver detalhes de faltantes e devoluções">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-file-circle-exclamation"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-acerto">--</strong>
+                    <span>Faltantes / Devoluções</span>
+                    <small id="dash-kpi-acerto-sub">carregando</small>
+                </div>
+            </div>
+
+            <!-- KPI 5: Taxa de acerto -->
+            <div class="cargas-kpi-card purple" data-kpi="taxa"
+                 onclick="dashIrPara('analises')"
+                 title="Ver gráficos em Análises">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-clipboard-check"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-taxa">--</strong>
+                    <span>Taxa de acerto</span>
+                    <small id="dash-kpi-taxa-sub">carregando</small>
+                </div>
+            </div>
+
+            <!-- KPI 6: Faturamento do mês -->
+            <div class="cargas-kpi-card gold" data-kpi="faturamento"
+                 onclick="dashIrPara('analises')"
+                 title="Ver evolução em Análises">
+                <div class="cargas-kpi-icon"><i class="fa-solid fa-sack-dollar"></i></div>
+                <div class="cargas-kpi-body">
+                    <strong id="dash-kpi-faturamento">--</strong>
+                    <span>Faturamento do mês</span>
+                    <small id="dash-kpi-faturamento-sub">carregando</small>
+                </div>
             </div>
         </div>
-    </div>
+
+        <!-- ============================================================
+             LINHA 2 — 3 GRÁFICOS
+             ============================================================ -->
+        <div class="cargas-analise-grid mb-4">
+            <div class="cargas-analise-card full">
+                <h3>
+                    <i class="fa-solid fa-chart-line" style="color:var(--nutri-accent); margin-right:6px;"></i>
+                    Ritmo de entregas — últimos 7 dias
+                </h3>
+                <div class="analise-chart-wrap">
+                    <canvas id="dash-chart-entregas"></canvas>
+                </div>
+            </div>
+            <div class="cargas-analise-card">
+                <h3>
+                    <i class="fa-solid fa-chart-pie" style="color:var(--nutri-accent); margin-right:6px;"></i>
+                    Status das entregas
+                </h3>
+                <div class="analise-chart-wrap">
+                    <canvas id="dash-chart-status"></canvas>
+                </div>
+            </div>
+            <div class="cargas-analise-card">
+                <h3>
+                    <i class="fa-solid fa-truck-fast" style="color:var(--nutri-accent); margin-right:6px;"></i>
+                    Ritmo do mês
+                </h3>
+                <div class="analise-chart-wrap">
+                    <canvas id="dash-chart-mes"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================
+             LINHA 3 — TOP 5 MOTORISTAS + ÚLTIMOS 5 EMBARQUES
+             ============================================================ -->
+        <div class="cargas-analise-grid">
+            <!-- Top 5 motoristas -->
+            <div class="cargas-analise-card">
+                <h3>
+                    <i class="fa-solid fa-ranking-star" style="color:var(--nutri-gold); margin-right:6px;"></i>
+                    Top 5 motoristas (30 dias)
+                </h3>
+                <div id="dash-top-motoristas" class="cargas-ranking-list">
+                    <div class="cargas-em-construcao-mini">Carregando...</div>
+                </div>
+            </div>
+
+            <!-- Últimos 5 embarques -->
+            <div class="cargas-analise-card">
+                <h3>
+                    <i class="fa-solid fa-clock-rotate-left" style="color:var(--nutri-accent); margin-right:6px;"></i>
+                    Últimos embarques
+                    <a href="javascript:void(0)" onclick="dashIrPara('mapa')"
+                       style="float:right; font-size:0.75rem; font-weight:700; color:var(--nutri-accent); text-decoration:none;">
+                        Ver histórico completo →
+                    </a>
+                </h3>
+                <div id="dash-ultimos-embarques" class="cargas-ultimos-list">
+                    <div class="cargas-em-construcao-mini">Carregando...</div>
+                </div>
+            </div>
+        </div>
+
+    </div> <!-- /#tab-dashboard -->
 
     <!-- ================================================================
        ABA: PROBLEMAS (ex-"Visão Geral")
@@ -278,153 +401,19 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div> <!-- /#tab-problemas -->
 
     <!-- ================================================================
-         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
-         Este painel foi FUNDIDO no painel "tab-eficiencia".
-         Mantido como referência até o Bloco 9 (limpeza).
+       ABA: EFICIÊNCIA (motorista ↔ veículo com toggle)
+       Conteúdo será preenchido no Bloco 5.C
     ================================================================ -->
-    <!--
-    <div class="cargas-tab-panel" id="tab-motoristas" role="tabpanel" hidden>
-        <div class="section-card mb-6">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-ranking-star"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Ranking de Eficiência dos Motoristas</span>
-                        <span class="text-xs text-slate-400 block" id="info-motoristas-periodo">Últimos 30 dias</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <label class="cargas-priority">
-                        <span>Período</span>
-                        <select id="filtro-motoristas-dias">
-                            <option value="7">7 dias</option>
-                            <option value="30" selected>30 dias</option>
-                            <option value="90">90 dias</option>
-                            <option value="365">12 meses</option>
-                        </select>
-                    </label>
-                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="carregarRankingMotoristas()">
-                        <i class="fa-solid fa-rotate-right"></i> Atualizar
-                    </button>
-                </div>
-            </div>
-            <div class="section-body" id="motoristas-destaques"></div>
-        </div>
-
+    <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
         <div class="section-card">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
-                    <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
-                </div>
-                <label class="toggle-eficiencia" title="Esconde motoristas sem trajetos válidos (amostra insuficiente)">
-                    <input type="checkbox" id="toggle-eficiencia-motoristas" onchange="alternarFiltroEficiencia('motoristas', this.checked)">
-                    <span class="toggle-eficiencia-slider"></span>
-                    <span class="toggle-eficiencia-label">
-                        <i class="fa-solid fa-filter-circle-xmark"></i> Ocultar sem eficiência
-                    </span>
-                </label>
-            </div>
-            <div class="section-body p-0 overflow-x-auto">
-                <table class="table-frota w-full" id="tabela-motoristas">
-                    <thead>
-                        <tr>
-                            <th class="text-center" style="width: 45px;">#</th>
-                            <th>Motorista</th>
-                            <th class="text-center">Embarques</th>
-                            <th class="text-center">Entregas</th>
-                            <th class="text-center">Divergência</th>
-                            <th class="text-center">No Prazo</th>
-                            <th class="text-center">Tempo Médio</th>
-                            <th class="text-center">Tempo Médio Desl.</th>
-                            <th class="text-center">Eficiência Trajeto</th>
-                            <th class="text-center">Problemas</th>
-                            <th class="text-center">Score</th>
-                            <th class="text-center">Índice de Ineficiência</th>
-                        </tr>
-                    </thead>
-                    <tbody id="lista-motoristas">
-                        <tr><td colspan="12" class="text-center py-8">Carregando...</td></tr>
-                    </tbody>
-                </table>
+            <div class="section-body" style="text-align:center; padding:60px 20px;">
+                <i class="fa-solid fa-ranking-star" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
+                <p style="margin-top:12px; color:var(--nutri-text-secondary);">
+                    Ranking unificado (Motoristas ↔ Veículos) em construção — chega no Bloco 5.C.
+                </p>
             </div>
         </div>
-    </div> <!-- /#tab-motoristas -->
-    -->
-
-    <!-- ================================================================
-         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
-         Este painel foi FUNDIDO no painel "tab-eficiencia".
-         Mantido como referência até o Bloco 9 (limpeza).
-    ================================================================ -->
-    <!--
-    <div class="cargas-tab-panel" id="tab-veiculos" role="tabpanel" hidden>
-        <div class="section-card mb-6">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-truck"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Ranking de Eficiência por Caminhão</span>
-                        <span class="text-xs text-slate-400 block" id="info-veiculos-periodo">Últimos 30 dias</span>
-                    </div>
-                </div>
-                <div class="flex items-center gap-2 flex-wrap">
-                    <label class="cargas-priority">
-                        <span>Período</span>
-                        <select id="filtro-veiculos-dias">
-                            <option value="7">7 dias</option>
-                            <option value="30" selected>30 dias</option>
-                            <option value="90">90 dias</option>
-                            <option value="365">12 meses</option>
-                        </select>
-                    </label>
-                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="carregarRankingVeiculos()">
-                        <i class="fa-solid fa-rotate-right"></i> Atualizar
-                    </button>
-                </div>
-            </div>
-            <div class="section-body" id="veiculos-destaques"></div>
-        </div>
-
-        <div class="section-card">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-table-list"></i></div>
-                    <div><span class="font-bold text-[#1a3c34]">Ranking Completo</span></div>
-                </div>
-                <label class="toggle-eficiencia" title="Esconde veículos sem trajetos válidos (amostra insuficiente)">
-                    <input type="checkbox" id="toggle-eficiencia-veiculos" onchange="alternarFiltroEficiencia('veiculos', this.checked)">
-                    <span class="toggle-eficiencia-slider"></span>
-                    <span class="toggle-eficiencia-label">
-                        <i class="fa-solid fa-filter-circle-xmark"></i> Ocultar sem eficiência
-                    </span>
-                </label>
-            </div>
-            <div class="section-body p-0 overflow-x-auto">
-                <table class="table-frota w-full" id="tabela-veiculos">
-                    <thead>
-                        <tr>
-                            <th class="text-center" style="width: 45px;">#</th>
-                            <th>Veículo</th>
-                            <th class="text-center">Embarques</th>
-                            <th class="text-center">Entregas</th>
-                            <th class="text-center">Divergência</th>
-                            <th class="text-center">No Prazo</th>
-                            <th class="text-center">Tempo Médio</th>
-                            <th class="text-center">Tempo Médio Desl.</th>
-                            <th class="text-center">Eficiência Trajeto</th>
-                            <th class="text-center">Problemas</th>
-                            <th class="text-center">Índice de Ineficiência</th>
-                        </tr>
-                    </thead>
-                    <tbody id="lista-veiculos">
-                        <tr><td colspan="11" class="text-center py-8">Carregando...</td></tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div> <!-- /#tab-veiculos -->
-    -->
+    </div>
 
     <!-- ================================================================
        ABA: ANÁLISES (ex-"Gráficos")
@@ -473,7 +462,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div> <!-- /#tab-analises -->
 
     <!-- ================================================================
-       🔥 NOVO 2026-09-22 (Bloco 5.A.2.2):
        ABA: MAPA (Ao Vivo + Histórico + Calor)
        Conteúdo será preenchido no Bloco 5.D
     ================================================================ -->
@@ -530,157 +518,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
         </div>
     </div> <!-- /#tab-mapa -->
-
-    <!-- ================================================================
-         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
-         Este painel foi FUNDIDO no painel "tab-mapa" (sub-aba Histórico).
-         Mantido como referência até o Bloco 9 (limpeza).
-    ================================================================ -->
-    <!--
-    <div class="cargas-tab-panel" id="tab-historico" role="tabpanel" hidden>
-        <div class="cargas-filter-bar" role="search" aria-label="Filtrar histórico de embarques">
-            <label class="cargas-search">
-                <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
-                <input type="search" id="hist-busca" placeholder="Buscar por embarque, motorista, placa ou cliente" autocomplete="off">
-            </label>
-            <label class="cargas-priority">
-                <span>Status</span>
-                <select id="hist-status">
-                    <option value="todos">Todos</option>
-                    <option value="planejado">Planejado</option>
-                    <option value="em_andamento">Em andamento</option>
-                    <option value="finalizado">Finalizado</option>
-                    <option value="cancelado">Cancelado</option>
-                </select>
-            </label>
-            <label class="cargas-priority">
-                <span>De</span>
-                <input type="date" id="hist-data-inicio">
-            </label>
-            <label class="cargas-priority">
-                <span>Até</span>
-                <input type="date" id="hist-data-fim">
-            </label>
-            <button type="button" class="cargas-clear-filter" id="hist-limpar-filtros">
-                <i class="fa-solid fa-rotate-left" aria-hidden="true"></i> Limpar filtros
-            </button>
-        </div>
-
-        <div class="section-card">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-clock-rotate-left"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Embarques</span>
-                        <span class="text-xs text-slate-400 block" id="hist-info-registros">Carregando...</span>
-                    </div>
-                </div>
-            </div>
-            <div class="section-body p-0" id="hist-lista-embarques">
-                <div class="text-center py-8">Carregando...</div>
-            </div>
-            <div class="section-body border-t border-slate-200 flex justify-between items-center flex-wrap gap-2 py-3 px-4">
-                <span class="text-sm text-slate-500" id="hist-info-paginacao">Carregando...</span>
-                <div class="flex gap-1">
-                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
-                            id="hist-btn-anterior" onclick="mudarPaginaHistorico('anterior')">
-                        <i class="fa-solid fa-chevron-left"></i>
-                    </button>
-                    <span class="px-3 py-1.5 text-sm font-bold text-slate-600" id="hist-pagina-atual">1</span>
-                    <button class="px-3 py-1.5 border border-slate-200 rounded-lg text-sm hover:bg-slate-50 transition-colors disabled:opacity-50"
-                            id="hist-btn-proximo" onclick="mudarPaginaHistorico('proximo')">
-                        <i class="fa-solid fa-chevron-right"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div> <!-- /#tab-historico -->
-    -->
-
-    <!-- ================================================================
-         🔒 DESATIVADO 2026-09-22 (Bloco 5.A.2.2):
-         Este painel foi FUNDIDO no painel "tab-mapa" (sub-abas Ao Vivo + Calor).
-         Mantido como referência até o Bloco 9 (limpeza).
-    ================================================================ -->
-    <!--
-    <div class="cargas-tab-panel" id="tab-cobli" role="tabpanel" hidden>
-       <div class="section-card">
-           <div class="section-header flex justify-between items-center flex-wrap gap-2">
-               <div class="flex items-center gap-3">
-                   <div class="section-icon-badge"><i class="fa-solid fa-satellite-dish"></i></div>
-                   <div>
-                       <span class="font-bold text-[#1a3c34]">Integração Cobli</span>
-                       <span class="text-xs text-slate-400 block">Rastreamento veicular real via API da Cobli (chave configurada no servidor)</span>
-                   </div>
-               </div>
-               <span id="cobli-status-badge" class="hist-status-badge">Verificando...</span>
-           </div>
-           <div class="section-body">
-               <div id="cobli-status-detalhe" class="text-sm"></div>
-           </div>
-       </div>
-
-       <div class="section-card mt-4">
-           <div class="section-header flex justify-between items-center flex-wrap gap-2">
-               <div class="flex items-center gap-3">
-                   <div class="section-icon-badge"><i class="fa-solid fa-map-location-dot"></i></div>
-                   <div>
-                       <span class="font-bold text-[#1a3c34]">Mapa ao vivo</span>
-                       <span class="text-xs text-slate-400 block">Posição em tempo real dos veículos vinculados à Cobli</span>
-                   </div>
-               </div>
-               <div class="flex items-center gap-2">
-                   <span id="cobli-mapa-atualizado" class="text-xs text-slate-400"></span>
-                   <button type="button" class="cargas-clear-filter" id="cobli-atualizar-mapa">
-                       <i class="fa-solid fa-rotate-right"></i> Atualizar posições
-                   </button>
-               </div>
-           </div>
-           <div class="section-body p-0">
-               <div id="cobli-mapa-vazio" class="text-center py-8 text-slate-400">
-                   Nenhum veículo vinculado à Cobli no momento.
-               </div>
-               <div id="cobli-mapa" style="width:100%; height:420px; border-radius:0 0 16px 16px; display:none;"></div>
-           </div>
-       </div>
-
-       <div class="section-card mt-4">
-           <div class="section-header flex justify-between items-center flex-wrap gap-2">
-               <div class="flex items-center gap-3">
-                   <div class="section-icon-badge"><i class="fa-solid fa-link"></i></div>
-                   <div>
-                       <span class="font-bold text-[#1a3c34]">Vínculo de veículos com a Cobli</span>
-                       <span class="text-xs text-slate-400 block">Cadastro, vínculo por placa e sincronização com o ERP agora ficam no módulo dedicado</span>
-                   </div>
-               </div>
-           </div>
-           <div class="section-body">
-               <a href="<?= $assetBase ?>/portal/modules/frota/cadastro-frota.php" class="btn-premium" style="text-decoration:none; display:inline-flex;">
-                   <i class="fa-solid fa-id-card-clip"></i> Abrir Cadastro de Frota
-               </a>
-           </div>
-       </div>
-
-       <div class="section-card mt-4">
-           <div class="section-header flex items-center gap-3">
-               <div class="section-icon-badge"><i class="fa-solid fa-shield-halved"></i></div>
-               <div>
-                   <span class="font-bold text-[#1a3c34]">Próximos passos planejados</span>
-                   <span class="text-xs text-slate-400 block">Roadmap da integração completa</span>
-               </div>
-           </div>
-           <div class="section-body">
-               <ul class="text-sm text-slate-600" style="list-style:disc; padding-left:20px; display:flex; flex-direction:column; gap:6px;">
-                   <li>Eventos de risco (freada brusca, distração, excesso de velocidade) somados ao score de desempenho do motorista.</li>
-                   <li>Webhook em tempo real da Cobli (posição, ignição, geocerca) já implementado no backend — falta apenas cadastrar a URL pública no painel da Cobli.</li>
-                   <li>Disponibilizar a posição via Cobli também na versão offline/online do app do motorista.</li>
-                   <li>Sincronização ERP ↔ Cobli ↔ Portal: buscar dados de veículo/motorista no ERP e na Cobli (somente leitura) e gravar/atualizar apenas na tabela interna da Frota, sem inserir nada de volta nos sistemas de origem.</li>
-                   <li>Manutenções preventivas (odômetro/horímetro da Cobli), eficiência de combustível e monitoramento completo do veículo (bateria, câmera, geocercas).</li>
-               </ul>
-           </div>
-       </div>
-    </div> <!-- /#tab-cobli -->
-    -->
 </div>
 
 
@@ -733,7 +570,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 </div>
-
 
 <!-- ================================================================
    MODAL: ANÁLISE DA ENTREGA
