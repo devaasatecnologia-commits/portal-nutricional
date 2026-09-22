@@ -132,6 +132,7 @@ $app->group('/v1', function ($group) {
                 $dash->get('/kpis', [$controller, 'kpis']);
                 $dash->get('/kpis-problemas', [$controller, 'kpisProblemas']);
                 $dash->get('/mapa', [$controller, 'mapa']);
+                $dash->get('/mapa-calor', [$controller, 'mapaCalor']);
                 $dash->get('/alertas', [$controller, 'alertas']);
                 $dash->get('/acerto-kpis',      [$controller, 'acertoKpis']);
                 $dash->get('/acerto-timeline',  [$controller, 'acertoTimeline']);

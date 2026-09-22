@@ -1182,7 +1182,7 @@ function mudarAbaCargas(aba, btn) {
         carregarGraficosCargas();
     }
 
-       // 🗺️ Mapa (Bloco 5.D)
+     // 🗺️ Mapa (Bloco 5.D)
     if (aba === 'mapa') {
         const subtabAtiva = document.querySelector('.cargas-subtab.active')?.dataset.subtab || 'ao-vivo';
 
@@ -1191,8 +1191,9 @@ function mudarAbaCargas(aba, btn) {
             iniciarAutoRefreshMapa();
         } else if (subtabAtiva === 'historico') {
             carregarSubAbaHistorico();
+        } else if (subtabAtiva === 'calor') {
+            carregarSubAbaCalor();
         }
-        // TODO 5.D.3: if (subtabAtiva === 'calor') carregarSubAbaCalor();
     }
 }
 
@@ -3088,18 +3089,15 @@ async function dashAbrirModalAcerto() {
 //    - Calor     → será implementado no 5.D.3
 // ---------------------------------------------------------------
 function mudarSubAbaCargas(subaba, btn) {
-    // Ativa o botão
     document.querySelectorAll('.cargas-subtab').forEach(b => {
         b.classList.toggle('active', b === btn);
         b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
     });
 
-    // Mostra o painel correspondente
     document.querySelectorAll('.cargas-subpanel').forEach(p => {
         p.hidden = p.id !== `subtab-${subaba}`;
     });
 
-    // Carregamento sob demanda
     if (subaba === 'ao-vivo') {
         carregarSubAbaAoVivo();
         iniciarAutoRefreshMapa();
@@ -3110,7 +3108,10 @@ function mudarSubAbaCargas(subaba, btn) {
     if (subaba === 'historico') {
         carregarSubAbaHistorico();
     }
-    // TODO 5.D.3: if (subaba === 'calor') carregarSubAbaCalor();
+
+    if (subaba === 'calor') {
+        carregarSubAbaCalor();
+    }
 }
 // ================================================================
 // 🔥 NOVO 2026-09-22 (Bloco 5.D.2):
@@ -3847,6 +3848,185 @@ async function carregarRoadmapCobli() {
         if (resumo) resumo.textContent = 'Erro ao carregar';
     }
 }
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.3):
+// SUB-ABA "CALOR" — heatmap MapLibre
+// ================================================================
+
+let mapaCalorState = {
+    carregado: false,
+    carregando: false,
+    mapa: null,
+    pontos: []
+};
+
+/**
+ * Orquestrador: carrega a sub-aba Calor (heatmap).
+ */
+async function carregarSubAbaCalor(forcar = false) {
+    if (mapaCalorState.carregando) return;
+    if (mapaCalorState.carregado && !forcar) {
+        if (mapaCalorState.mapa) {
+            setTimeout(() => mapaCalorState.mapa.resize(), 50);
+        }
+        return;
+    }
+    await carregarMapaCalor();
+    mapaCalorState.carregado = true;
+}
+
+/**
+ * Recarrega o mapa de calor (chamado pelos selects e botão Atualizar).
+ */
+function recarregarMapaCalor() {
+    mapaCalorState.carregado = false;
+    carregarMapaCalor();
+}
+
+/**
+ * Busca os pontos agregados do backend e aplica a layer de heatmap.
+ */
+async function carregarMapaCalor() {
+    if (mapaCalorState.carregando) return;
+    mapaCalorState.carregando = true;
+
+    const token = getAuthToken();
+    const mapaEl = document.getElementById('calor-mapa');
+    const vazioEl = document.getElementById('calor-mapa-vazio');
+    const atualizadoEl = document.getElementById('calor-mapa-atualizado');
+
+    const dias = document.getElementById('calor-dias')?.value || 30;
+    const camada = document.getElementById('calor-camada')?.value || 'entregas';
+
+    try {
+        const response = await fetch(
+            `${CONFIG.API_BASE}/dashboard/mapa-calor?dias=${dias}&camada=${camada}`,
+            { headers: { 'Authorization': 'Bearer ' + token } }
+        );
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao buscar dados');
+
+        const pontos = payload.data?.pontos || [];
+        mapaCalorState.pontos = pontos;
+
+        if (!pontos.length) {
+            if (vazioEl) vazioEl.style.display = 'block';
+            if (mapaEl) mapaEl.style.display = 'none';
+            if (atualizadoEl) atualizadoEl.textContent = '—';
+            return;
+        }
+
+        if (vazioEl) vazioEl.style.display = 'none';
+        if (mapaEl) mapaEl.style.display = 'block';
+
+        const mapa = inicializarMapaCalor();
+        if (!mapa) return;
+
+        // Aguarda o style carregar antes de adicionar a layer
+        const adicionarLayer = () => {
+            // Remove layer/fonte antigas
+            if (mapa.getLayer('calor-layer')) mapa.removeLayer('calor-layer');
+            if (mapa.getSource('calor-source')) mapa.removeSource('calor-source');
+
+            mapa.addSource('calor-source', {
+                type: 'geojson',
+                data: {
+                    type: 'FeatureCollection',
+                    features: pontos.map(p => ({
+                        type: 'Feature',
+                        properties: { peso: Number(p.peso) || 1 },
+                        geometry: {
+                            type: 'Point',
+                            coordinates: [Number(p.longitude), Number(p.latitude)]
+                        }
+                    }))
+                }
+            });
+
+            mapa.addLayer({
+                id: 'calor-layer',
+                type: 'heatmap',
+                source: 'calor-source',
+                maxzoom: 15,
+                paint: {
+                    'heatmap-weight': ['get', 'peso'],
+                    'heatmap-intensity': 1,
+                    'heatmap-radius': 30,
+                    'heatmap-opacity': 0.8,
+                    'heatmap-color': [
+                        'interpolate', ['linear'], ['heatmap-density'],
+                        0,   'rgba(0,0,0,0)',
+                        0.2, 'rgba(46,139,104,0.5)',
+                        0.4, 'rgba(212,160,23,0.7)',
+                        0.6, 'rgba(210,123,50,0.85)',
+                        0.8, 'rgba(184,75,75,0.95)',
+                        1,   'rgba(120,20,20,1)'
+                    ]
+                }
+            });
+
+            // Ajusta bounds
+            const bounds = new maplibregl.LngLatBounds();
+            pontos.forEach(p => bounds.extend([Number(p.longitude), Number(p.latitude)]));
+            if (pontos.length > 1) {
+                mapa.fitBounds(bounds, { padding: 60, maxZoom: 12 });
+            } else {
+                mapa.flyTo({ center: [Number(pontos[0].longitude), Number(pontos[0].latitude)], zoom: 12 });
+            }
+        };
+
+        if (mapa.isStyleLoaded()) {
+            adicionarLayer();
+        } else {
+            mapa.once('load', adicionarLayer);
+        }
+
+        if (atualizadoEl) {
+            atualizadoEl.textContent = `${pontos.length} ponto(s) • Atualizado às ${new Date().toLocaleTimeString('pt-BR')}`;
+        }
+    } catch (error) {
+        console.error('Erro ao carregar mapa de calor:', error);
+        if (vazioEl) {
+            vazioEl.style.display = 'block';
+            vazioEl.innerHTML = `
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p>Erro ao carregar mapa de calor.</p>
+                <small>${escapeHtml(error.message)}</small>
+            `;
+        }
+        if (mapaEl) mapaEl.style.display = 'none';
+    } finally {
+        mapaCalorState.carregando = false;
+    }
+}
+
+/**
+ * Inicializa (ou reaproveita) o mapa MapLibre da sub-aba Calor.
+ * Mapa separado do Ao Vivo porque as camadas são diferentes.
+ */
+function inicializarMapaCalor() {
+    if (mapaCalorState.mapa) {
+        const el = document.getElementById('calor-mapa');
+        if (el && el.parentElement) {
+            setTimeout(() => mapaCalorState.mapa.resize(), 50);
+        }
+        return mapaCalorState.mapa;
+    }
+
+    const el = document.getElementById('calor-mapa');
+    if (!el || typeof maplibregl === 'undefined') return null;
+
+    mapaCalorState.mapa = new maplibregl.Map({
+        container: el,
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [-51.925, -14.235],
+        zoom: 4,
+        attributionControl: true
+    });
+    mapaCalorState.mapa.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    return mapaCalorState.mapa;
+}
 // ---------------------------------------------------------------
 // Expor globalmente
 // ---------------------------------------------------------------
@@ -3859,3 +4039,6 @@ window.abrirDetalheVeiculoEficiencia     = abrirDetalheVeiculoEficiencia;
 // 🔥 NOVO 2026-09-22 (Bloco 5.D.4): exportações do Roadmap Cobli
 window.alternarRoadmapCobli = alternarRoadmapCobli;
 window.carregarRoadmapCobli = carregarRoadmapCobli;
+window.carregarSubAbaCalor = carregarSubAbaCalor;
+window.carregarMapaCalor   = carregarMapaCalor;
+window.recarregarMapaCalor = recarregarMapaCalor;

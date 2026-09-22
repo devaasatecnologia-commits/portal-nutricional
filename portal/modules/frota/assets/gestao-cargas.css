@@ -1661,3 +1661,57 @@
 /* ================================================================
    FIM DO BLOCO 5.D.4 (CSS)
    ================================================================ */
+   /* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.D.3):
+   Sub-aba "Calor" — heatmap MapLibre
+   ================================================================ */
+
+/* O mapa em si e a toolbar reutilizam os estilos do 5.D.1 (.cargas-mapa-*) */
+
+/* Só precisamos garantir que o container do calor tem o mesmo comportamento */
+#calor-mapa {
+    width: 100%;
+}
+
+/* Legendas do heatmap (opcional — aparece em cima do mapa) */
+.calor-legenda {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(255, 255, 255, 0.92);
+    border-radius: 10px;
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: var(--nutri-text);
+    box-shadow: 0 4px 16px rgba(0,0,0,.15);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    pointer-events: none;
+}
+.calor-legenda-gradiente {
+    width: 100px;
+    height: 8px;
+    border-radius: 4px;
+    background: linear-gradient(90deg,
+        rgba(46,139,104,0.8) 0%,
+        rgba(212,160,23,0.8) 30%,
+        rgba(210,123,50,0.85) 60%,
+        rgba(184,75,75,0.95) 100%);
+}
+[data-theme="dark"] .calor-legenda {
+    background: rgba(16, 29, 24, 0.92);
+    color: var(--nutri-text);
+    border: 1px solid rgba(255,255,255,.08);
+}
+
+/* Responsivo */
+@media (max-width: 640px) {
+    #calor-mapa { height: 400px !important; }
+    .calor-legenda { bottom: 10px; left: 10px; padding: 8px 10px; }
+}
+
+/* ================================================================
+   FIM DO BLOCO 5.D.3 (CSS)
+   ================================================================ */

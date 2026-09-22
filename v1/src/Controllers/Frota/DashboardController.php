@@ -510,6 +510,99 @@ JOIN frota_entrega e ON e.embarque_id = em.id
     }
 
     /**
+     * GET /v1/frota/dashboard/mapa-calor
+     * Retorna pontos geolocalizados agregados para o heatmap.
+     *
+     * Query params:
+     *   - dias   (int, default 30, max 365)
+     *   - camada (entregas|problemas, default 'entregas')
+     */
+    public function mapaCalor(Request $request, Response $response): Response
+    {
+        try {
+            $params = $request->getQueryParams();
+            $dias   = max(1, min((int)($params['dias'] ?? 30), 365));
+            $camada = strtolower($params['camada'] ?? 'entregas');
+
+            if (!in_array($camada, ['entregas', 'problemas'], true)) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error'   => 'Camada inválida. Use "entregas" ou "problemas".'
+                ], 400);
+            }
+
+            $pontos = [];
+
+            if ($this->pdo) {
+                if ($camada === 'entregas') {
+                    // Densidade de entregas por localização
+                    $sql = "
+                        SELECT
+                            ROUND(latitude::numeric, 4)  AS latitude,
+                            ROUND(longitude::numeric, 4) AS longitude,
+                            COUNT(*)                     AS peso
+                        FROM frota_entrega
+                        WHERE created_at >= CURRENT_DATE - (:dias || ' days')::interval
+                          AND latitude  IS NOT NULL
+                          AND longitude IS NOT NULL
+                          AND status IN ('entregue', 'entregue_com_problema')
+                        GROUP BY ROUND(latitude::numeric, 4), ROUND(longitude::numeric, 4)
+                        HAVING COUNT(*) >= 1
+                        ORDER BY peso DESC
+                        LIMIT 2000
+                    ";
+                } else {
+                    // Densidade de problemas por localização
+                    $sql = "
+                        SELECT
+                            ROUND(e.latitude::numeric, 4)  AS latitude,
+                            ROUND(e.longitude::numeric, 4) AS longitude,
+                            COUNT(*)                       AS peso
+                        FROM frota_entrega_problema ep
+                        INNER JOIN frota_entrega e ON e.id = ep.entrega_id
+                        WHERE ep.created_at >= CURRENT_DATE - (:dias || ' days')::interval
+                          AND e.latitude  IS NOT NULL
+                          AND e.longitude IS NOT NULL
+                        GROUP BY ROUND(e.latitude::numeric, 4), ROUND(e.longitude::numeric, 4)
+                        HAVING COUNT(*) >= 1
+                        ORDER BY peso DESC
+                        LIMIT 2000
+                    ";
+                }
+
+                $stmt = $this->pdo->prepare($sql);
+                $stmt->bindValue(':dias', $dias, PDO::PARAM_INT);
+                $stmt->execute();
+                $pontos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                // Normaliza tipos
+                foreach ($pontos as &$p) {
+                    $p['latitude']  = (float)$p['latitude'];
+                    $p['longitude'] = (float)$p['longitude'];
+                    $p['peso']      = (int)$p['peso'];
+                }
+                unset($p);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data'    => [
+                    'camada' => $camada,
+                    'dias'   => $dias,
+                    'total'  => count($pontos),
+                    'pontos' => $pontos
+                ],
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro no mapaCalor: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error'   => 'Erro ao carregar mapa de calor'
+            ], 500);
+        }
+    }
+    /**
      * Dados padrão para fallback
      */
     private function getDefaultKPIs(): array

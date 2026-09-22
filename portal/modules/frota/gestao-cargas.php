@@ -685,14 +685,44 @@ require_once __DIR__ . '/../../estrutura/header.php';
     </div>
 </div>
 
-        <!-- Sub-painel: Calor -->
+              <!-- Sub-painel: Calor -->
         <div class="cargas-subpanel" id="subtab-calor" role="tabpanel" hidden>
+            <!-- Toolbar -->
+            <div class="cargas-mapa-toolbar">
+                <div class="cargas-mapa-status">
+                    <label class="cargas-priority">
+                        <span>Período</span>
+                        <select id="calor-dias" onchange="recarregarMapaCalor()">
+                            <option value="7">Últimos 7 dias</option>
+                            <option value="30" selected>Últimos 30 dias</option>
+                            <option value="90">Últimos 90 dias</option>
+                        </select>
+                    </label>
+                    <label class="cargas-priority">
+                        <span>Camada</span>
+                        <select id="calor-camada" onchange="recarregarMapaCalor()">
+                            <option value="entregas">Entregas</option>
+                            <option value="problemas">Problemas</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="cargas-mapa-acoes">
+                    <span class="cargas-mapa-atualizado" id="calor-mapa-atualizado">—</span>
+                    <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="recarregarMapaCalor()">
+                        <i class="fa-solid fa-rotate-right"></i> Atualizar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Mapa -->
             <div class="section-card">
-                <div class="section-body" style="text-align:center; padding:60px 20px;">
-                    <i class="fa-solid fa-fire" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                        Mapa de calor em construção — chega no Bloco 5.D.
-                    </p>
+                <div class="section-body p-0">
+                    <div id="calor-mapa" style="height: 520px; border-radius: 0 0 var(--nutri-radius) var(--nutri-radius);"></div>
+                    <div id="calor-mapa-vazio" class="cargas-mapa-vazio" style="display: none;">
+                        <i class="fa-solid fa-fire"></i>
+                        <p>Sem dados de geolocalização no período selecionado.</p>
+                        <small>As entregas precisam ter latitude/longitude registradas.</small>
+                    </div>
                 </div>
             </div>
         </div>
