@@ -574,17 +574,34 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </button>
         </div>
 
-        <!-- Sub-painel: Ao Vivo -->
-        <div class="cargas-subpanel" id="subtab-ao-vivo" role="tabpanel">
-            <div class="section-card">
-                <div class="section-body" style="text-align:center; padding:60px 20px;">
-                    <i class="fa-solid fa-satellite-dish" style="font-size:2.5rem; color:var(--nutri-accent); opacity:0.4;"></i>
-                    <p style="margin-top:12px; color:var(--nutri-text-secondary);">
-                        Mapa ao vivo em construção — chega no Bloco 5.D.
-                    </p>
-                </div>
+  <!-- Sub-painel: Ao Vivo -->
+<div class="cargas-subpanel" id="subtab-ao-vivo" role="tabpanel">
+    <div class="cargas-mapa-toolbar">
+        <div class="cargas-mapa-status">
+            <span class="cobli-status-badge sem-vinculo" id="cobli-status-badge">
+                <span class="cobli-dot"></span> Verificando...
+            </span>
+            <span class="cargas-mapa-detalhe" id="cobli-status-detalhe"></span>
+        </div>
+        <div class="cargas-mapa-acoes">
+            <span class="cargas-mapa-atualizado" id="cobli-mapa-atualizado">—</span>
+            <button class="btn-secondary-nutri text-sm py-1.5 px-4" id="cobli-atualizar-mapa">
+                <i class="fa-solid fa-rotate-right"></i> Atualizar
+            </button>
+        </div>
+    </div>
+
+    <div class="section-card">
+        <div class="section-body p-0">
+            <div id="cobli-mapa" style="height: 520px; border-radius: 0 0 var(--nutri-radius) var(--nutri-radius);"></div>
+            <div id="cobli-mapa-vazio" class="cargas-mapa-vazio" style="display: none;">
+                <i class="fa-solid fa-satellite-dish"></i>
+                <p>Nenhum veículo com rastreamento ativo no momento.</p>
+                <small>Verifique se há veículos vinculados à Cobli em <a href="cadastro-frota.php">Cadastro de Frota</a>.</small>
             </div>
         </div>
+    </div>
+</div>
 
 <!-- Sub-painel: Histórico -->
 <div class="cargas-subpanel" id="subtab-historico" role="tabpanel" hidden>

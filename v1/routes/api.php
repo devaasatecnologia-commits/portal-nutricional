@@ -255,7 +255,7 @@ $app->group('/v1', function ($group) {
                 $rastreamento->post('/alertas/{id}/resolver', [$controller, 'resolverAlerta']);
             });
 
-            // ==================================================================
+                 // ==================================================================
             // 5.1 INTEGRAÇÃO COBLI (RASTREAMENTO VEICULAR REAL)
             // ==================================================================
             $frota->group('/cobli', function ($cobli) {

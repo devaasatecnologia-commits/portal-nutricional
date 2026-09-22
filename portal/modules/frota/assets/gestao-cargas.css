@@ -1390,6 +1390,133 @@
         justify-content: flex-start;
     }
 }
+
+/* ================================================================
+   🔥 NOVO 2026-09-22 (Bloco 5.D.1):
+   Sub-aba "Ao Vivo" — Mapa Cobli
+   ================================================================ */
+
+.cargas-mapa-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 16px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--nutri-card-bg);
+    border: 1px solid var(--nutri-border);
+    box-shadow: var(--nutri-shadow);
+}
+
+.cargas-mapa-status {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.cargas-mapa-detalhe {
+    font-size: 0.78rem;
+    color: var(--nutri-text-secondary);
+}
+
+.cargas-mapa-acoes {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.cargas-mapa-atualizado {
+    font-size: 0.72rem;
+    color: var(--nutri-text-secondary);
+    font-weight: 600;
+}
+
+.cargas-mapa-vazio {
+    text-align: center;
+    padding: 80px 24px;
+    color: var(--nutri-text-secondary);
+}
+.cargas-mapa-vazio i {
+    font-size: 2.5rem;
+    color: var(--nutri-accent);
+    opacity: 0.4;
+    margin-bottom: 14px;
+    display: block;
+}
+.cargas-mapa-vazio p {
+    margin: 0 0 6px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+.cargas-mapa-vazio small {
+    font-size: 0.75rem;
+    opacity: 0.8;
+}
+.cargas-mapa-vazio a {
+    color: var(--nutri-accent);
+    text-decoration: underline;
+}
+
+/* Marcadores do mapa Cobli */
+.cobli-marcador {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    transition: transform 0.2s ease;
+}
+.cobli-marcador:hover {
+    transform: scale(1.08);
+}
+.cobli-marcador-placa {
+    background: var(--nutri-primary, #1a3c34);
+    color: #fff;
+    font-size: 0.62rem;
+    font-weight: 800;
+    padding: 2px 7px;
+    border-radius: 6px;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,.3);
+}
+.cobli-marcador-icone {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-size: 0.95rem;
+    border: 2px solid #fff;
+    box-shadow: 0 3px 10px rgba(0,0,0,.25);
+}
+.cobli-marcador-icone.movimento {
+    background: #10b981;
+    animation: cobliPulseMarker 2s infinite;
+}
+.cobli-marcador-icone.parado {
+    background: #94a3b8;
+}
+@keyframes cobliPulseMarker {
+    0%, 100% { box-shadow: 0 3px 10px rgba(0,0,0,.25), 0 0 0 0 rgba(16,185,129,.6); }
+    70%      { box-shadow: 0 3px 10px rgba(0,0,0,.25), 0 0 0 10px rgba(16,185,129,0); }
+}
+
+/* Responsivo */
+@media (max-width: 640px) {
+    .cargas-mapa-toolbar { flex-direction: column; align-items: stretch; }
+    .cargas-mapa-acoes { justify-content: space-between; }
+    #cobli-mapa { height: 400px !important; }
+}
+
+/* ================================================================
+   FIM DO BLOCO 5.D.1 (CSS)
+   ================================================================ */
+
 /* ================================================================
    🔥 NOVO 2026-09-22 (Bloco 5.D.2):
    Sub-aba "Histórico" — busca de embarques

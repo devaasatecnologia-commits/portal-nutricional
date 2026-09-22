@@ -1182,16 +1182,17 @@ function mudarAbaCargas(aba, btn) {
         carregarGraficosCargas();
     }
 
-    // 🗺️ Mapa (Bloco 5.D — em andamento)
+       // 🗺️ Mapa (Bloco 5.D)
     if (aba === 'mapa') {
-        // Verifica qual sub-aba está ativa e carrega
         const subtabAtiva = document.querySelector('.cargas-subtab.active')?.dataset.subtab || 'ao-vivo';
 
-        if (subtabAtiva === 'historico') {
+        if (subtabAtiva === 'ao-vivo') {
+            carregarSubAbaAoVivo();
+            iniciarAutoRefreshMapa();
+        } else if (subtabAtiva === 'historico') {
             carregarSubAbaHistorico();
         }
-        // TODO 5.D.1: if (subtabAtiva === 'ao-vivo') carregarSubAbaAoVivo();
-        // TODO 5.D.3: if (subtabAtiva === 'calor')   carregarSubAbaCalor();
+        // TODO 5.D.3: if (subtabAtiva === 'calor') carregarSubAbaCalor();
     }
 }
 
@@ -3099,17 +3100,25 @@ function mudarSubAbaCargas(subaba, btn) {
     });
 
     // Carregamento sob demanda
+    if (subaba === 'ao-vivo') {
+        carregarSubAbaAoVivo();
+        iniciarAutoRefreshMapa();
+    } else {
+        pararAutoRefreshMapa();
+    }
+
     if (subaba === 'historico') {
         carregarSubAbaHistorico();
     }
-    // TODO 5.D.1: if (subaba === 'ao-vivo') carregarSubAbaAoVivo();
-    // TODO 5.D.3: if (subaba === 'calor')   carregarSubAbaCalor();
+    // TODO 5.D.3: if (subaba === 'calor') carregarSubAbaCalor();
 }
 // ================================================================
 // 🔥 NOVO 2026-09-22 (Bloco 5.D.2):
 // SUB-ABA "HISTÓRICO" — busca de embarques
 // Migrado do antigo tab-historico (JS já existente)
 // ================================================================
+
+
 
 let historicoCarregado = false;
 
@@ -3122,7 +3131,6 @@ async function carregarSubAbaHistorico(forcar = false) {
     await carregarHistoricoEmbarques();
     historicoCarregado = true;
 }
-
 // ---------------------------------------------------------------
 // Expor funções globalmente (usadas por onclick no HTML)
 // ---------------------------------------------------------------
@@ -3133,6 +3141,10 @@ window.dashAbrirModalAcerto      = dashAbrirModalAcerto;
 window.mudarSubAbaCargas         = mudarSubAbaCargas;
 // 🔥 NOVO 2026-09-22 (Bloco 5.D.2): exportações do Mapa
 window.carregarSubAbaHistorico   = carregarSubAbaHistorico;
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.1): exportações do Mapa Ao Vivo
+window.carregarSubAbaAoVivo  = carregarSubAbaAoVivo;
+window.verificarStatusCobli  = verificarStatusCobli;
+window.carregarPosicoesAoVivo = carregarPosicoesAoVivo;
 // ================================================================
 // 🔥 NOVO 2026-09-22 (Bloco 5.C.2):
 // ABA EFICIÊNCIA — Ranking unificado motorista ↔ veículo
@@ -3504,6 +3516,253 @@ function restaurarFiltroEficienciaGeral() {
     }
 }
 
+// ================================================================
+// 🔥 NOVO 2026-09-22 (Bloco 5.D.1):
+// SUB-ABA "AO VIVO" — Mapa Cobli
+// ================================================================
+
+let mapaAoVivoState = {
+    carregado: false,
+    carregando: false,
+    mapa: null,
+    marcadores: {},
+    veiculos: []
+};
+
+/**
+ * Orquestrador: carrega a sub-aba Ao Vivo.
+ * - Verifica status Cobli
+ * - Carrega posições ao vivo
+ * - Renderiza mapa + marcadores
+ */
+async function carregarSubAbaAoVivo(forcar = false) {
+    if (mapaAoVivoState.carregando) return;
+    if (mapaAoVivoState.carregado && !forcar) {
+        // Já carregado: só garante tamanho correto do mapa
+        if (mapaAoVivoState.mapa) {
+            setTimeout(() => mapaAoVivoState.mapa.resize(), 50);
+        }
+        return;
+    }
+
+    mapaAoVivoState.carregando = true;
+
+    try {
+        await verificarStatusCobli();
+        await carregarPosicoesAoVivo();
+        mapaAoVivoState.carregado = true;
+    } finally {
+        mapaAoVivoState.carregando = false;
+    }
+}
+
+/**
+ * Verifica status da integração Cobli e atualiza o badge.
+ */
+async function verificarStatusCobli() {
+    const token = getAuthToken();
+    const badge = document.getElementById('cobli-status-badge');
+    const detalhe = document.getElementById('cobli-status-detalhe');
+
+    if (badge) {
+        badge.textContent = 'Verificando...';
+        badge.className = 'cobli-status-badge sem-vinculo';
+    }
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/status`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        const dados = payload.data || {};
+
+        if (badge) {
+            if (dados.conexao_ok) {
+                badge.innerHTML = '<span class="cobli-dot"></span> Conectado';
+                badge.className = 'cobli-status-badge ao-vivo';
+            } else if (dados.configurado) {
+                badge.innerHTML = '<span class="cobli-dot"></span> Falha na conexão';
+                badge.className = 'cobli-status-badge ultima';
+            } else {
+                badge.innerHTML = '<span class="cobli-dot"></span> Não configurado';
+                badge.className = 'cobli-status-badge sem-vinculo';
+            }
+        }
+        if (detalhe) {
+            detalhe.textContent = dados.detalhe || '';
+        }
+    } catch (error) {
+        console.error('Erro ao verificar status da Cobli:', error);
+        if (badge) {
+            badge.innerHTML = '<span class="cobli-dot"></span> Erro';
+            badge.className = 'cobli-status-badge sem-vinculo';
+        }
+        if (detalhe) detalhe.textContent = 'Não foi possível verificar o status da integração.';
+    }
+}
+
+/**
+ * Busca posições ao vivo de todos os veículos vinculados e atualiza o mapa.
+ */
+async function carregarPosicoesAoVivo() {
+    const token = getAuthToken();
+    const mapaEl = document.getElementById('cobli-mapa');
+    const vazioEl = document.getElementById('cobli-mapa-vazio');
+    const atualizadoEl = document.getElementById('cobli-mapa-atualizado');
+
+    try {
+        const response = await fetch(`${CONFIG.API_BASE}/cobli/frota/posicoes`, {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'Erro ao buscar posições');
+
+        const veiculos = payload.data || [];
+        mapaAoVivoState.veiculos = veiculos;
+
+        // Sem veículos: mostra estado vazio
+        if (!veiculos.length) {
+            if (vazioEl) vazioEl.style.display = 'block';
+            if (mapaEl) mapaEl.style.display = 'none';
+            if (atualizadoEl) atualizadoEl.textContent = '—';
+            return;
+        }
+
+        // Com veículos: mostra mapa
+        if (vazioEl) vazioEl.style.display = 'none';
+        if (mapaEl) mapaEl.style.display = 'block';
+
+        const mapa = inicializarMapaAoVivo();
+        if (!mapa) return;
+
+        // Remove marcadores antigos
+        Object.keys(mapaAoVivoState.marcadores).forEach(id => {
+            if (!veiculos.some(v => String(v.veiculo_id) === id)) {
+                mapaAoVivoState.marcadores[id].remove();
+                delete mapaAoVivoState.marcadores[id];
+            }
+        });
+
+        const bounds = new maplibregl.LngLatBounds();
+
+        veiculos.forEach(v => {
+            const id = String(v.veiculo_id);
+            const lngLat = [Number(v.longitude), Number(v.latitude)];
+            bounds.extend(lngLat);
+
+            const emMovimento = (Number(v.velocidade) || 0) > 0;
+            const popupHtml = `
+                <strong>${escapeHtml(v.placa || 'Veículo')}${v.modelo ? ' — ' + escapeHtml(v.modelo) : ''}</strong><br>
+                ${v.motorista ? 'Motorista: ' + escapeHtml(v.motorista) + '<br>' : ''}
+                Velocidade: ${v.velocidade ?? '—'} km/h<br>
+                Ignição: ${v.ignicao_ligada ? 'Ligada' : 'Desligada'}<br>
+                <span style="font-size:0.72rem; color:#64748b;">
+                    Atualizado: ${v.atualizado_em ? formatarDataHora(v.atualizado_em) : '—'}
+                </span>
+            `;
+
+            if (mapaAoVivoState.marcadores[id]) {
+                mapaAoVivoState.marcadores[id].setLngLat(lngLat);
+                mapaAoVivoState.marcadores[id].getPopup().setHTML(popupHtml);
+            } else {
+                const el = document.createElement('div');
+                el.className = 'cobli-marcador';
+                el.innerHTML = `
+                    <div class="cobli-marcador-placa">${escapeHtml(v.placa || '-')}</div>
+                    <div class="cobli-marcador-icone ${emMovimento ? 'movimento' : 'parado'}">
+                        <i class="fa-solid fa-truck"></i>
+                    </div>
+                `;
+
+                mapaAoVivoState.marcadores[id] = new maplibregl.Marker({ element: el })
+                    .setLngLat(lngLat)
+                    .setPopup(new maplibregl.Popup({ offset: 30 }).setHTML(popupHtml))
+                    .addTo(mapa);
+            }
+        });
+
+        // Ajusta zoom
+        if (veiculos.length > 1) {
+            mapa.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+        } else if (veiculos.length === 1) {
+            mapa.flyTo({
+                center: [Number(veiculos[0].longitude), Number(veiculos[0].latitude)],
+                zoom: 14
+            });
+        }
+
+        if (atualizadoEl) {
+            atualizadoEl.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+        }
+    } catch (error) {
+        console.error('Erro ao carregar posições ao vivo:', error);
+        if (vazioEl) {
+            vazioEl.style.display = 'block';
+            vazioEl.innerHTML = `
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <p>Erro ao carregar posições dos veículos.</p>
+                <small>${escapeHtml(error.message)}</small>
+            `;
+        }
+        if (mapaEl) mapaEl.style.display = 'none';
+    }
+}
+
+/**
+ * Inicializa (ou reaproveita) o mapa MapLibre da sub-aba Ao Vivo.
+ */
+function inicializarMapaAoVivo() {
+    if (mapaAoVivoState.mapa) {
+        const el = document.getElementById('cobli-mapa');
+        if (el && el.parentElement) {
+            setTimeout(() => mapaAoVivoState.mapa.resize(), 50);
+        }
+        return mapaAoVivoState.mapa;
+    }
+
+    const el = document.getElementById('cobli-mapa');
+    if (!el || typeof maplibregl === 'undefined') return null;
+
+    mapaAoVivoState.mapa = new maplibregl.Map({
+        container: el,
+        style: 'https://tiles.openfreemap.org/styles/liberty',
+        center: [-51.925, -14.235], // centro do Brasil
+        zoom: 4,
+        attributionControl: true
+    });
+    mapaAoVivoState.mapa.addControl(new maplibregl.NavigationControl(), 'top-right');
+
+    return mapaAoVivoState.mapa;
+}
+
+// Auto-refresh do mapa a cada 30s (só quando a sub-aba está visível)
+let mapaAoVivoInterval = null;
+
+function iniciarAutoRefreshMapa() {
+    if (mapaAoVivoInterval) clearInterval(mapaAoVivoInterval);
+    mapaAoVivoInterval = setInterval(() => {
+        const subtab = document.getElementById('subtab-ao-vivo');
+        if (subtab && !subtab.hidden) {
+            carregarPosicoesAoVivo();
+        }
+    }, 30000);
+}
+
+function pararAutoRefreshMapa() {
+    if (mapaAoVivoInterval) {
+        clearInterval(mapaAoVivoInterval);
+        mapaAoVivoInterval = null;
+    }
+}
+
+// Listener do botão Atualizar da toolbar
+document.addEventListener('DOMContentLoaded', function () {
+    const btn = document.getElementById('cobli-atualizar-mapa');
+    if (btn) btn.addEventListener('click', () => {
+        mapaAoVivoState.carregado = false;
+        carregarSubAbaAoVivo(true);
+    });
+});
 // ---------------------------------------------------------------
 // Expor globalmente
 // ---------------------------------------------------------------
