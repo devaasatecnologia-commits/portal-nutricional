@@ -2180,3 +2180,434 @@
     .cobli-metricas-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .cobli-score-hero { flex-direction: column; gap: 14px; }
 }
+/* ================================================================
+   🔥 NOVO 2026-09-23 (Bloco 7.A.4):
+   Badge de saúde da API Cobli
+   ================================================================ */
+
+.cobli-saude-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 999px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+    background: transparent;
+}
+
+.cobli-saude-badge i {
+    font-size: 0.7rem;
+}
+
+/* Estados de saúde */
+.cobli-saude-badge.saudavel {
+    background: rgba(16, 185, 129, 0.1);
+    color: #059669;
+    border-color: rgba(16, 185, 129, 0.25);
+}
+.cobli-saude-badge.saudavel:hover {
+    background: rgba(16, 185, 129, 0.18);
+}
+
+.cobli-saude-badge.atencao {
+    background: rgba(242, 201, 76, 0.16);
+    color: #b45309;
+    border-color: rgba(242, 201, 76, 0.35);
+}
+.cobli-saude-badge.atencao:hover {
+    background: rgba(242, 201, 76, 0.26);
+}
+
+.cobli-saude-badge.critico {
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+    border-color: rgba(220, 38, 38, 0.3);
+    animation: cobliSaudePulse 2s ease-in-out infinite;
+}
+.cobli-saude-badge.critico:hover {
+    background: rgba(220, 38, 38, 0.2);
+}
+
+.cobli-saude-badge.neutro {
+    background: rgba(148, 163, 184, 0.12);
+    color: #64748b;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+@keyframes cobliSaudePulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.25); }
+    50%      { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0); }
+}
+
+/* Tema escuro */
+[data-theme="dark"] .cobli-saude-badge.saudavel { color: #6ee7b7; }
+[data-theme="dark"] .cobli-saude-badge.atencao  { color: var(--nutri-gold-light); }
+[data-theme="dark"] .cobli-saude-badge.critico  { color: #fca5a5; }
+[data-theme="dark"] .cobli-saude-badge.neutro   { color: var(--nutri-text-secondary); }
+
+/* Responsivo: esconde o texto, mantém o ícone */
+@media (max-width: 640px) {
+    .cobli-saude-badge span { display: none; }
+    .cobli-saude-badge { padding: 6px 9px; }
+}
+
+/* Modal de erros da Cobli */
+.cobli-erro-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 10px;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--nutri-border);
+    font-size: 0.82rem;
+}
+.cobli-erro-item:last-child { border-bottom: none; }
+.cobli-erro-item .erro-codigo {
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+    font-weight: 800;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: rgba(220, 38, 38, 0.12);
+    color: #b91c1c;
+}
+.cobli-erro-item .erro-endpoint {
+    font-family: ui-monospace, monospace;
+    font-size: 0.72rem;
+    color: var(--nutri-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.cobli-erro-item .erro-msg {
+    font-size: 0.78rem;
+    color: var(--nutri-text);
+    margin-top: 2px;
+    word-break: break-word;
+}
+.cobli-erro-item .erro-hora {
+    font-size: 0.7rem;
+    color: var(--nutri-text-secondary);
+    white-space: nowrap;
+}
+/* ================================================================
+   🔥 NOVO 2026-09-23 (Bloco 7.A.5):
+   Dropdown mês/ano + card resumo Cobli (aba Eficiência)
+   ================================================================ */
+
+/* ---------- Dropdown de período (mês/ano) ---------- */
+.eficiencia-periodo-picker {
+    position: relative;
+    display: inline-block;
+}
+
+.eficiencia-periodo-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    border: 1px solid var(--nutri-border);
+    background: var(--nutri-card-bg);
+    color: var(--nutri-text);
+    font-size: 0.82rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    min-width: 180px;
+    justify-content: space-between;
+}
+.eficiencia-periodo-btn:hover {
+    border-color: var(--nutri-accent);
+    color: var(--nutri-primary);
+}
+.eficiencia-periodo-btn i {
+    font-size: 0.75rem;
+    color: var(--nutri-text-secondary);
+}
+.eficiencia-periodo-btn i.fa-chevron-down {
+    transition: transform 0.2s ease;
+}
+.eficiencia-periodo-btn[aria-expanded="true"] i.fa-chevron-down {
+    transform: rotate(180deg);
+}
+
+.eficiencia-periodo-popover {
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 30;
+    width: 320px;
+    padding: 14px;
+    background: var(--nutri-card-bg);
+    border: 1px solid var(--nutri-border);
+    border-radius: 14px;
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    animation: eficienciaPeriodoIn 0.18s ease;
+}
+.eficiencia-periodo-popover[hidden] { display: none !important; }
+
+@keyframes eficienciaPeriodoIn {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.eficiencia-periodo-ano {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--nutri-border);
+}
+.eficiencia-periodo-ano span {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+}
+.eficiencia-periodo-ano-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    border: 1px solid var(--nutri-border);
+    background: transparent;
+    color: var(--nutri-text-secondary);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    transition: var(--transition);
+}
+.eficiencia-periodo-ano-btn:hover {
+    border-color: var(--nutri-accent);
+    color: var(--nutri-accent);
+}
+.eficiencia-periodo-ano-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+}
+
+.eficiencia-periodo-meses {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.eficiencia-periodo-mes {
+    padding: 9px 6px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: var(--nutri-text);
+    font-size: 0.78rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: var(--transition);
+    text-align: center;
+}
+.eficiencia-periodo-mes:hover:not(:disabled) {
+    background: rgba(var(--nutri-primary-rgb), 0.06);
+    color: var(--nutri-primary);
+}
+.eficiencia-periodo-mes.ativo {
+    background: var(--nutri-gradient-brand);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(var(--nutri-primary-rgb), 0.2);
+}
+.eficiencia-periodo-mes:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+[data-theme="dark"] .eficiencia-periodo-popover {
+    background: var(--nutri-card-bg);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+}
+[data-theme="dark"] .eficiencia-periodo-mes.ativo {
+    color: #fff;
+}
+[data-theme="dark"] .eficiencia-periodo-mes:hover:not(:disabled) {
+    color: var(--nutri-gold-light);
+}
+
+/* ---------- Card de resumo Cobli (P3=1) ---------- */
+.eficiencia-resumo-cobli {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    margin-bottom: 20px;
+    padding: 14px 22px;
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(var(--nutri-primary-rgb), 0.04), rgba(46, 139, 104, 0.03));
+    border: 1px solid var(--nutri-border);
+    box-shadow: var(--nutri-shadow);
+    flex-wrap: wrap;
+}
+
+.eficiencia-resumo-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 120px;
+}
+
+.eficiencia-resumo-label {
+    font-size: 0.62rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--nutri-text-secondary);
+}
+
+.eficiencia-resumo-valor {
+    font-size: 1.05rem;
+    font-weight: 800;
+    color: var(--nutri-text);
+}
+
+.eficiencia-resumo-sep {
+    width: 1px;
+    align-self: stretch;
+    background: var(--nutri-border);
+    flex-shrink: 0;
+}
+
+@media (max-width: 720px) {
+    .eficiencia-resumo-cobli { gap: 12px; padding: 12px 16px; }
+    .eficiencia-resumo-item { min-width: 90px; }
+    .eficiencia-resumo-valor { font-size: 0.95rem; }
+    .eficiencia-resumo-sep { display: none; }
+}
+
+/* ---------- Badge "Posição Cobli" (P2=B) ---------- */
+.posicao-cobli-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 38px;
+    padding: 4px 10px;
+    border-radius: 8px;
+    background: rgba(var(--nutri-gold-rgb), 0.14);
+    color: #92400e;
+    font-weight: 800;
+    font-size: 0.78rem;
+    border: 1px solid rgba(var(--nutri-gold-rgb), 0.3);
+}
+
+.posicao-cobli-badge.vazio {
+    background: rgba(148, 163, 184, 0.12);
+    color: #64748b;
+    border-color: rgba(148, 163, 184, 0.25);
+}
+
+.posicao-cobli-badge.top3 {
+    background: linear-gradient(135deg, #d4a017, #f2c94c);
+    color: #1a3c34;
+    border-color: transparent;
+    box-shadow: 0 2px 8px rgba(212, 160, 23, 0.3);
+}
+
+[data-theme="dark"] .posicao-cobli-badge {
+    background: rgba(242, 201, 76, 0.18);
+    color: var(--nutri-gold-light);
+}
+[data-theme="dark"] .posicao-cobli-badge.vazio {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--nutri-text-secondary);
+}
+[data-theme="dark"] .posicao-cobli-badge.top3 {
+    background: linear-gradient(135deg, #b9860f, #f2c94c);
+    color: #1a3c34;
+}
+/* ================================================================
+   🔥 NOVO 2026-09-24 (Bloco 7.A.5b):
+   Colunas de 2 linhas na tabela de eficiência
+   (Total Dirigido, Frequência)
+   ================================================================ */
+
+.cell-2linhas {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    line-height: 1.25;
+}
+
+.cell-2linhas strong {
+    font-size: 0.82rem;
+    font-weight: 700;
+    color: var(--nutri-text);
+    white-space: nowrap;
+}
+
+.cell-2linhas small {
+    font-size: 0.68rem;
+    color: var(--nutri-text-secondary);
+    white-space: nowrap;
+}
+
+/* Ajuste da tabela pra caber as colunas novas em telas largas */
+#tabela-eficiencia {
+    font-size: 0.82rem;
+}
+
+#tabela-eficiencia th,
+#tabela-eficiencia td {
+    padding: 10px 8px;
+    vertical-align: middle;
+}
+
+/* Colunas numéricas mais compactas */
+#tabela-eficiencia th:nth-child(3),
+#tabela-eficiencia th:nth-child(4),
+#tabela-eficiencia th:nth-child(5),
+#tabela-eficiencia th:nth-child(6),
+#tabela-eficiencia th:nth-child(7),
+#tabela-eficiencia th:nth-child(8),
+#tabela-eficiencia th:nth-child(9),
+#tabela-eficiencia th:nth-child(10),
+#tabela-eficiencia th:nth-child(11),
+#tabela-eficiencia th:nth-child(12),
+#tabela-eficiencia th:nth-child(13) {
+    min-width: 78px;
+}
+
+#tabela-eficiencia th:nth-child(10),
+#tabela-eficiencia th:nth-child(11) {
+    min-width: 110px;
+}
+
+/* Responsivo: esconde algumas colunas em telas pequenas */
+@media (max-width: 1200px) {
+    #tabela-eficiencia th:nth-child(12),
+    #tabela-eficiencia td:nth-child(12) {
+        display: none;
+    }
+}
+
+@media (max-width: 1024px) {
+    #tabela-eficiencia th:nth-child(10),
+    #tabela-eficiencia td:nth-child(10),
+    #tabela-eficiencia th:nth-child(11),
+    #tabela-eficiencia td:nth-child(11) {
+        display: none;
+    }
+}
+
+@media (max-width: 860px) {
+    #tabela-eficiencia th:nth-child(5),
+    #tabela-eficiencia td:nth-child(5),
+    #tabela-eficiencia th:nth-child(6),
+    #tabela-eficiencia td:nth-child(6),
+    #tabela-eficiencia th:nth-child(7),
+    #tabela-eficiencia td:nth-child(7) {
+        display: none;
+    }
+}

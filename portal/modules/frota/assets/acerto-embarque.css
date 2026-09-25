@@ -2283,3 +2283,183 @@ body.modal-open {
     size: auto;
     margin: 12mm;
 }
+/* ================================================================
+   BOTÃO "VER LEVAS" NO CARD DO ITEM — ACERTO
+   2026-09-25
+   ================================================================ */
+.acerto-item-levas-btn {
+    margin-top: 6px;
+    padding: 5px 10px;
+    border: 1px solid rgba(22, 132, 94, .35);
+    border-radius: 8px;
+    background: rgba(22, 132, 94, .08);
+    color: #0f5f43;
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    transition: all .15s ease;
+}
+.acerto-item-levas-btn:hover {
+    background: #16845e;
+    color: #fff;
+    border-color: #16845e;
+}
+.acerto-item-levas-btn i {
+    font-size: 0.75rem;
+}
+
+[data-theme="dark"] .acerto-item-levas-btn {
+    background: rgba(22, 201, 140, .12);
+    border-color: rgba(22, 201, 140, .35);
+    color: #6ee7b7;
+}
+[data-theme="dark"] .acerto-item-levas-btn:hover {
+    background: #16c98c;
+    color: #0a1310;
+}
+/* ================================================================
+   PACOTE 1.5 — CABEÇALHO DO EMBARQUE (colapsável)
+   ================================================================ */
+.embarque-header-card {
+    margin-bottom: 16px;
+    border: 1px solid var(--driver-border);
+    border-radius: 14px;
+    background: var(--driver-card);
+    overflow: hidden;
+}
+.embarque-header-card[hidden] { display: none; }
+
+.embarque-header-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 12px 14px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s ease;
+}
+.embarque-header-head:hover { background: rgba(22, 132, 94, .04); }
+.embarque-header-head:focus-visible {
+    outline: 2px solid var(--driver-success);
+    outline-offset: -2px;
+}
+
+.embarque-header-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    flex: 1;
+}
+.embarque-header-numero {
+    font-family: ui-monospace, monospace;
+    font-size: 0.85rem;
+    font-weight: 900;
+    color: var(--driver-ink);
+    letter-spacing: -0.01em;
+}
+.embarque-header-erp {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--driver-muted);
+    padding: 2px 6px;
+    background: var(--driver-bg);
+    border-radius: 4px;
+}
+.embarque-header-progresso {
+    font-size: 0.8rem;
+    font-weight: 800;
+    color: var(--driver-success);
+}
+.embarque-header-status {
+    font-size: 0.65rem;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    padding: 3px 8px;
+    border-radius: 999px;
+}
+.embarque-header-status.status-planejado    { background: rgba(213, 168, 75, .18); color: #92400e; }
+.embarque-header-status.status-em_andamento { background: rgba(59, 130, 246, .15); color: #1e40af; }
+.embarque-header-status.status-finalizado   { background: rgba(22, 132, 94, .15); color: #0f5f43; }
+.embarque-header-status.status-problema     { background: rgba(220, 38, 38, .15); color: #991b1b; }
+.embarque-header-status.status-cancelado    { background: rgba(148, 163, 184, .2); color: #475569; }
+
+.embarque-header-chevron {
+    color: var(--driver-muted);
+    font-size: 0.75rem;
+    transition: transform .25s ease;
+    flex-shrink: 0;
+}
+.embarque-header-card:not(.is-collapsed) .embarque-header-chevron {
+    transform: rotate(180deg);
+}
+
+.embarque-header-body {
+    padding: 0 14px 14px;
+    border-top: 1px dashed var(--driver-border);
+}
+.embarque-header-card.is-collapsed .embarque-header-body { display: none; }
+
+.embarque-header-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px 14px;
+    padding-top: 12px;
+    margin-bottom: 14px;
+}
+.embarque-header-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+.embarque-header-label {
+    font-size: 0.65rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--driver-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+.embarque-header-label i { color: var(--driver-success); font-size: 0.7rem; }
+.embarque-header-item strong {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: var(--driver-ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.embarque-header-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.embarque-header-progress-track {
+    height: 6px;
+    background: var(--driver-border);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.embarque-header-progress-track > span {
+    display: block;
+    height: 100%;
+    background: linear-gradient(90deg, var(--driver-success), var(--driver-accent));
+    border-radius: inherit;
+    transition: width .35s ease;
+}
+.embarque-header-progress-label {
+    font-size: 0.7rem;
+    font-weight: 800;
+    color: var(--driver-muted);
+    text-align: right;
+}

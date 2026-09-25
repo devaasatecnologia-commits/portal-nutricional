@@ -919,6 +919,9 @@ function renderizarDetalhesAcerto(dados) {
                                     const isOk = item.status === 'entregue';
                                     const nomeProduto = item.descricao || item.nome_produto || item.produto_nome || item.referencia || 'Item';
 
+                                                                    const temLevas = Array.isArray(item.levas) && item.levas.length > 0;
+                                    const totalLevas = temLevas ? item.levas.length : 0;
+
                                     return `
                                         <div class="acerto-item-grid ${isOk ? 'is-ok' : 'has-divergence'}">
                                             <button type="button" class="acerto-item-photo" ${item.foto_url ? `data-foto-url="${escapeHtml(item.foto_url)}" data-foto-label="${escapeHtml(nomeProduto)}" onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"` : ''}>
@@ -928,6 +931,15 @@ function renderizarDetalhesAcerto(dados) {
                                                 <span class="acerto-item-ref">${escapeHtml(item.referencia || 'Sem ref.')}</span>
                                                 <strong>${escapeHtml(nomeProduto)}</strong>
                                                 <small>ID item: ${escapeHtml(item.item_id || '-')} ${item.motivo ? ' · Motivo: ' + escapeHtml(item.motivo) : ''}</small>
+                                                ${temLevas ? `
+                                                    <button type="button"
+                                                            class="acerto-item-levas-btn"
+                                                            onclick="verLevasAcerto(${entrega.id}, ${item.item_id})">
+                                                        <i class="fa-solid fa-layer-group"></i>
+                                                        ${totalLevas} leva${totalLevas > 1 ? 's' : ''}
+                                                        (${item.total_levas_quantidade || qtdEnt} un)
+                                                    </button>
+                                                ` : ''}
                                             </div>
                                             <div class="acerto-item-qty">
                                                 <span>Previsto <strong>${qtdPrev}</strong></span>
@@ -4835,8 +4847,79 @@ function aplicarFiltroConferencia(tipo, button) {
 }
 
 // ================================================================
+// VER LEVAS NO ACERTO — NOVO 2026-09-25
+// Abre modal mostrando cada leva do item, com foto clicável.
+// ================================================================
+async function verLevasAcerto(entregaId, itemId) {
+    try {
+        const resp = await fetchAuth(`${API_BASE}/frota/entregas/${entregaId}/levas`);
+        if (!resp.success) {
+            Swal.fire('Erro', resp.error || 'Falha ao carregar levas', 'error');
+            return;
+        }
+
+        const item = (resp.data.itens || []).find(it => Number(it.item_id) === Number(itemId));
+        if (!item || !item.levas || !item.levas.length) {
+            Swal.fire('Info', 'Nenhuma leva registrada para este item.', 'info');
+            return;
+        }
+
+        const levasHtml = item.levas.map((leva, i) => `
+            <div style="display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid #e5e7eb;">
+                <span style="width:30px;height:30px;border-radius:50%;background:#16845e;color:#fff;font-weight:800;font-size:0.75rem;display:grid;place-items:center;">
+                    ${i + 1}
+                </span>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-weight:700;font-size:0.9rem;color:#1f2937;">
+                        ${Number(leva.quantidade).toFixed(0)} un
+                    </div>
+                    <div style="font-size:0.72rem;color:#64748b;">
+                        ${formatDateTime(leva.registrado_em)}
+                        ${leva.registrado_por_nome ? ' · ' + escapeHtml(leva.registrado_por_nome) : ''}
+                        ${leva.observacao ? ' · ' + escapeHtml(leva.observacao) : ''}
+                    </div>
+                </div>
+                ${leva.foto_url ? `
+                    <button type="button"
+                            data-foto-url="${escapeHtml(leva.foto_url)}"
+                            data-foto-label="${escapeHtml(item.referencia)} — leva ${i + 1}"
+                            onclick="abrirZoomFoto(this.dataset.fotoUrl, this.dataset.fotoLabel)"
+                            style="border:1px solid #e5e7eb;background:#fff;border-radius:8px;cursor:pointer;padding:6px 10px;font-size:0.75rem;color:#3b82f6;display:inline-flex;align-items:center;gap:6px;">
+                        <i class="fa-regular fa-image"></i> Ver foto
+                    </button>
+                ` : '<span style="color:#94a3b8;font-size:0.72rem;">sem foto</span>'}
+            </div>
+        `).join('');
+
+        Swal.fire({
+            title: `Levas — ${escapeHtml(item.referencia || 'Item')}`,
+            html: `
+                <div style="text-align:left;">
+                    <p style="margin:0 0 10px;font-size:0.85rem;color:#64748b;">
+                        <b>${item.total_levas}</b> leva(s) ·
+                        Total: <b>${Number(item.total_quantidade).toFixed(0)} un</b>
+                    </p>
+                    <div style="max-height:380px;overflow-y:auto;border:1px solid #e5e7eb;border-radius:10px;background:#fff;">
+                        ${levasHtml}
+                    </div>
+                </div>
+            `,
+            width: '580px',
+            confirmButtonText: 'Fechar',
+            confirmButtonColor: '#10b981'
+        });
+    } catch (err) {
+        console.error('Erro ao ver levas:', err);
+        Swal.fire('Erro', err.message || 'Falha ao carregar levas', 'error');
+    }
+}
+
+
+
+// ================================================================
 // EXPORTAÇÕES GLOBAIS
 // ================================================================
+window.verLevasAcerto = verLevasAcerto;
 window.verDetalhesEntrega = verDetalhesEntrega;
 window.formatPeso = formatPeso;
 window.abrirZoomFoto = abrirZoomFoto;

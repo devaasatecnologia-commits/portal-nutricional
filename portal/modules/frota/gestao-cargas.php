@@ -420,66 +420,111 @@ require_once __DIR__ . '/../../estrutura/header.php';
        - 3 destaques dinâmicos
        - Ranking completo com badge Cobli
     ================================================================ -->
-    <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
+   <div class="cargas-tab-panel" id="tab-eficiencia" role="tabpanel" hidden>
 
-        <!-- ============================================================
-             TOGGLE + FILTRO DE PERÍODO
-             ============================================================ -->
-        <div class="cargas-eficiencia-toolbar">
-            <div class="cargas-toggle" id="cargas-toggle-dimensao" role="tablist">
-                <button type="button" class="cargas-toggle-btn active" data-dim="motoristas"
-                        onclick="alternarDimensaoEficiencia('motoristas', this)" role="tab" aria-selected="true">
-                    <i class="fa-solid fa-user"></i> Motoristas
-                </button>
-                <button type="button" class="cargas-toggle-btn" data-dim="veiculos"
-                        onclick="alternarDimensaoEficiencia('veiculos', this)" role="tab" aria-selected="false">
-                    <i class="fa-solid fa-truck"></i> Veículos
-                </button>
-            </div>
-
-            <div class="cargas-eficiencia-filtros">
-                <label class="cargas-priority">
-                    <span>Período</span>
-                    <select id="eficiencia-dias" onchange="recarregarAbaEficiencia()">
-                        <option value="7">Últimos 7 dias</option>
-                        <option value="30" selected>Últimos 30 dias</option>
-                        <option value="90">Últimos 90 dias</option>
-                        <option value="365">Últimos 12 meses</option>
-                    </select>
-                </label>
-
-                <label class="toggle-eficiencia" title="Esconde itens sem trajetos válidos (amostra insuficiente)">
-                    <input type="checkbox" id="toggle-eficiencia-geral" onchange="alternarFiltroEficienciaGeral(this.checked)">
-                    <span class="toggle-eficiencia-slider"></span>
-                    <span class="toggle-eficiencia-label">
-                        <i class="fa-solid fa-filter-circle-xmark"></i>
-                        Ocultar sem eficiência
-                    </span>
-                </label>
-
-                <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="recarregarAbaEficiencia()">
-                    <i class="fa-solid fa-rotate-right"></i> Atualizar
-                </button>
-            </div>
+    <!-- ============================================================
+         TOGGLE + FILTRO DE PERÍODO (P1=c.1 + P3=1 + P4=a + P6=b)
+         - Mês/ano dropdown imitando a Cobli
+         - Removido "Últimos N dias" (P4=a)
+         - Anos: corrente e anterior (P6=b)
+         ============================================================ -->
+    <div class="cargas-eficiencia-toolbar">
+        <div class="cargas-toggle" id="cargas-toggle-dimensao" role="tablist">
+            <button type="button" class="cargas-toggle-btn active" data-dim="motoristas"
+                    onclick="alternarDimensaoEficiencia('motoristas', this)" role="tab" aria-selected="true">
+                <i class="fa-solid fa-user"></i> Motoristas
+            </button>
+            <button type="button" class="cargas-toggle-btn" data-dim="veiculos"
+                    onclick="alternarDimensaoEficiencia('veiculos', this)" role="tab" aria-selected="false">
+                <i class="fa-solid fa-truck"></i> Veículos
+            </button>
         </div>
 
-        <!-- ============================================================
-             DESTAQUES (3 cards)
-             ============================================================ -->
-        <div class="section-card mb-6">
-            <div class="section-header flex justify-between items-center flex-wrap gap-2">
-                <div class="flex items-center gap-3">
-                    <div class="section-icon-badge"><i class="fa-solid fa-medal"></i></div>
-                    <div>
-                        <span class="font-bold text-[#1a3c34]">Destaques</span>
-                        <span class="text-xs text-slate-400 block" id="eficiencia-destaques-periodo">Últimos 30 dias</span>
+        <div class="cargas-eficiencia-filtros">
+            <!-- 🔥 NOVO: dropdown mês/ano (substitui "eficiencia-dias") -->
+            <div class="eficiencia-periodo-picker" id="eficiencia-periodo-picker">
+                <button type="button" class="eficiencia-periodo-btn" id="eficiencia-periodo-btn"
+                        onclick="toggleDropdownMesAno(event)" aria-haspopup="true" aria-expanded="false">
+                    <i class="fa-regular fa-calendar"></i>
+                    <span id="eficiencia-periodo-label">Setembro 2026</span>
+                    <i class="fa-solid fa-chevron-down"></i>
+                </button>
+
+                <div class="eficiencia-periodo-popover" id="eficiencia-periodo-popover" hidden>
+                    <div class="eficiencia-periodo-ano">
+                        <button type="button" class="eficiencia-periodo-ano-btn" onclick="mudarAnoEficiencia(-1)" title="Ano anterior">
+                            <i class="fa-solid fa-chevron-left"></i>
+                        </button>
+                        <span id="eficiencia-periodo-ano-atual">2026</span>
+                        <button type="button" class="eficiencia-periodo-ano-btn" onclick="mudarAnoEficiencia(1)" title="Próximo ano">
+                            <i class="fa-solid fa-chevron-right"></i>
+                        </button>
+                    </div>
+                    <div class="eficiencia-periodo-meses" id="eficiencia-periodo-meses">
+                        <!-- Renderizado por JS -->
                     </div>
                 </div>
             </div>
-            <div class="section-body" id="eficiencia-destaques">
-                <div class="cargas-em-construcao-mini">Carregando destaques...</div>
+
+            <label class="toggle-eficiencia" title="Esconde itens sem trajetos válidos (amostra insuficiente)">
+                <input type="checkbox" id="toggle-eficiencia-geral" onchange="alternarFiltroEficienciaGeral(this.checked)">
+                <span class="toggle-eficiencia-slider"></span>
+                <span class="toggle-eficiencia-label">
+                    <i class="fa-solid fa-filter-circle-xmark"></i>
+                    Ocultar sem eficiência
+                </span>
+            </label>
+
+            <button class="btn-secondary-nutri text-sm py-1.5 px-4" onclick="recarregarAbaEficiencia()">
+                <i class="fa-solid fa-rotate-right"></i> Atualizar
+            </button>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         🔥 NOVO (P3=1): CARD DE RESUMO COBLI
+         Mostra os 4 números do topo da Cobli real:
+         última atualização, classificados, não classificados, média
+         ============================================================ -->
+    <div class="eficiencia-resumo-cobli" id="eficiencia-resumo-cobli">
+        <div class="eficiencia-resumo-item">
+            <span class="eficiencia-resumo-label">Última atualização</span>
+            <strong class="eficiencia-resumo-valor" id="eficiencia-resumo-atualizado">—</strong>
+        </div>
+        <div class="eficiencia-resumo-sep"></div>
+        <div class="eficiencia-resumo-item">
+            <span class="eficiencia-resumo-label">Classificaram</span>
+            <strong class="eficiencia-resumo-valor" id="eficiencia-resumo-classificados">—</strong>
+        </div>
+        <div class="eficiencia-resumo-sep"></div>
+        <div class="eficiencia-resumo-item">
+            <span class="eficiencia-resumo-label">Não classificaram</span>
+            <strong class="eficiencia-resumo-valor" id="eficiencia-resumo-nao-classificados">—</strong>
+        </div>
+        <div class="eficiencia-resumo-sep"></div>
+        <div class="eficiencia-resumo-item">
+            <span class="eficiencia-resumo-label">Média das notas</span>
+            <strong class="eficiencia-resumo-valor" id="eficiencia-resumo-media">—</strong>
+        </div>
+    </div>
+
+    <!-- ============================================================
+         DESTAQUES (3 cards)
+         ============================================================ -->
+    <div class="section-card mb-6">
+        <div class="section-header flex justify-between items-center flex-wrap gap-2">
+            <div class="flex items-center gap-3">
+                <div class="section-icon-badge"><i class="fa-solid fa-medal"></i></div>
+                <div>
+                    <span class="font-bold text-[#1a3c34]">Destaques</span>
+                    <span class="text-xs text-slate-400 block" id="eficiencia-destaques-periodo">Setembro 2026</span>
+                </div>
             </div>
         </div>
+        <div class="section-body" id="eficiencia-destaques">
+            <div class="cargas-em-construcao-mini">Carregando destaques...</div>
+        </div>
+    </div>
 
         <!-- ============================================================
              RANKING COMPLETO (tabela única, colunas ajustadas por dimensão)
@@ -655,6 +700,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <span class="cobli-dot"></span> Verificando...
             </span>
             <span class="cargas-mapa-detalhe" id="cobli-status-detalhe"></span>
+                 <!-- 🔥 NOVO 2026-09-23 (Bloco 7.A.4): badge de saúde da API Cobli -->
+        <button type="button" class="cobli-saude-badge neutro" id="cobli-saude-badge"
+                onclick="abrirModalSaudeCobli()" title="Ver detalhes da integração">
+            <i class="fa-solid fa-heart-pulse"></i>
+            <span id="cobli-saude-texto">—</span>
+        </button>
         </div>
         <div class="cargas-mapa-acoes">
             <span class="cargas-mapa-atualizado" id="cobli-mapa-atualizado">—</span>
