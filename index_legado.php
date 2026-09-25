@@ -3301,9 +3301,279 @@ case 'enviar_pedidos_aguardando':
         exit(1);
     }
     break;
+/* ==========================================================================
+   CASE: RELATÓRIO DE CLIENTES ISENTOS DE INSCRIÇÃO ESTADUAL
+   Execução exclusiva via CRON/CLI
+   1 e-mail GERAL (gestores) + N e-mails POR FILIAL
+   ========================================================================== */
+case 'G3R4r3l4t0r10Cl13nt3s1s3nt0s':
+    // ============================================================
+    // CONTROLE DE EXECUÇÃO - APENAS VIA CRON/CLI
+    // ============================================================
+    $userAgent = $_SERVER['HTTP_USER_AGENT'] ?? '';
+    $isCronJob = (strpos($userAgent, 'CronJob') !== false) || (php_sapi_name() === 'cli');
 
+    if (!$isCronJob) {
+        header('HTTP/1.0 403 Forbidden');
+        die("Acesso negado. Este endpoint é exclusivo para execução via cron.");
+    }
 
+    // Ajustes de ambiente para relatório pesado
+    ini_set('memory_limit', '512M');
+    ini_set('max_execution_time', 300);
 
+    header('Content-Type: text/plain; charset=utf-8');
+    echo "=== INICIANDO RELATÓRIO DE CLIENTES ISENTOS ===\n";
+    echo "Data: " . date('d/m/Y H:i:s') . "\n\n";
+
+    try {
+        if (!isset($pdo)) {
+            throw new Exception("ERRO CRÍTICO: Conexão com banco (\$pdo) não disponível.");
+        }
+
+        // ============================================================
+        // 1. CARREGAR CONFIGURAÇÃO
+        // ============================================================
+        require_once __DIR__ . '/email_listas.php';
+        $config = getEmails('clientes_isento');
+
+        if (empty($config) || !is_array($config)) {
+            throw new Exception("Configuração 'clientes_isento' inválida em email_listas.php.");
+        }
+
+        $destinosGeral   = $config['geral']   ?? [];
+        $destinosFiliais = $config['filiais'] ?? [];
+
+        echo "📧 Configuração carregada:\n";
+        echo "   • Geral: " . count($destinosGeral) . " destinatário(s)\n";
+        echo "   • Filiais: " . count($destinosFiliais) . " filial(is)\n\n";
+
+        $enviados = 0;
+        $falhas   = 0;
+
+        // ============================================================
+        // 2. FUNÇÃO AUXILIAR - Envia um e-mail (geral ou por filial)
+        // ============================================================
+        $enviarRelatorio = function($clientes, $destinos, $tituloContexto, $idFilial = null) use (
+            &$enviados, &$falhas
+        ) {
+            if (empty($clientes)) {
+                echo "⏭️ Sem clientes para: $tituloContexto\n\n";
+                return;
+            }
+
+            if (empty($destinos)) {
+                echo "⚠️ Sem destinatários para: $tituloContexto\n\n";
+                return;
+            }
+
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+            echo "📨 $tituloContexto\n";
+            echo "📧 Destinatários: " . implode(', ', $destinos) . "\n";
+            echo "👥 Total de clientes: " . count($clientes) . "\n";
+            echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+
+            try {
+                // 2a. GERAR EXCEL
+                echo "📊 Gerando planilha Excel...\n";
+                $arquivoExcel = Uteis::gerarExcelClientesIsentos($clientes);
+
+                if (!$arquivoExcel || !file_exists($arquivoExcel)) {
+                    throw new Exception("Falha ao gerar Excel.");
+                }
+
+                $tamanhoKB = round(filesize($arquivoExcel) / 1024, 2);
+                echo "✅ Excel gerado ({$tamanhoKB} KB)\n";
+
+                // 2b. MONTAR E-MAIL
+                echo "📨 Enviando e-mail...\n";
+
+                $mail = new PHPMailer(true);
+                $mail->isSMTP();
+                $mail->Host       = EMAIL_HOST;
+                $mail->SMTPAuth   = true;
+                $mail->Username   = EMAIL_USERNAME;
+                $mail->Password   = EMAIL_PASSWORD;
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                $mail->Port       = EMAIL_PORT;
+                $mail->CharSet    = 'UTF-8';
+                $mail->setFrom(EMAIL_USERNAME, 'Nutricional Distribuidora - Relatório');
+                $mail->isHTML(true);
+                $mail->SMTPOptions = [
+                    'ssl' => [
+                        'verify_peer' => false,
+                        'verify_peer_name' => false,
+                        'allow_self_signed' => true
+                    ]
+                ];
+
+                foreach ($destinos as $email) {
+                    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                        $mail->addAddress($email);
+                    } else {
+                        echo "⚠️ E-mail inválido ignorado: $email\n";
+                    }
+                }
+
+                // Assunto e anexo por contexto
+                if ($idFilial) {
+                    $mail->Subject = '📋 Relatório de Clientes Isentos - Filial ' . $idFilial . ' - ' . date('d/m/Y');
+                    $nomeAnexo = "clientes_isentos_filial{$idFilial}_" . date('Y-m-d') . ".xlsx";
+                } else {
+                    $mail->Subject = '📋 Relatório GERAL de Clientes Isentos - ' . date('d/m/Y');
+                    $nomeAnexo = "clientes_isentos_GERAL_" . date('Y-m-d') . ".xlsx";
+                }
+
+                $mail->Body = Uteis::construirEmailClientesIsentos($clientes, $idFilial);
+
+                if (!file_exists($arquivoExcel)) {
+                    $nomeAnexo = str_replace('.xlsx', '.csv', $nomeAnexo);
+                }
+                $mail->addAttachment($arquivoExcel, $nomeAnexo);
+                echo "📎 Anexo: $nomeAnexo\n";
+
+                if ($mail->send()) {
+                    echo "✅ E-mail enviado com sucesso!\n\n";
+                    $enviados++;
+                } else {
+                    throw new Exception("Falha no envio: " . $mail->ErrorInfo);
+                }
+
+                @unlink($arquivoExcel);
+
+            } catch (Exception $e) {
+                $falhas++;
+                echo "❌ ERRO: " . $e->getMessage() . "\n\n";
+
+                $logDir = __DIR__ . '/erros_log';
+                if (!file_exists($logDir)) @mkdir($logDir, 0755, true);
+                file_put_contents(
+                    $logDir . '/cron_clientes_isentos.log',
+                    date('[Y-m-d H:i:s]') . " [$tituloContexto] ERRO: " . $e->getMessage() . "\n",
+                    FILE_APPEND
+                );
+            }
+
+            sleep(2); // Pausa entre envios
+        };
+
+        // ============================================================
+        // 3. ENVIAR E-MAIL GERAL (se configurado)
+        // ============================================================
+        if (!empty($destinosGeral)) {
+            $sqlGeral = "SELECT DISTINCT
+                            cli.idcliforemp AS cd_cliente,
+                            cli.fantasia,
+                            cli.razao,
+                            cli.cnpj,
+                            cli.cpf,
+                            cli.ie,
+                            cli.idvendedor,
+                            (SELECT vend.fantasia FROM cliforemp vend WHERE vend.idcliforemp = cli.idvendedor) AS representante,
+                            (SELECT descricao FROM cidade WHERE cidade.idcidade = cli.idcidade) AS cidade,
+                            cli.uf,
+                            cli.email,
+                            cli.fone
+                        FROM cliforemp cli 
+                        WHERE (cli.ie LIKE '%ISENTO%' OR cli.ie = '' OR cli.ie IS NULL)
+                          AND cli.tipocliforemp = 0 
+                          AND cli.idfilial IN (1, 6)
+                          AND cli.inativo = 'N' 
+                        ORDER BY cli.uf ASC, cli.fantasia ASC";
+
+            echo "🔍 Buscando TODOS os clientes (visão geral)...\n";
+            $stmt = $pdo->prepare($sqlGeral);
+            $stmt->execute();
+            $clientesGeral = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            echo "✅ " . count($clientesGeral) . " clientes encontrados (geral)\n\n";
+
+            $enviarRelatorio(
+                $clientesGeral,
+                $destinosGeral,
+                "RELATÓRIO GERAL (Gestores)",
+                null
+            );
+        } else {
+            echo "⏭️ Nenhum destinatário na chave 'geral' - pulando envio geral\n\n";
+        }
+
+        // ============================================================
+        // 4. ENVIAR E-MAILS POR FILIAL (se configurado)
+        // ============================================================
+        if (!empty($destinosFiliais) && is_array($destinosFiliais)) {
+            foreach ($destinosFiliais as $idFilial => $destinos) {
+                $idFilial = (int)$idFilial;
+
+                if (empty($destinos)) {
+                    echo "⚠️ Filial $idFilial sem destinatários - pulando\n\n";
+                    continue;
+                }
+
+                $sqlFilial = "SELECT DISTINCT
+                                cli.idcliforemp AS cd_cliente,
+                                cli.fantasia,
+                                cli.razao,
+                                cli.cnpj,
+                                cli.cpf,
+                                cli.ie,
+                                cli.idvendedor,
+                                (SELECT vend.fantasia FROM cliforemp vend WHERE vend.idcliforemp = cli.idvendedor) AS representante,
+                                (SELECT descricao FROM cidade WHERE cidade.idcidade = cli.idcidade) AS cidade,
+                                cli.uf,
+                                cli.email,
+                                cli.fone
+                            FROM cliforemp cli 
+                            WHERE (cli.ie LIKE '%ISENTO%' OR cli.ie = '' OR cli.ie IS NULL)
+                              AND cli.tipocliforemp = 0 
+                              AND cli.idfilial = :idfilial
+                              AND cli.inativo = 'N' 
+                            ORDER BY cli.uf ASC, cli.fantasia ASC";
+
+                echo "🔍 Buscando clientes da filial $idFilial...\n";
+                $stmt = $pdo->prepare($sqlFilial);
+                $stmt->execute(['idfilial' => $idFilial]);
+                $clientesFilial = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+                echo "✅ " . count($clientesFilial) . " clientes encontrados (filial $idFilial)\n\n";
+
+                $enviarRelatorio(
+                    $clientesFilial,
+                    $destinos,
+                    "RELATÓRIO FILIAL $idFilial",
+                    $idFilial
+                );
+            }
+        } else {
+            echo "⏭️ Nenhuma filial configurada - pulando envios por filial\n\n";
+        }
+
+        // ============================================================
+        // 5. RESUMO FINAL
+        // ============================================================
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+        echo "🎉 PROCESSAMENTO CONCLUÍDO\n";
+        echo "📧 E-mails enviados: $enviados\n";
+        echo "❌ Falhas: $falhas\n";
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+
+        exit(0);
+
+    } catch (Exception $e) {
+        $errorMsg = "❌ ERRO CRÍTICO: " . $e->getMessage();
+        echo $errorMsg . "\n";
+
+        $logDir = __DIR__ . '/erros_log';
+        if (!file_exists($logDir)) @mkdir($logDir, 0755, true);
+        file_put_contents(
+            $logDir . '/cron_clientes_isentos.log',
+            date('[Y-m-d H:i:s]') . " ERRO CRÍTICO: " . $e->getMessage() . "\n",
+            FILE_APPEND
+        );
+
+        exit(1);
+    }
+    break;
 
 
 case '3M411':
