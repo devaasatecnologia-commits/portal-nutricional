@@ -180,6 +180,8 @@ $app->group('/v1', function ($group) {
                 $entrega->get('/rastreamento/{codigo}', [$controller, 'buscarPorRastreamento']);
 
                 // Ações da Entrega
+                               
+                $entrega->get('/{id}/levas', [$controller, 'listarLevas']);
                 $entrega->post('/{id}/checkin', [$controller, 'checkin']);
                 $entrega->post('/{id}/checkout', [$controller, 'checkout']);
                 $entrega->post('/{id}/falha', [$controller, 'falha']);
@@ -197,6 +199,7 @@ $app->group('/v1', function ($group) {
                 $motorista->get('', [$controller, 'listar']);
                 $motorista->get('/painel-app', [$controller, 'painelApp']);
                 $motorista->get('/{id}', [$controller, 'buscar']);
+                $motorista->get('/{id}/painel', [$controller, 'painelPessoal']);
                 $motorista->post('', [$controller, 'criar']);
                 $motorista->put('/{id}', [$controller, 'atualizar']);
                 $motorista->delete('/{id}', [$controller, 'deletar']);
@@ -259,31 +262,31 @@ $app->group('/v1', function ($group) {
                  // ==================================================================
             // 5.1 INTEGRAÇÃO COBLI (RASTREAMENTO VEICULAR REAL)
             // ==================================================================
-            $frota->group('/cobli', function ($cobli) {
-                $controller = new \Nutricional\Controllers\Frota\CobliController();
-                $cobli->get('/status', [$controller, 'status']);
-                $cobli->get('/roadmap', [$controller, 'roadmap']);
-                $cobli->post('/configurar', [$controller, 'configurar'])->add(new FrotaGestaoMiddleware());
-                $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
-                $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);
-                $cobli->post('/sincronizar-frota', [$controller, 'sincronizarFrota'])->add(new FrotaGestaoMiddleware());
-                $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico'])->add(new FrotaGestaoMiddleware());
-                $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
-                $cobli->post('/vincular-motoristas-auto', [$controller, 'vincularMotoristasAuto'])->add(new FrotaGestaoMiddleware());
-                $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo'])->add(new FrotaGestaoMiddleware());
-                $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo'])->add(new FrotaGestaoMiddleware());
-                $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista'])->add(new FrotaGestaoMiddleware());
-                $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
-                $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
-                $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);
+           $frota->group('/cobli', function ($cobli) {
+    $controller = new \Nutricional\Controllers\Frota\CobliController();
+    $cobli->get('/status', [$controller, 'status']);
+    $cobli->get('/saude',  [$controller, 'saude']);   // 🔥 NOVO 2026-09-23 (Bloco 7.A.4)
+    $cobli->get('/roadmap', [$controller, 'roadmap']);
+    $cobli->post('/configurar', [$controller, 'configurar'])->add(new FrotaGestaoMiddleware());
+    $cobli->get('/dispositivos', [$controller, 'listarDispositivos']);
+    $cobli->get('/veiculos-cobli', [$controller, 'listarVeiculosCobli']);
+    $cobli->post('/sincronizar-frota', [$controller, 'sincronizarFrota'])->add(new FrotaGestaoMiddleware());
+    $cobli->post('/vincular-automatico', [$controller, 'vincularAutomatico'])->add(new FrotaGestaoMiddleware());
+    $cobli->get('/veiculos-vinculados', [$controller, 'listarVinculos']);
+    $cobli->post('/vincular-motoristas-auto', [$controller, 'vincularMotoristasAuto'])->add(new FrotaGestaoMiddleware());
+    $cobli->post('/veiculo/{id}/vincular', [$controller, 'vincularVeiculo'])->add(new FrotaGestaoMiddleware());
+    $cobli->delete('/veiculo/{id}/vincular', [$controller, 'desvincularVeiculo'])->add(new FrotaGestaoMiddleware());
+    $cobli->post('/veiculo/{id}/sincronizar', [$controller, 'sincronizarVeiculoMotorista'])->add(new FrotaGestaoMiddleware());
+    $cobli->get('/veiculo/{id}/posicao', [$controller, 'posicaoVeiculo']);
+    $cobli->get('/veiculo/{id}/rota-historico', [$controller, 'historicoPosicoes']);
+    $cobli->get('/frota/posicoes', [$controller, 'posicoesFrota']);
 
-                $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista'])->add(new FrotaGestaoMiddleware());
-                $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
+    $cobli->post('/motorista/{id}/vincular', [$controller, 'vincularMotorista'])->add(new FrotaGestaoMiddleware());
+    $cobli->get('/motorista/{id}/eventos-risco', [$controller, 'eventosRiscoMotorista']);
 
-                $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco'])->add(new FrotaGestaoMiddleware());
-                $cobli->get('/ranking-seguranca', [$controller, 'rankingSeguranca']);
-              
-            });
+    $cobli->post('/sincronizar-eventos-risco', [$controller, 'sincronizarEventosRisco'])->add(new FrotaGestaoMiddleware());
+    $cobli->get('/ranking-seguranca', [$controller, 'rankingSeguranca']);
+});
 
             // ==================================================================
             // 6. IMPORTAÇÃO DO ERP

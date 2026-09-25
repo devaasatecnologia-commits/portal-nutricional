@@ -246,6 +246,7 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
         // Buscar checklist, fotos e problemas para cada entrega
+         // Buscar checklist, fotos e problemas para cada entrega
         foreach ($entregas as &$entrega) {
             // Checklist
             $stmt = $pdo->prepare("
@@ -264,7 +265,53 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
                 ORDER BY item_id ASC
             ");
             $stmt->execute(['entrega_id' => $entrega['id']]);
-            $entrega['checklist'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $checklist = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // ============================================================
+            // 🔥 NOVO 2026-09-25 (ENTREGAS PARCIAIS): busca levas por checklist
+            // ============================================================
+            if (!empty($checklist)) {
+                $checklistIds = array_column($checklist, 'id');
+                $placeholders = implode(',', array_fill(0, count($checklistIds), '?'));
+
+                $stmtLevas = $pdo->prepare("
+                    SELECT
+                        id,
+                        checklist_id,
+                        item_id,
+                        referencia,
+                        quantidade,
+                        foto_url,
+                        observacao,
+                        registrado_em,
+                        registrado_por,
+                        latitude,
+                        longitude
+                    FROM frota_checklist_entrega_leva
+                    WHERE checklist_id IN ({$placeholders})
+                    ORDER BY checklist_id ASC, registrado_em ASC
+                ");
+                $stmtLevas->execute($checklistIds);
+                $todasLevas = $stmtLevas->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Agrupa por checklist_id
+                $levasPorChecklist = [];
+                foreach ($todasLevas as $leva) {
+                    $levasPorChecklist[(int)$leva['checklist_id']][] = $leva;
+                }
+
+                // Anexa ao checklist
+                foreach ($checklist as &$itemCheck) {
+                    $itemCheck['levas'] = $levasPorChecklist[(int)$itemCheck['id']] ?? [];
+                    $itemCheck['total_levas'] = count($itemCheck['levas']);
+                    $itemCheck['total_levas_quantidade'] = array_sum(
+                        array_map(fn($l) => (float)$l['quantidade'], $itemCheck['levas'])
+                    );
+                }
+                unset($itemCheck);
+            }
+
+            $entrega['checklist'] = $checklist;
 
             // Fotos
             $stmt = $pdo->prepare("
@@ -282,6 +329,8 @@ public function getDetalhesAcerto(Request $request, Response $response, array $a
             ");
             $stmt->execute(['entrega_id' => $entrega['id']]);
             $entrega['fotos'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+  
 
             // ================================================================
             // PROBLEMAS (com tratamento vinculado — Bloco 4)

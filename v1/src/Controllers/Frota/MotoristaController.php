@@ -560,9 +560,26 @@ class MotoristaController
         ]);
     }
     
+// v1/src/Controllers/Frota/MotoristaController.php
+
     /**
      * GET /v1/frota/motoristas/{id}/entregas/hoje
      * Entregas do motorista para hoje
+     *
+     * 🔥 CORRIGIDO 2026-09-24:
+     *   - O `checklist` de cada entrega agora vem do ERP (pedido_item),
+     *     não da tabela frota_checklist_entrega (que só tem dados
+     *     DEPOIS do checkout).
+     *   - A tabela frota_checklist_entrega é usada apenas para ENRIQUECER
+     *     os itens previstos com o que já foi registrado (status,
+     *     quantidade_entregue, motivo, foto_url).
+     *   - Assim o modal de checkout sempre mostra os itens do pedido.
+     *
+     * 🔥 ENRIQUECIDO 2026-09-25 (Pacote 1.5):
+     *   - Adicionado `embarque_info` no payload raiz.
+     *   - Adicionado `fotos[]` e outros metadados em cada entrega.
+     *   - Adicionado `resumo_itens` em cada entrega.
+     *   - Adicionado `levas[]` no checklist de cada item.
      */
     public function entregasHoje(Request $request, Response $response, array $args): Response
     {
@@ -570,7 +587,7 @@ class MotoristaController
         if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
             return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
         }
-        
+
         $sql = "
             SELECT 
                 e.*,
@@ -586,15 +603,20 @@ class MotoristaController
             FROM frota_entrega e
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
             LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
-            WHERE eb.motorista_id = :motorista_id
-              AND (DATE(e.created_at) = CURRENT_DATE OR e.status IN ('pendente', 'em_entrega'))
-            ORDER BY e.ordem_entrega ASC
+           WHERE eb.motorista_id = :motorista_id
+  AND (
+      DATE(e.created_at) = CURRENT_DATE
+      OR e.status IN ('pendente', 'em_entrega')
+      OR e.status IN ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
+  )
+ORDER BY e.ordem_entrega ASC
         ";
-        
+
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute(['motorista_id' => $id]);
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        // Fallback: se não achou nada hoje, busca do último embarque
         if (empty($entregas)) {
             $stmtLast = $this->pdo->prepare("
                 SELECT 
@@ -623,57 +645,300 @@ class MotoristaController
             $entregas = $stmtLast->fetchAll(\PDO::FETCH_ASSOC);
         }
 
+        if (empty($entregas)) {
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'entregas' => [],
+                    'embarque_info' => null,
+                    'rota_ativa' => null,
+                    'proxima_entrega' => null,
+                    'resumo' => [ 'total' => 0, 'pendentes' => 0, 'em_entrega' => 0, 'entregues' => 0, 'falhas' => 0, 'progresso' => 0 ]
+                ]
+            ]);
+        }
+
+        // ================================================================
+        // 🔥 CORREÇÃO PRINCIPAL:
+        // 1) Buscar os ITENS DO ERP (pedido_item) via pedidos_ids de cada entrega
+        // 2) Buscar o checklist JÁ REGISTRADO em frota_checklist_entrega
+        // 3) Cruzar os dois: o que veio do ERP + o que já foi registrado
+        // 4) Buscar as LEVAS registradas para cada item do checklist
+        // ================================================================
         $entregaIds = array_column($entregas, 'id');
+
+        // ── 1. Itens do ERP para todas as entregas
+        $pedidosErpIds = [];
+        foreach ($entregas as $entrega) {
+            $ids = [];
+            if (!empty($entrega['pedidos_ids'])) {
+                $ids = array_filter(array_map('intval', explode(',', $entrega['pedidos_ids'])));
+            }
+            if (empty($ids) && !empty($entrega['pedido_id'])) {
+                $ids = [(int)$entrega['pedido_id']];
+            }
+            foreach ($ids as $pid) {
+                $pedidosErpIds[$pid] = true;
+            }
+        }
+        $pedidosErpIds = array_keys($pedidosErpIds);
+
+        $itensErpPorPedido = [];
+        if (!empty($pedidosErpIds)) {
+            $placeholders = implode(',', array_fill(0, count($pedidosErpIds), '?'));
+
+            $stmtItens = $this->pdo->prepare("
+                SELECT
+                    pi.idpedido,
+                    pi.iditem,
+                    i.referencia,
+                    i.descricao,
+                    pi.qt AS quantidade_prevista,
+                    COALESCE(i.pesobruto, 0) AS peso_bruto,
+                    COALESCE((select descricao from unidade where idunidade = i.idunidadebasica ), 'UN') AS unidade
+                FROM pedido_item pi
+                INNER JOIN item i ON i.iditem = pi.iditem
+                WHERE pi.idpedido IN ({$placeholders})
+                  AND pi.ativo = 'S'
+                ORDER BY pi.idpedido, i.referencia
+            ");
+            $stmtItens->execute($pedidosErpIds);
+
+            foreach ($stmtItens->fetchAll(\PDO::FETCH_ASSOC) as $itemErp) {
+                $itensErpPorPedido[$itemErp['idpedido']][] = $itemErp;
+            }
+        }
+
+        // ── 2. Checklist já registrado (só para enriquecer)
+        $checklistRegistradoPorEntrega = [];
+        $levasPorChecklist = [];
         if ($entregaIds) {
             $placeholders = implode(',', array_fill(0, count($entregaIds), '?'));
             $stmtChecklist = $this->pdo->prepare("
-                SELECT entrega_id, item_id, referencia, descricao,
-                       quantidade_prevista, quantidade_entregue, status, motivo
+                SELECT id, entrega_id, item_id, referencia, descricao,
+                       quantidade_prevista, quantidade_entregue, status, motivo, foto_url
                 FROM frota_checklist_entrega
                 WHERE entrega_id IN ({$placeholders})
                 ORDER BY entrega_id, item_id
             ");
             $stmtChecklist->execute($entregaIds);
-            $checklists = [];
-            foreach ($stmtChecklist->fetchAll(\PDO::FETCH_ASSOC) as $item) {
-                $checklists[$item['entrega_id']][] = $item;
+            $checklistItems = $stmtChecklist->fetchAll(\PDO::FETCH_ASSOC);
+            
+            $checklistIds = [];
+            foreach ($checklistItems as $item) {
+                $checklistRegistradoPorEntrega[$item['entrega_id']][$item['item_id']] = $item;
+                $checklistIds[] = $item['id'];
             }
-            foreach ($entregas as &$entrega) {
-                $entrega['checklist'] = $checklists[$entrega['id']] ?? [];
+
+            // ── 2.1. Buscar as LEVAS registradas para cada checklist_id
+            if (!empty($checklistIds)) {
+                $placeholdersLevas = implode(',', array_fill(0, count($checklistIds), '?'));
+                $stmtLevas = $this->pdo->prepare("
+                    SELECT checklist_id, id, quantidade, foto_url, observacao, registrado_em, latitude, longitude
+                    FROM frota_checklist_entrega_leva
+                    WHERE checklist_id IN ({$placeholdersLevas})
+                    ORDER BY registrado_em ASC
+                ");
+                $stmtLevas->execute($checklistIds);
+                foreach ($stmtLevas->fetchAll(\PDO::FETCH_ASSOC) as $leva) {
+                    $levasPorChecklist[$leva['checklist_id']][] = $leva;
+                }
             }
-            unset($entrega);
         }
-        
-        // Calcular métricas
+
+        // ── 3. Cruzar: para cada entrega, montar o checklist completo
+        foreach ($entregas as &$entrega) {
+            $entregaId = (int)$entrega['id'];
+
+            $idsDaEntrega = [];
+               // 🔥 Pacote 3 — M4-fix Camada 2 (2026-09-25):
+            //   PostgreSQL NUMERIC volta como STRING no JSON (via PDO).
+            //   O frontend usa `typeof x === 'number'` e falha silenciosamente.
+            //   Forçamos cast para float/null aqui, uma vez, e o resto do app
+            //   (motorista, admin, futuros consumidores) já recebe number.
+            foreach (['latitude', 'longitude', 'veiculo_lat', 'veiculo_lng'] as $campoCoordenada) {
+                if (array_key_exists($campoCoordenada, $entrega)) {
+                    $entrega[$campoCoordenada] = ($entrega[$campoCoordenada] === null || $entrega[$campoCoordenada] === '')
+                        ? null
+                        : (float)$entrega[$campoCoordenada];
+                }
+            }
+
+            $idsDaEntrega = [];
+            if (!empty($entrega['pedidos_ids'])) {
+                $idsDaEntrega = array_filter(array_map('intval', explode(',', $entrega['pedidos_ids'])));
+            }
+            if (empty($idsDaEntrega) && !empty($entrega['pedido_id'])) {
+                $idsDaEntrega = [(int)$entrega['pedido_id']];
+            }
+            if (!empty($entrega['pedidos_ids'])) {
+                $idsDaEntrega = array_filter(array_map('intval', explode(',', $entrega['pedidos_ids'])));
+            }
+            if (empty($idsDaEntrega) && !empty($entrega['pedido_id'])) {
+                $idsDaEntrega = [(int)$entrega['pedido_id']];
+            }
+
+            $itensConsolidados = [];
+            foreach ($idsDaEntrega as $pid) {
+                foreach ($itensErpPorPedido[$pid] ?? [] as $itemErp) {
+                    $iditem = (int)$itemErp['iditem'];
+                    if (!isset($itensConsolidados[$iditem])) {
+                        $itensConsolidados[$iditem] = [
+                            'item_id'              => $iditem,
+                            'referencia'           => $itemErp['referencia'],
+                            'descricao'            => $itemErp['descricao'],
+                            'unidade'              => $itemErp['unidade'],
+                            'peso_bruto'           => (float)$itemErp['peso_bruto'],
+                            'quantidade_prevista'  => 0,
+                            'quantidade_entregue'  => null,
+                            'status'               => null,
+                            'motivo'               => null,
+                            'foto_url'             => null,
+                            'levas'                => []
+                        ];
+                    }
+                    $itensConsolidados[$iditem]['quantidade_prevista'] += (float)$itemErp['quantidade_prevista'];
+                }
+            }
+
+            // Enriquecer com o checklist já registrado (se houver)
+            foreach ($checklistRegistradoPorEntrega[$entregaId] ?? [] as $itemId => $registrado) {
+                $itemId = (int)$itemId;
+                if (isset($itensConsolidados[$itemId])) {
+                    $itensConsolidados[$itemId]['quantidade_entregue'] = (float)$registrado['quantidade_entregue'];
+                    $itensConsolidados[$itemId]['status']              = $registrado['status'];
+                    $itensConsolidados[$itemId]['motivo']              = $registrado['motivo'];
+                    $itensConsolidados[$itemId]['foto_url']            = $registrado['foto_url'];
+                    $itensConsolidados[$itemId]['levas']               = $levasPorChecklist[$registrado['id']] ?? [];
+                } else {
+                    $itensConsolidados[$itemId] = [
+                        'item_id'              => $itemId,
+                        'referencia'           => $registrado['referencia'],
+                        'descricao'            => $registrado['descricao'],
+                        'unidade'              => 'UN',
+                        'peso_bruto'           => 0,
+                        'quantidade_prevista'  => (float)$registrado['quantidade_prevista'],
+                        'quantidade_entregue'  => (float)$registrado['quantidade_entregue'],
+                        'status'               => $registrado['status'],
+                        'motivo'               => $registrado['motivo'],
+                        'foto_url'             => $registrado['foto_url'],
+                        'levas'                => $levasPorChecklist[$registrado['id']] ?? [],
+                    ];
+                }
+            }
+
+            $entrega['checklist'] = array_values($itensConsolidados);
+
+            // ── 4. Adicionar fotos[] e outros metadados
+            $entrega['fotos'] = [];
+            if (!empty($entrega['foto_romaneio_url'])) {
+                $entrega['fotos'][] = ['tipo' => 'romaneio', 'url' => $entrega['foto_romaneio_url']];
+            }
+            if (!empty($entrega['foto_item_url'])) {
+                $entrega['fotos'][] = ['tipo' => 'item_geral', 'url' => $entrega['foto_item_url']];
+            }
+            if (!empty($entrega['foto_checkin_url'])) {
+                $entrega['fotos'][] = ['tipo' => 'checkin', 'url' => $entrega['foto_checkin_url']];
+            }
+            foreach($entrega['checklist'] as $item) {
+                if (!empty($item['foto_url'])) {
+                    $entrega['fotos'][] = ['tipo' => 'item_checkout', 'url' => $item['foto_url'], 'referencia' => $item['referencia']];
+                }
+                if (!empty($item['levas'])) {
+                    foreach($item['levas'] as $leva) {
+                        if (!empty($leva['foto_url'])) {
+                            $entrega['fotos'][] = ['tipo' => 'leva', 'url' => $leva['foto_url'], 'referencia' => $item['referencia']];
+                        }
+                    }
+                }
+            }
+
+            // ── 5. Adicionar resumo_itens
+            $totalItens = count($entrega['checklist']);
+            $entregues = count(array_filter($entrega['checklist'], fn($i) => $i['status'] === 'entregue'));
+            $faltantes = count(array_filter($entrega['checklist'], fn($i) => $i['status'] === 'faltante'));
+            $devolvidos = count(array_filter($entrega['checklist'], fn($i) => $i['status'] === 'devolvido'));
+            $entrega['resumo_itens'] = [
+                'total' => $totalItens,
+                'entregues' => $entregues,
+                'faltantes' => $faltantes,
+                'devolvidos' => $devolvidos,
+            ];
+        }
+        unset($entrega);
+
+        // ================================================================
+        // 4. Resumo + próxima entrega + rota ativa + embarque_info
+        // ================================================================
         $total = count($entregas);
-        $pendentes = count(array_filter($entregas, fn($e) => $e['status'] === 'pendente'));
-        $emEntrega = count(array_filter($entregas, fn($e) => $e['status'] === 'em_entrega'));
-        $entregues = count(array_filter($entregas, fn($e) => $e['status'] === 'entregue'));
-        $falhas = count(array_filter($entregas, fn($e) => $e['status'] === 'falha'));
-        
-        // Buscar próxima entrega
+        $pendentes  = count(array_filter($entregas, fn($e) => $e['status'] === 'pendente'));
+        $emEntrega  = count(array_filter($entregas, fn($e) => $e['status'] === 'em_entrega'));
+        $entregues  = count(array_filter($entregas, fn($e) => in_array($e['status'], ['entregue', 'entregue_com_problema'])));
+        $falhas     = count(array_filter($entregas, fn($e) => $e['status'] === 'falha'));
+
         $proxima = null;
         foreach ($entregas as $e) {
-            if ($e['status'] === 'pendente' || $e['status'] === 'em_entrega') {
+            if (in_array($e['status'], ['pendente', 'em_entrega'])) {
                 $proxima = $e;
                 break;
             }
         }
-        
-        // Buscar rota ativa
-        $stmt = $this->pdo->prepare("
+
+        // 🔥 NOVO: Montar embarque_info a partir do primeiro item
+        $embarque_info = null;
+        if (!empty($entregas[0]['embarque_id'])) {
+            $primeira_entrega = $entregas[0];
+            $embarqueId = $primeira_entrega['embarque_id'];
+            
+            $stmtEmbarqueInfo = $this->pdo->prepare("
+                SELECT 
+                    e.id, e.numero_embarque, e.erp_embarque_id, e.nome_embarque as rota, e.status as status_embarque, e.data_saida, e.data_retorno,
+                    v.placa as veiculo_placa, v.modelo as veiculo_modelo, m.nome as motorista_nome,
+                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) as total_entregas,
+                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) as entregas_concluidas,
+                    (SELECT COALESCE(SUM(valor_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as valor_total,
+                    (SELECT COALESCE(SUM(peso_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as peso_total
+                FROM frota_embarque e
+                LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
+                LEFT JOIN frota_motorista m ON m.id = e.motorista_id
+                WHERE e.id = :embarque_id
+            ");
+            $stmtEmbarqueInfo->execute(['embarque_id' => $embarqueId]);
+            $info = $stmtEmbarqueInfo->fetch(\PDO::FETCH_ASSOC);
+            if ($info) {
+                $embarque_info = [
+                    'id' => (int)$info['id'],
+                    'numero_embarque' => $info['numero_embarque'],
+                    'erp_id' => $info['erp_embarque_id'],
+                    'rota' => $info['rota'],
+                    'veiculo_placa' => $info['veiculo_placa'],
+                    'veiculo_modelo' => $info['veiculo_modelo'],
+                    'motorista_nome' => $info['motorista_nome'],
+                    'valor_total' => (float)$info['valor_total'],
+                    'peso_total' => (float)$info['peso_total'],
+                    'total_entregas' => (int)$info['total_entregas'],
+                    'entregas_concluidas' => (int)$info['entregas_concluidas'],
+                    'status_embarque' => $info['status_embarque'],
+                    'data_saida' => $info['data_saida'],
+                    'data_retorno' => $info['data_retorno'],
+                ];
+            }
+        }
+
+        $stmtRota = $this->pdo->prepare("
             SELECT * FROM frota_embarque 
             WHERE motorista_id = :motorista_id 
               AND status = 'em_andamento'
             ORDER BY id DESC LIMIT 1
         ");
-        $stmt->execute(['motorista_id' => $id]);
-        $rotaAtiva = $stmt->fetch(\PDO::FETCH_ASSOC);
-        
+        $stmtRota->execute(['motorista_id' => $id]);
+       $rotaAtiva = $stmtRota->fetch(\PDO::FETCH_ASSOC) ?: null;
+
         return $this->json($response, [
             'success' => true,
             'data' => [
                 'entregas' => $entregas,
+                'embarque_info' => $embarque_info,
                 'rota_ativa' => $rotaAtiva,
                 'proxima_entrega' => $proxima,
                 'resumo' => [
@@ -1413,6 +1678,355 @@ class MotoristaController
         ]);
     }
     
+    /**
+     * GET /v1/frota/motoristas/{id}/painel
+     *
+     * Dashboard pessoal do motorista na aba "Meu Painel".
+     *
+     * Retorna:
+     * - Score desempenho interno (do cache Cobli)
+     * - Score Cobli (frota_cobli_score_cache)
+     * - Ranking (posição do motorista, sem nomes)
+     * - Resumo do mês (entregas, valor, km, tempo)
+     * - Caminhão hoje (posição + odômetro + velocidade + tempo parado)
+     * - Últimos 5 embarques
+     *
+     * 🔥 NOVO 2026-09-25 (Pacote 2)
+     */
+    public function painelPessoal(Request $request, Response $response, array $args): Response
+    {
+        $id = (int)$args['id'];
+
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
+
+        try {
+            // 1. Resumo do Mês
+            $resumo = $this->getResumoMes($id);
+
+            // 2. Score Cobli + Ranking
+            $cobli = $this->getCobliScoreMotorista($id);
+            $ranking = $this->getRankingMotorista($id);
+
+            // 3. Caminhão Hoje
+            $caminhao = $this->getCaminhaoHoje($id);
+
+            // 4. Últimos 5 Embarques
+            $embarques = $this->getUltimosEmbarques($id, 5);
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'resumo_mes' => $resumo,
+                    'cobli' => $cobli,
+                    'ranking' => $ranking,
+                    'caminhao_hoje' => $caminhao,
+                    'ultimos_embarques' => $embarques,
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            error_log('[PainelPessoal] Erro: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar o painel: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+     /**
+     * Resumo de entregas do mês atual.
+     *
+     * 🔥 CORRIGIDO 2026-09-25 (Pacote 2, patch 2):
+     *   - `km_rodados` antes fazia `SUM(km_rodados)` sobre todos os
+     *     snapshots do mês, inflando o valor (4× no caso do Daniel).
+     *   - Agora pega APENAS a linha mais recente do cache
+     *     (ORDER BY atualizado_em DESC LIMIT 1), que é o que o Cobli
+     *     mostra no painel dele.
+     */
+    private function getResumoMes(int $motoristaId): array
+    {
+        $sql = "
+            SELECT
+                COUNT(e.id) AS total_entregas,
+                COUNT(e.id) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')) AS entregas_concluidas,
+                COUNT(e.id) FILTER (WHERE e.status = 'falha') AS falhas,
+                COALESCE(SUM(e.valor_total) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')), 0) AS valor_total,
+                COALESCE(AVG(EXTRACT(EPOCH FROM (e.horario_entrega - e.horario_checkin))/60) FILTER (WHERE e.status = 'entregue' AND e.horario_checkin IS NOT NULL), 0) AS tempo_medio_min
+            FROM frota_entrega e
+            INNER JOIN frota_embarque eb ON eb.id = e.embarque_id
+            WHERE eb.motorista_id = :motorista_id
+              AND e.status IN ('entregue', 'entregue_com_problema', 'falha')
+              AND DATE(e.horario_entrega) >= DATE_TRUNC('month', CURRENT_DATE)
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['motorista_id' => $motoristaId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+        // 🔥 CORRIGIDO: pega APENAS a linha mais recente do cache,
+        // não soma todos os snapshots.
+        $stmtKm = $this->pdo->prepare("
+            SELECT s.km_rodados
+            FROM frota_cobli_score_cache s
+            INNER JOIN frota_cobli_motorista cm ON cm.cobli_driver_id = s.entity_id
+            WHERE s.aggregation_type = 'DRIVER'
+              AND cm.motorista_id = :motorista_id
+              AND s.periodo_fim >= DATE_TRUNC('month', CURRENT_DATE)
+            ORDER BY s.atualizado_em DESC, s.id DESC
+            LIMIT 1
+        ");
+        $stmtKm->execute(['motorista_id' => $motoristaId]);
+        $km = (float)($stmtKm->fetchColumn() ?: 0);
+
+        return [
+            'total_entregas'      => (int)($row['total_entregas'] ?? 0),
+            'entregas_concluidas' => (int)($row['entregas_concluidas'] ?? 0),
+            'falhas'              => (int)($row['falhas'] ?? 0),
+            'valor_total'         => (float)($row['valor_total'] ?? 0),
+            'tempo_medio_min'     => round((float)($row['tempo_medio_min'] ?? 0), 1),
+            'km_rodados'          => round($km, 1),
+        ];
+    }
+
+    /**
+     * Score do Cobli + velocidade média calculada.
+     * Cache em memória por 5 min.
+     *
+     * 🔥 CORRIGIDO 2026-09-25 (Pacote 2):
+     *   - Antes `velocidade_media` vinha direto do cache e ficava 0/nulo
+     *     porque a Cobli não expõe esse campo no payload do ranking.
+     *   - Agora: tenta cache, senão calcula `km_rodados / (tempo_minutos / 60)`.
+     */
+    private function getCobliScoreMotorista(int $motoristaId): array
+    {
+        $cacheKey = "cobli_score_motorista_{$motoristaId}";
+        $cacheFile = sys_get_temp_dir() . '/' . $cacheKey . '.json';
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 300) {
+            $cached = json_decode(file_get_contents($cacheFile), true);
+            if ($cached) return $cached;
+        }
+
+        $resultado = [
+            'score'            => null,
+            'variacao'         => null,
+            'km_rodados'       => 0,
+            'eventos'          => 0,
+            'velocidade_media' => 0,
+            'atualizado_em'    => null,
+        ];
+
+        try {
+            // 🔥 Buscar o vínculo na tabela correta
+            $stmt = $this->pdo->prepare("
+                SELECT cobli_driver_id
+                FROM frota_cobli_motorista
+                WHERE motorista_id = :motorista_id
+            ");
+            $stmt->execute(['motorista_id' => $motoristaId]);
+            $cobliDriverId = $stmt->fetchColumn();
+
+            if ($cobliDriverId) {
+                $stmt = $this->pdo->prepare("
+                    SELECT score, variacao, km_rodados, tempo_minutos,
+                           total_eventos, velocidade_media, atualizado_em
+                    FROM frota_cobli_score_cache
+                    WHERE aggregation_type = 'DRIVER'
+                      AND entity_id = :entity_id
+                    ORDER BY periodo_fim DESC
+                    LIMIT 1
+                ");
+                $stmt->execute(['entity_id' => $cobliDriverId]);
+                $score = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+                if ($score) {
+                    $km    = (float)$score['km_rodados'];
+                    $tempo = (int)$score['tempo_minutos'];
+                    $vel   = $score['velocidade_media'];
+
+                    // 🔥 Fallback: se o cache não tem velocidade, calcula
+                    if ($vel === null || (float)$vel <= 0) {
+                        $vel = ($km > 0 && $tempo > 0)
+                            ? round($km / ($tempo / 60), 1)
+                            : 0;
+                    } else {
+                        $vel = (float)$vel;
+                    }
+
+                    $resultado = [
+                        'score'            => (float)$score['score'],
+                        'variacao'         => (float)$score['variacao'],
+                        'km_rodados'       => $km,
+                        'eventos'          => (int)$score['total_eventos'],
+                        'velocidade_media' => $vel,
+                        'atualizado_em'    => $score['atualizado_em'],
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            error_log('[PainelPessoal] Erro ao buscar score Cobli: ' . $e->getMessage());
+        }
+
+        file_put_contents($cacheFile, json_encode($resultado));
+
+        return $resultado;
+    }
+
+       /**
+     * Posição do motorista no ranking Cobli (Opção B: sempre do cache).
+     * Retorna apenas: posição, total e percentil.
+     *
+     * 🔥 CORRIGIDO 2026-09-25 (Pacote 2):
+     *   - Antes a `posicao` vinha de uma query RANK() sobre o cache mas
+     *     o `total` vinha de uma subquery separada. Isso gerava
+     *     inconsistências (ex: "23º de 16").
+     *   - Agora ambos vêm da MESMA query. Se o cache tem 16, mostra
+     *     "5º de 16". Se tiver 64, mostra "23º de 64".
+     *   - Anônimo: nunca retorna nome de outros motoristas.
+     */
+    private function getRankingMotorista(int $motoristaId): array
+    {
+        $resultado = [
+            'posicao'          => null,
+            'total_motoristas' => 0,
+            'percentil'        => null,
+        ];
+
+        try {
+            // Buscar o vínculo
+            $stmt = $this->pdo->prepare("
+                SELECT cobli_driver_id
+                FROM frota_cobli_motorista
+                WHERE motorista_id = :motorista_id
+            ");
+            $stmt->execute(['motorista_id' => $motoristaId]);
+            $cobliDriverId = $stmt->fetchColumn();
+
+            if (!$cobliDriverId) return $resultado;
+
+            // 🔥 Posição e total vêm da MESMA query — sempre consistentes
+            $stmt = $this->pdo->prepare("
+                WITH ranking_atual AS (
+                    SELECT
+                        entity_id,
+                        RANK() OVER (ORDER BY score DESC) AS posicao,
+                        COUNT(*) OVER ()                   AS total
+                    FROM frota_cobli_score_cache
+                    WHERE aggregation_type = 'DRIVER'
+                      AND periodo_fim >= DATE_TRUNC('month', CURRENT_DATE)
+                )
+                SELECT posicao, total
+                FROM ranking_atual
+                WHERE entity_id = :entity_id
+                LIMIT 1
+            ");
+            $stmt->execute(['entity_id' => $cobliDriverId]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if ($row && $row['posicao'] !== null) {
+                $posicao = (int)$row['posicao'];
+                $total   = (int)$row['total'];
+                $resultado = [
+                    'posicao'          => $posicao,
+                    'total_motoristas' => $total,
+                    'percentil'        => $total > 0
+                        ? (int)round((1 - ($posicao - 1) / $total) * 100)
+                        : 0,
+                ];
+            }
+        } catch (\Exception $e) {
+            error_log('[PainelPessoal] Erro ao buscar ranking: ' . $e->getMessage());
+        }
+
+        return $resultado;
+    }
+
+    /**
+     * Dados do caminhão hoje (posição + odômetro + velocidade + tempo parado).
+     */
+    private function getCaminhaoHoje(int $motoristaId): ?array
+    {
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT
+                    v.id, v.placa, v.modelo, v.marca,
+                    v.odometro_atual, v.velocidade_atual,
+                    v.latitude, v.longitude, v.ultima_posicao,
+                    v.status
+                FROM frota_motorista m
+                INNER JOIN frota_veiculo v ON v.id = m.veiculo_atual_id
+                WHERE m.id = :motorista_id
+            ");
+            $stmt->execute(['motorista_id' => $motoristaId]);
+            $veiculo = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$veiculo) return null;
+
+            // Tempo parado: minutos desde a última posição com ignição ligada
+            $tempoParado = null;
+            if (!empty($veiculo['ultima_posicao'])) {
+                $stmtParado = $this->pdo->prepare("
+                    SELECT EXTRACT(EPOCH FROM (NOW() - capturado_em)) / 60 AS minutos
+                    FROM frota_cobli_posicao
+                    WHERE veiculo_id = :veiculo_id
+                      AND ignicao_ligada = false
+                    ORDER BY capturado_em DESC
+                    LIMIT 1
+                ");
+                $stmtParado->execute(['veiculo_id' => $veiculo['id']]);
+                $tempoParado = $stmtParado->fetchColumn();
+                if ($tempoParado !== false) {
+                    $tempoParado = round((float)$tempoParado);
+                } else {
+                    $tempoParado = null;
+                }
+            }
+
+            return [
+                'id'              => (int)$veiculo['id'],
+                'placa'           => $veiculo['placa'],
+                'modelo'          => $veiculo['modelo'],
+                'marca'           => $veiculo['marca'],
+                'odometro_atual'  => (float)$veiculo['odometro_atual'],
+                'velocidade_atual' => (float)$veiculo['velocidade_atual'],
+                'latitude'        => $veiculo['latitude'] !== null ? (float)$veiculo['latitude'] : null,
+                'longitude'       => $veiculo['longitude'] !== null ? (float)$veiculo['longitude'] : null,
+                'ultima_posicao'  => $veiculo['ultima_posicao'],
+                'tempo_parado_min' => $tempoParado,
+                'status'          => $veiculo['status'],
+            ];
+        } catch (\Exception $e) {
+            error_log('[PainelPessoal] Erro ao buscar caminhão: ' . $e->getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Últimos N embarques do motorista.
+     */
+    private function getUltimosEmbarques(int $motoristaId, int $limite = 5): array
+    {
+        $stmt = $this->pdo->prepare("
+            SELECT
+                eb.id, eb.numero_embarque, eb.status, eb.data_saida, eb.data_retorno,
+                eb.distancia_total_km,
+                v.placa AS veiculo_placa,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = eb.id) AS total_entregas,
+                (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = eb.id AND status IN ('entregue', 'entregue_com_problema')) AS entregas_concluidas
+            FROM frota_embarque eb
+            LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
+            WHERE eb.motorista_id = :motorista_id
+              AND eb.status IN ('finalizado', 'cancelado', 'problema')
+            ORDER BY eb.data_saida DESC
+            LIMIT :limite
+        ");
+        $stmt->bindValue(':motorista_id', $motoristaId, \PDO::PARAM_INT);
+        $stmt->bindValue(':limite', $limite, \PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
     // ========================================================================
     // MÉTODOS AUXILIARES
     // ========================================================================

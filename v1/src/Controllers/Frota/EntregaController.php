@@ -19,6 +19,20 @@ class EntregaController
     }
     
     /**
+     * Detecta se a requisição está em modo treinamento.
+     *
+     * Ativado via header `X-Training-Mode: 1` (enviado pelo app do motorista
+     * quando a URL tem `?treino=1`).
+     *
+     * Em modo treinamento:
+     *   - checkin/checkout NÃO são bloqueados por distância
+     *   - lat/lng NÃO são gravados quando o motorista está fora do raio
+     */
+    private function isTrainingMode(Request $request): bool
+    {
+        return $request->getHeaderLine('X-Training-Mode') === '1';
+    }
+    /**
      * GET /v1/frota/entregas
      * Listar entregas com filtros avançados
      */
@@ -338,6 +352,10 @@ class EntregaController
     
     // ================================================================
     // CHECK-IN
+    //
+    // 🔥 MUDANÇA 2026-09-24 (MODO TREINAMENTO):
+    //   - Em modo treino, NÃO bloqueia por distância
+    //   - Não grava lat/lng quando fora do raio
     // ================================================================
     public function checkin(Request $request, Response $response, array $args): Response
     {
@@ -351,7 +369,8 @@ class EntregaController
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         $desktop = (bool)($input['desktop'] ?? false);
-        
+        $isTraining = $this->isTrainingMode($request);
+
         $entrega = $this->getEntrega($id);
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
@@ -359,14 +378,14 @@ class EntregaController
         if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
             return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
         }
-        
+
         if ($entrega['status'] === 'entregue') {
             return $this->json($response, ['success' => false, 'error' => 'Esta entrega já foi concluída'], 400);
         }
-        
+
         $lat = (float)($input['latitude'] ?? 0);
         $lng = (float)($input['longitude'] ?? 0);
-        
+
         if ($lat == 0 || $lng == 0) {
             if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
                 $lat = (float)$entrega['latitude'];
@@ -378,8 +397,15 @@ class EntregaController
                 $lng = DISTRIBUIDORA_LNG;
             }
         }
-        
-        // Validação de distância apenas se não for desktop
+
+        // ============================================================
+        // VALIDAÇÃO DE DISTÂNCIA
+        // ------------------------------------------------------------
+        // Produção:    bloqueia com 400 se > distanciaMaxima
+        // Treinamento: NÃO bloqueia e marca $gravarCoordenadas = false
+        // ============================================================
+        $gravarCoordenadas = true;
+
         if (!$desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
             $distancia = $this->calcularDistancia(
                 $lat, $lng,
@@ -387,28 +413,40 @@ class EntregaController
                 (float)$entrega['longitude']
             );
             $distanciaMaxima = max(1000.0, (float)$this->getConfig('distancia_minima_checkin_metros', 1000));
-            
+
             if ($distancia > $distanciaMaxima) {
-                $distanciaFormatada = $distancia >= 1000
-                    ? number_format($distancia / 1000, 2, ',', '.') . ' km'
-                    : number_format($distancia, 0, ',', '.') . ' m';
-                $limiteFormatado = $distanciaMaxima >= 1000
-                    ? number_format($distanciaMaxima / 1000, 2, ',', '.') . ' km'
-                    : number_format($distanciaMaxima, 0, ',', '.') . ' m';
-                return $this->json($response, [
-                    'success' => false,
-                    'error' => "Você está a {$distanciaFormatada} do local de entrega. Distância máxima permitida: {$limiteFormatado}.",
-                    'distancia' => round($distancia, 0)
-                ], 400);
+
+                if ($isTraining) {
+                    // 🎓 MODO TREINO: permite, mas NÃO grava lat/lng
+                    $gravarCoordenadas = false;
+                    error_log('[Checkin-TREINO] Fora do raio: ' . round($distancia) . 'm (entrega #' . $id . ')');
+                } else {
+                    // 🚫 PRODUÇÃO: bloqueia
+                    $distanciaFormatada = $distancia >= 1000
+                        ? number_format($distancia / 1000, 2, ',', '.') . ' km'
+                        : number_format($distancia, 0, ',', '.') . ' m';
+                    $limiteFormatado = $distanciaMaxima >= 1000
+                        ? number_format($distanciaMaxima / 1000, 2, ',', '.') . ' km'
+                        : number_format($distanciaMaxima, 0, ',', '.') . ' m';
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => "Você está a {$distanciaFormatada} do local de entrega. Distância máxima permitida: {$limiteFormatado}.",
+                        'distancia' => round($distancia, 0)
+                    ], 400);
+                }
             }
         }
-        
+
         // Foto (upload)
         $fotoUrl = null;
         if (isset($_FILES['foto']) && $_FILES['foto']['error'] === UPLOAD_ERR_OK) {
             $fotoUrl = $this->uploadFoto($_FILES['foto'], 'checkin_' . $id);
         }
-        
+
+        // Coordenadas efetivas para gravar
+        $latGravar = $gravarCoordenadas ? $lat : null;
+        $lngGravar = $gravarCoordenadas ? $lng : null;
+
         // Registrar check-in
         $stmt = $this->pdo->prepare("
             INSERT INTO frota_checkin 
@@ -421,16 +459,16 @@ class EntregaController
                 :lng,
                 :foto,
                 NOW()
-                )
-            ");
+            )
+        ");
         $stmt->execute([
             'entrega_id' => $id,
             'entrega_id2' => $id,
-            'lat' => $lat,
-            'lng' => $lng,
+            'lat' => $latGravar,
+            'lng' => $lngGravar,
             'foto' => $fotoUrl
         ]);
-        
+
         // Atualizar entrega
         $stmt = $this->pdo->prepare("
             UPDATE frota_entrega 
@@ -441,133 +479,231 @@ class EntregaController
                 foto_checkin_url = :foto,
                 updated_at = NOW()
                 WHERE id = :id
-                ");
+        ");
         $stmt->execute([
             'id' => $id,
-            'lat' => $lat,
-            'lng' => $lng,
+            'lat' => $latGravar,
+            'lng' => $lngGravar,
             'foto' => $fotoUrl
         ]);
-        
-        // 🔥 LOG: usando registrarLogEntrega com usuarioId
-        $this->registrarLogEntrega($id, 'checkin', "Check-in registrado para entrega #{$id}" . ($desktop ? ' (desktop)' : ''), $usuarioId);
-        
+
+        // LOG
+        $logDescricao = "Check-in registrado para entrega #{$id}"
+            . ($desktop ? ' (desktop)' : '')
+            . ($isTraining ? ' [MODO TREINAMENTO]' : '')
+            . (!$gravarCoordenadas ? ' [sem GPS - fora do raio]' : '');
+        $this->registrarLogEntrega($id, 'checkin', $logDescricao, $usuarioId);
+
         $payload = [
             'success' => true,
             'message' => 'Check-in registrado com sucesso!',
             'data' => [
                 'entrega_id' => $id,
                 'status' => 'em_entrega',
-                'horario_checkin' => date('Y-m-d H:i:s')
+                'horario_checkin' => date('Y-m-d H:i:s'),
+                'gps_registrado' => $gravarCoordenadas,
+                'modo_treinamento' => $isTraining
             ]
         ];
         $this->saveOfflineOperation($operationId, $id, 'checkin', $payload, 200);
         return $this->json($response, $payload);
     }
-    
-  /**
- * POST /v1/frota/entregas/{id}/checkout
- * Finalizar uma entrega com checkout
- *
- * 🔥 MUDANÇA 2026-09-18 (Bloco 4 - Opção A + C):
- *   - Opção A: embarque marcado como 'problema' quando há divergência
- *     (mantém comportamento atual — o gestor acerta em 'problema')
- *   - Opção C (NOVO): após o checkout, se TODAS as entregas do embarque
- *     já estiverem em estado terminal, o embarque é auto-finalizado
- *     para 'finalizado', destravando o fluxo do acerto.
- */
-public function checkout(Request $request, Response $response, array $args): Response
-{
-    $id = (int)$args['id'];
-    $input = json_decode($request->getBody()->getContents(), true) ?? [];
-    $operationId = $this->getOfflineOperationId($request, $input);
-    $previousOperation = $this->getOfflineOperation($operationId);
-    if ($previousOperation) {
-        return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
-    }
-    $user = $request->getAttribute('user');
-    $usuarioId = $user['idusuario'] ?? 0;
-
-    $desktop = (bool)($input['desktop'] ?? false);
-    $lat = (float)($input['latitude'] ?? 0);
-    $lng = (float)($input['longitude'] ?? 0);
-    $nomeRecebedor = trim($input['nome_recebedor'] ?? '');
-    $fotoRomaneioBase64 = $input['foto_romaneio'] ?? null;
-    $checklist = $input['checklist'] ?? [];
-
-    // ================================================================
-    // Derivar $temFaltante / $temDevolucao do checklist — fonte da verdade
-    // é o que o motorista registrou. Não confiar no que o front alega,
-    // para evitar fraude ou bug de JS que mascare faltantes/devoluções.
-    // ================================================================
-    $temFaltante = false;
-    $temDevolucao = false;
-    foreach ($checklist as $itemCheck) {
-        $statusItem = $itemCheck['status'] ?? '';
-        if ($statusItem === 'faltante') $temFaltante = true;
-        if ($statusItem === 'devolvido') $temDevolucao = true;
-    }
-
-    // Log de divergência front/backend (diagnóstico)
-    $temFaltanteFront = (bool)($input['tem_faltante'] ?? false);
-    $temDevolucaoFront = (bool)($input['tem_devolucao'] ?? false);
-    if ($temFaltanteFront !== $temFaltante || $temDevolucaoFront !== $temDevolucao) {
-        error_log('[Checkout] Divergência front/backend: front faltante=' . var_export($temFaltanteFront, true)
-            . ', backend faltante=' . var_export($temFaltante, true)
-            . ' | front devolucao=' . var_export($temDevolucaoFront, true)
-            . ', backend devolucao=' . var_export($temDevolucao, true)
-            . ' | entrega_id=' . $id);
-    }
-
-    $entrega = $this->getEntrega($id);
-    if (!$entrega) {
-        return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
-    }
-    if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
-        return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
-    }
-
-    if ($entrega['status'] === 'entregue') {
-        return $this->json($response, ['success' => false, 'error' => 'Entrega já foi concluída'], 400);
-    }
-
-    // Validações prévias
-    if (empty($fotoRomaneioBase64)) {
-        return $this->json($response, ['success' => false, 'error' => 'Foto do romaneio assinado é obrigatória'], 400);
-    }
-    if (empty($nomeRecebedor)) {
-        return $this->json($response, ['success' => false, 'error' => 'Nome do recebedor é obrigatório'], 400);
-    }
-    if (!$desktop && ($lat == 0 || $lng == 0)) {
-        return $this->json($response, ['success' => false, 'error' => 'GPS do dispositivo é obrigatório para finalizar a entrega'], 400);
-    }
-    if (!$desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
-        $distanciaCheckout = $this->calcularDistancia($lat, $lng, (float)$entrega['latitude'], (float)$entrega['longitude']);
-        $distanciaMaximaCheckout = max(1000.0, (float)$this->getConfig('distancia_maxima_checkout_metros', 1000));
-        if ($distanciaCheckout > $distanciaMaximaCheckout) {
-            $distanciaFormatada = $distanciaCheckout >= 1000
-                ? number_format($distanciaCheckout / 1000, 2, ',', '.') . ' km'
-                : number_format($distanciaCheckout, 0, ',', '.') . ' m';
-            return $this->json($response, ['success' => false, 'error' => "Você está a {$distanciaFormatada} do cliente. Aproxime-se para finalizar a entrega."], 400);
+       /**
+     * POST /v1/frota/entregas/{id}/checkout
+     * Finaliza entrega com foto, assinatura e checklist.
+     *
+     * 🔥 MUDANÇA 2026-09-25 (ENTREGAS PARCIAIS / LEVAS):
+     *   - Aceita `checklist[].levas[]` no payload. Cada leva é uma "descida"
+     *     com quantidade + foto + timestamp.
+     *   - Se o item veio com `status === 'aberto'` (motorista não conseguiu
+     *     fechar no dia), a entrega continua aberta — NÃO grava checklist.
+     *   - Grava cada leva em `frota_checklist_entrega_leva` vinculada ao
+     *     checklist_id recém-criado.
+     *   - Retorna `total_levas` no payload para debug.
+     */
+    public function checkout(Request $request, Response $response, array $args): Response
+    {
+        $id = (int)$args['id'];
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $operationId = $this->getOfflineOperationId($request, $input);
+        $previousOperation = $this->getOfflineOperation($operationId);
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
         }
-    }
-    if (!$desktop && !empty($checklist)) {
-        foreach ($checklist as $item) {
-            if (empty($item['foto_item'])) {
+        $user = $request->getAttribute('user');
+        $usuarioId = $user['idusuario'] ?? 0;
+        $isTraining = $this->isTrainingMode($request);
+
+        $desktop = (bool)($input['desktop'] ?? false);
+        $lat = (float)($input['latitude'] ?? 0);
+        $lng = (float)($input['longitude'] ?? 0);
+        $nomeRecebedor = trim($input['nome_recebedor'] ?? '');
+        $fotoRomaneioBase64 = $input['foto_romaneio'] ?? null;
+        $checklist = $input['checklist'] ?? [];
+                // 🔥 NOVO 2026-09-25 (ENTREGAS PARCIAIS): observação automática
+        //   Usado quando o rascunho virou faltante automático (checkout não
+        //   finalizado em outro dia). Vai para o log e para a coluna
+        //   `observacoes` da entrega, permitindo auditar depois.
+        $observacaoAutomatica = trim((string)($input['observacao_automatica'] ?? ''));
+
+        // Derivar temFaltante / temDevolucao / temAberto do checklist (fonte da verdade)
+        $temFaltante = false;
+        $temDevolucao = false;
+        $temAberto    = false;
+        $totalLevas   = 0;
+        foreach ($checklist as $itemCheck) {
+            $statusItem = $itemCheck['status'] ?? '';
+            if ($statusItem === 'faltante')  $temFaltante = true;
+            if ($statusItem === 'devolvido') $temDevolucao = true;
+            if ($statusItem === 'aberto')    $temAberto    = true;
+            if (!empty($itemCheck['levas']) && is_array($itemCheck['levas'])) {
+                $totalLevas += count($itemCheck['levas']);
+            }
+        }
+
+        $temFaltanteFront  = (bool)($input['tem_faltante'] ?? false);
+        $temDevolucaoFront = (bool)($input['tem_devolucao'] ?? false);
+        $temAbertoFront    = (bool)($input['tem_aberto'] ?? false);
+
+        if ($temFaltanteFront !== $temFaltante
+            || $temDevolucaoFront !== $temDevolucao
+            || $temAbertoFront !== $temAberto) {
+            error_log('[Checkout] Divergência front/backend: '
+                . 'front faltante=' . var_export($temFaltanteFront, true) . ', backend faltante=' . var_export($temFaltante, true)
+                . ' | front devolucao=' . var_export($temDevolucaoFront, true) . ', backend devolucao=' . var_export($temDevolucao, true)
+                . ' | front aberto=' . var_export($temAbertoFront, true) . ', backend aberto=' . var_export($temAberto, true)
+                . ' | entrega_id=' . $id);
+        }
+
+        $entrega = $this->getEntrega($id);
+        if (!$entrega) {
+            return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
+        }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
+            return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
+        }
+
+        if ($entrega['status'] === 'entregue') {
+            return $this->json($response, ['success' => false, 'error' => 'Entrega já foi concluída'], 400);
+        }
+
+        // Validações prévias
+        if (empty($fotoRomaneioBase64)) {
+            return $this->json($response, ['success' => false, 'error' => 'Foto do romaneio assinado é obrigatória'], 400);
+        }
+        if (empty($nomeRecebedor)) {
+            return $this->json($response, ['success' => false, 'error' => 'Nome do recebedor é obrigatório'], 400);
+        }
+        if (!$desktop && ($lat == 0 || $lng == 0)) {
+            return $this->json($response, ['success' => false, 'error' => 'GPS do dispositivo é obrigatório para finalizar a entrega'], 400);
+        }
+
+        // ============================================================
+        // VALIDAÇÃO DE DISTÂNCIA (SOFT-FAIL EM MODO TREINAMENTO)
+        // ============================================================
+        $gravarCoordenadasCheckout = true;
+
+        if (!$desktop && !empty($entrega['latitude']) && !empty($entrega['longitude'])) {
+            $distanciaCheckout = $this->calcularDistancia($lat, $lng, (float)$entrega['latitude'], (float)$entrega['longitude']);
+            $distanciaMaximaCheckout = max(1000.0, (float)$this->getConfig('distancia_maxima_checkout_metros', 1000));
+
+            if ($distanciaCheckout > $distanciaMaximaCheckout) {
+                if ($isTraining) {
+                    $gravarCoordenadasCheckout = false;
+                    error_log('[Checkout-TREINO] Fora do raio: ' . round($distanciaCheckout) . 'm (entrega #' . $id . ')');
+                } else {
+                    $distanciaFormatada = $distanciaCheckout >= 1000
+                        ? number_format($distanciaCheckout / 1000, 2, ',', '.') . ' km'
+                        : number_format($distanciaCheckout, 0, ',', '.') . ' m';
+                    return $this->json($response, ['success' => false, 'error' => "Você está a {$distanciaFormatada} do cliente. Aproxime-se para finalizar a entrega."], 400);
+                }
+            }
+        }
+
+        // Foto obrigatória por item (a menos que desktop)
+        if (!$desktop && !empty($checklist)) {
+            foreach ($checklist as $item) {
+                if (empty($item['foto_item'])) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => 'Foto do item "' . ($item['referencia'] ?? $item['item_id']) . '" é obrigatória.'
+                    ], 400);
+                }
+            }
+        }
+
+        // ============================================================
+        // 🔥 NOVO (ENTREGAS PARCIAIS): validação das levas
+        //   - Cada leva precisa ter quantidade > 0 e foto
+        //   - A soma das levas do item deve bater com quantidade_entregue
+        // ============================================================
+        foreach ($checklist as $idx => $itemCheck) {
+            $levas = $itemCheck['levas'] ?? [];
+            if (empty($levas) || !is_array($levas)) {
+                continue; // sem levas = entrega de uma vez só (fluxo antigo)
+            }
+
+            $somaLevas = 0;
+            foreach ($levas as $levaIdx => $leva) {
+                $qtdLeva = (float)($leva['quantidade'] ?? 0);
+                if ($qtdLeva <= 0) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => "Leva #{$levaIdx} do item '{$itemCheck['referencia']}' tem quantidade inválida."
+                    ], 400);
+                }
+                if (empty($leva['foto_item'])) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => "Foto obrigatória na leva #{$levaIdx} do item '{$itemCheck['referencia']}'."
+                    ], 400);
+                }
+                $somaLevas += $qtdLeva;
+            }
+
+            $qtdEntregueItem = (float)($itemCheck['quantidade_entregue'] ?? 0);
+            if (abs($somaLevas - $qtdEntregueItem) > 0.01) {
                 return $this->json($response, [
                     'success' => false,
-                    'error' => 'Foto do item "' . ($item['referencia'] ?? $item['item_id']) . '" é obrigatória.'
+                    'error' => "Item '{$itemCheck['referencia']}': soma das levas ({$somaLevas}) não bate com quantidade entregue ({$qtdEntregueItem})."
                 ], 400);
             }
         }
-    }
 
-    try {
-        $this->pdo->beginTransaction();
+        try {
+            $this->pdo->beginTransaction();
 
-        // Coordenadas
-        if (!$desktop) {
-            if ($lat == 0 || $lng == 0) {
+            // Coordenadas
+            if (!$desktop) {
+                if ($lat == 0 || $lng == 0) {
+                    if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
+                        $lat = (float)$entrega['latitude'];
+                        $lng = (float)$entrega['longitude'];
+                    } else {
+                        define('DISTRIBUIDORA_LAT', -28.979438954992666);
+                        define('DISTRIBUIDORA_LNG', -49.53561648427039);
+                        $lat = DISTRIBUIDORA_LAT;
+                        $lng = DISTRIBUIDORA_LNG;
+                    }
+                }
+                if ($gravarCoordenadasCheckout && !empty($entrega['cliente_id'])) {
+                    $stmt = $this->pdo->prepare("
+                        UPDATE frota_cliente 
+                        SET latitude = :lat, 
+                            longitude = :lng,
+                            coordenada_confiavel = true,
+                            data_atualizacao_coordenada = NOW(),
+                            origem_coordenada = 'checkout',
+                            updated_at = NOW()
+                        WHERE id = :id
+                    ");
+                    $stmt->execute([
+                        'id' => $entrega['cliente_id'],
+                        'lat' => $lat,
+                        'lng' => $lng
+                    ]);
+                }
+            } else {
                 if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
                     $lat = (float)$entrega['latitude'];
                     $lng = (float)$entrega['longitude'];
@@ -578,280 +714,397 @@ public function checkout(Request $request, Response $response, array $args): Res
                     $lng = DISTRIBUIDORA_LNG;
                 }
             }
-            if (!empty($entrega['cliente_id'])) {
-                $stmt = $this->pdo->prepare("
-                    UPDATE frota_cliente 
-                    SET latitude = :lat, 
-                        longitude = :lng,
-                        coordenada_confiavel = true,
-                        data_atualizacao_coordenada = NOW(),
-                        origem_coordenada = 'checkout',
-                        updated_at = NOW()
-                    WHERE id = :id
+
+            // Salvar foto do romaneio
+            $fotoRomaneioUrl = $this->salvarFotoBase64($fotoRomaneioBase64, 'romaneio_' . $id);
+
+            $latGravar = $gravarCoordenadasCheckout ? $lat : null;
+            $lngGravar = $gravarCoordenadasCheckout ? $lng : null;
+
+            // Status da entrega
+            $statusEntrega = ($temFaltante || $temDevolucao || $temAberto)
+                ? 'entregue_com_problema'
+                : 'entregue';
+
+                 // 🔥 NOVO: se veio observacao_automatica, prefixa no campo
+            // `observacoes` da entrega (sem perder o que já existe).
+            $observacoesFinais = null;
+            if ($observacaoAutomatica !== '') {
+                $stmtObs = $this->pdo->prepare("
+                    SELECT observacoes FROM frota_entrega WHERE id = :id
                 ");
-                $stmt->execute([
-                    'id' => $entrega['cliente_id'], 
-                    'lat' => $lat, 
-                    'lng' => $lng
-                ]);
-            }
-        } else {
-            if (!empty($entrega['latitude']) && !empty($entrega['longitude'])) {
-                $lat = (float)$entrega['latitude'];
-                $lng = (float)$entrega['longitude'];
-            } else {
-                define('DISTRIBUIDORA_LAT', -28.979438954992666);
-                define('DISTRIBUIDORA_LNG', -49.53561648427039);
-                $lat = DISTRIBUIDORA_LAT;
-                $lng = DISTRIBUIDORA_LNG;
-            }
-        }
-
-        // Salvar foto do romaneio
-        $fotoRomaneioUrl = $this->salvarFotoBase64($fotoRomaneioBase64, 'romaneio_' . $id);
-
-        // ATUALIZAR ENTREGA — status derivado do checklist (backend)
-        $statusEntrega = ($temFaltante || $temDevolucao) ? 'entregue_com_problema' : 'entregue';
-        $stmt = $this->pdo->prepare("
-            UPDATE frota_entrega 
-            SET latitude = :lat, 
-                longitude = :lng,
-                status_geolocalizacao = 'confirmado',
-                data_geolocalizacao = NOW(),
-                status = :status,
-                horario_entrega = NOW(),
-                nome_recebedor = :nome_recebedor,
-                foto_romaneio_url = :foto_romaneio,
-                data_checkout = NOW(),
-                updated_at = NOW()
-            WHERE id = :id
-        ");
-        $stmt->execute([
-            'id' => $id,
-            'lat' => $lat,
-            'lng' => $lng,
-            'status' => $statusEntrega,
-            'nome_recebedor' => $nomeRecebedor,
-            'foto_romaneio' => $fotoRomaneioUrl
-        ]);
-
-        // ================================================================
-        // SALVAR CHECKLIST
-        // ================================================================
-        if (!empty($checklist)) {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO frota_checklist_entrega (
-                    entrega_id, 
-                    item_id, 
-                    referencia, 
-                    descricao, 
-                    quantidade_prevista, 
-                    quantidade_entregue, 
-                    status, 
-                    motivo, 
-                    foto_url
-                ) VALUES (
-                    :entrega_id, 
-                    :item_id, 
-                    :referencia, 
-                    :descricao,
-                    :quantidade_prevista, 
-                    :quantidade_entregue,
-                    :status, 
-                    :motivo, 
-                    :foto_url
-                )
-            ");
-
-            foreach ($checklist as $item) {
-                $fotoItemUrl = null;
-                if (!empty($item['foto_item'])) {
-                    $fotoItemUrl = $this->salvarFotoBase64($item['foto_item'], 'item_' . $id . '_' . $item['item_id']);
+                $stmtObs->execute(['id' => $id]);
+                $obsAtual = (string)($stmtObs->fetchColumn() ?: '');
+                $separador = $obsAtual !== '' ? "\n---\n" : '';
+                $observacoesFinais = $separador
+                    . '[' . date('d/m/Y H:i') . '] '
+                    . $observacaoAutomatica;
+                // Se já havia algo, mantém o existente + adiciona o novo
+                if ($obsAtual !== '') {
+                    $observacoesFinais = $obsAtual . $separador . '[' . date('d/m/Y H:i') . '] ' . $observacaoAutomatica;
                 }
-
-                $stmt->execute([
-                    'entrega_id' => $id,
-                    'item_id' => $item['item_id'],
-                    'referencia' => $item['referencia'] ?? null,
-                    'descricao' => $item['descricao'] ?? null,
-                    'quantidade_prevista' => $item['quantidade_prevista'] ?? 0,
-                    'quantidade_entregue' => $item['quantidade_entregue'] ?? 0,
-                    'status' => $item['status'],
-                    'motivo' => $item['motivo'] ?? null,
-                    'foto_url' => $fotoItemUrl
-                ]);
             }
-        }
 
-        // ================================================================
-        // ATUALIZAR STATUS DO EMBARQUE
-        // ================================================================
-        // Regra (Bloco 4 - Opção A + C, 2026-09-18):
-        //
-        //  1) Se este checkout teve divergência (faltante/devolução),
-        //     marca o embarque como 'problema' para o gestor revisar
-        //     no acerto (Opção A).
-        //
-        //  2) DEPOIS, verifica se TODAS as entregas do embarque já
-        //     estão em estado terminal ('entregue', 'entregue_com_problema',
-        //     'falha', 'cancelada'). Se sim, faz a transição automática
-        //     para 'finalizado' (Opção C).
-        //
-        //  Isso permite que o gestor acerte tanto embarques 'finalizado'
-        //  quanto embarques 'problema', sem travar o fluxo.
-        // ================================================================
-
-        // 1) Marcar como 'problema' se houver divergência nesta entrega
-        if ($temFaltante || $temDevolucao) {
             $stmt = $this->pdo->prepare("
-                UPDATE frota_embarque
-                   SET status = 'problema',
-                       updated_at = NOW()
-                 WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :id)
+                UPDATE frota_entrega 
+                SET latitude = :lat, 
+                    longitude = :lng,
+                    status_geolocalizacao = 'confirmado',
+                    data_geolocalizacao = NOW(),
+                    status = :status,
+                    horario_entrega = NOW(),
+                    nome_recebedor = :nome_recebedor,
+                    foto_romaneio_url = :foto_romaneio,
+                    data_checkout = NOW(),
+                    observacoes = CASE
+                        WHEN :tem_obs = 1 THEN :obs
+                        ELSE observacoes
+                    END,
+                    updated_at = NOW()
+                WHERE id = :id
             ");
-            $stmt->execute(['id' => $id]);
-        }
+            $stmt->execute([
+                'id' => $id,
+                'lat' => $latGravar,
+                'lng' => $lngGravar,
+                'status' => $statusEntrega,
+                'nome_recebedor' => $nomeRecebedor,
+                'foto_romaneio' => $fotoRomaneioUrl,
+                'tem_obs' => $observacoesFinais !== null ? 1 : 0,
+                'obs' => $observacoesFinais
+            ]);
+  
 
-        // 2) Auto-finalizar se TODAS as entregas já terminaram
-        // ----------------------------------------------------------------
-        // Busca o embarque_id desta entrega
-        $stmt = $this->pdo->prepare("
-            SELECT embarque_id FROM frota_entrega WHERE id = :id
-        ");
-        $stmt->execute(['id' => $id]);
-        $embarqueIdDaEntrega = (int)$stmt->fetchColumn();
+            // ============================================================
+            // SALVAR CHECKLIST + LEVAS
+            // ============================================================
+            $totalLevasInseridas = 0;
 
-        if ($embarqueIdDaEntrega > 0) {
-            // Conta quantas entregas ainda NÃO estão em estado terminal
-            $stmt = $this->pdo->prepare("
-                SELECT COUNT(*)
-                  FROM frota_entrega
-                 WHERE embarque_id = :embarque_id
-                   AND status NOT IN ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
-            ");
-            $stmt->execute(['embarque_id' => $embarqueIdDaEntrega]);
-            $entregasAbertas = (int)$stmt->fetchColumn();
+            if (!empty($checklist)) {
+                $stmtChecklist = $this->pdo->prepare("
+                    INSERT INTO frota_checklist_entrega (
+                        entrega_id, item_id, referencia, descricao,
+                        quantidade_prevista, quantidade_entregue, status, motivo, foto_url
+                    ) VALUES (
+                        :entrega_id, :item_id, :referencia, :descricao,
+                        :quantidade_prevista, :quantidade_entregue, :status, :motivo, :foto_url
+                    ) RETURNING id
+                ");
 
-            // Se não há mais nenhuma entrega em aberto, finaliza o embarque
-            if ($entregasAbertas === 0) {
-                // Só faz transição se o embarque ainda está em status "vivo"
+                $stmtLeva = $this->pdo->prepare("
+                    INSERT INTO frota_checklist_entrega_leva (
+                        checklist_id, entrega_id, item_id, referencia,
+                        quantidade, foto_url, latitude, longitude,
+                        registrado_em, registrado_por, observacao, sincronizado
+                    ) VALUES (
+                        :checklist_id, :entrega_id, :item_id, :referencia,
+                        :quantidade, :foto_url, :latitude, :longitude,
+                        :registrado_em, :registrado_por, :observacao, TRUE
+                    )
+                ");
+
+                foreach ($checklist as $item) {
+                    // Foto principal do item (a última ou a primeira leva)
+                    $fotoItemUrl = null;
+                    if (!empty($item['foto_item'])) {
+                        $fotoItemUrl = $this->salvarFotoBase64($item['foto_item'], 'item_' . $id . '_' . $item['item_id']);
+                    }
+
+                    $stmtChecklist->execute([
+                        'entrega_id' => $id,
+                        'item_id' => $item['item_id'],
+                        'referencia' => $item['referencia'] ?? null,
+                        'descricao' => $item['descricao'] ?? null,
+                        'quantidade_prevista' => $item['quantidade_prevista'] ?? 0,
+                        'quantidade_entregue' => $item['quantidade_entregue'] ?? 0,
+                        'status' => $item['status'],
+                        'motivo' => $item['motivo'] ?? null,
+                        'foto_url' => $fotoItemUrl
+                    ]);
+
+                    $checklistId = (int)$stmtChecklist->fetchColumn();
+
+                    // 🔥 Gravar cada leva vinculada ao checklist
+                    $levas = $item['levas'] ?? [];
+                    if (!empty($levas) && is_array($levas)) {
+                        foreach ($levas as $leva) {
+                            $fotoLevaUrl = null;
+                            if (!empty($leva['foto_item'])) {
+                                $fotoLevaUrl = $this->salvarFotoBase64(
+                                    $leva['foto_item'],
+                                    'leva_' . $id . '_' . $item['item_id'] . '_' . time() . '_' . mt_rand(100, 999)
+                                );
+                            }
+
+                            if (!$fotoLevaUrl) {
+                                // Se a foto falhou ao salvar, aborta a transação
+                                throw new \Exception(
+                                    "Falha ao salvar foto da leva do item {$item['referencia']}"
+                                );
+                            }
+
+                            $stmtLeva->execute([
+                                'checklist_id' => $checklistId,
+                                'entrega_id' => $id,
+                                'item_id' => $item['item_id'],
+                                'referencia' => $item['referencia'] ?? null,
+                                'quantidade' => $leva['quantidade'],
+                                'foto_url' => $fotoLevaUrl,
+                                'latitude' => $leva['latitude'] ?? $latGravar,
+                                'longitude' => $leva['longitude'] ?? $lngGravar,
+                                'registrado_em' => $leva['registrado_em'] ?? date('Y-m-d H:i:s'),
+                                'registrado_por' => $usuarioId,
+                                'observacao' => $leva['observacao'] ?? null
+                            ]);
+
+                            $totalLevasInseridas++;
+                        }
+                    }
+                }
+            }
+
+            // Atualizar status do embarque
+            if ($temFaltante || $temDevolucao || $temAberto) {
                 $stmt = $this->pdo->prepare("
                     UPDATE frota_embarque
-                       SET status = 'finalizado',
-                           data_retorno = CURRENT_DATE,
-                           horario_retorno = NOW(),
+                       SET status = 'problema',
                            updated_at = NOW()
-                     WHERE id = :embarque_id
-                       AND status IN ('planejado', 'em_andamento', 'problema')
+                     WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :id)
+                ");
+                $stmt->execute(['id' => $id]);
+            }
+
+            $stmt = $this->pdo->prepare("SELECT embarque_id FROM frota_entrega WHERE id = :id");
+            $stmt->execute(['id' => $id]);
+            $embarqueIdDaEntrega = (int)$stmt->fetchColumn();
+
+            if ($embarqueIdDaEntrega > 0) {
+                $stmt = $this->pdo->prepare("
+                    SELECT COUNT(*)
+                      FROM frota_entrega
+                     WHERE embarque_id = :embarque_id
+                       AND status NOT IN ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
                 ");
                 $stmt->execute(['embarque_id' => $embarqueIdDaEntrega]);
+                $entregasAbertas = (int)$stmt->fetchColumn();
 
-                if ($stmt->rowCount() > 0) {
-                    error_log(
-                        '[Checkout] Embarque #' . $embarqueIdDaEntrega .
-                        ' auto-finalizado (todas as entregas concluídas).'
-                    );
+                if ($entregasAbertas === 0) {
+                    $stmt = $this->pdo->prepare("
+                        UPDATE frota_embarque
+                           SET status = 'finalizado',
+                               data_retorno = CURRENT_DATE,
+                               horario_retorno = NOW(),
+                               updated_at = NOW()
+                         WHERE id = :embarque_id
+                           AND status IN ('planejado', 'em_andamento', 'problema')
+                    ");
+                    $stmt->execute(['embarque_id' => $embarqueIdDaEntrega]);
+
+                    if ($stmt->rowCount() > 0) {
+                        error_log('[Checkout] Embarque #' . $embarqueIdDaEntrega . ' auto-finalizado.');
+                    }
                 }
             }
-        }
-        // ----------------------------------------------------------------
 
-        // Registrar problema em frota_entrega_problema
-        if ($temFaltante || $temDevolucao) {
-            $tipoProblema = $temFaltante ? 'faltante' : 'devolucao';
-            $stmtProblema = $this->pdo->prepare("
-                INSERT INTO frota_entrega_problema (
-                    entrega_id, embarque_id, pedido_id, cliente_id, tipo_problema,
-                    descricao_problema, quantidade_afetada, valor_afetado,
-                    status_problema, prioridade, created_at, updated_at
+            // Registrar problema em frota_entrega_problema
+            if ($temFaltante || $temDevolucao || $temAberto) {
+                if ($temFaltante) {
+                    $tipoProblema = 'faltante';
+                    $descricaoProblema = 'Itens faltantes registrados no checkout';
+                } elseif ($temDevolucao) {
+                    $tipoProblema = 'devolucao';
+                    $descricaoProblema = 'Itens devolvidos registrados no checkout';
+                } else {
+                    $tipoProblema = 'aberto';
+                    $descricaoProblema = 'Itens em aberto aguardando conferência';
+                }
+
+                $stmtProblema = $this->pdo->prepare("
+                    INSERT INTO frota_entrega_problema (
+                        entrega_id, embarque_id, pedido_id, cliente_id, tipo_problema,
+                        descricao_problema, quantidade_afetada, valor_afetado,
+                        status_problema, prioridade, created_at, updated_at
+                    )
+                    SELECT
+                        e.id, e.embarque_id, e.pedido_id, e.cliente_id, :tipo,
+                        :descricao, :quantidade, :valor, 'pendente', 'alta', NOW(), NOW()
+                    FROM frota_entrega e
+                    WHERE e.id = :entrega_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM frota_entrega_problema ep
+                          WHERE ep.entrega_id = e.id AND ep.tipo_problema = :tipo_existente
+                            AND ep.status_problema IN ('pendente', 'em_analise')
+                      )
+                ");
+                $stmtProblema->execute([
+                    'tipo' => $tipoProblema,
+                    'tipo_existente' => $tipoProblema,
+                    'descricao' => $descricaoProblema,
+                    'quantidade' => array_sum(array_map(
+                        static fn($item) => (float)($item['quantidade_prevista'] ?? 0) - (float)($item['quantidade_entregue'] ?? 0),
+                        $checklist
+                    )),
+                    'valor' => (float)($entrega['valor_total'] ?? $entrega['valor'] ?? 0),
+                    'entrega_id' => $id
+                ]);
+            }
+
+            // Histórico de check-out
+            $stmt = $this->pdo->prepare("
+                INSERT INTO frota_checkin 
+                (entrega_id, motorista_id, tipo, latitude, longitude, assinatura_url, data_hora)
+                VALUES (
+                    :entrega_id,
+                    (SELECT motorista_id FROM frota_embarque WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :entrega_id2)),
+                    'checkout',
+                    :lat,
+                    :lng,
+                    :foto_romaneio,
+                    NOW()
                 )
-                SELECT
-                    e.id, e.embarque_id, e.pedido_id, e.cliente_id, :tipo,
-                    :descricao, :quantidade, :valor, 'pendente', 'alta', NOW(), NOW()
-                FROM frota_entrega e
-                WHERE e.id = :entrega_id
-                  AND NOT EXISTS (
-                      SELECT 1 FROM frota_entrega_problema ep
-                      WHERE ep.entrega_id = e.id AND ep.tipo_problema = :tipo_existente
-                        AND ep.status_problema IN ('pendente', 'em_analise')
-                  )
             ");
-            $stmtProblema->execute([
-                'tipo' => $tipoProblema,
-                'tipo_existente' => $tipoProblema,
-                'descricao' => $temFaltante ? 'Itens faltantes registrados no checkout' : 'Itens devolvidos registrados no checkout',
-                'quantidade' => array_sum(array_map(static fn($item) => (float)($item['quantidade_prevista'] ?? 0) - (float)($item['quantidade_entregue'] ?? 0), $checklist)),
-                'valor' => (float)($entrega['valor_total'] ?? $entrega['valor'] ?? 0),
-                'entrega_id' => $id
+            $stmt->execute([
+                'entrega_id' => $id,
+                'entrega_id2' => $id,
+                'lat' => $latGravar,
+                'lng' => $lngGravar,
+                'foto_romaneio' => $fotoRomaneioUrl
             ]);
+
+            // Log
+                 $logDescricao = "Entrega concluída. Desktop: " . ($desktop ? 'Sim' : 'Não')
+                . ($temFaltante  ? ' - Itens faltantes' : '')
+                . ($temDevolucao ? ' - Devoluções'      : '')
+                . ($temAberto    ? ' - Itens em aberto' : '')
+                . ($totalLevasInseridas > 0 ? " - {$totalLevasInseridas} leva(s) registrada(s)" : '')
+                . ($observacaoAutomatica !== '' ? ' [AUTO-FALTANTE: ' . $observacaoAutomatica . ']' : '')
+                . ($isTraining ? ' [MODO TREINAMENTO]' : '')
+                . (!$gravarCoordenadasCheckout ? ' [sem GPS - fora do raio]' : '');
+            $this->registrarLogEntrega($id, 'checkout', $logDescricao, $usuarioId);
+
+            $this->pdo->commit();
+
+            $stmtStatusFinal = $this->pdo->prepare("SELECT status FROM frota_embarque WHERE id = :id");
+            $stmtStatusFinal->execute(['id' => $embarqueIdDaEntrega]);
+            $embarqueStatusFinal = $stmtStatusFinal->fetchColumn() ?: null;
+
+            $payload = [
+                'success' => true,
+                'message' => ($temFaltante || $temDevolucao || $temAberto)
+                    ? 'Entrega concluída com pendências (faltantes/devoluções/itens em aberto). Embarque marcado como problema.'
+                    : 'Entrega concluída com sucesso!',
+                'data' => [
+                    'entrega_id' => $id,
+                    'status' => $statusEntrega,
+                    'embarque_id' => $embarqueIdDaEntrega,
+                    'embarque_status' => $embarqueStatusFinal,
+                    'embarque_auto_finalizado' => ($embarqueStatusFinal === 'finalizado'),
+                    'embarque_status_anterior' => ($temFaltante || $temDevolucao || $temAberto) ? 'problema' : 'em_andamento',
+                    'gps_registrado' => $gravarCoordenadasCheckout,
+                    'modo_treinamento' => $isTraining,
+                    'tem_faltante'  => $temFaltante,
+                    'tem_devolucao' => $temDevolucao,
+                    'tem_aberto'    => $temAberto,
+                    'total_levas'   => $totalLevasInseridas
+                ]
+            ];
+            $this->saveOfflineOperation($operationId, $id, 'checkout', $payload, 200);
+            return $this->json($response, $payload);
+
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            error_log('[Checkout] Erro: ' . $e->getMessage());
+            error_log('[Checkout] Stack trace: ' . $e->getTraceAsString());
+            return $this->json($response, [
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+        /**
+     * GET /v1/frota/entregas/{id}/levas
+     * Retorna todas as levas registradas para uma entrega.
+     *
+     * 🔥 NOVO 2026-09-25 (ENTREGAS PARCIAIS):
+     *   Usado pelo acerto de embarque para mostrar o histórico de descidas
+     *   parciais de cada item.
+     */
+    public function listarLevas(Request $request, Response $response, array $args): Response
+    {
+        $entregaId = (int)$args['id'];
+
+        if ($entregaId <= 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'ID da entrega inválido'
+            ], 400);
         }
 
-        // Registrar check-out no histórico
-        $stmt = $this->pdo->prepare("
-            INSERT INTO frota_checkin 
-            (entrega_id, motorista_id, tipo, latitude, longitude, assinatura_url, data_hora)
-            VALUES (
-                :entrega_id,
-                (SELECT motorista_id FROM frota_embarque WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :entrega_id2)),
-                'checkout',
-                :lat,
-                :lng,
-                :foto_romaneio,
-                NOW()
-            )
-        ");
-        $stmt->execute([
-            'entrega_id' => $id,
-            'entrega_id2' => $id,
-            'lat' => $lat,
-            'lng' => $lng,
-            'foto_romaneio' => $fotoRomaneioUrl
-        ]);
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT
+                    l.id,
+                    l.checklist_id,
+                    l.item_id,
+                    l.referencia,
+                    l.quantidade,
+                    l.foto_url,
+                    l.observacao,
+                    l.registrado_em,
+                    l.registrado_por,
+                    u.username AS registrado_por_nome
+                FROM frota_checklist_entrega_leva l
+                LEFT JOIN usuario u ON u.idusuario = l.registrado_por
+                WHERE l.entrega_id = :entrega_id
+                ORDER BY l.item_id ASC, l.registrado_em ASC
+            ");
+            $stmt->execute(['entrega_id' => $entregaId]);
+            $levas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        // LOG
-        $this->registrarLogEntrega($id, 'checkout', 
-            "Entrega concluída. Desktop: " . ($desktop ? 'Sim' : 'Não') . 
-            ($temFaltante ? ' - Itens faltantes' : '') .
-            ($temDevolucao ? ' - Devoluções' : ''),
-            $usuarioId
-        );
+            // Agrupar por item
+            $porItem = [];
+            foreach ($levas as $leva) {
+                $itemId = (int)$leva['item_id'];
+                if (!isset($porItem[$itemId])) {
+                    $porItem[$itemId] = [
+                        'item_id' => $itemId,
+                        'referencia' => $leva['referencia'],
+                        'total_levas' => 0,
+                        'total_quantidade' => 0,
+                        'levas' => []
+                    ];
+                }
+                $porItem[$itemId]['levas'][] = [
+                    'id' => (int)$leva['id'],
+                    'quantidade' => (float)$leva['quantidade'],
+                    'foto_url' => $leva['foto_url'],
+                    'observacao' => $leva['observacao'],
+                    'registrado_em' => $leva['registrado_em'],
+                    'registrado_por_nome' => $leva['registrado_por_nome']
+                ];
+                $porItem[$itemId]['total_levas']++;
+                $porItem[$itemId]['total_quantidade'] += (float)$leva['quantidade'];
+            }
 
-        $this->pdo->commit();
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'entrega_id' => $entregaId,
+                    'total_levas' => count($levas),
+                    'itens' => array_values($porItem)
+                ]
+            ]);
 
-        // Busca o status final do embarque após o commit (pode ter sido alterado)
-        $stmtStatusFinal = $this->pdo->prepare("
-            SELECT status FROM frota_embarque WHERE id = :id
-        ");
-        $stmtStatusFinal->execute(['id' => $embarqueIdDaEntrega]);
-        $embarqueStatusFinal = $stmtStatusFinal->fetchColumn() ?: null;
-
-        $payload = [
-            'success' => true,
-            'message' => ($temFaltante || $temDevolucao) 
-                ? 'Entrega concluída com pendências (faltantes/devoluções). Embarque marcado como problema.' 
-                : 'Entrega concluída com sucesso!',
-            'data' => [
-                'entrega_id' => $id,
-                'status' => $statusEntrega,
-                'embarque_id' => $embarqueIdDaEntrega,
-                'embarque_status' => $embarqueStatusFinal,
-                'embarque_auto_finalizado' => ($embarqueStatusFinal === 'finalizado'),
-                'embarque_status_anterior' => ($temFaltante || $temDevolucao) ? 'problema' : 'em_andamento'
-            ]
-        ];
-        $this->saveOfflineOperation($operationId, $id, 'checkout', $payload, 200);
-        return $this->json($response, $payload);
-
-    } catch (\Exception $e) {
-        $this->pdo->rollBack();
-        error_log('[Checkout] Erro: ' . $e->getMessage());
-        error_log('[Checkout] Stack trace: ' . $e->getTraceAsString());
-        return $this->json($response, [
-            'success' => false,
-            'error' => $e->getMessage()
-        ], 500);
+        } catch (\Exception $e) {
+            error_log('[Levas] Erro ao listar: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Erro ao carregar levas: ' . $e->getMessage()
+            ], 500);
+        }
     }
-}
     // ================================================================
     // FALHA
     // ================================================================

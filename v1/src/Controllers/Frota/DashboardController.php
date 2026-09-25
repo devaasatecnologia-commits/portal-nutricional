@@ -1459,31 +1459,16 @@ JOIN frota_entrega e ON e.embarque_id = em.id
         }
     }
 
-    /**
-     * GET /v1/frota/gestao-cargas/ranking-motoristas
-     * Ranking completo de eficiência/ineficiência por motorista.
-     *
-     * KPIs de eficiência de trajeto:
-     *  - tempo_medio_deslocamento_min
-     *  - distancia_media_trajeto_km
-     *  - tempo_ideal_medio_min
-     *  - indice_eficiencia_trajeto   (calculado com 1+ trajetos; NULL se 0)
-     *  - trajetos_analisados
-     *
-     * Flags de confiabilidade (para o frontend avisar o gestor):
-     *  - amostra_pequena:        true se 1 ou 2 trajetos (índice existe mas é frágil)
-     *  - amostra_insuficiente:   true se 0 trajetos (índice NULL)
-     */
     public function rankingMotoristas(Request $request, Response $response): Response
     {
         try {
-            $params = $request->getQueryParams();
-            $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+            $params  = $request->getQueryParams();
+            $periodo = $this->resolverPeriodoRankingGestao($params);
+            $inicio  = $periodo['inicio'];
+            $fim     = $periodo['fim'];
+
             $velRef = $this->getVelocidadeReferenciaKmh();
 
-            // =================================================================
-            // QUERY PRINCIPAL — usa CTEs para separar as etapas
-            // =================================================================
             $sql = "
             WITH trajetos_base AS (
                 SELECT
@@ -1498,7 +1483,7 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                     LAG(ent.horario_entrega)  OVER w  AS entrega_anterior
                 FROM frota_entrega ent
                 INNER JOIN frota_embarque em ON em.id = ent.embarque_id
-                WHERE em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                WHERE em.data_saida BETWEEN :inicio AND :fim
                   AND em.motorista_id IS NOT NULL
                   AND ent.status IN ('entregue', 'entregue_com_problema')
                   AND ent.horario_checkin IS NOT NULL
@@ -1542,7 +1527,6 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                     ROUND(AVG(tf.tempo_real_min)::NUMERIC, 1)         AS tempo_medio_deslocamento_min,
                     ROUND(AVG(tf.distancia_km)::NUMERIC, 2)           AS distancia_media_trajeto_km,
                     ROUND(AVG(tf.tempo_ideal_min)::NUMERIC, 1)        AS tempo_ideal_medio_min,
-                    -- Índice calculado com 1+ trajetos; NULL apenas quando 0
                     CASE
                         WHEN COUNT(*) >= 1 THEN
                             ROUND(
@@ -1580,35 +1564,55 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 ef.distancia_media_trajeto_km,
                 ef.tempo_ideal_medio_min,
                 ef.indice_eficiencia_trajeto,
-                  cm.cobli_driver_id
+                cm.cobli_driver_id,
+                cs.score              AS cobli_score,
+                cs.variacao           AS cobli_variacao,
+                cs.rank               AS cobli_rank,
+                cs.km_rodados         AS cobli_km_rodados,
+                cs.tempo_minutos      AS cobli_tempo_minutos,
+                cs.kms_por_evento     AS cobli_kms_por_evento,
+                cs.total_eventos      AS cobli_total_eventos,
+                cs.velocidade_media   AS cobli_velocidade_media
             FROM frota_motorista mo
             LEFT JOIN frota_embarque em ON em.motorista_id = mo.id
-                AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
+                AND em.data_saida BETWEEN :inicio2 AND :fim2
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
             LEFT JOIN eficiencia_por_motorista ef ON ef.motorista_id = mo.id
             LEFT JOIN frota_cobli_motorista cm ON cm.motorista_id = mo.id
+            LEFT JOIN frota_cobli_score_cache cs
+                ON cs.aggregation_type = 'DRIVER'
+               AND cs.entity_id = cm.cobli_driver_id
+               AND cs.periodo_inicio = :periodo_inicio::date
+               AND cs.periodo_fim    = :periodo_fim::date
             GROUP BY mo.id, mo.nome, mo.telefone, mo.status,
                      ef.trajetos_analisados,
                      ef.tempo_medio_deslocamento_min,
                      ef.distancia_media_trajeto_km,
                      ef.tempo_ideal_medio_min,
                      ef.indice_eficiencia_trajeto,
-                     cm.cobli_driver_id
-            HAVING COUNT(DISTINCT em.id) > 0
-            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+                     cm.cobli_driver_id,
+                     cs.score, cs.variacao, cs.rank,
+                     cs.km_rodados, cs.tempo_minutos,
+                     cs.kms_por_evento, cs.total_eventos,
+                     cs.velocidade_media
+            ORDER BY
+                CASE WHEN cs.rank IS NULL THEN 1 ELSE 0 END ASC,
+                cs.rank ASC NULLS LAST,
+                mo.nome ASC
             ";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':dias',    $dias, \PDO::PARAM_INT);
-            $stmt->bindValue(':dias2',   $dias, \PDO::PARAM_INT);
-            $stmt->bindValue(':vel_ref', $velRef);
+            $stmt->bindValue(':inicio',         $inicio);
+            $stmt->bindValue(':fim',            $fim);
+            $stmt->bindValue(':inicio2',        $inicio);
+            $stmt->bindValue(':fim2',           $fim);
+            $stmt->bindValue(':periodo_inicio', $inicio);
+            $stmt->bindValue(':periodo_fim',    $fim);
+            $stmt->bindValue(':vel_ref',        $velRef);
             $stmt->execute();
             $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // =================================================================
-            // Pós-processamento
-            // =================================================================
             foreach ($dados as &$m) {
                 $totalEntregas = (int)$m['total_entregas'];
 
@@ -1622,13 +1626,11 @@ JOIN frota_entrega e ON e.embarque_id = em.id
 
                 $m['tempo_medio_entrega_min'] = round((float)$m['tempo_medio_entrega_min'], 1);
 
-                // Índice de ineficiência
                 $indice = ($m['taxa_divergencia'] * 0.5)
                     + ((100 - $m['taxa_no_prazo']) * 0.3)
                     + (min((int)$m['problemas_pendentes'] * 5, 100) * 0.2);
                 $m['indice_ineficiencia'] = round(min($indice, 100), 1);
 
-                // Sanitização dos campos de eficiência
                 $m['trajetos_analisados'] = $m['trajetos_analisados'] !== null
                     ? (int)$m['trajetos_analisados'] : 0;
                 $m['tempo_medio_deslocamento_min'] = $m['tempo_medio_deslocamento_min'] !== null
@@ -1640,26 +1642,36 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 $m['indice_eficiencia_trajeto'] = $m['indice_eficiencia_trajeto'] !== null
                     ? (float)$m['indice_eficiencia_trajeto'] : null;
 
-                // ================================================================
-                // Flags de confiabilidade da amostra
-                // ================================================================
                 $m['amostra_insuficiente'] = ($m['trajetos_analisados'] === 0);
                 $m['amostra_pequena']      = ($m['trajetos_analisados'] >= 1 && $m['trajetos_analisados'] < 3);
 
-                // Score de desempenho (usa as novas regras 2A)
                 $m['score_desempenho'] = $this->calcularScoreMotorista($m);
+
+                // ============================================================
+                // Campos do Bloco 7.A.5b — score Cobli + telemetria
+                // Todos vêm do LEFT JOIN com frota_cobli_score_cache
+                // ============================================================
+                $m['tem_score_cobli'] = ($m['cobli_rank'] !== null);
+
+                $m['cobli_score']            = $m['cobli_score']            !== null ? (float)$m['cobli_score']            : null;
+                $m['cobli_variacao']         = $m['cobli_variacao']         !== null ? (float)$m['cobli_variacao']         : null;
+                $m['cobli_rank']             = $m['cobli_rank']             !== null ? (int)$m['cobli_rank']               : null;
+                $m['cobli_km_rodados']       = $m['cobli_km_rodados']       !== null ? (float)$m['cobli_km_rodados']       : null;
+                $m['cobli_tempo_minutos']    = $m['cobli_tempo_minutos']    !== null ? (int)$m['cobli_tempo_minutos']      : null;
+                $m['cobli_kms_por_evento']   = $m['cobli_kms_por_evento']   !== null ? (float)$m['cobli_kms_por_evento']   : null;
+                $m['cobli_total_eventos']    = $m['cobli_total_eventos']    !== null ? (int)$m['cobli_total_eventos']      : null;
+                $m['cobli_velocidade_media'] = $m['cobli_velocidade_media'] !== null ? (float)$m['cobli_velocidade_media'] : null;
             }
             unset($m);
-
-            // Reordenar pelo índice de ineficiência
-            usort($dados, function ($a, $b) {
-                return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
-            });
 
             return $this->json($response, [
                 'success' => true,
                 'data' => $dados,
-                'dias' => $dias,
+                'periodo' => [
+                    'inicio' => $inicio,
+                    'fim' => $fim,
+                    'modo' => $periodo['modo'],
+                ],
                 'velocidade_referencia_kmh' => $velRef,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
@@ -1797,29 +1809,16 @@ JOIN frota_entrega e ON e.embarque_id = em.id
         }
     }
 
-    /**
-     * GET /v1/frota/gestao-cargas/ranking-veiculos
-     * Ranking completo de eficiência/ineficiência por veículo (caminhão).
-     *
-     * KPIs de eficiência de trajeto (com flags de confiabilidade):
-     *  - tempo_medio_deslocamento_min
-     *  - distancia_media_trajeto_km
-     *  - tempo_ideal_medio_min
-     *  - indice_eficiencia_trajeto   (calculado com 1+ trajetos; NULL se 0)
-     *  - trajetos_analisados
-     *  - amostra_pequena             (1-2 trajetos)
-     *  - amostra_insuficiente        (0 trajetos)
-     */
     public function rankingVeiculos(Request $request, Response $response): Response
     {
         try {
-            $params = $request->getQueryParams();
-            $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+            $params  = $request->getQueryParams();
+            $periodo = $this->resolverPeriodoRankingGestao($params);
+            $inicio  = $periodo['inicio'];
+            $fim     = $periodo['fim'];
+
             $velRef = $this->getVelocidadeReferenciaKmh();
 
-            // =================================================================
-            // QUERY PRINCIPAL
-            // =================================================================
             $sql = "
             WITH trajetos_base AS (
                 SELECT
@@ -1834,7 +1833,7 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                     LAG(ent.horario_entrega)  OVER w  AS entrega_anterior
                 FROM frota_entrega ent
                 INNER JOIN frota_embarque em ON em.id = ent.embarque_id
-                WHERE em.data_saida >= CURRENT_DATE - (:dias || ' days')::interval
+                WHERE em.data_saida BETWEEN :inicio AND :fim
                   AND em.veiculo_id IS NOT NULL
                   AND ent.status IN ('entregue', 'entregue_com_problema')
                   AND ent.horario_checkin IS NOT NULL
@@ -1914,35 +1913,47 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 ef.distancia_media_trajeto_km,
                 ef.tempo_ideal_medio_min,
                 ef.indice_eficiencia_trajeto,
-                cd.cobli_vehicle_id
+                cd.cobli_vehicle_id,
+                cs.score        AS cobli_score,
+                cs.variacao     AS cobli_variacao,
+                cs.rank         AS cobli_rank
             FROM frota_veiculo ve
             LEFT JOIN frota_embarque em ON em.veiculo_id = ve.id
-                AND em.data_saida >= CURRENT_DATE - (:dias2 || ' days')::interval
+                AND em.data_saida BETWEEN :inicio2 AND :fim2
             LEFT JOIN frota_entrega ent ON ent.embarque_id = em.id
             LEFT JOIN frota_entrega_problema ep ON ep.entrega_id = ent.id
             LEFT JOIN eficiencia_por_veiculo ef ON ef.veiculo_id = ve.id
             LEFT JOIN frota_cobli_dispositivo cd ON cd.veiculo_id = ve.id AND cd.ativo = TRUE
+            LEFT JOIN frota_cobli_score_cache cs
+                ON cs.aggregation_type = 'VEHICLE'
+               AND cs.entity_id = cd.cobli_vehicle_id
+               AND cs.periodo_inicio = :periodo_inicio::date
+               AND cs.periodo_fim    = :periodo_fim::date
             GROUP BY ve.id, ve.placa, ve.modelo, ve.marca, ve.tipo, ve.status,
                      ef.trajetos_analisados,
                      ef.tempo_medio_deslocamento_min,
                      ef.distancia_media_trajeto_km,
                      ef.tempo_ideal_medio_min,
                      ef.indice_eficiencia_trajeto,
-                     cd.cobli_vehicle_id
-            HAVING COUNT(DISTINCT em.id) > 0
-            ORDER BY total_problemas DESC, entregas_atrasadas DESC
+                     cd.cobli_vehicle_id,
+                     cs.score, cs.variacao, cs.rank
+            ORDER BY
+                CASE WHEN cs.rank IS NULL THEN 1 ELSE 0 END ASC,
+                cs.rank ASC NULLS LAST,
+                ve.placa ASC
             ";
 
             $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':dias',    $dias, \PDO::PARAM_INT);
-            $stmt->bindValue(':dias2',   $dias, \PDO::PARAM_INT);
-            $stmt->bindValue(':vel_ref', $velRef);
+            $stmt->bindValue(':inicio',         $inicio);
+            $stmt->bindValue(':fim',            $fim);
+            $stmt->bindValue(':inicio2',        $inicio);
+            $stmt->bindValue(':fim2',           $fim);
+            $stmt->bindValue(':periodo_inicio', $inicio);
+            $stmt->bindValue(':periodo_fim',    $fim);
+            $stmt->bindValue(':vel_ref',        $velRef);
             $stmt->execute();
             $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-                      // =================================================================
-            // Pós-processamento
-            // =================================================================
             foreach ($dados as &$v) {
                 $totalEntregas = (int)$v['total_entregas'];
 
@@ -1956,13 +1967,11 @@ JOIN frota_entrega e ON e.embarque_id = em.id
 
                 $v['tempo_medio_entrega_min'] = round((float)$v['tempo_medio_entrega_min'], 1);
 
-                // Índice de ineficiência
                 $indice = ($v['taxa_divergencia'] * 0.5)
                     + ((100 - $v['taxa_no_prazo']) * 0.3)
                     + (min((int)$v['problemas_pendentes'] * 5, 100) * 0.2);
                 $v['indice_ineficiencia'] = round(min($indice, 100), 1);
 
-                // Sanitização dos campos de eficiência
                 $v['trajetos_analisados'] = $v['trajetos_analisados'] !== null
                     ? (int)$v['trajetos_analisados'] : 0;
                 $v['tempo_medio_deslocamento_min'] = $v['tempo_medio_deslocamento_min'] !== null
@@ -1974,30 +1983,27 @@ JOIN frota_entrega e ON e.embarque_id = em.id
                 $v['indice_eficiencia_trajeto'] = $v['indice_eficiencia_trajeto'] !== null
                     ? (float)$v['indice_eficiencia_trajeto'] : null;
 
-                // Flags de confiabilidade
                 $v['amostra_insuficiente'] = ($v['trajetos_analisados'] === 0);
                 $v['amostra_pequena']      = ($v['trajetos_analisados'] >= 1 && $v['trajetos_analisados'] < 3);
 
-                // ============================================================
-                // 🔥 NOVO 2026-09-22 (Bloco 5.C.3.A):
-                // Score de desempenho do VEÍCULO — mesma fórmula do motorista.
-                // Reutilizamos calcularScoreMotorista() porque a estrutura dos
-                // dados é idêntica (total_entregas, entregas_concluidas,
-                // entregas_com_problema, taxa_no_prazo, taxa_divergencia,
-                // problemas_pendentes, problemas_resolvidos, indice_eficiencia_trajeto).
-                // ============================================================
                 $v['score_desempenho'] = $this->calcularScoreMotorista($v);
+
+                // Campos NOVOS — score Cobli como ordenador
+                $v['tem_score_cobli']  = ($v['cobli_rank'] !== null);
+                $v['cobli_score']      = $v['cobli_score']      !== null ? (float)$v['cobli_score']      : null;
+                $v['cobli_variacao']   = $v['cobli_variacao']   !== null ? (float)$v['cobli_variacao']   : null;
+                $v['cobli_rank']       = $v['cobli_rank']       !== null ? (int)$v['cobli_rank']         : null;
             }
             unset($v);
-
-            usort($dados, function ($a, $b) {
-                return $b['indice_ineficiencia'] <=> $a['indice_ineficiencia'];
-            });
 
             return $this->json($response, [
                 'success' => true,
                 'data' => $dados,
-                'dias' => $dias,
+                'periodo' => [
+                    'inicio' => $inicio,
+                    'fim' => $fim,
+                    'modo' => $periodo['modo'],
+                ],
                 'velocidade_referencia_kmh' => $velRef,
                 'timestamp' => date('Y-m-d H:i:s')
             ]);
@@ -3140,6 +3146,51 @@ private function getVelocidadeReferenciaKmh(): float
         }
     }
 
+      /**
+     * Resolve o período do ranking de gestão (mesma regra do CobliController).
+     *
+     * 🔥 ALTERAÇÃO 2026-09-24 (Bloco 7.A.5b):
+     *   - Mês corrente corta em HOJE, não em ONTEM (P7 = c.2)
+     *
+     * @return array{inicio:string, fim:string, modo:string}
+     */
+    private function resolverPeriodoRankingGestao(array $params): array
+    {
+        $hoje = new \DateTime('today');
+
+        if (isset($params['mes']) && isset($params['ano'])) {
+            $mes = (int)$params['mes'];
+            $ano = (int)$params['ano'];
+
+            if ($mes >= 1 && $mes <= 12 && $ano >= 2000 && $ano <= 2100) {
+                $inicio = new \DateTime(sprintf('%04d-%02d-01', $ano, $mes));
+
+                if ($inicio <= $hoje) {
+                    $mesCorrente = ($inicio->format('Y-m') === $hoje->format('Y-m'));
+
+                    if ($mesCorrente) {
+                        // 🔥 P7 = c.2: fim = HOJE
+                        $fim = clone $hoje;
+                    } else {
+                        $fim = (clone $inicio)->modify('last day of this month');
+                    }
+
+                    return [
+                        'inicio' => $inicio->format('Y-m-d'),
+                        'fim'    => $fim->format('Y-m-d'),
+                        'modo'   => 'mes',
+                    ];
+                }
+            }
+        }
+
+        $dias = max(1, min((int)($params['dias'] ?? 30), 365));
+        return [
+            'inicio' => (clone $hoje)->modify("-{$dias} days")->format('Y-m-d'),
+            'fim'    => $hoje->format('Y-m-d'),
+            'modo'   => 'dias',
+        ];
+    }
     /**
      * Resposta JSON
      */

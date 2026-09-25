@@ -12,29 +12,42 @@ use Nutricional\Services\Frota\CobliService;
  * vínculo de veículo <-> dispositivo Cobli e sincronização de
  * posição/eventos de risco para uso no mapa (Leaflet) e no score
  * de motoristas.
+ *
+ * 🔥 ALTERAÇÃO 2026-09-23 (Bloco 7.A.5 + fix do período mensal):
+ *   - `rankingSeguranca` reescrito:
+ *       • Aceita `?mes=9&ano=2026` (novo) OU `?dias=30` (compat).
+ *       • Mês corrente: inicio=YYYY-MM-01, fim=ONTEM (P1=c.1).
+ *       • Mês passado: inicio=YYYY-MM-01, fim=YYYY-MM-t (último dia).
+ *       • Mês futuro: devolve vazio sem chamar a Cobli.
+ *       • Fix do `entity_nome`: para veículos, pega `license_plate`.
+ *       • Retorna `last_rank_update`, `classified_count`,
+ *         `unclassified_count`, `average_fleet_score` no payload.
+ *       • Cache indexado por (aggregation_type, entity_id, periodo_inicio,
+ *         periodo_fim) — chave por mês, não acumula lixo.
  */
 class CobliController
 {
     private $pdo;
     private $cobli;
 
- /**
- * Guard de processo: garante que os DDLs rodem apenas uma vez
- * por worker PHP-FPM. Como cada worker tem seu próprio estado estático,
- * o ideal em produção é mover para migration (ver item 7.3 do token).
- */
-private static $tabelasGarantidas = false;
+    /**
+     * Guard de processo: garante que os DDLs rodem apenas uma vez
+     * por worker PHP-FPM. Como cada worker tem seu próprio estado estático,
+     * o ideal em produção é mover para migration (ver item 7.3 do token).
+     */
+    private static $tabelasGarantidas = false;
 
-public function __construct()
-{
-    $this->pdo = \getPDO();
-    $this->cobli = new CobliService($this->pdo);
+    public function __construct()
+    {
+        $this->pdo = \getPDO();
+        $this->cobli = new CobliService($this->pdo);
 
-    if (!self::$tabelasGarantidas) {
-        $this->garantirTabelas();
-        self::$tabelasGarantidas = true;
+        if (!self::$tabelasGarantidas) {
+            $this->garantirTabelas();
+            self::$tabelasGarantidas = true;
+        }
     }
-}
+
     private function garantirTabelas()
     {
         try {
@@ -50,6 +63,7 @@ public function __construct()
                     UNIQUE (veiculo_id)
                 )
             ");
+
             $this->pdo->exec("
                 CREATE TABLE IF NOT EXISTS frota_cobli_posicao (
                     id SERIAL PRIMARY KEY,
@@ -64,6 +78,7 @@ public function __construct()
                 )
             ");
             $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_posicao_veiculo ON frota_cobli_posicao(veiculo_id, capturado_em DESC)");
+
             $this->pdo->exec("
                 CREATE TABLE IF NOT EXISTS frota_cobli_evento_risco (
                     id SERIAL PRIMARY KEY,
@@ -78,6 +93,7 @@ public function __construct()
                 )
             ");
             $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_evento_motorista ON frota_cobli_evento_risco(motorista_id, ocorrido_em DESC)");
+
             $this->pdo->exec("
                 CREATE TABLE IF NOT EXISTS frota_cobli_motorista (
                     id SERIAL PRIMARY KEY,
@@ -88,7 +104,8 @@ public function __construct()
                     UNIQUE (cobli_driver_id)
                 )
             ");
-                        $this->pdo->exec("
+
+            $this->pdo->exec("
                 CREATE TABLE IF NOT EXISTS frota_cobli_score_cache (
                     id SERIAL PRIMARY KEY,
                     aggregation_type VARCHAR(20) NOT NULL,
@@ -111,6 +128,30 @@ public function __construct()
             ");
             $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_score_entity ON frota_cobli_score_cache(aggregation_type, entity_id)");
             $this->pdo->exec("CREATE INDEX IF NOT EXISTS idx_cobli_score_periodo ON frota_cobli_score_cache(periodo_inicio, periodo_fim)");
+
+            // 🔥 NOVO 2026-09-23 (Bloco 7.A.4): log de chamadas à API Cobli
+            $this->pdo->exec("
+                CREATE TABLE IF NOT EXISTS frota_cobli_log_api (
+                    id SERIAL PRIMARY KEY,
+                    endpoint VARCHAR(255) NOT NULL,
+                    metodo VARCHAR(10) NOT NULL,
+                    status_code INTEGER,
+                    duracao_ms INTEGER,
+                    sucesso BOOLEAN NOT NULL DEFAULT FALSE,
+                    erro TEXT,
+                    payload_resumo TEXT,
+                    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+                )
+            ");
+            $this->pdo->exec("
+                CREATE INDEX IF NOT EXISTS idx_cobli_log_created
+                ON frota_cobli_log_api(created_at DESC)
+            ");
+            $this->pdo->exec("
+                CREATE INDEX IF NOT EXISTS idx_cobli_log_sucesso
+                ON frota_cobli_log_api(sucesso, created_at DESC)
+            ");
+
         } catch (\Exception $e) {
             error_log('Erro ao garantir tabelas Cobli: ' . $e->getMessage());
         }
@@ -136,9 +177,85 @@ public function __construct()
     }
 
     /**
+     * GET /v1/frota/cobli/saude
+     *
+     * Retorna um resumo operacional da integração Cobli.
+     *
+     * 🔥 NOVO 2026-09-23 (Bloco 7.A.4)
+     */
+    public function saude(Request $request, Response $response): Response
+    {
+        try {
+            $stmt = $this->pdo->query("
+                SELECT
+                    COUNT(*)                                        AS total,
+                    COUNT(CASE WHEN sucesso = TRUE  THEN 1 END)     AS sucessos,
+                    COUNT(CASE WHEN sucesso = FALSE THEN 1 END)     AS erros,
+                    COALESCE(ROUND(AVG(duracao_ms)::numeric, 0), 0) AS latencia_media_ms,
+                    COALESCE(MAX(duracao_ms), 0)                    AS latencia_max_ms
+                FROM frota_cobli_log_api
+                WHERE created_at >= NOW() - INTERVAL '1 hour'
+            ");
+            $resumo = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            $total    = (int)$resumo['total'];
+            $sucessos = (int)$resumo['sucessos'];
+            $erros    = (int)$resumo['erros'];
+
+            $taxaSucesso = $total > 0 ? round(($sucessos / $total) * 100, 1) : 100.0;
+
+            $stmt = $this->pdo->query("
+                SELECT endpoint, metodo, status_code, duracao_ms, erro, created_at
+                FROM frota_cobli_log_api
+                WHERE sucesso = FALSE
+                ORDER BY created_at DESC
+                LIMIT 1
+            ");
+            $ultimoErro = $stmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            $stmt = $this->pdo->query("
+                SELECT endpoint, metodo, status_code, duracao_ms, erro, created_at
+                FROM frota_cobli_log_api
+                WHERE sucesso = FALSE
+                ORDER BY created_at DESC
+                LIMIT 20
+            ");
+            $errosRecentes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $status = 'saudavel';
+            if ($taxaSucesso < 80) {
+                $status = 'critico';
+            } elseif ($taxaSucesso < 95) {
+                $status = 'atencao';
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'status'            => $status,
+                    'taxa_sucesso_1h'   => $taxaSucesso,
+                    'total_1h'          => $total,
+                    'sucessos_1h'       => $sucessos,
+                    'erros_1h'          => $erros,
+                    'latencia_media_ms' => (int)$resumo['latencia_media_ms'],
+                    'latencia_max_ms'   => (int)$resumo['latencia_max_ms'],
+                    'ultimo_erro'       => $ultimoErro,
+                    'erros_recentes'    => $errosRecentes,
+                    'timestamp'         => date('Y-m-d H:i:s'),
+                ]
+            ]);
+        } catch (\Exception $e) {
+            error_log('[Cobli-saude] Erro: ' . $e->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error'   => 'Erro ao carregar saúde da integração Cobli'
+            ], 500);
+        }
+    }
+
+    /**
      * POST /v1/frota/cobli/configurar
      * Salva a chave de API da Cobli (cobli-api-key).
-     * Body: { "api_key": "..." }
      */
     public function configurar(Request $request, Response $response): Response
     {
@@ -164,7 +281,6 @@ public function __construct()
             ");
             $stmt->execute(['valor' => $apiKey]);
 
-            // Reinstancia o serviço já com a nova chave para testar na hora
             $this->cobli = new CobliService($this->pdo);
             $teste = $this->cobli->testarConexao();
 
@@ -184,7 +300,6 @@ public function __construct()
 
     /**
      * GET /v1/frota/cobli/dispositivos
-     * Lista os dispositivos da frota na Cobli, para o gestor vincular a cada veículo.
      */
     public function listarDispositivos(Request $request, Response $response): Response
     {
@@ -197,8 +312,6 @@ public function __construct()
 
     /**
      * GET /v1/frota/cobli/veiculos
-     * Lista os veículos cadastrados na Cobli, já com placa (license_plate), marca,
-     * modelo, ano e device_id — usado para casar automaticamente com a placa do sistema.
      */
     public function listarVeiculosCobli(Request $request, Response $response): Response
     {
@@ -211,8 +324,6 @@ public function __construct()
 
     /**
      * POST /v1/frota/cobli/sincronizar-frota
-     * Importa veículos ausentes, atualiza os existentes e vincula os devices por placa.
-     * Body opcional: { "dry_run": true } para apenas visualizar as alterações.
      */
     public function sincronizarFrota(Request $request, Response $response): Response
     {
@@ -382,9 +493,6 @@ public function __construct()
 
     /**
      * POST /v1/frota/cobli/vincular-automatico
-     * Casa automaticamente os veículos do sistema com os veículos da Cobli
-     * comparando a placa (normalizada, sem traço/espaço, case-insensitive).
-     * Somente cria vínculos novos — não sobrescreve vínculos já existentes.
      */
     public function vincularAutomatico(Request $request, Response $response): Response
     {
@@ -451,33 +559,68 @@ public function __construct()
             return $this->json($response, ['success' => false, 'error' => 'Erro ao vincular automaticamente'], 500);
         }
     }
+
     /**
-     * GET /v1/frota/cobli/ranking-seguranca?dias=30&tipo=DRIVER
+     * GET /v1/frota/cobli/ranking-seguranca
      *
-     * Retorna o ranking de condução (score) da frota.
-     * Consulta a Cobli, grava no cache local e devolve unificado.
+     * Aceita dois modos:
+     *   - Por mês:    ?mes=9&ano=2026&tipo=DRIVER
+     *   - Por dias:   ?dias=30&tipo=DRIVER        (compat com o frontend antigo)
      *
-     * Cache de 1h por (tipo, período).
-     *
-     * 🔥 NOVO 2026-09-22 (Bloco 6.1)
+     * 🔥 ALTERAÇÃO 2026-09-23 (fix do período mensal):
+     *   - Período por mês calendário:
+     *       • Mês corrente: inicio=YYYY-MM-01, fim=ONTEM (P1=c.1)
+     *       • Mês passado:  inicio=YYYY-MM-01, fim=YYYY-MM-t
+     *       • Mês futuro:   retorna vazio sem chamar a Cobli
+     *   - Fix do `entity_nome`: para veículos, pega `license_plate`.
+     *   - Retorna 4 números do header da Cobli no payload.
+     *   - Cache chaveado por (aggregation_type, entity_id, periodo_inicio, periodo_fim).
      */
-        public function rankingSeguranca(Request $request, Response $response): Response
+    public function rankingSeguranca(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
-        $dias   = max(1, min((int)($params['dias'] ?? 30), 90));
         $tipo   = strtoupper($params['tipo'] ?? 'DRIVER');
-
-        error_log('[Cobli-ranking] ===== INICIO =====');
-        error_log('[Cobli-ranking] dias=' . $dias . ' tipo=' . $tipo);
 
         if (!in_array($tipo, ['DRIVER', 'VEHICLE'], true)) {
             return $this->json($response, ['success' => false, 'error' => 'tipo inválido'], 400);
         }
 
-        $periodoInicio = date('Y-m-d', strtotime("-{$dias} days"));
-        $periodoFim    = date('Y-m-d');
+        // ============================================================
+        // 1. Resolver período
+        // ============================================================
+        $periodo = $this->resolverPeriodoRanking($params);
 
-        // ---------- Cache lookup ----------
+        if ($periodo === null) {
+            // Mês futuro — devolve vazio sem chamar a Cobli
+            return $this->json($response, [
+                'success'             => true,
+                'fonte'               => 'periodo_futuro',
+                'periodo'             => ['inicio' => null, 'fim' => null],
+                'agrupamento'         => $tipo,
+                'rows_cruas'          => 0,
+                'rows_consolidadas'   => 0,
+                'duplicados'          => 0,
+                'inseridos'           => 0,
+                'pulados'             => 0,
+                'erros'               => [],
+                'persistidos'         => 0,
+                'average_fleet_score' => null,
+                'last_rank_update'    => null,
+                'classified_count'    => 0,
+                'unclassified_count'  => 0,
+                'data'                => [],
+            ]);
+        }
+
+        $periodoInicio = $periodo['inicio'];  // 'YYYY-MM-DD'
+        $periodoFim    = $periodo['fim'];     // 'YYYY-MM-DD'
+
+        error_log('[Cobli-ranking] ===== INICIO =====');
+        error_log('[Cobli-ranking] tipo=' . $tipo . ' periodo=' . $periodoInicio . ' → ' . $periodoFim . ' (modo=' . $periodo['modo'] . ')');
+
+        // ============================================================
+        // 2. Cache hit (por período exato)
+        // ============================================================
         try {
             $stmt = $this->pdo->prepare("
                 SELECT * FROM frota_cobli_score_cache
@@ -492,18 +635,30 @@ public function __construct()
 
             if (!empty($cache)) {
                 error_log('[Cobli-ranking] cache hit: ' . count($cache));
+
+                // Recalcula os 4 números do header a partir da cache
+                $scores = array_filter(array_map(fn($r) => $r['score'] !== null ? (float)$r['score'] : null, $cache), fn($v) => $v !== null);
+                $media  = count($scores) > 0 ? round(array_sum($scores) / count($scores)) : null;
+
                 return $this->json($response, [
-                    'success' => true, 'fonte' => 'cache',
-                    'periodo' => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
-                    'agrupamento' => $tipo,
-                    'data' => $this->formatarRankingSeguranca($cache)
+                    'success'             => true,
+                    'fonte'               => 'cache',
+                    'periodo'             => ['inicio' => $periodoInicio, 'fim' => $periodoFim],
+                    'agrupamento'         => $tipo,
+                    'average_fleet_score' => $media,
+                    'last_rank_update'    => $cache[0]['atualizado_em'] ?? null,
+                    'classified_count'    => count($cache),
+                    'unclassified_count'  => 0,
+                    'data'                => $this->formatarRankingSeguranca($cache)
                 ]);
             }
         } catch (\Exception $e) {
             error_log('[Cobli-ranking] ERRO cache lookup: ' . $e->getMessage());
         }
 
-        // ---------- Cobli ----------
+        // ============================================================
+        // 3. Cache miss — chamar a Cobli
+        // ============================================================
         $startIso = $periodoInicio . 'T00:00:00-03:00';
         $endIso   = $periodoFim    . 'T23:59:59-03:00';
 
@@ -521,10 +676,7 @@ public function __construct()
         error_log('[Cobli-ranking] rows cruas da Cobli: ' . count($rows));
 
         // ============================================================
-        // 🔥 CONSOLIDAÇÃO: agrupa por entity_id
-        // Mantém o registro de maior prioridade:
-        //   1. product_type = TELEMETRY (base histórica)
-        //   2. Se não houver, o primeiro encontrado
+        // 4. Consolidar duplicatas (product_type TELEMETRY > CAM)
         // ============================================================
         $consolidado = [];
         $duplicados  = 0;
@@ -536,14 +688,9 @@ public function __construct()
 
             if (isset($consolidado[$entityId])) {
                 $duplicados++;
-                $productAtual    = $consolidado[$entityId]['product_type'] ?? '';
-                $productNovo     = $row['product_type'] ?? '';
-
-                // Regra de prioridade: TELEMETRY > CAM > CAM_PRO
-                $pesoAtual = $this->pesoProductType($productAtual);
-                $pesoNovo  = $this->pesoProductType($productNovo);
-
-                if ($pesoNovo > $pesoAtual) {
+                $productAtual = $consolidado[$entityId]['product_type'] ?? '';
+                $productNovo  = $row['product_type'] ?? '';
+                if ($this->pesoProductType($productNovo) > $this->pesoProductType($productAtual)) {
                     $consolidado[$entityId] = $row;
                 }
                 continue;
@@ -555,7 +702,9 @@ public function __construct()
         $rowsFinal = array_values($consolidado);
         error_log('[Cobli-ranking] rows consolidadas: ' . count($rowsFinal) . " (duplicados: {$duplicados})");
 
-        // ---------- INSERT ----------
+        // ============================================================
+        // 5. Persistir
+        // ============================================================
         $inseridos = 0;
         $pulados   = 0;
         $erros     = [];
@@ -568,17 +717,19 @@ public function __construct()
                 WHERE aggregation_type = :tipo AND periodo_inicio = :inicio AND periodo_fim = :fim
             ")->execute(['tipo' => $tipo, 'inicio' => $periodoInicio, 'fim' => $periodoFim]);
 
-            $stmtIns = $this->pdo->prepare("
+                     $stmtIns = $this->pdo->prepare("
                 INSERT INTO frota_cobli_score_cache (
                     aggregation_type, entity_id, entity_nome,
                     score, variacao, km_rodados, tempo_minutos,
                     kms_por_evento, total_eventos, rank,
+                    velocidade_media,
                     periodo_inicio, periodo_fim, score_detail, dados_brutos,
                     atualizado_em
                 ) VALUES (
                     :tipo, :entity_id, :entity_nome,
                     :score, :variacao, :km, :tempo,
                     :kms_por_evento, :total_eventos, :rank,
+                    :velocidade_media,
                     :inicio, :fim, CAST(:score_detail AS jsonb), CAST(:dados_brutos AS jsonb),
                     NOW()
                 )
@@ -587,7 +738,7 @@ public function __construct()
             foreach ($rowsFinal as $idx => $row) {
                 $entity   = ($tipo === 'DRIVER') ? ($row['driver'] ?? null) : ($row['vehicle'] ?? null);
                 $entityId = is_array($entity) ? ($entity['id'] ?? '') : '';
-                $entityNm = is_array($entity) ? ($entity['name'] ?? null) : null;
+                $entityNm = $this->extrairNomeEntidade($entity, $tipo);
 
                 if ($entityId === '') {
                     $pulados++;
@@ -601,27 +752,35 @@ public function __construct()
                     $erros[] = "#{$idx} ({$entityNm}): json_encode falhou";
                     continue;
                 }
+                
+
+                             // 🔥 NOVO 2026-09-24 (Bloco 7.A.5b): extrai velocidade
+                $velocidade = $row['average_speed_in_kmh']
+                    ?? $row['avg_speed_in_kmh']
+                    ?? $row['avg_speed']
+                    ?? $row['average_speed']
+                    ?? null;
 
                 try {
                     $stmtIns->execute([
-                        'tipo'           => $tipo,
-                        'entity_id'      => $entityId,
-                        'entity_nome'    => $entityNm,
-                        'score'          => isset($row['score']) ? (float)$row['score'] : null,
-                        'variacao'       => isset($row['variation']) ? (float)$row['variation'] : null,
-                        'km'             => isset($row['driven_distance_in_km']) ? (float)$row['driven_distance_in_km'] : null,
-                        'tempo'          => isset($row['driven_time_in_minutes']) ? (int)$row['driven_time_in_minutes'] : null,
-                        'kms_por_evento' => isset($row['kms_per_event']) ? (float)$row['kms_per_event'] : null,
-                        'total_eventos'  => isset($row['total_events_count']) ? (int)$row['total_events_count'] : null,
-                        'rank'           => isset($row['rank']) ? (int)$row['rank'] : null,
-                        'inicio'         => $periodoInicio,
-                        'fim'            => $periodoFim,
-                        'score_detail'   => $scoreDetailJson,
-                        'dados_brutos'   => $dadosBrutosJson
+                        'tipo'             => $tipo,
+                        'entity_id'        => $entityId,
+                        'entity_nome'      => $entityNm,
+                        'score'            => isset($row['score']) ? (float)$row['score'] : null,
+                        'variacao'         => isset($row['variation']) ? (float)$row['variation'] : null,
+                        'km'               => isset($row['driven_distance_in_km']) ? (float)$row['driven_distance_in_km'] : null,
+                        'tempo'            => isset($row['driven_time_in_minutes']) ? (int)$row['driven_time_in_minutes'] : null,
+                        'kms_por_evento'   => isset($row['kms_per_event']) ? (float)$row['kms_per_event'] : null,
+                        'total_eventos'    => isset($row['total_events_count']) ? (int)$row['total_events_count'] : null,
+                        'rank'             => isset($row['rank']) ? (int)$row['rank'] : null,
+                        'velocidade_media' => $velocidade !== null ? (float)$velocidade : null,
+                        'inicio'           => $periodoInicio,
+                        'fim'              => $periodoFim,
+                        'score_detail'     => $scoreDetailJson,
+                        'dados_brutos'     => $dadosBrutosJson
                     ]);
                     $inseridos++;
                 } catch (\PDOException $pdoEx) {
-                    // SAVEPOINT para não abortar a transação inteira
                     error_log("[Cobli-ranking] PDO ERRO #{$idx}: " . $pdoEx->getMessage());
                     $erros[] = "#{$idx} ({$entityNm}): " . $pdoEx->getMessage();
                 }
@@ -635,7 +794,9 @@ public function __construct()
             error_log('[Cobli-ranking] ERRO GERAL INSERT: ' . $e->getMessage());
         }
 
-        // ---------- Releitura ----------
+        // ============================================================
+        // 6. Ler de volta e devolver
+        // ============================================================
         $stmt = $this->pdo->prepare("
             SELECT * FROM frota_cobli_score_cache
             WHERE aggregation_type = :tipo AND periodo_inicio = :inicio AND periodo_fim = :fim
@@ -658,15 +819,95 @@ public function __construct()
             'persistidos'         => count($persistidos),
             'average_fleet_score' => $dataCru['average_fleet_score'] ?? null,
             'last_rank_update'    => $dataCru['last_rank_update']    ?? null,
+            'classified_count'    => $dataCru['classified_count']    ?? null,
+            'unclassified_count'  => $dataCru['unclassified_count']  ?? null,
             'data'                => $this->formatarRankingSeguranca($persistidos)
         ]);
     }
 
-    /**
-     * Peso de prioridade para escolher qual linha manter quando
-     * o mesmo motorista/veículo aparece múltiplas vezes.
-     * Maior peso = mantém.
+       /**
+     * Resolve o período do ranking com base nos query params.
+     *
+     * Regras (P7 = c.2 — bate com Cobli):
+     *   - `?mes=&ano=` → mês calendário
+     *       • Mês corrente: inicio=YYYY-MM-01, fim=HOJE
+     *       • Mês passado:  inicio=YYYY-MM-01, fim=YYYY-MM-t
+     *       • Mês futuro:   retorna null (Controller devolve vazio)
+     *   - `?dias=` → últimos N dias (compat com o frontend antigo)
+     *
+     * 🔥 ALTERAÇÃO 2026-09-24 (Bloco 7.A.5b):
+     *   - Mês corrente corta em HOJE, não em ONTEM (P7 = c.2)
+     *   - Bate 100% com a Cobli em tempo real, ao custo de mudar
+     *     durante o dia
+     *
+     * @return array{inicio:string, fim:string, modo:string}|null
      */
+    private function resolverPeriodoRanking(array $params): ?array
+    {
+        $hoje = new \DateTime('today');
+
+        // Modo 1: por mês/ano
+        if (isset($params['mes']) && isset($params['ano'])) {
+            $mes = (int)$params['mes'];
+            $ano = (int)$params['ano'];
+
+            if ($mes >= 1 && $mes <= 12 && $ano >= 2000 && $ano <= 2100) {
+                $inicio = new \DateTime(sprintf('%04d-%02d-01', $ano, $mes));
+
+                // Mês futuro? Devolve null (Controller trata)
+                if ($inicio > $hoje) {
+                    return null;
+                }
+
+                $mesCorrente = ($inicio->format('Y-m') === $hoje->format('Y-m'));
+
+                if ($mesCorrente) {
+                    // 🔥 P7 = c.2: fim = HOJE (bate com Cobli)
+                    $fim = clone $hoje;
+                } else {
+                    // Mês passado → último dia do mês
+                    $fim = (clone $inicio)->modify('last day of this month');
+                }
+
+                return [
+                    'inicio' => $inicio->format('Y-m-d'),
+                    'fim'    => $fim->format('Y-m-d'),
+                    'modo'   => 'mes',
+                ];
+            }
+        }
+
+        // Modo 2: por dias corridos (compat)
+        $dias = max(1, min((int)($params['dias'] ?? 30), 90));
+        return [
+            'inicio' => (clone $hoje)->modify("-{$dias} days")->format('Y-m-d'),
+            'fim'    => $hoje->format('Y-m-d'),
+            'modo'   => 'dias',
+        ];
+    }
+
+    /**
+     * Extrai o nome da entidade do payload da Cobli.
+     *
+     * 🔥 FIX 2026-09-23: para veículos, a Cobli NÃO devolve `name`.
+     *    Devolve `license_plate` (e opcionalmente `alias`).
+     *    Sem esse fallback, `entity_nome` fica vazio em 100% dos veículos.
+     */
+    private function extrairNomeEntidade($entity, string $tipo): ?string
+    {
+        if (!is_array($entity)) return null;
+
+        if ($tipo === 'DRIVER') {
+            return $entity['name'] ?? null;
+        }
+
+        // VEHICLE
+        return $entity['license_plate']
+            ?? $entity['name']
+            ?? $entity['alias']
+            ?? null;
+    }
+
     private function pesoProductType(?string $productType): int
     {
         switch (strtoupper($productType ?? '')) {
@@ -676,16 +917,9 @@ public function __construct()
             default:          return 1;
         }
     }
-
-    /**
-     * Formata a lista de score para o frontend.
-     * Aceita tanto linhas do banco quanto linhas cruas da Cobli.
-     */
     private function formatarRankingSeguranca(array $linhas): array
     {
         return array_map(function ($row) {
-            // Se veio do banco, os campos estão achatados.
-            // Se veio da Cobli, ainda estão dentro de driver/vehicle.
             $entityId = $row['entity_id'] ?? null;
             $entityNm = $row['entity_nome'] ?? null;
 
@@ -694,13 +928,48 @@ public function __construct()
                 $entityNm = $row['driver']['name'] ?? null;
             } elseif (!$entityId && isset($row['vehicle']['id'])) {
                 $entityId = $row['vehicle']['id'];
-                $entityNm = $row['vehicle']['name'] ?? null;
+                $entityNm = $row['vehicle']['license_plate'] ?? $row['vehicle']['name'] ?? null;
             }
 
-            // score_detail pode vir como string JSON (banco) ou array (Cobli)
             $detail = $row['score_detail'] ?? [];
             if (is_string($detail)) {
                 $detail = json_decode($detail, true) ?: [];
+            }
+
+            // ============================================================
+            // 🔥 Velocidade média (P8 = b)
+            // A Cobli NÃO expõe esse campo no payload do ranking (confirmado
+            // em teste 24/09). Calculamos:
+            //   velocidade_media = km_rodados / (tempo_minutos / 60)
+            // ============================================================
+            $kmRodados    = isset($row['km_rodados'])    ? (float)$row['km_rodados']    : (isset($row['driven_distance_in_km'])     ? (float)$row['driven_distance_in_km']     : null);
+            $tempoMinutos = isset($row['tempo_minutos']) ? (int)$row['tempo_minutos']   : (isset($row['driven_time_in_minutes'])    ? (int)$row['driven_time_in_minutes']      : null);
+
+            $velocidadeMedia = null;
+
+            // 1º tenta pegar do payload bruto (caso a Cobli passe a expor)
+            if (!empty($row['dados_brutos'])) {
+                $brutos = is_string($row['dados_brutos'])
+                    ? json_decode($row['dados_brutos'], true) ?: []
+                    : $row['dados_brutos'];
+
+                $velocidadeMedia = $brutos['average_speed_in_kmh']
+                    ?? $brutos['avg_speed_in_kmh']
+                    ?? $brutos['avg_speed']
+                    ?? $brutos['average_speed']
+                    ?? null;
+
+                if ($velocidadeMedia !== null) {
+                    $velocidadeMedia = (float)$velocidadeMedia;
+                }
+            }
+
+            // 2º fallback: calcula a partir de km/tempo
+            if ($velocidadeMedia === null && $kmRodados !== null && $tempoMinutos !== null && $tempoMinutos > 0) {
+                $horas = $tempoMinutos / 60;
+                if ($horas > 0) {
+                    $velocidadeMedia = round($kmRodados / $horas, 1);
+                }
             }
 
             return [
@@ -709,35 +978,22 @@ public function __construct()
                 'entity_nome'      => $entityNm,
                 'score'            => isset($row['score'])          ? (float)$row['score']          : null,
                 'variacao'         => isset($row['variacao'])       ? (float)$row['variacao']       : (isset($row['variation']) ? (float)$row['variation'] : null),
-                'km_rodados'       => isset($row['km_rodados'])     ? (float)$row['km_rodados']     : (isset($row['driven_distance_in_km']) ? (float)$row['driven_distance_in_km'] : null),
-                'tempo_minutos'    => isset($row['tempo_minutos'])  ? (int)$row['tempo_minutos']    : (isset($row['driven_time_in_minutes']) ? (int)$row['driven_time_in_minutes'] : null),
+                'km_rodados'       => $kmRodados,
+                'tempo_minutos'    => $tempoMinutos,
                 'kms_por_evento'   => isset($row['kms_por_evento']) ? (float)$row['kms_por_evento'] : (isset($row['kms_per_event']) ? (float)$row['kms_per_event'] : null),
                 'total_eventos'    => isset($row['total_eventos'])  ? (int)$row['total_eventos']    : (isset($row['total_events_count']) ? (int)$row['total_events_count'] : null),
+                'velocidade_media' => $velocidadeMedia,
                 'score_detail'     => $detail,
             ];
         }, $linhas);
     }
-        /**
+    /**
      * POST /v1/frota/cobli/vincular-motoristas-auto
-     *
-     * Vincula automaticamente motoristas locais aos motoristas da Cobli,
-     * casando por CPF (normalizado — só dígitos).
-     *
-     * Só cria vínculos novos — não sobrescreve vínculos existentes.
-     *
-     * Regra:
-     *   1. Busca todos os motoristas da Cobli (paginado)
-     *   2. Indexa por CPF (só dígitos), ignorando inativos na Cobli
-     *   3. Busca motoristas locais ativos SEM vínculo em frota_cobli_motorista
-     *   4. Casa por CPF e grava em frota_cobli_motorista
-     *   5. Retorna vinculados[] + nao_encontrados[]
-     *
      * 🔥 NOVO 2026-09-22 (Bloco 6.5-fix)
      */
     public function vincularMotoristasAuto(Request $request, Response $response): Response
     {
         try {
-            // 1. Buscar lista COMPLETA de motoristas da Cobli
             $resultado = $this->cobli->listarMotoristas();
 
             if (!$resultado['success']) {
@@ -754,7 +1010,6 @@ public function __construct()
 
             error_log('[Cobli-vincular] Total motoristas na Cobli: ' . count($motoristasCobli));
 
-            // 2. Indexar por CPF (só dígitos), ignorando inativos
             $porCpf = [];
             foreach ($motoristasCobli as $mc) {
                 $ativo = $mc['active'] ?? true;
@@ -771,7 +1026,6 @@ public function __construct()
                 }
             }
 
-            // 3. Buscar motoristas locais SEM vínculo (só ativos)
             $stmt = $this->pdo->query("
                 SELECT fm.id, fm.nome, fm.cpf, fm.erp_id
                 FROM frota_motorista fm
@@ -785,7 +1039,6 @@ public function __construct()
             ");
             $motoristasLocais = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-            // 4. Tentar vincular
             $vinculados = [];
             $naoEncontrados = [];
 
@@ -844,16 +1097,12 @@ public function __construct()
             ], 500);
         }
     }
+
     private function normalizarPlaca(?string $placa): string
     {
         return strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $placa ?? ''));
     }
 
-    /**
-     * GET /v1/frota/cobli/veiculos-vinculados
-     * Lista os vínculos veículo <-> dispositivo Cobli já cadastrados,
-     * usado para exibir o status de cada veículo do sistema na tela.
-     */
     public function listarVinculos(Request $request, Response $response): Response
     {
         $stmt = $this->pdo->query("
@@ -866,11 +1115,6 @@ public function __construct()
         return $this->json($response, ['success' => true, 'data' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
     }
 
-    /**
-     * POST /v1/frota/cobli/veiculo/{id}/vincular
-     * Vincula um veículo do sistema ao deviceId/vehicleId da Cobli.
-     * Body: { "cobli_device_id": "...", "cobli_vehicle_id": "..." }
-     */
     public function vincularVeiculo(Request $request, Response $response, array $args): Response
     {
         $veiculoId = (int)$args['id'];
@@ -901,10 +1145,6 @@ public function __construct()
         }
     }
 
-    /**
-     * DELETE /v1/frota/cobli/veiculo/{id}/vincular
-     * Remove o vínculo do veículo com a Cobli (desativa, não apaga o histórico).
-     */
     public function desvincularVeiculo(Request $request, Response $response, array $args): Response
     {
         $veiculoId = (int)$args['id'];
@@ -918,11 +1158,6 @@ public function __construct()
         }
     }
 
-    /**
-     * POST /v1/frota/cobli/motorista/{id}/vincular
-     * Vincula um motorista do sistema ao driverId da Cobli (para eventos de risco/score).
-     * Body: { "cobli_driver_id": "..." }
-     */
     public function vincularMotorista(Request $request, Response $response, array $args): Response
     {
         $motoristaId = (int)$args['id'];
@@ -948,12 +1183,6 @@ public function __construct()
         }
     }
 
-    /**
-     * POST /v1/frota/cobli/veiculo/{id}/sincronizar
-     * Sincronização "sob demanda" ERP + Cobli -> tabelas internas da Frota.
-     * Somente LEITURA no ERP e na Cobli; grava/atualiza (upsert) apenas em
-     * frota_veiculo e frota_motorista. Nunca escreve de volta nas origens.
-     */
     public function sincronizarVeiculoMotorista(Request $request, Response $response, array $args): Response
     {
         $veiculoId = (int)$args['id'];
@@ -969,7 +1198,6 @@ public function __construct()
                 return $this->json($response, ['success' => false, 'error' => 'Veículo não encontrado'], 404);
             }
 
-            // Motorista mais recente associado a este veículo (via último embarque)
             $stmtMotoristaAtual = $this->pdo->prepare("
                 SELECT motorista_id FROM frota_embarque
                 WHERE veiculo_id = :veiculo_id AND motorista_id IS NOT NULL
@@ -978,9 +1206,6 @@ public function __construct()
             $stmtMotoristaAtual->execute(['veiculo_id' => $veiculoId]);
             $veiculoDados['motorista_id'] = $stmtMotoristaAtual->fetchColumn() ?: null;
 
-            // ------------------------------------------------------------
-            // 1) COBLI (leitura): dados reais do veículo/motorista/posição
-            // ------------------------------------------------------------
             $vinculoCobli = $this->pdo->prepare("SELECT cobli_device_id FROM frota_cobli_dispositivo WHERE veiculo_id = :id AND ativo = TRUE");
             $vinculoCobli->execute(['id' => $veiculoId]);
             $device = $vinculoCobli->fetch(\PDO::FETCH_ASSOC);
@@ -992,7 +1217,6 @@ public function __construct()
                     $veiculoCobli = $dados['vehicle'] ?? [];
                     $motoristaCobli = $dados['driver'] ?? [];
 
-                    // Upsert de dados do veículo (marca/modelo/ano vêm da Cobli, fonte confiável de cadastro)
                     $campos = [];
                     $params = ['id' => $veiculoId];
                     if (!empty($veiculoCobli['brand'])) { $campos[] = 'marca = :marca'; $params['marca'] = $veiculoCobli['brand']; }
@@ -1005,7 +1229,6 @@ public function __construct()
                         $atualizados[] = 'Veículo atualizado com dados da Cobli (marca/modelo/ano)';
                     }
 
-                    // Se o veículo já tem motorista vinculado no sistema, atualiza o vínculo Cobli dele também
                     if (!empty($motoristaCobli['id']) && !empty($veiculoDados['motorista_id'])) {
                         $this->pdo->prepare("
                             INSERT INTO frota_cobli_motorista (motorista_id, cobli_driver_id)
@@ -1021,9 +1244,6 @@ public function __construct()
                 $avisos[] = 'Veículo sem dispositivo Cobli vinculado — pulei a sincronização de posição/telemetria.';
             }
 
-            // ------------------------------------------------------------
-            // 2) ERP (leitura): dados cadastrais do motorista (cliforemp)
-            // ------------------------------------------------------------
             if (!empty($veiculoDados['motorista_id'])) {
                 $motorista = $this->pdo->prepare("SELECT id, erp_id FROM frota_motorista WHERE id = :id");
                 $motorista->execute(['id' => $veiculoDados['motorista_id']]);
@@ -1082,8 +1302,9 @@ public function __construct()
 
     /**
      * GET /v1/frota/cobli/veiculo/{id}/posicao
-     * Busca a posição em tempo real do veículo diretamente na Cobli
-     * (usa o device vinculado) e já registra no histórico local.
+     *
+     * 🔥 MUDANÇA 2026-09-23 (Bloco 7.A.1):
+     *   - Cache de 30s por veículo, usando created_at (mesma regra do posicoesFrota)
      */
     public function posicaoVeiculo(Request $request, Response $response, array $args): Response
     {
@@ -1095,6 +1316,24 @@ public function __construct()
 
         if (!$vinculo) {
             return $this->json($response, ['success' => false, 'error' => 'Veículo não vinculado a um dispositivo Cobli'], 404);
+        }
+
+        $cache = $this->buscarUltimaPosicaoCache($veiculoId, 30);
+
+        if ($cache !== null) {
+            return $this->json($response, [
+                'success' => true,
+                'fonte'   => 'cache',
+                'data' => [
+                    'localizacao' => [
+                        'latitude'       => (float)$cache['latitude'],
+                        'longitude'      => (float)$cache['longitude'],
+                        'speed'          => $cache['velocidade'],
+                        'ignition_on'    => $cache['ignicao_ligada'],
+                        'time'           => strtotime($cache['capturado_em']),
+                    ],
+                ]
+            ]);
         }
 
         $resultado = $this->cobli->buscarDispositivo($vinculo['cobli_device_id']);
@@ -1126,6 +1365,7 @@ public function __construct()
 
         return $this->json($response, [
             'success' => true,
+            'fonte'   => 'cobli',
             'data' => [
                 'veiculo' => $dados['vehicle'] ?? null,
                 'motorista' => $dados['driver'] ?? null,
@@ -1135,9 +1375,34 @@ public function __construct()
     }
 
     /**
-     * GET /v1/frota/cobli/veiculo/{id}/rota-historico
-     * Retorna o histórico de posições já capturadas localmente (Leaflet).
+     * Busca a última posição gravada para um veículo dentro da janela de cache.
+     *
+     * 🔥 NOVO 2026-09-23 (Bloco 7.A.1)
      */
+    private function buscarUltimaPosicaoCache(int $veiculoId, int $segundosJanela = 30): ?array
+    {
+        $segundosJanela = max(1, min($segundosJanela, 3600));
+
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT latitude, longitude, velocidade, ignicao_ligada, capturado_em, created_at
+                FROM frota_cobli_posicao
+                WHERE veiculo_id = :veiculo_id
+                  AND created_at >= NOW() - make_interval(secs => {$segundosJanela})
+                ORDER BY created_at DESC
+                LIMIT 1
+            ");
+            $stmt->bindValue(':veiculo_id', $veiculoId, \PDO::PARAM_INT);
+            $stmt->execute();
+
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            return $row ?: null;
+        } catch (\Exception $e) {
+            error_log('[Cobli-cache] ERRO SQL: ' . $e->getMessage());
+            return null;
+        }
+    }
+
     public function historicoPosicoes(Request $request, Response $response, array $args): Response
     {
         $veiculoId = (int)$args['id'];
@@ -1158,8 +1423,10 @@ public function __construct()
 
     /**
      * GET /v1/frota/cobli/frota/posicoes
-     * Busca, ao vivo na Cobli, a posição de TODOS os veículos vinculados
-     * (para exibição no mapa da tela de Gestão de Cargas).
+     * Busca posição de TODOS os veículos vinculados.
+     *
+     * 🔥 MUDANÇA 2026-09-23 (Bloco 7.A.1):
+     *   - Cache de 30s por veículo, usando frota_cobli_posicao.created_at
      */
     public function posicoesFrota(Request $request, Response $response): Response
     {
@@ -1171,8 +1438,34 @@ public function __construct()
         ");
         $vinculos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
-        $veiculos = [];
+        $veiculos   = [];
+        $cacheHits  = 0;
+        $cacheMiss  = 0;
+
         foreach ($vinculos as $vinculo) {
+            $veiculoId = (int)$vinculo['veiculo_id'];
+
+            $cache = $this->buscarUltimaPosicaoCache($veiculoId, 30);
+
+            if ($cache !== null) {
+                $cacheHits++;
+                $veiculos[] = [
+                    'veiculo_id'     => $veiculoId,
+                    'placa'          => $vinculo['placa'],
+                    'modelo'         => $vinculo['modelo'],
+                    'motorista'      => $cache['motorista'] ?? null,
+                    'latitude'       => (float)$cache['latitude'],
+                    'longitude'      => (float)$cache['longitude'],
+                    'velocidade'     => $cache['velocidade'],
+                    'ignicao_ligada' => $cache['ignicao_ligada'],
+                    'atualizado_em'  => $cache['capturado_em'],
+                    'fonte'          => 'cache',
+                ];
+                continue;
+            }
+
+            $cacheMiss++;
+
             $resultado = $this->cobli->buscarDispositivo($vinculo['cobli_device_id']);
             if (!$resultado['success']) {
                 continue;
@@ -1185,44 +1478,54 @@ public function __construct()
                 continue;
             }
 
+            $capturadoEm = !empty($localizacao['time'])
+                ? date('Y-m-d H:i:s', (int)$localizacao['time'])
+                : date('Y-m-d H:i:s');
+
             try {
                 $stmtIns = $this->pdo->prepare("
-                    INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
-                    VALUES (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
+                    INSERT INTO frota_cobli_posicao
+                        (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
+                    VALUES
+                        (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
                 ");
                 $stmtIns->execute([
-                    'veiculo_id' => $vinculo['veiculo_id'],
-                    'lat' => $localizacao['latitude'],
-                    'lng' => $localizacao['longitude'],
-                    'vel' => $localizacao['speed'] ?? null,
-                    'ign' => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
-                    'capturado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : date('Y-m-d H:i:s')
+                    'veiculo_id'   => $veiculoId,
+                    'lat'          => $localizacao['latitude'],
+                    'lng'          => $localizacao['longitude'],
+                    'vel'          => $localizacao['speed'] ?? null,
+                    'ign'          => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
+                    'capturado_em' => $capturadoEm,
                 ]);
             } catch (\Exception $e) {
-                error_log('Erro ao gravar posição Cobli (frota): ' . $e->getMessage());
+                error_log('[Cobli-posicoes] Erro ao gravar posição: ' . $e->getMessage());
             }
 
             $veiculos[] = [
-                'veiculo_id' => (int)$vinculo['veiculo_id'],
-                'placa' => $vinculo['placa'],
-                'modelo' => $vinculo['modelo'],
-                'motorista' => $dados['driver']['name'] ?? null,
-                'latitude' => (float)$localizacao['latitude'],
-                'longitude' => (float)$localizacao['longitude'],
-                'velocidade' => $localizacao['speed'] ?? null,
+                'veiculo_id'     => $veiculoId,
+                'placa'          => $vinculo['placa'],
+                'modelo'         => $vinculo['modelo'],
+                'motorista'      => $dados['driver']['name'] ?? null,
+                'latitude'       => (float)$localizacao['latitude'],
+                'longitude'      => (float)$localizacao['longitude'],
+                'velocidade'     => $localizacao['speed'] ?? null,
                 'ignicao_ligada' => $localizacao['ignition_on'] ?? null,
-                'atualizado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : null
+                'atualizado_em'  => $capturadoEm,
+                'fonte'          => 'cobli',
             ];
         }
 
-        return $this->json($response, ['success' => true, 'data' => $veiculos]);
+        return $this->json($response, [
+            'success' => true,
+            'data'    => $veiculos,
+            'meta'    => [
+                'total'      => count($veiculos),
+                'cache_hits' => $cacheHits,
+                'cache_miss' => $cacheMiss,
+            ]
+        ]);
     }
 
-    /**
-     * GET /v1/frota/cobli/motorista/{id}/eventos-risco
-     * Busca eventos de risco (score de condução) do motorista no período,
-     * já persistidos localmente a partir da sincronização.
-     */
     public function eventosRiscoMotorista(Request $request, Response $response, array $args): Response
     {
         $motoristaId = (int)$args['id'];
@@ -1254,12 +1557,6 @@ public function __construct()
         ]);
     }
 
-    /**
-     * POST /v1/frota/cobli/sincronizar-eventos-risco
-     * Rotina (cron/manual) que busca eventos de risco de todos os motoristas
-     * vinculados na Cobli, dentro do período informado, e persiste localmente.
-     * Body opcional: { "dias": 7 }
-     */
     public function sincronizarEventosRisco(Request $request, Response $response): Response
     {
         if (!$this->cobli->isConfigurado()) {
@@ -1316,105 +1613,89 @@ public function __construct()
         ]);
     }
 
-  /**
- * POST /v1/frota/cobli/webhook
- * Endpoint público para receber eventos em tempo real da Cobli
- * (posição, ignição, geocerca, eventos de risco/câmera).
- * Requer HTTPS público configurado no painel da Cobli.
- */
-public function webhook(Request $request, Response $response): Response
-{
-    $rawBody = (string)$request->getBody();
-    if (!$this->assinaturaValida($request, $rawBody)) {
-        return $this->json($response, ['success' => false, 'error' => 'Assinatura inválida'], 400);
-    }
-
-    $body = json_decode($rawBody, true) ?: (array)$request->getParsedBody();
-    $eventType = $body['eventType'] ?? $body['event_type'] ?? null;
-    $eventData = $body['eventData'] ?? $body['event_data'] ?? [];
-
-    if (!$eventType) {
-        return $this->json($response, ['success' => false, 'error' => 'Evento inválido'], 400);
-    }
-
-    // Log leve para auditoria (ajuda a diagnosticar webhook sem casar veículo)
-    $placaLog = $eventData['licensePlate'] ?? $eventData['license_plate'] ?? 'n/a';
-    error_log('[Cobli-webhook] Evento recebido: ' . $eventType . ' | placa=' . $placaLog);
-
-    try {
-        $veiculoId = $this->resolverVeiculoPorPlaca($eventData['licensePlate'] ?? $eventData['license_plate'] ?? null);
-
-        if ($eventType === 'position' && $veiculoId && !empty($eventData['latitude']) && !empty($eventData['longitude'])) {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
-                VALUES (:veiculo_id, :lat, :lng, :vel, :ign, NOW())
-            ");
-            $stmt->execute([
-                'veiculo_id' => $veiculoId,
-                'lat' => $eventData['latitude'],
-                'lng' => $eventData['longitude'],
-                'vel' => $eventData['speed'] ?? null,
-                'ign' => $this->paraBooleanoPg($eventData['ignitionOn'] ?? null)
-            ]);
-        } elseif (in_array($eventType, ['hard_break', 'fast_acceleration', 'speedy_turn', 'tailgating', 'distracted_driving', 'phone_usage', 'eyes_closed', 'smoking', 'yawn', 'sos', 'alert_driven_over_speed'])) {
-            $stmt = $this->pdo->prepare("
-                INSERT INTO frota_cobli_evento_risco (motorista_id, veiculo_id, tipo_evento, latitude, longitude, ocorrido_em, dados_brutos)
-                VALUES (NULL, :veiculo_id, :tipo, :lat, :lng, NOW(), :dados)
-            ");
-            $stmt->execute([
-                'veiculo_id' => $veiculoId,
-                'tipo' => $eventType,
-                'lat' => $eventData['latitude'] ?? null,
-                'lng' => $eventData['longitude'] ?? null,
-                'dados' => json_encode($body, JSON_UNESCAPED_UNICODE)
-            ]);
+    public function webhook(Request $request, Response $response): Response
+    {
+        $rawBody = (string)$request->getBody();
+        if (!$this->assinaturaValida($request, $rawBody)) {
+            return $this->json($response, ['success' => false, 'error' => 'Assinatura inválida'], 400);
         }
 
-        return $this->json($response, ['success' => true]);
-    } catch (\Exception $e) {
-        error_log('[Cobli-webhook] Erro ao processar: ' . $e->getMessage());
-        // Sempre 2xx para não gerar retentativas em erro interno já tratado
-        return $this->json($response, ['success' => true, 'warning' => 'Evento recebido, mas houve erro ao processar']);
+        $body = json_decode($rawBody, true) ?: (array)$request->getParsedBody();
+        $eventType = $body['eventType'] ?? $body['event_type'] ?? null;
+        $eventData = $body['eventData'] ?? $body['event_data'] ?? [];
+
+        if (!$eventType) {
+            return $this->json($response, ['success' => false, 'error' => 'Evento inválido'], 400);
+        }
+
+        $placaLog = $eventData['licensePlate'] ?? $eventData['license_plate'] ?? 'n/a';
+        error_log('[Cobli-webhook] Evento recebido: ' . $eventType . ' | placa=' . $placaLog);
+
+        try {
+            $veiculoId = $this->resolverVeiculoPorPlaca($eventData['licensePlate'] ?? $eventData['license_plate'] ?? null);
+
+            if ($eventType === 'position' && $veiculoId && !empty($eventData['latitude']) && !empty($eventData['longitude'])) {
+                $stmt = $this->pdo->prepare("
+                    INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
+                    VALUES (:veiculo_id, :lat, :lng, :vel, :ign, NOW())
+                ");
+                $stmt->execute([
+                    'veiculo_id' => $veiculoId,
+                    'lat' => $eventData['latitude'],
+                    'lng' => $eventData['longitude'],
+                    'vel' => $eventData['speed'] ?? null,
+                    'ign' => $this->paraBooleanoPg($eventData['ignitionOn'] ?? null)
+                ]);
+            } elseif (in_array($eventType, ['hard_break', 'fast_acceleration', 'speedy_turn', 'tailgating', 'distracted_driving', 'phone_usage', 'eyes_closed', 'smoking', 'yawn', 'sos', 'alert_driven_over_speed'])) {
+                $stmt = $this->pdo->prepare("
+                    INSERT INTO frota_cobli_evento_risco (motorista_id, veiculo_id, tipo_evento, latitude, longitude, ocorrido_em, dados_brutos)
+                    VALUES (NULL, :veiculo_id, :tipo, :lat, :lng, NOW(), :dados)
+                ");
+                $stmt->execute([
+                    'veiculo_id' => $veiculoId,
+                    'tipo' => $eventType,
+                    'lat' => $eventData['latitude'] ?? null,
+                    'lng' => $eventData['longitude'] ?? null,
+                    'dados' => json_encode($body, JSON_UNESCAPED_UNICODE)
+                ]);
+            }
+
+            return $this->json($response, ['success' => true]);
+        } catch (\Exception $e) {
+            error_log('[Cobli-webhook] Erro ao processar: ' . $e->getMessage());
+            return $this->json($response, ['success' => true, 'warning' => 'Evento recebido, mas houve erro ao processar']);
+        }
     }
-}
 
-   /**
- * Valida a assinatura HMAC-SHA256 enviada pela Cobli no header X-Cobli-Signature,
- * usando o secret configurado em frota_configuracao (chave: cobli_webhook_secret).
- *
- * Em produção (APP_ENV=production), exige o secret configurado — sem exceção.
- * Em desenvolvimento/homologação, aceita sem secret para facilitar setup inicial.
- */
-private function assinaturaValida(Request $request, string $rawBody): bool
-{
-    $secret = $this->getConfigLocal('cobli_webhook_secret', $_ENV['COBLI_WEBHOOK_SECRET'] ?? '');
-    $appEnv = strtolower((string)($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'production'));
+    private function assinaturaValida(Request $request, string $rawBody): bool
+    {
+        $secret = $this->getConfigLocal('cobli_webhook_secret', $_ENV['COBLI_WEBHOOK_SECRET'] ?? '');
+        $appEnv = strtolower((string)($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'production'));
 
-    if (empty($secret)) {
-        if ($appEnv === 'production') {
-            error_log('[Cobli-webhook] BLOQUEADO: secret não configurado em produção. Configure cobli_webhook_secret ou COBLI_WEBHOOK_SECRET.');
+        if (empty($secret)) {
+            if ($appEnv === 'production') {
+                error_log('[Cobli-webhook] BLOQUEADO: secret não configurado em produção. Configure cobli_webhook_secret ou COBLI_WEBHOOK_SECRET.');
+                return false;
+            }
+            error_log('[Cobli-webhook] AVISO: aceitando webhook sem secret (APP_ENV=' . $appEnv . ')');
+            return true;
+        }
+
+        $assinaturaRecebida = $request->getHeaderLine('X-Cobli-Signature');
+        if (empty($assinaturaRecebida)) {
+            error_log('[Cobli-webhook] Assinatura ausente no header X-Cobli-Signature');
             return false;
         }
-        // Somente dev/homologação
-        error_log('[Cobli-webhook] AVISO: aceitando webhook sem secret (APP_ENV=' . $appEnv . ')');
-        return true;
+
+        $esperada = hash_hmac('sha256', $rawBody, $secret);
+        $valida = hash_equals($esperada, $assinaturaRecebida);
+
+        if (!$valida) {
+            error_log('[Cobli-webhook] Assinatura inválida. Recebida: ' . substr($assinaturaRecebida, 0, 16) . '...');
+        }
+
+        return $valida;
     }
-
-    $assinaturaRecebida = $request->getHeaderLine('X-Cobli-Signature');
-    if (empty($assinaturaRecebida)) {
-        error_log('[Cobli-webhook] Assinatura ausente no header X-Cobli-Signature');
-        return false;
-    }
-
-    $esperada = hash_hmac('sha256', $rawBody, $secret);
-    $valida = hash_equals($esperada, $assinaturaRecebida);
-
-    if (!$valida) {
-        error_log('[Cobli-webhook] Assinatura inválida. Recebida: ' . substr($assinaturaRecebida, 0, 16) . '...');
-    }
-
-    return $valida;
-}
 
     private function getConfigLocal($chave, $padrao = null)
     {
@@ -1428,25 +1709,23 @@ private function assinaturaValida(Request $request, string $rawBody): bool
         }
     }
 
+    private function resolverVeiculoPorPlaca(?string $placa): ?int
+    {
+        if (!$placa) return null;
 
-private function resolverVeiculoPorPlaca(?string $placa): ?int
-{
-    if (!$placa) return null;
+        $placaNormalizada = $this->normalizarPlaca($placa);
+        if ($placaNormalizada === '') return null;
 
-    $placaNormalizada = $this->normalizarPlaca($placa);
-    if ($placaNormalizada === '') return null;
+        $stmt = $this->pdo->prepare("
+            SELECT id FROM frota_veiculo
+            WHERE UPPER(REPLACE(REPLACE(placa, '-', ''), ' ', '')) = :placa
+            LIMIT 1
+        ");
+        $stmt->execute(['placa' => $placaNormalizada]);
+        $id = $stmt->fetchColumn();
 
-    // Normaliza dos dois lados para casar independente do formato salvo
-    $stmt = $this->pdo->prepare("
-        SELECT id FROM frota_veiculo 
-        WHERE UPPER(REPLACE(REPLACE(placa, '-', ''), ' ', '')) = :placa 
-        LIMIT 1
-    ");
-    $stmt->execute(['placa' => $placaNormalizada]);
-    $id = $stmt->fetchColumn();
-
-    return $id ? (int)$id : null;
-}
+        return $id ? (int)$id : null;
+    }
 
     private function resolverMotoristaPorCobliId(string $cobliDriverId): ?int
     {
@@ -1460,17 +1739,11 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
         }
     }
 
-        /**
-     * GET /v1/frota/cobli/roadmap
-     * Retorna o checklist de integração da Cobli com status dinâmico
-     * baseado no que já está configurado no banco.
-     */
     public function roadmap(Request $request, Response $response): Response
     {
         try {
             $itens = [];
 
-            // 1. Chave de API configurada?
             $apiKeyConfigurada = $this->cobli->isConfigurado();
             $itens[] = [
                 'titulo'    => 'Chave de API configurada',
@@ -1480,7 +1753,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                 'status'    => $apiKeyConfigurada ? 'ok' : 'pendente'
             ];
 
-            // 2. Conexão validada?
             $conexaoOk = false;
             if ($apiKeyConfigurada) {
                 $teste = $this->cobli->testarConexao();
@@ -1494,7 +1766,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                 'status'    => $conexaoOk ? 'ok' : ($apiKeyConfigurada ? 'pendente' : 'bloqueado')
             ];
 
-            // 3. Veículos vinculados?
             $totalVeiculos = 0;
             $totalVinculados = 0;
             try {
@@ -1514,7 +1785,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                             : ($totalVinculados > 0 ? 'pendente' : 'bloqueado')
             ];
 
-            // 4. Webhook configurado?
             $webhookSecret = $this->getConfigLocal('cobli_webhook_secret', '');
             $itens[] = [
                 'titulo'    => 'Webhook configurado (secret)',
@@ -1524,7 +1794,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                 'status'    => !empty($webhookSecret) ? 'ok' : 'pendente'
             ];
 
-            // 5. Eventos de risco sincronizados?
             $totalEventos = 0;
             try {
                 $stmt = $this->pdo->query("
@@ -1544,7 +1813,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                 'status'    => $totalEventos > 0 ? 'ok' : 'pendente'
             ];
 
-            // 6. Posições capturadas?
             $totalPosicoes = 0;
             try {
                 $stmt = $this->pdo->query("
@@ -1564,7 +1832,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
                 'status'    => $totalPosicoes > 0 ? 'ok' : 'pendente'
             ];
 
-            // Cálculo de progresso
             $concluidos = count(array_filter($itens, fn($i) => $i['status'] === 'ok'));
 
             return $this->json($response, [
@@ -1586,11 +1853,6 @@ private function resolverVeiculoPorPlaca(?string $placa): ?int
         }
     }
 
-    /**
-     * Converte um valor booleano (ou nulo) para o formato aceito pelo PDO/Postgres,
-     * evitando erro "invalid input syntax for type boolean" quando o driver
-     * retorna string vazia em vez de NULL/true/false.
-     */
     private function paraBooleanoPg($valor): ?string
     {
         if ($valor === null || $valor === '') {
