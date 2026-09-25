@@ -4,7 +4,7 @@
 // Versão nova = cache renovado automaticamente no próximo carregamento.
 // SEMPRE incremente este número ao publicar mudanças em HTML/CSS/JS.
 // ======================================================================
-const CACHE_NAME = 'frota-motorista-v18';
+const CACHE_NAME = 'frota-motorista-v24';
 const APP_SHELL = [
     new URL('motorista-offline.php', self.registration.scope).pathname,
     new URL('assets/motorista-offline.css', self.registration.scope).pathname,
