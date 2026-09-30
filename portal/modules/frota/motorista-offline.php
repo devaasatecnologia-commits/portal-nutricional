@@ -344,11 +344,14 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
         <div class="route-map-offline" id="route-map-offline" hidden>
             <i class="fa-solid fa-signal"></i> Sem conexão para exibir o mapa — mostrando distância estimada de cada parada.
         </div>
-
         <!-- FERRAMENTAS -->
+        <!-- 🔥 ALTERADO (Pacote 5 - M9): adicionado botão "Inverter rota" -->
         <section class="route-tools" aria-label="Ferramentas da rota">
             <button type="button" id="btn-refresh-route" class="route-tool">
                 <i class="fa-solid fa-rotate-right"></i> Atualizar rota
+            </button>
+            <button type="button" id="btn-inverter-rota" class="route-tool is-inverter" title="Inverter a ordem das paradas pendentes">
+                <i class="fa-solid fa-right-left"></i> Inverter rota
             </button>
             <span id="gps-status" class="gps-status"><i class="fa-solid fa-location-crosshairs"></i> GPS aguardando</span>
         </section>

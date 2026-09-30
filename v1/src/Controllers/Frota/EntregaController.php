@@ -350,13 +350,18 @@ class EntregaController
         ]);
     }
     
-    // ================================================================
-    // CHECK-IN
-    //
-    // 🔥 MUDANÇA 2026-09-24 (MODO TREINAMENTO):
-    //   - Em modo treino, NÃO bloqueia por distância
-    //   - Não grava lat/lng quando fora do raio
-    // ================================================================
+   // v1/src/Controllers/Frota/EntregaController.php
+
+    /**
+     * POST /v1/frota/entregas/{id}/checkin
+     * Registrar check-in do motorista no local de entrega.
+     *
+     * 🔥 MUDANÇA 2026-09-30 (Pacote 5 - M6):
+     *   - Aceita `motivo_atraso` (string opcional) no payload.
+     *   - Se o check-in for feito com atraso (data_prevista < hoje),
+     *     o motivo é obrigatório e gravado em `frota_checkin.observacoes`.
+     *   - O log da entrega também recebe o motivo.
+     */
     public function checkin(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
@@ -381,6 +386,31 @@ class EntregaController
 
         if ($entrega['status'] === 'entregue') {
             return $this->json($response, ['success' => false, 'error' => 'Esta entrega já foi concluída'], 400);
+        }
+
+        // ============================================================
+        // 🔥 NOVO (Pacote 5 - M6): Validação de atraso
+        // ------------------------------------------------------------
+        // Se a data prevista for anterior a hoje, o check-in está
+        // atrasado. Neste caso, o motivo_atraso é obrigatório.
+        // ============================================================
+        $motivoAtraso = null;
+        if (!empty($entrega['data_prevista'])) {
+            $dataPrevista = new \DateTime($entrega['data_prevista']);
+            $hoje = new \DateTime('today');
+
+            if ($dataPrevista < $hoje) {
+                $motivoAtraso = trim($input['motivo_atraso'] ?? '');
+                $motivosValidos = ['transito', 'imprevisto_rota', 'cliente_pediu', 'outro'];
+
+                if (empty($motivoAtraso) || !in_array($motivoAtraso, $motivosValidos, true)) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => 'Esta entrega está atrasada. É obrigatório informar o motivo do atraso.',
+                        'code' => 'MOTIVO_ATRASO_OBRIGATORIO'
+                    ], 400);
+                }
+            }
         }
 
         $lat = (float)($input['latitude'] ?? 0);
@@ -450,7 +480,7 @@ class EntregaController
         // Registrar check-in
         $stmt = $this->pdo->prepare("
             INSERT INTO frota_checkin 
-            (entrega_id, motorista_id, tipo, latitude, longitude, foto_url, data_hora)
+            (entrega_id, motorista_id, tipo, latitude, longitude, foto_url, observacoes, data_hora)
             VALUES (
                 :entrega_id,
                 (SELECT motorista_id FROM frota_embarque WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :entrega_id2)),
@@ -458,6 +488,7 @@ class EntregaController
                 :lat,
                 :lng,
                 :foto,
+                :observacoes,
                 NOW()
             )
         ");
@@ -466,7 +497,8 @@ class EntregaController
             'entrega_id2' => $id,
             'lat' => $latGravar,
             'lng' => $lngGravar,
-            'foto' => $fotoUrl
+            'foto' => $fotoUrl,
+            'observacoes' => $motivoAtraso // 🔥 NOVO (Pacote 5 - M6)
         ]);
 
         // Atualizar entrega
@@ -491,7 +523,9 @@ class EntregaController
         $logDescricao = "Check-in registrado para entrega #{$id}"
             . ($desktop ? ' (desktop)' : '')
             . ($isTraining ? ' [MODO TREINAMENTO]' : '')
-            . (!$gravarCoordenadas ? ' [sem GPS - fora do raio]' : '');
+            . (!$gravarCoordenadas ? ' [sem GPS - fora do raio]' : '')
+            . ($motivoAtraso ? " [ATRASO: {$motivoAtraso}]" : ''); // 🔥 NOVO (Pacote 5 - M6)
+
         $this->registrarLogEntrega($id, 'checkin', $logDescricao, $usuarioId);
 
         $payload = [
@@ -502,7 +536,8 @@ class EntregaController
                 'status' => 'em_entrega',
                 'horario_checkin' => date('Y-m-d H:i:s'),
                 'gps_registrado' => $gravarCoordenadas,
-                'modo_treinamento' => $isTraining
+                'modo_treinamento' => $isTraining,
+                'motivo_atraso' => $motivoAtraso // 🔥 NOVO (Pacote 5 - M6)
             ]
         ];
         $this->saveOfflineOperation($operationId, $id, 'checkin', $payload, 200);

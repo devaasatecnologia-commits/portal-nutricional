@@ -58,6 +58,13 @@
   const CHIP_DISTANCIA_INTERVALO_MS = 30 * 1000;
   const VELOCIDADE_MEDIA_KMH = 40;
 
+  // 🔥 Pacote 5 — Mapa-fitBounds: limite para considerar o motorista "fora"
+  //    Se a distância do motorista até a parada MAIS PRÓXIMA for maior que
+  //    este valor, o fitBounds ignora o driverMarker (foca só nas paradas).
+  //    Motivação: modo treino / caso atípico — motorista a 200km amontoa
+  //    os 35 marcadores num canto minúsculo do mapa.
+  const LIMITE_FITBOUNDS_KM = 50;
+
   // 🔥 Pacote 2 — cache do painel
   const PAINEL_CACHE_TTL = 5 * 60 * 1000;
 
@@ -700,6 +707,125 @@
     return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   }
 
+  // portal/modules/frota/assets/motorista-offline.js
+
+  /**
+   * 🔥 NOVO (Pacote 5 - M8, 2026-09-30):
+   * Calcula o status de SLA de uma entrega e devolve a label + a cor.
+   *
+   * Regras (Opção 3 da decisão travada):
+   *   - data_prevista > hoje              → cinza   · "Prazo: DD/MM"
+   *   - data_prevista === hoje            → amarelo · "Vence hoje"
+   *   - data_prevista === ontem           → laranja · "Atrasado 1 dia"
+   *   - data_prevista < ontem             → vermelho · "Atrasado N dias"
+   *   - entregue no prazo                 → verde   · "Entregue no prazo · DD/MM"
+   *   - entregue com atraso               → laranja escuro · "Entregue com atraso · DD/MM"
+   *
+   * Casos especiais:
+   *   - status 'falha' ou 'cancelada'   → mostra prazo normalmente (informativo)
+   *   - sem data_prevista               → retorna null (chip omitido)
+   *
+   * @param {object} entrega
+   * @returns {{ label: string, cor: string, diasAtraso: number } | null}
+   */
+  function calcularSlaMotorista(entrega) {
+    if (!entrega || !entrega.data_prevista) return null;
+
+    // ── Normaliza "hoje" (00:00 local)
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    // ── Parse defensivo de data_prevista (só data, sem hora)
+    const dataPrev = new Date(entrega.data_prevista + 'T00:00:00');
+    if (isNaN(dataPrev.getTime())) return null;
+
+    const status = entrega.status || 'pendente';
+    const concluida = status === 'entregue' || status === 'entregue_com_problema';
+
+    // ═══════════════════════════════════════════════════════════════
+    // Caso 1: entrega CONCLUÍDA — compara data de entrega real
+    // ═══════════════════════════════════════════════════════════════
+    if (concluida && entrega.horario_entrega) {
+      const dtEntrega = new Date(entrega.horario_entrega);
+      if (isNaN(dtEntrega.getTime())) return null;
+
+      const diaEntrega = new Date(dtEntrega);
+      diaEntrega.setHours(0, 0, 0, 0);
+
+      const noPrazo = diaEntrega <= dataPrev;
+
+      if (noPrazo) {
+        return {
+          label: `Entregue no prazo · ${formatarDataSla(entrega.data_prevista)}`,
+          cor: 'verde',
+          diasAtraso: 0
+        };
+      } else {
+        const dias = Math.round((diaEntrega - dataPrev) / (1000 * 60 * 60 * 24));
+        return {
+          label: `Entregue com atraso · ${dias} ${dias === 1 ? 'dia' : 'dias'}`,
+          cor: 'laranja-escuro',
+          diasAtraso: dias
+        };
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════
+    // Caso 2: entrega em aberto — compara com hoje
+    // ═══════════════════════════════════════════════════════════════
+    const diffDias = Math.round((dataPrev - hoje) / (1000 * 60 * 60 * 24));
+
+    // Futuro
+    if (diffDias > 0) {
+      return {
+        label: `Prazo: ${formatarDataSla(entrega.data_prevista)}`,
+        cor: 'cinza',
+        diasAtraso: 0
+      };
+    }
+
+    // Hoje
+    if (diffDias === 0) {
+      return {
+        label: 'Vence hoje',
+        cor: 'amarelo',
+        diasAtraso: 0
+      };
+    }
+
+    // Atrasado 1 dia
+    if (diffDias === -1) {
+      return {
+        label: 'Atrasado 1 dia',
+        cor: 'laranja',
+        diasAtraso: 1
+      };
+    }
+
+    // Atrasado N dias (2+)
+    return {
+      label: `Atrasado ${Math.abs(diffDias)} dias`,
+      cor: 'vermelho',
+      diasAtraso: Math.abs(diffDias)
+    };
+  }
+
+  /**
+   * Formata 'YYYY-MM-DD' → 'DD/MM'.
+   * Aceita também strings ISO com hora.
+   */
+  function formatarDataSla(dataStr) {
+    if (!dataStr) return '—';
+    try {
+      // Se for só data (YYYY-MM-DD), força T00:00:00 para evitar timezone shift
+      const iso = String(dataStr).length === 10 ? dataStr + 'T00:00:00' : dataStr;
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(dataStr);
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+    } catch {
+      return String(dataStr);
+    }
+  }
   // ================================================================
   // TABS — Minha Rota / Meu Painel
   // ================================================================
@@ -822,6 +948,39 @@
     const ref = refPoint(item);
     if (!ref) return null;
     return haversineKm(ref.latitude, ref.longitude, lat, lng);
+  }
+  // portal/modules/frota/assets/motorista-offline.js
+
+  /**
+   * 🔥 NOVO (Pacote 5 - Mapa-fitBounds): Calcula a MENOR distância entre
+   * o motorista e QUALQUER parada da rota (qualquer status).
+   *
+   * Usado para decidir se o driverMarker deve participar do fitBounds.
+   *
+   * Regras:
+   *   - Ignora paradas sem coordenadas válidas
+   *   - Retorna null se não há pontos de referência (sem paradas OU sem driverPosition)
+   *
+   * @param {object} pos - { latitude, longitude } do motorista
+   * @returns {number|null} - Distância em km, ou null se não calculável
+   */
+  function calcularDistanciaMinimaParadas(pos) {
+    if (!pos || typeof pos.latitude !== 'number' || typeof pos.longitude !== 'number') {
+      return null;
+    }
+
+    let min = Infinity;
+
+    for (const item of entregas) {
+      const lat = paraNumero(item?.latitude);
+      const lng = paraNumero(item?.longitude);
+      if (lat === null || lng === null) continue;
+
+      const d = haversineKm(pos.latitude, pos.longitude, lat, lng);
+      if (d < min) min = d;
+    }
+
+    return min === Infinity ? null : min;
   }
    // ================================================================
   // PAINEL DE PROGRESSO + KPI + NEXT-STOP — v2 (2026-09-25)
@@ -1046,7 +1205,25 @@
       const d = distanciaEntrega(item);
 
       // ── Chips do body expandido ────────────────────────────────
+      // 🔥 ALTERADO (Pacote 5 - M8): adicionado chip de SLA/prazo
       const chips = [];
+
+      // SLA primeiro — é a informação mais importante do card
+      const sla = calcularSlaMotorista(item);
+      if (sla) {
+        const iconeSla = {
+          'cinza':          'fa-clock',
+          'amarelo':        'fa-hourglass-half',
+          'laranja':        'fa-triangle-exclamation',
+          'vermelho':       'fa-circle-exclamation',
+          'verde':          'fa-circle-check',
+          'laranja-escuro': 'fa-clock-rotate-left'
+        }[sla.cor] || 'fa-clock';
+
+        chips.push(
+          `<span class="chip-sla is-${sla.cor}"><i class="fa-solid ${iconeSla}"></i> ${escapeHtml(sla.label)}</span>`
+        );
+      }
 
       if (pedidosArr.length) {
         chips.push(
@@ -1103,8 +1280,12 @@
         `;
       }
 
-      // ── Botões de reordenar ───────────────────────────────────
+          // ── Botões de reordenar ───────────────────────────────────
+      // 🔥 ALTERADO (Pacote 5 - M7): adicionado botão "Pular"
       const idxOriginal = entregas.indexOf(item);
+      const podePular = !isAdminApp
+                     && !complete
+                     && idxOriginal < entregas.length - 1;
       const orderActions = `
         <div class="delivery-card-order-actions">
           <button data-order="up" data-index="${idxOriginal}" ${idxOriginal === 0 ? 'disabled' : ''}>
@@ -1113,6 +1294,11 @@
           <button data-order="down" data-index="${idxOriginal}" ${idxOriginal === entregas.length - 1 ? 'disabled' : ''}>
             <i class="fa-solid fa-arrow-down"></i> Descer
           </button>
+          ${podePular ? `
+            <button type="button" class="delivery-card-skip" data-skip="${item.id}" title="Mover esta parada para o fim da fila">
+              <i class="fa-solid fa-forward"></i> Pular
+            </button>
+          ` : ''}
         </div>
       `;
 
@@ -1371,6 +1557,9 @@
     }
 
     // ── 3. Motorista
+    // 🔥 ALTERADO (Pacote 5 - Mapa-fitBounds): se o motorista estiver a mais
+    //    de LIMITE_FITBOUNDS_KM da parada MAIS PRÓXIMA, ele ainda é desenhado
+    //    no mapa, mas NÃO entra no fitBounds (senão amontoa os marcadores).
     if (driverPosition && typeof driverPosition.longitude === 'number' && typeof driverPosition.latitude === 'number') {
       if (driverMarker) {
         driverMarker.setLngLat([driverPosition.longitude, driverPosition.latitude]);
@@ -1382,12 +1571,24 @@
           .setPopup(new maplibregl.Popup({ offset: 24 }).setHTML('<strong>Posição do motorista</strong><br>GPS do celular'))
           .addTo(routeMap);
       }
-      bounds.extend([driverPosition.longitude, driverPosition.latitude]);
+
+      // 🔥 NOVO: calcula distância mínima até QUALQUER parada
+      const distMinParada = calcularDistanciaMinimaParadas(driverPosition);
+
+      if (distMinParada !== null && distMinParada > LIMITE_FITBOUNDS_KM) {
+        // Motorista muito longe — NÃO estende bounds (mas o marker continua visível)
+        console.log(
+          `[fitBounds] Motorista a ${distMinParada.toFixed(1)}km da parada mais próxima ` +
+          `(limite: ${LIMITE_FITBOUNDS_KM}km) — foco nas paradas.`
+        );
+      } else {
+        // Comportamento normal: inclui o motorista no fitBounds
+        bounds.extend([driverPosition.longitude, driverPosition.latitude]);
+      }
     } else if (driverMarker) {
       driverMarker.remove();
       driverMarker = null;
     }
-
     // ── 4. Linha da rota
     atualizarLinhaRota(coords);
 
@@ -2955,6 +3156,84 @@
     };
   }
 
+  // portal/modules/frota/assets/motorista-offline.js
+// (adicionar dentro do IIFE)
+
+  /**
+   * 🔥 NOVO (Pacote 5 - M6): Pergunta o motivo do atraso.
+   * Retorna a string do motivo (ex: 'transito') ou null se cancelar.
+   */
+  async function perguntarMotivoAtraso(entrega) {
+    const opcoes = {
+      transito:         'Trânsito',
+      imprevisto_rota:  'Imprevisto na rota',
+      cliente_pediu:    'Cliente pediu para atrasar',
+      outro:            'Outro (descrever)'
+    };
+
+    if (typeof Swal === 'undefined') {
+      const motivo = window.prompt(
+        'Esta entrega está atrasada. Qual o motivo?\n' +
+        'Opções: transito, imprevisto_rota, cliente_pediu, outro'
+      );
+      return motivo && Object.keys(opcoes).includes(motivo) ? motivo : null;
+    }
+
+    const dataPrevista = entrega.data_prevista
+      ? new Date(entrega.data_prevista + 'T00:00:00').toLocaleDateString('pt-BR')
+      : 'data anterior';
+
+    const result = await Swal.fire({
+      icon: 'warning',
+      title: 'Chegada fora do prazo',
+      html: `
+        <div style="text-align:left;font-size:0.9rem;line-height:1.5;">
+          <p style="margin:0 0 10px;">
+            O prazo desta entrega era <b>${dataPrevista}</b>.
+          </p>
+          <p style="margin:0 0 6px;font-weight:700;">Qual o motivo do atraso?</p>
+        </div>
+      `,
+      input: 'select',
+      inputOptions: opcoes,
+      inputPlaceholder: 'Selecione um motivo',
+      inputValidator: (value) => {
+        if (!value) return 'Escolha um motivo para continuar.';
+        return null;
+      },
+      showCancelButton: true,
+      confirmButtonText: 'Confirmar Chegada',
+      cancelButtonText: 'Cancelar',
+      confirmButtonColor: '#16845e',
+      cancelButtonColor: '#6b7280',
+      allowOutsideClick: false
+    });
+
+    if (!result.isConfirmed || !result.value) return null;
+
+    if (result.value === 'outro') {
+      const etapa2 = await Swal.fire({
+        icon: 'question',
+        title: 'Descreva o motivo',
+        input: 'textarea',
+        inputPlaceholder: 'Ex: pneu furou na BR-101...',
+        inputAttributes: { maxlength: 300 },
+        inputValidator: (value) => {
+          if (!value || !value.trim()) return 'Digite uma descrição.';
+          return null;
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#16845e',
+        allowOutsideClick: false
+      });
+      if (!etapa2.isConfirmed || !etapa2.value) return null;
+      return etapa2.value.trim();
+    }
+
+    return result.value;
+  }
    // ================================================================
   // SELECIONAR MOTIVO DE FALHA (entrega não realizada)
   //
@@ -3029,14 +3308,8 @@
     return result.value;
   }
 
-  // ================================================================
-  // MONTAR PAYLOAD DE CADA AÇÃO
-  //
-  // 🔥 AJUSTADO 2026-09-24:
-  //   - `falha` agora envia { motivo, observacao } e o backend aceita
-  //     tanto a chave padronizada (cliente_ausente) quanto texto livre
-  //     vindo de "Outro"
-  // ================================================================
+// portal/modules/frota/assets/motorista-offline.js
+
   async function obterDadosDaAcao(action) {
     if (action === 'checkout') return dadosCheckout();
 
@@ -3044,10 +3317,6 @@
       const motivo = await selecionarMotivoFalha();
       if (!motivo) return null;
 
-      // Se o motivo for uma das chaves padronizadas, envia ele
-      // direto. Se for texto livre (veio de "Outro"), envia como
-      // observação e marca `motivo = 'outro'` para o backend
-      // não recusar por não estar na lista de válidos.
       const motivosValidos = [
         'cliente_ausente', 'endereco_incorreto', 'recusado',
         'nao_localizado', 'veiculo_problema', 'cliente_fechado', 'outro'
@@ -3061,6 +3330,30 @@
         observacao: ehPadronizado ? motivo : motivo,
         data_hora: new Date().toISOString()
       };
+    }
+
+    // 🔥 NOVO (Pacote 5 - M6): check-in com verificação de atraso
+    if (action === 'checkin') {
+      const entrega = entregas.find((item) => Number(item.id) === Number(window.__currentCheckinId));
+      if (!entrega) return { motorista_id: motoristaId, desktop: false, data_hora: new Date().toISOString() };
+
+      // Verifica se está atrasada (data_prevista < hoje)
+      const hoje = new Date();
+      hoje.setHours(0, 0, 0, 0);
+      const dataPrevista = entrega.data_prevista ? new Date(entrega.data_prevista + 'T00:00:00') : null;
+
+      if (dataPrevista && dataPrevista < hoje) {
+        const motivo = await perguntarMotivoAtraso(entrega);
+        if (!motivo) return null; // Usuário cancelou
+        return {
+          motorista_id: motoristaId,
+          desktop: false,
+          motivo_atraso: motivo,
+          data_hora: new Date().toISOString()
+        };
+      }
+      // Se não está atrasada, retorna o payload padrão
+      return { motorista_id: motoristaId, desktop: false, data_hora: new Date().toISOString() };
     }
 
     return {
@@ -3155,7 +3448,12 @@
     });
   }
 
+// portal/modules/frota/assets/motorista-offline.js
+
   async function executarAcao(id, action) {
+    // 🔥 NOVO (Pacote 5 - M6): Guarda o ID para a função de obter dados acessar
+    window.__currentCheckinId = id;
+
     const position = await getPositionFast();
     const body = { ...(await obterDadosDaAcao(action)), ...position };
     if (!body) return;
@@ -3169,6 +3467,7 @@
     };
     request.body.operation_id = request.operation_id;
 
+    // ... (resto do código da função permanece igual)
     // ── Offline: enfileira direto
     if (!online()) {
       const queue = getQueue();
@@ -3190,8 +3489,6 @@
 
       // ════════════════════════════════════════════════════════════
       // 🎓 MODO TREINAMENTO: backend devolve 422 com code=FORA_DO_RAIO
-      //    (não bloqueia em produção, só no modo treino para o motorista
-      //     entender o que aconteceria)
       // ════════════════════════════════════════════════════════════
       if (response.status === 422) {
         const aviso = await response.json().catch(() => ({}));
@@ -3239,23 +3536,104 @@
     }
   }
 
+ // portal/modules/frota/assets/motorista-offline.js
+
+  /**
+   * 🔥 REESCRITO (Pacote 5 - M7-fix, 2026-09-30):
+   *   - operation_id recebe um sufixo de timestamp para garantir unicidade
+   *     entre tentativas. Sem isso, chamar salvarOrdem() duas vezes com a
+   *     mesma ordem gera o mesmo ID → backend pode rejeitar por duplicata.
+   *   - Após sucesso, atualiza `rotaVersion` global com o `updated_at` que
+   *     o backend devolveu (se disponível) — evita staleness na próxima vez.
+   *   - Trata 400 explicitamente: mostra mensagem do backend, mas mantém
+   *     a fila intacta (não descarta a operação).
+   */
   async function salvarOrdem() {
     const embarqueId = entregas[0]?.embarque_id;
     if (!embarqueId) return;
-    const operationIdValue = `${motoristaId}:ordem:${embarqueId}:${entregas.map((item) => item.id).join('-')}`;
-    const body = { ordem: entregas.map((item) => item.id), operation_id: operationIdValue, expected_updated_at: rotaVersion };
-    const request = { endpoint: `${apiBase}/embarques/${embarqueId}/reordenar`, method: 'POST', headers: { ...authHeaders(), 'Content-Type': 'application/json' }, body };
+
+    // 🔥 NOVO: operation_id com timestamp — evita conflito de idempotência
+    const timestamp = Date.now();
+    const operationIdValue = `${motoristaId}:ordem:${embarqueId}:${timestamp}`;
+
+    const body = {
+      ordem: entregas.map((item) => item.id),
+      operation_id: operationIdValue,
+      expected_updated_at: rotaVersion
+    };
+
+    const request = {
+      endpoint: `${apiBase}/embarques/${embarqueId}/reordenar`,
+      method: 'POST',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body
+    };
+
+    // ── Modo offline: enfileira
     if (!online()) {
       const queue = getQueue().filter((item) => item.type !== 'reordenar');
       saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
       return;
     }
-    const response = await fetch(request.endpoint, request);
+
+    // ── Modo online: envia
+    let response;
+    try {
+      response = await fetch(request.endpoint, {
+        method: 'POST',
+        headers: request.headers,
+        credentials: 'include',
+        body: JSON.stringify(request.body)
+      });
+    } catch (networkErr) {
+      // Falha de rede: enfileira
+      const queue = getQueue().filter((item) => item.type !== 'reordenar');
+      saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
+      throw networkErr;
+    }
+
+    // ── 409 Conflict: gestor alterou a rota
     if (response.status === 409) {
       $('motorista-status').textContent = 'Conflito: o gestor alterou a rota. Atualize antes de salvar novamente.';
+      const queue = getQueue().filter((item) => item.type !== 'reordenar');
+      saveQueue([...queue, {
+        ...request,
+        type: 'reordenar',
+        operation_id: operationIdValue,
+        conflict: true
+      }]);
+      atualizarConflitoRota();
       throw new Error('A rota foi alterada pelo gestor');
     }
-    if (!response.ok) throw new Error('Não foi possível salvar a ordem');
+
+    // 🔥 NOVO: 400 — bug de contrato ou validação
+    if (response.status === 400) {
+      let mensagem = 'Reordenação recusada pelo servidor.';
+      try {
+        const payload = await response.json();
+        mensagem = payload.error || mensagem;
+      } catch {}
+      $('motorista-status').textContent = 'Erro ao salvar ordem: ' + mensagem;
+      // NÃO enfileira — é erro definitivo (não é transitório)
+      throw new Error(mensagem);
+    }
+
+    // ── 5xx ou outros: enfileira para retry
+    if (!response.ok) {
+      const queue = getQueue().filter((item) => item.type !== 'reordenar');
+      saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
+      throw new Error('Não foi possível salvar a ordem (HTTP ' + response.status + ')');
+    }
+
+    // ── Sucesso: atualiza rotaVersion se o backend devolveu
+    try {
+      const payload = await response.json();
+      if (payload?.data?.updated_at) {
+        rotaVersion = payload.data.updated_at;
+      }
+    } catch {}
+
+    return true;
   }
 
   async function mover(index, delta) {
@@ -3267,6 +3645,242 @@
     catch { $('motorista-status').textContent = 'Ordem alterada localmente; será salva quando houver conexão'; }
   }
 
+  // portal/modules/frota/assets/motorista-offline.js
+
+  /**
+   * 🔥 NOVO (Pacote 5 - M7): Move uma parada para o fim da fila.
+   *
+   * Regras:
+   *   - Só se aplica a entregas com status 'pendente' ou 'em_entrega'
+   *   - Reordena o array `entregas` local
+   *   - Reutiliza salvarOrdem() (endpoint POST /embarques/{id}/reordenar)
+   *   - Feedback: toast discreto (opção A — sem confirmação)
+   */
+  async function pularParada(entregaId) {
+    const id = Number(entregaId);
+    const item = entregas.find((e) => Number(e.id) === id);
+    if (!item) {
+      console.warn('[M7] Entrega não encontrada:', id);
+      return;
+    }
+
+    // ── Guard: só permite pular paradas em aberto
+    if (!['pendente', 'em_entrega'].includes(item.status)) {
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          icon: 'info',
+          title: 'Parada já finalizada',
+          text: 'Esta parada não pode mais ser movida.',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#16845e'
+        });
+      }
+      return;
+    }
+
+    // ── Guard: se já é a última na fila, não faz nada
+    const idx = entregas.findIndex((e) => Number(e.id) === id);
+    if (idx === entregas.length - 1) {
+      if (typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'bottom',
+          showConfirmButton: false,
+          timer: 2000,
+          timerProgressBar: true
+        });
+        Toast.fire({
+          icon: 'info',
+          title: 'Esta já é a última parada da fila.'
+        });
+      }
+      return;
+    }
+
+    // ── Guard: precisa de embarque_id para sincronizar
+    const embarqueId = entregas[0]?.embarque_id;
+    if (!embarqueId) {
+      if (typeof Swal !== 'undefined') {
+        Swal.fire({
+          icon: 'error',
+          title: 'Sem embarque vinculado',
+          text: 'Não foi possível pular: esta rota não tem embarque associado.',
+          confirmButtonText: 'OK',
+          confirmButtonColor: '#c94b45'
+        });
+      }
+      return;
+    }
+
+    // ── Reordena local: remove do índice atual e joga para o fim
+    const [movida] = entregas.splice(idx, 1);
+    entregas.push(movida);
+
+    // ── Re-renderiza imediatamente (feedback visual instantâneo)
+    persist();
+
+    // ── Sincroniza com o backend
+    try {
+      await salvarOrdem();
+
+      if (typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'bottom',
+          showConfirmButton: false,
+          timer: 2500,
+          timerProgressBar: true,
+          didOpen: (t) => {
+            t.addEventListener('mouseenter', Swal.stopTimer);
+            t.addEventListener('mouseleave', Swal.resumeTimer);
+          }
+        });
+        Toast.fire({
+          icon: 'success',
+          title: 'Parada movida para o fim da fila'
+        });
+      }
+    } catch (err) {
+      // salvarOrdem() já loga o conflito em #motorista-status
+      console.warn('[M7] Falha ao sincronizar reordenação:', err);
+
+      if (typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'bottom',
+          showConfirmButton: false,
+          timer: 3500,
+          timerProgressBar: true
+        });
+        Toast.fire({
+          icon: 'warning',
+          title: 'Movida localmente',
+          text: 'A ordem será sincronizada quando houver conexão.'
+        });
+      }
+      // Não reverte — o salvarOrdem() já enfileira em modo offline
+    }
+  }
+
+  // portal/modules/frota/assets/motorista-offline.js
+
+  /**
+   * 🔥 NOVO (Pacote 5 - M9): Inverte a ordem das paradas NÃO concluídas.
+   *
+   * Regras:
+   *   - Só inverte as paradas com status 'pendente' ou 'em_entrega'
+   *   - As concluídas ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
+   *     ficam no FIM, na ordem em que estavam
+   *   - Confirmação via Swal (ação destrutiva)
+   *   - Precisa de ≥2 pendentes, senão toast "Nada para inverter"
+   *   - Reusa persist() + salvarOrdem()
+   */
+  async function inverterRota() {
+    // ── Separa pendentes e concluídas
+    const concluidoStatus = ['entregue', 'entregue_com_problema', 'falha', 'cancelada'];
+
+    const pendentes = entregas.filter(e => !concluidoStatus.includes(e.status));
+    const concluidas = entregas.filter(e => concluidoStatus.includes(e.status));
+
+    // ── Guard: precisa de ≥2 pendentes
+    if (pendentes.length < 2) {
+      if (typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'bottom',
+          showConfirmButton: false,
+          timer: 2500,
+          timerProgressBar: true
+        });
+        Toast.fire({
+          icon: 'info',
+          title: 'Nada para inverter',
+          text: pendentes.length === 0
+            ? 'Todas as paradas já foram concluídas.'
+            : 'É preciso pelo menos 2 paradas pendentes para inverter.'
+        });
+      } else {
+        console.log('[M9] Nada para inverter:', pendentes.length, 'pendentes');
+      }
+      return;
+    }
+
+    // ── Confirmação via Swal com contagem explícita
+    if (typeof Swal !== 'undefined') {
+      const resultado = await Swal.fire({
+        icon: 'warning',
+        title: 'Inverter ordem da rota?',
+        html: `
+          <div style="text-align:left;font-size:0.9rem;line-height:1.5;">
+            <p style="margin:0 0 10px;">
+              As <b>${pendentes.length}</b> parada${pendentes.length > 1 ? 's' : ''} pendente${pendentes.length > 1 ? 's' : ''} serão invertidas.
+            </p>
+            ${concluidas.length > 0 ? `
+              <p style="margin:0 0 10px;color:#64748b;font-size:0.85rem;">
+                As <b>${concluidas.length}</b> parada${concluidas.length > 1 ? 's' : ''} já concluída${concluidas.length > 1 ? 's' : ''} continuarão no fim da lista.
+              </p>
+            ` : ''}
+            <div style="padding:10px 12px;background:#fef3c7;border-radius:8px;color:#92400e;font-size:0.82rem;">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              Esta ação altera a ordem da rota para você e para o gestor.
+            </div>
+          </div>
+        `,
+        showCancelButton: true,
+        confirmButtonText: 'Sim, inverter',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#16845e',
+        cancelButtonColor: '#6b7280',
+        allowOutsideClick: false
+      });
+
+      if (!resultado.isConfirmed) return;
+    } else {
+      // Fallback sem Swal
+      const ok = window.confirm(`Inverter ${pendentes.length} paradas pendentes?`);
+      if (!ok) return;
+    }
+
+    // ── Inverte APENAS as pendentes (mantém ordem interna)
+    //    e concatena as concluídas no fim
+    const pendentesInvertidas = [...pendentes].reverse();
+    const novaOrdem = [...pendentesInvertidas, ...concluidas];
+
+    // ── Substitui o array global (mesmo objeto de referência)
+    entregas.length = 0;
+    entregas.push(...novaOrdem);
+
+    // ── Re-renderiza imediatamente + persiste em localStorage
+    persist();
+
+    // ── Sincroniza com o backend (mesmo fluxo do M7)
+    try {
+      await salvarOrdem();
+
+      if (typeof Swal !== 'undefined') {
+        const Toast = Swal.mixin({
+          toast: true,
+          position: 'bottom',
+          showConfirmButton: false,
+          timer: 3000,
+          timerProgressBar: true,
+          didOpen: (t) => {
+            t.addEventListener('mouseenter', Swal.stopTimer);
+            t.addEventListener('mouseleave', Swal.resumeTimer);
+          }
+        });
+        Toast.fire({
+          icon: 'success',
+          title: 'Rota invertida',
+          text: `${pendentes.length} parada${pendentes.length > 1 ? 's' : ''} reordenada${pendentes.length > 1 ? 's' : ''}.`
+        });
+      }
+    } catch (err) {
+      console.warn('[M9] Falha ao sincronizar inversão:', err);
+      // salvarOrdem() já loga o conflito em #motorista-status
+      // Não reverte — fica local até próxima sincronização
+    }
+  }
   async function sincronizarFila() {
     if (!online()) return;
     await queueReady;
@@ -3422,10 +4036,18 @@
       return;
     }
 
-    // ── Botões de ação (Cheguei / Entregue / Problema / Subir / Descer)
-    const button = event.target.closest('[data-action], [data-order]');
+      // ── Botões de ação (Cheguei / Entregue / Problema / Subir / Descer / Pular)
+    // 🔥 ALTERADO (Pacote 5 - M7): inclui [data-skip]
+    const button = event.target.closest('[data-action], [data-order], [data-skip]');
     if (button) {
       if (isAdminApp) return;
+
+      // 🔥 NOVO (M7): Pular parada
+      if (button.dataset.skip !== undefined) {
+        pularParada(Number(button.dataset.skip));
+        return;
+      }
+
       if (button.dataset.action === 'checkout') {
         abrirCheckout(entregas.find((item) => Number(item.id) === Number(button.dataset.id)));
       } else if (button.dataset.action) {
@@ -3434,7 +4056,6 @@
       if (button.dataset.order) mover(Number(button.dataset.index), button.dataset.order === 'up' ? -1 : 1);
       return;
     }
-
     // ── Pacote 1.5: clique no header de um card CONCLUÍDO abre o modal de detalhes
     const cardHead = event.target.closest('.delivery-card-head');
     if (cardHead && !isAdminApp) {
@@ -3623,6 +4244,9 @@
   signatureCanvas?.addEventListener('pointerup', () => { drawing = false; });
 
   $('btn-refresh-route')?.addEventListener('click', carregarEntregas);
+
+  // 🔥 NOVO (Pacote 5 - M9): Inverter rota
+  $('btn-inverter-rota')?.addEventListener('click', inverterRota);
   $('route-conflict-refresh')?.addEventListener('click', async () => { await carregarEntregas(); $('route-conflict').hidden = true; });
   $('route-conflict-discard')?.addEventListener('click', async () => {
     await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict)));
@@ -3750,12 +4374,19 @@
 
   abrirPendenciasSeExistirem();
   iniciarPollingCobli();
-    // ================================================================
+// portal/modules/frota/assets/motorista-offline.js
+
+  // ================================================================
   // EXPOSIÇÃO PARA DEBUG / TESTES (DevTools)
   // Em produção não é chamado por ninguém, mas ajuda a inspecionar.
+  //
+  // 🔥 ATUALIZADO 2026-09-30 (Pacote 5 - M6):
+  //   - Adicionadas: perguntarMotivoAtraso, selecionarMotivoFalha,
+  //     obterDadosDaAcao, executarAcao, testarGatilhoAtraso.
   // ================================================================
   if (window.location.hostname === 'localhost' || window.location.search.includes('debug=1')) {
-      window.__motoristaDebug = {
+    window.__motoristaDebug = {
+      // ── Checkout / levas
       abrirCheckout,
       registrarDescida,
       verLevasItem,
@@ -3768,13 +4399,88 @@
       get itens() { return window.__checkoutItens; },
       get entregas() { return entregas; },
       get motoristaId() { return motoristaId; },
-      // 🔥 Pacote 3 — M3 (2026-09-25): helpers de debug para o toast
+
+      // ── Rota / render
       render,
       detectarMudancaProximaParada,
       get ultimaProximaId() { return ultimaProximaId; },
-      get primeiraRenderizacao() { return primeiraRenderizacao; }
+      get primeiraRenderizacao() { return primeiraRenderizacao; },
+
+      // ── Pacote 3 — M3/M4
+      atualizarChipDistancia,
+
+      // ── Pacote 3 — M1/M2
+      abrirWhatsAppCliente,
+      ligarParaCliente,
+
+      // ── Pacote 2 — Painel
+      carregarPainelMotorista,
+
+      // ── Pacote 1.5 — Cabeçalho + Filtros + Detalhes
+      renderCabecalhoEmbarque,
+      toggleCabecalhoEmbarque,
+      restaurarEstadoCabecalho,
+      aplicarFiltroStatus,
+      atualizarContadoresChips,
+      abrirDetalhesEntrega,
+      toggleDetalhesParada,
+      abrirZoomFoto,
+
+    // ════════════════════════════════════════════════════════════
+      // 🔥 NOVO (Pacote 5 - M6): Cheguei fora do horário
+      // ════════════════════════════════════════════════════════════
+      perguntarMotivoAtraso,
+      selecionarMotivoFalha,
+      obterDadosDaAcao,
+      executarAcao,
+
+      // ════════════════════════════════════════════════════════════
+      // 🔥 NOVO (Pacote 5 - M7): Pular parada
+      // ════════════════════════════════════════════════════════════
+      pularParada,
+      salvarOrdem,
+      mover,
+           // ════════════════════════════════════════════════════════════
+      // 🔥 NOVO (Pacote 5 - M8): SLA/prazo
+      // ════════════════════════════════════════════════════════════
+      calcularSlaMotorista,
+      formatarDataSla,
+            // ════════════════════════════════════════════════════════════
+      // 🔥 NOVO (Pacote 5 - M9): Inverter rota
+      // ════════════════════════════════════════════════════════════
+      inverterRota,
+            // ════════════════════════════════════════════════════════════
+      // 🔥 NOVO (Pacote 5 - Mapa-fitBounds)
+      // ════════════════════════════════════════════════════════════
+      calcularDistanciaMinimaParadas,
+      LIMITE_FITBOUNDS_KM,
+      /**
+       * Helper de diagnóstico: dado um entrega_id, diz se ela
+       * seria considerada "atrasada" pela regra do M6, sem
+       * disparar nenhum fetch.
+       */
+      testarGatilhoAtraso(entregaId) {
+        const e = entregas.find(x => Number(x.id) === Number(entregaId));
+        if (!e) return { atrasada: false, motivo: 'entrega não encontrada' };
+        if (!e.data_prevista) return { atrasada: false, motivo: 'sem data_prevista' };
+
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        const dataPrev = new Date(e.data_prevista + 'T00:00:00');
+
+        return {
+          entrega_id: e.id,
+          cliente_nome: e.cliente_nome,
+          data_prevista: e.data_prevista,
+          hoje: hoje.toISOString().slice(0, 10),
+          status: e.status,
+          atrasada: dataPrev < hoje
+        };
+      }
     };
-    console.log('🐞 Debug exposto em window.__motoristaDebug');
+
+    console.log('🐞 Debug exposto em window.__motoristaDebug (M6 incluído)');
+    console.log('   Funções disponíveis:', Object.keys(window.__motoristaDebug).length);
   }
 
     // ════════════════════════════════════════════════════════════════
