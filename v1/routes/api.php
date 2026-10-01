@@ -43,6 +43,7 @@ use Nutricional\Controllers\Frota\ImportadorController;
 use Nutricional\Controllers\Frota\VeiculoController;
 use Nutricional\Controllers\Frota\GeocodificacaoController;
 use Nutricional\Controllers\Frota\AcertoEmbarqueController; 
+use Nutricional\Controllers\Frota\HealthController;
 
 // Carregar configurações
 $logger = require __DIR__ . '/../config/logger.php';
@@ -104,6 +105,9 @@ $app->group('/v1', function ($group) {
         $response->getBody()->write($payload);
         return $response->withHeader('Content-Type', 'application/json');
     });
+    // 🔥 NOVO 2026-09-30 (Fase 1.5): Health check público
+    //    Adicionado em $publicRoutes do JwtMiddleware (não exige token).
+    $group->get('/frota/health', [new HealthController(), 'check']);
 
     // ==========================================================================
     // GRUPO PROTEGIDO (TODAS AS ROTAS AQUI DENTRO EXIGEM AUTENTICAÇÃO)

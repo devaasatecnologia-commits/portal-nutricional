@@ -3,7 +3,6 @@
 // ==========================================================================
 (function() {
 
-// Tokens devem existir somente no ambiente do servidor; o portal usa JWT.
 var API_TOKEN = '';
 
 const state = typeof AppState !== 'undefined' ? AppState : {
@@ -59,7 +58,6 @@ const semFotoUrl = 'https://placehold.co/150x150?text=S/F';
 
 function getProductImageUrl(path) {
     if (!path) return semFotoUrl;
-
     const normalized = String(path).trim().replace(/\\/g, '/');
     if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return semFotoUrl;
     if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
@@ -74,7 +72,6 @@ function getProductImageUrl(path) {
     relativePath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
     return 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath;
 }
-
 
 // ==========================================================================
 // INICIALIZAÇÃO
@@ -96,12 +93,11 @@ window.onload = async function() {
         }
     } catch (e) {
         console.error('Erro ao buscar embarques', e);
-        showToast('Erro ao carregar embarques', 'error');
     }
 };
 
 // ==========================================================================
-// FUNÇÕES DE UI (MENU, SELEÇÃO, ORDEM)
+// MENU
 // ==========================================================================
 function toggleMenuEmbarques() {
     const menu = document.getElementById('menuEmbarques');
@@ -113,7 +109,7 @@ function toggleMenuEmbarques() {
 function montarMenuInterno() {
     const container = document.getElementById('menuEmbarques');
     if (!container) return;
-    
+
     let h = '';
     state.embarquesDisponiveis.forEach(e => {
         const s = e.status_logistico;
@@ -122,6 +118,7 @@ function montarMenuInterno() {
         let cor = '#1e293b', label = 'PENDENTE';
         if (s === 'SEPARACAO') { cor = '#f59e0b'; label = 'EM SEPARAÇÃO'; }
         else if (s === 'CONCLUIDO') { cor = '#10b981'; label = 'PRONTO'; }
+        else if (s === 'SEPARACAO_PARCIAL') { cor = '#f59e0b'; label = 'EM SEPARAÇÃO'; }
 
         h += `<div onclick="selecionarEmbarqueManual('${e.idembarque}', '${label}', '${cor}')" style="padding: 15px; border-bottom: 1px solid #f1f5f9; color: ${cor}; font-weight: 800; cursor: pointer; background: white;">
                 <span style="font-size: 0.65rem; display: block; opacity: 0.7;">${label}</span>
@@ -156,7 +153,7 @@ async function selecionarEmbarqueManual(id, label, cor) {
     document.getElementById('menuEmbarques').style.display = 'none';
 
     try {
-       const dados = await apiFetch('v1/separacao/resumo/' + id, 'GET');
+        const dados = await apiFetch('v1/separacao/resumo/' + id, 'GET');
         state.resumo = dados;
         document.getElementById('resumo-peso').innerText = Math.floor(state.resumo.totalpesobruto || 0) + 'kg';
         document.getElementById('resumo-pedidos').innerText = state.resumo.qt_pedido || 0;
@@ -186,7 +183,7 @@ function alterarOrdem(o) {
 }
 
 // ==========================================================================
-// CARREGAMENTO E RENDERIZAÇÃO DOS ITENS
+// LISTA E RENDER
 // ==========================================================================
 async function carregarLista() {
     try {
@@ -208,7 +205,7 @@ async function carregarLista() {
 function render() {
     const listaAlvo = document.getElementById('listaItens');
     const btnFinalizar = document.getElementById('container-finalizar');
-    
+
     const itensOrdenados = [...state.itens].sort((a, b) => {
         const salA = parseFloat(a.saldo_restante);
         const salB = parseFloat(b.saldo_restante);
@@ -223,8 +220,9 @@ function render() {
     itensOrdenados.forEach(i => {
         const saldo = parseFloat(i.saldo_restante) || 0;
         const saldoItem = parseFloat(i.saldoitem) || 0;
+        const jaCarregado = parseFloat(i.ja_carregado) || 0;
         const concluido = !(saldo >= 0.0001);
-        
+
         if (!concluido) pendentesCount++; else concluidosCount++;
 
         if (i.idsecao !== ultimaSecao) {
@@ -233,9 +231,14 @@ function render() {
         }
 
         const img = getProductImageUrl(i.path_foto_master || i.foto);
-        
-        // CORREÇÃO: usa descricao (fallback para nome_item)
         const nomeProduto = i.descricao || i.nome_item || 'Produto';
+
+        // ⚠️ Aviso se já foi carregado
+        const avisoCarregado = jaCarregado > 0
+            ? `<div style="background:#dcfce7; padding:3px 6px; border-radius:4px; font-size:0.6rem; color:#166534; font-weight:800; margin-top:3px;">
+                 🚛 JÁ CARREGADO: ${Number(jaCarregado.toFixed(3))}
+               </div>`
+            : '';
 
         h += `<div class="item-card ${concluido ? 'concluido' : ''}" id="item-${i.cod_item}">
             <img src="${img}" class="prod-img" loading="lazy" onerror="this.onerror=null;this.src='${semFotoUrl}'">
@@ -248,6 +251,7 @@ function render() {
                     </div>
                     <div class="qty-tag">Saldo Estoque: ${Number(parseFloat(saldoItem).toFixed(3))}</div>
                 </div>
+                ${avisoCarregado}
                 <div style="font-size:0.55rem; color:#94a3b8; margin-top:5px; display:flex; justify-content:space-between;">
                     <span>EAN: ${i.cod_barras || 'S/ COD'}</span>
                     <span>ID: ${i.cod_item}</span>
@@ -271,7 +275,7 @@ function render() {
 }
 
 // ==========================================================================
-// PROCESSAMENTO DE LEITURA E CONFIRMAÇÃO
+// PROCESSAR LEITURA
 // ==========================================================================
 async function processarLeitura(codigo) {
     if (!codigo || isProcessing) return;
@@ -298,10 +302,20 @@ async function processarLeitura(codigo) {
     if (!(saldoNum >= 0.0001)) {
         isProcessing = false;
         if (parseFloat(item.ja_carregado || 0) > 0) {
-            Swal.fire({ title: 'Bloqueado', text: 'Item já carregado!', icon: 'error', position: 'top' });
+            Swal.fire({
+                title: '🔒 Bloqueado',
+                html: `<div style="text-align:center;">
+                    <div style="font-weight:800;">${item.descricao || item.nome_item}</div>
+                    <div style="color:#ef4444; margin-top:10px;">Já possui <b>${Number(parseFloat(item.ja_carregado).toFixed(3))}</b> carregado.</div>
+                    <div style="color:#64748b; font-size:0.85rem; margin-top:8px;">Estorne no carregamento antes de estornar separação.</div>
+                </div>`,
+                icon: 'error',
+                position: 'top',
+                confirmButtonColor: '#ef4444'
+            });
             return;
         }
-        confirmarEstorno(item.cod_item, item.nome_item);
+        confirmarEstorno(item.cod_item, item.descricao || item.nome_item);
         return;
     }
 
@@ -309,15 +323,15 @@ async function processarLeitura(codigo) {
     const el = document.getElementById('item-' + item.cod_item);
     if (el) el.classList.add('active');
 
-const fotoUrl = getProductImageUrl(item.path_foto_master || item.foto);
- const saldoFormatado = Number(saldoNum.toFixed(3));
+    const fotoUrl = getProductImageUrl(item.path_foto_master || item.foto);
+    const saldoFormatado = Number(saldoNum.toFixed(3));
 
     const res = await Swal.fire({
         title: 'Conferir Separação',
         position: 'top',
         html: `<div style="display:flex; flex-direction:column; align-items:center;">
             <img src="${fotoUrl}" style="width:80px; height:80px; object-fit:contain; border-radius:10px; margin-bottom:5px;">
-            <div style="font-weight:800; font-size:0.85rem; color:#274036; text-align:center;">${item.nome_item}</div>
+            <div style="font-weight:800; font-size:0.85rem; color:#274036; text-align:center;">${item.descricao || item.nome_item}</div>
             <div style="color:#ef4444; font-weight:800; font-size:1rem; margin-top:8px;">FALTA SEPARAR: ${saldoFormatado}</div>
         </div>`,
         input: 'text',
@@ -406,7 +420,10 @@ async function confirmarEstorno(iditem, nome) {
             const resultado = await apiFetch(`v1/separacao/estornar/${iditem}/${state.embarque}`, 'DELETE');
             if (resultado.success) {
                 await carregarLista();
-                Swal.fire({ title: 'Sucesso', icon: 'success', timer: 1500, position: 'top', showConfirmButton: false });
+                const msg = resultado.estorno_parcial
+                    ? `Estorno parcial: ${resultado.quantidade_estornada} removido, ${resultado.quantidade_mantida} mantido (carregado)`
+                    : 'Estorno realizado!';
+                Swal.fire({ title: 'Sucesso', text: msg, icon: 'success', timer: 2000, position: 'top', showConfirmButton: false });
             } else {
                 throw new Error(resultado.error);
             }
@@ -444,7 +461,7 @@ async function finalizarSeparacao() {
 }
 
 // ==========================================================================
-// CÂMERA E SINCRONISMO
+// CÂMERA
 // ==========================================================================
 function toggleCamera() {
     const div = document.getElementById('reader');
@@ -480,7 +497,9 @@ document.addEventListener('click', (e) => {
     }
 });
 
-// Sincronismo automático
+// ==========================================================================
+// SINCRONISMO
+// ==========================================================================
 setInterval(async () => {
     if (!state.embarque || isProcessing || (typeof Swal !== 'undefined' && Swal.isVisible())) return;
     try {
@@ -493,7 +512,7 @@ setInterval(async () => {
 }, 5000);
 
 // ==========================================================================
-// EXPORTAÇÃO DE FUNÇÕES GLOBAIS (necessárias para onclick no HTML)
+// EXPORTAÇÃO GLOBAL
 // ==========================================================================
 window.toggleMenuEmbarques = toggleMenuEmbarques;
 window.selecionarEmbarqueManual = selecionarEmbarqueManual;

@@ -1,7 +1,6 @@
 {
     "require": {
         "guzzlehttp/guzzle": "^7.10",
-        "langleyfoxall/simple-google-maps": "^1.2",
         "phpoffice/phpspreadsheet": "^2.1",
         "phpmailer/phpmailer": "^6.10",
         "vlucas/phpdotenv": "^5.5",
