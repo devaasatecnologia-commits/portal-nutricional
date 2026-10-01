@@ -30,7 +30,7 @@ config.php
 email_config.php
 sql.php
 template.php
-uteis.php
+
 
 # Backups locais de arquivos removidos (Bloco 5.F)
 docs/_backups_removidos/
