@@ -19,31 +19,20 @@ class EmailListas {
         
         $listas = [
             
-            // 1. GESTORES / LÍDERES
-            'gestores' => [
-                'alan@nutricionalbr.com',
-                'robson@nutricionalbr.com',
-                'tiago@nutricionalbr.com',
-                'financeiro@nutricionalbr.com',
-                'michel@nutricionalbr.com',
-                'tales@nutricionalbr.com',
-                'a.eleodoro@nutricionalbr.com'
-            ],
             
-            // 2. RELATÓRIO MENSAL - REPRESENTANTES (CÓPIAS CC)
+            // 1. RELATÓRIO MENSAL - REPRESENTANTES (CÓPIAS CC)
             'representantes_cc' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com'
             ],
             
-            // 3. RELATÓRIO MENSAL - CONSOLIDADO
+            // 2. RELATÓRIO MENSAL - CONSOLIDADO
             'consolidado_representantes' => [
                 'alan@nutricionalbr.com',
-                'robson@nutricionalbr.com',
-                'tiago@nutricionalbr.com'
+                'robson@nutricionalbr.com'
             ],
             
-            // 4. RELATÓRIO DE GESTORES (DESTINATÁRIOS)
+            // 3. RELATÓRIO DE GESTORES (DESTINATÁRIOS)
             'gestores_destino' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com',
@@ -54,43 +43,43 @@ class EmailListas {
                 'a.eleodoro@nutricionalbr.com'
             ],
             
-            // 5. ALTERAÇÕES DE PEDIDOS (CÓPIAS CC)
+            // 4. ALTERAÇÕES DE PEDIDOS (CÓPIAS CC)
             'alteracoes_cc' => [
                 'alan@nutricionalbr.com'
             ],
             
-            // 6. ALTERAÇÕES DE PEDIDOS - CONSOLIDADO
+            // 5. ALTERAÇÕES DE PEDIDOS - CONSOLIDADO
             'alteracoes_consolidado' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com'
             ],
             
-            // 7. DIVERGÊNCIA DE XML
+            // 6. DIVERGÊNCIA DE XML
             'divergencia_xml' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com',
                 'faturamento@nutricionalbr.com'
             ],
             
-            // 8. PEDIDOS AGUARDANDO APROVAÇÃO (CÓPIAS CC)
+            // 7. PEDIDOS AGUARDANDO APROVAÇÃO (CÓPIAS CC)
             'pedidos_aguardando_cc' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com'
             ],
             
-            // 9. PEDIDOS AGUARDANDO APROVAÇÃO - CONSOLIDADO
+            // 8. PEDIDOS AGUARDANDO APROVAÇÃO - CONSOLIDADO
             'pedidos_aguardando_consolidado' => [
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com',
                 'tiago@nutricionalbr.com'
             ],
             
-            // 10. DEFAULT
+            // 9. DEFAULT
             'default' => [
                 'alan@nutricionalbr.com'
             ],
             
-            // 11. CLIENTES ISENTOS DE IE - GERAL + DIVIDIDO POR FILIAL
+            // 10. CLIENTES ISENTOS DE IE - GERAL + DIVIDIDO POR FILIAL
             'clientes_isento' => [
                 
                 // 📊 VISÃO GERAL - Recebe TODOS os clientes (gestores)
@@ -160,7 +149,6 @@ class EmailListas {
      */
     public static function debug() {
         $contextos = [
-            'gestores' => '👔 Gestores (Principal)',
             'representantes_cc' => '📧 Representantes (CC)',
             'consolidado_representantes' => '📊 Consolidado Representantes',
             'gestores_destino' => '👔 Gestores (Destino)',

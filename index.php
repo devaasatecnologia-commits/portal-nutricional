@@ -1,8 +1,6 @@
 <?php
-$errorCatcherPath = __DIR__ . '/error-catcher.php';
-if (is_file($errorCatcherPath)) {
-    require_once $errorCatcherPath;
-}
+// 🔥 ERROR CATCHER - carrega ANTES de tudo para capturar qualquer erro
+require_once __DIR__ . '/error-catcher.php';
 
 /**
  * GATEWAY HÍBRIDO NUTRICIONAL
@@ -11,6 +9,7 @@ if (is_file($errorCatcherPath)) {
  * - /v1/*     → Nova API REST (Slim)
  * - /ping     → Ping público da nova API
  * - /auth/*   → Rotas de autenticação da nova API
+ * - /         → 302 → /portal/  (redirect defensivo)
  * - Outras    → Sistema Legado (index_legado.php)
  */
 
@@ -38,9 +37,25 @@ if ($environment === 'development') {
     error_reporting(E_ALL & ~E_DEPRECATED & ~E_STRICT);
 }
 
+// ==========================================================================
+// NORMALIZAÇÃO DO PATH
+// ==========================================================================
 $requestUri = $_SERVER['REQUEST_URI'] ?? '';
 $path = parse_url($requestUri, PHP_URL_PATH);
+
+// Se o .htaccess reescreveu a URL para "index.php?acao=<path original>",
+// recuperamos o path original de volta.
+$acaoRewritten = $_GET['acao'] ?? null;
+if (
+    ($path === '/index.php' || $path === '/index.php/') &&
+    $acaoRewritten !== null &&
+    $acaoRewritten !== ''
+) {
+    $path = '/' . ltrim((string)$acaoRewritten, '/');
+}
+
 $routePath = $_GET['api_route'] ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
+
 if (strpos($routePath, '/v2') === 0) {
     $routePath = '/v1' . substr($routePath, 3);
     $_SERVER['REQUEST_URI'] = $routePath;
@@ -50,6 +65,34 @@ if (isset($_GET['api_route']) && strpos($routePath, '/v1') !== 0) {
 }
 if (isset($_GET['api_route'])) {
     $_SERVER['REQUEST_URI'] = $routePath;
+}
+
+// ==========================================================================
+// REDIRECIONAMENTO: RAIZ → /portal/ (302)
+// ==========================================================================
+// Elimina a duplicidade "/" vs "/portal/" e faz o header.php sempre
+// rodar no contexto correto (subpasta /portal/).
+//
+// NUNCA redireciona quando há:
+//   ?acao=      → crons do cPanel
+//   ?key=       → autenticação de cron
+//   ?api_route= → gateway da API Slim
+//   ?t0k3n=     → links internos dos gatilhos
+// ==========================================================================
+$metodo        = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+$temAcao       = isset($_GET['acao'])      && $_GET['acao'] !== '';
+$temKey        = isset($_GET['key'])       && $_GET['key'] !== '';
+$temApiRoute   = isset($_GET['api_route']) && $_GET['api_route'] !== '';
+$temToken      = isset($_GET['t0k3n'])     && $_GET['t0k3n'] !== '';
+$temQualquerQs = $temAcao || $temKey || $temApiRoute || $temToken;
+
+if (
+    $metodo === 'GET'
+    && !$temQualquerQs
+    && ($path === '/' || $path === '/index.php')
+) {
+    header('Location: /portal/', true, 302);
+    exit;
 }
 
 // ------------------------------------------------------------
