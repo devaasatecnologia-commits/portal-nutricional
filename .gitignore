@@ -36,3 +36,6 @@ template.php
 docs/_backups_removidos/
 
 cobli_*.json
+
+verificacao_completa.txt
+*.txt
