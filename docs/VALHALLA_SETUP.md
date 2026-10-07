@@ -1,6 +1,8 @@
 # Valhalla self-hosted
 
-O projeto usa Valhalla como provedor opcional de rotas para caminhão. Sem o serviço disponível, o app continua usando a sequência salva e o cálculo offline.
+O otimizador de embarques usa Valhalla para comparar tempos rodoviarios no
+perfil de caminhao. O motorista continua usando a sequencia ja salva quando
+estiver offline; a operacao de otimizar exige que a API alcance o Valhalla.
 
 ## Configuração da API
 
@@ -16,13 +18,24 @@ TRUCK_WEIGHT=3500
 TRUCK_FIXED_SPEED=35
 ```
 
-O endpoint do projeto é:
+O endpoint da API usado pelo botao **Otimizar** e:
 
 ```text
-GET /v1/frota/embarques/{id}/rota-valhalla
+POST /v1/frota/embarques/{id}/otimizar-rota
 ```
 
-Ele retorna distância, duração, geometria e pernas da rota usando `costing: truck`.
+O backend consulta `/sources_to_targets` com `costing: truck`, calcula uma
+sequencia de menor tempo estimado partindo do CD, visitando cada entrega uma
+vez e retornando ao CD. A heuristica combina vizinho mais proximo e melhorias
+2-opt; nao e uma garantia de otimo global e nao considera janelas de entrega,
+pausas, transito ao vivo ou restricoes de capacidade nao configuradas.
+Quando o servico de rota tambem responde, a tela substitui a linha esquematica
+pela geometria viaria da sequencia otimizada e mostra as metricas do percurso.
+
+Se o Valhalla estiver indisponivel ou nao encontrar caminho para todos os
+trechos, a API responde com erro e preserva a ordem atual do embarque. Nao se
+deve substituir esse comportamento por uma ordenacao em linha reta, pois ela
+nao atende ao criterio de tempo rodoviario selecionado.
 
 ## Instalação recomendada
 
@@ -42,7 +55,8 @@ Para produção, prefira gerar os tiles da região necessária e persistir `/cus
 
 - O backend nunca expõe a URL interna ao motorista.
 - O app usa os dados da rota já cacheados quando estiver offline.
-- Se Valhalla estiver indisponível, a API retorna `503` e o fluxo atual permanece funcional.
+- Se Valhalla estiver indisponível, a otimizacao retorna `503`; a ordem e as
+  entregas atuais permanecem funcionais, mas nao se confirma uma otimizacao.
 - A chave GraphHopper não é necessária para esta solução.
 
 Antes de produção, configurar autenticação/rede privada para o serviço Valhalla e monitorar uso de CPU, memória e armazenamento dos tiles.

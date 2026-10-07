@@ -12,12 +12,6 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
 }
 
 // ================================================================
-// MODO TREINAMENTO — ativa quando ?treino=1 na URL
-// Permite checkin/checkout em qualquer distância
-// NÃO grava lat/lng se estiver fora do raio
-// ================================================================
-$modoTreinamento = filter_var($_GET['treino'] ?? false, FILTER_VALIDATE_BOOLEAN);
-
 $usuarioLogado = $_SESSION['uid'] ?? $_SESSION['idusuario'] ?? null;
 
 if (!$usuarioLogado) {
@@ -32,6 +26,9 @@ $isAdmin = !empty($_SESSION['is_admin'])
         || in_array('admin', $permissoes, true)
         || in_array('frota', $permissoes, true)
         || in_array('gestao-cargas', $permissoes, true);
+
+// O modo de treinamento permite operar fora do raio; só usuários de gestão podem ativá-lo.
+$modoTreinamento = $isAdmin && filter_var($_GET['treino'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 $motoristaId = 0;
 if ($isAdmin && isset($_GET['motorista_id'])) {
@@ -78,7 +75,10 @@ require_once __DIR__ . '/../../estrutura/header.php';
 window.MOTORISTA_ID_INICIAL   = <?= (int)$motoristaId ?>;
 window.MOTORISTA_ID_VINCULADO = <?= (int)$motoristaVinculado ?>;
 window.IS_ADMIN_APP           = <?= $isAdmin ? 'true' : 'false' ?>;
-window.MOTORISTA_NOME_SESSAO  = <?= json_encode($_SESSION['uname'] ?? $_SESSION['username'] ?? 'Motorista') ?>;
+window.MOTORISTA_NOME_SESSAO  = <?= json_encode(
+    (string)($_SESSION['uname'] ?? $_SESSION['username'] ?? 'Motorista'),
+    JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_INVALID_UTF8_SUBSTITUTE
+) ?>;
 window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
 </script>
 
@@ -136,6 +136,16 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
                 </select>
                 <button type="button" id="btn-confirm-driver" class="driver-confirm-btn">Entrar na Rota</button>
             </div>
+            <?php if ($isAdmin): ?>
+            <label class="admin-training-toggle">
+                <input type="checkbox" id="admin-training-toggle" <?= $modoTreinamento ? 'checked' : '' ?>>
+                <span><strong>Ativar modo de treino da rota</strong><small>Libera ações fora do raio. As alterações serão gravadas na operação real.</small></span>
+            </label>
+            <p class="admin-training-warning" id="admin-training-warning" <?= $modoTreinamento ? '' : 'hidden' ?> role="alert">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                Atenção: check-ins, entregas, problemas e alterações de rota serão gravados na operação real.
+            </p>
+            <?php endif; ?>
         </div>
     </section>
 
@@ -204,7 +214,7 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
         <!-- ============================================================
              CABEÇALHO DO EMBARQUE — colapsável
              Colapsado: [EMB-XXX] [ERP #] [20/35] [status] [▾]
-             Expandido: rota, veículo, motorista, valor, peso, datas
+             Expandido: rota, veículo, motorista, volume, peso, datas
              ============================================================ -->
         <section class="embarque-header-card is-collapsed" id="embarque-header-card" hidden aria-label="Cabeçalho do embarque">
                   <header class="embarque-header-head" id="embarque-header-head" role="button" tabindex="0" aria-expanded="false">
@@ -241,8 +251,8 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
                         <strong id="embarque-header-motorista">—</strong>
                     </div>
                     <div class="embarque-header-item">
-                        <span class="embarque-header-label"><i class="fa-solid fa-sack-dollar"></i> Valor</span>
-                        <strong id="embarque-header-valor">—</strong>
+                        <span class="embarque-header-label"><i class="fa-solid fa-boxes-stacked"></i> Volume</span>
+                        <strong id="embarque-header-volume">—</strong>
                     </div>
                     <div class="embarque-header-item">
                         <span class="embarque-header-label"><i class="fa-solid fa-weight-hanging"></i> Peso</span>
@@ -296,39 +306,6 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
             <div class="driver-progress-track"><span id="route-progress-bar"></span></div>
         </section>
 
-        <!-- PRÓXIMA PARADA — HERO -->
-        <section class="next-stop-card" id="next-stop-card" hidden aria-label="Próxima parada">
-            <div class="next-stop-badge" id="next-stop-badge">
-                <span class="next-stop-badge-num" id="next-stop-num">1</span>
-                <span class="next-stop-badge-label">PRÓXIMA</span>
-            </div>
-            <div class="next-stop-content">
-                <h2 id="next-stop-name">-</h2>
-                <p id="next-stop-address">-</p>
-                <div class="next-stop-chips">
-                    <span class="next-stop-distance" id="next-stop-distance"></span>
-                    <span class="next-stop-eta" id="next-stop-eta"></span>
-                    <span class="next-stop-pedidos" id="next-stop-pedidos"></span>
-                    <span class="next-stop-valor" id="next-stop-valor"></span>
-                </div>
-            </div>
-                    <div class="next-stop-actions-group">
-                <button type="button" class="next-stop-nav-btn waze-btn" id="next-stop-waze" title="Navegar com Waze">
-                    <i class="fa-brands fa-waze"></i> Waze
-                </button>
-                <button type="button" class="next-stop-nav-btn gmaps-btn" id="next-stop-gmaps" title="Navegar com Google Maps">
-                    <i class="fa-solid fa-map-location-dot"></i> Maps
-                </button>
-                <button type="button" class="next-stop-contact-btn is-whatsapp" id="next-stop-whatsapp" title="Enviar WhatsApp ao cliente">
-                    <i class="fa-brands fa-whatsapp"></i> WhatsApp
-                </button>
-                <button type="button" class="next-stop-contact-btn is-call" id="next-stop-ligar" title="Ligar para o cliente">
-                    <i class="fa-solid fa-phone"></i> Ligar
-                </button>
-                <button type="button" class="next-stop-action" id="next-stop-action">Cheguei</button>
-            </div>
-        </section>
-
         <!-- MAPA RECOLHÍVEL -->
         <div class="route-map-wrap" id="route-map-wrap" hidden>
             <div class="route-map-head">
@@ -338,6 +315,20 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
                     <i class="fa-solid fa-chevron-down" id="route-map-toggle-icon"></i>
                 </button>
             </div>
+            <div class="route-map-legend" aria-label="Legenda do mapa">
+                <span><i class="stop-marker is-pending">1</i> Pendente</span>
+                <span><i class="stop-marker is-complete"><i class="fa-solid fa-check"></i></i> Concluída</span>
+                <span><i class="stop-marker is-problem"><i class="fa-solid fa-exclamation"></i></i> Problema</span>
+                <span><i class="driver-me-marker"></i> Você</span>
+                <span><i class="route-origin-marker"><i class="fa-solid fa-warehouse"></i></i> Partida</span>
+            </div>
+            <div class="route-map-tools" aria-label="Enquadramento do mapa">
+                <button type="button" data-map-action="route"><i class="fa-solid fa-route"></i> Ver todos os pontos</button>
+                <button type="button" data-map-action="next"><i class="fa-solid fa-location-crosshairs"></i> Próxima parada</button>
+                <button type="button" data-map-action="truck"><i class="fa-solid fa-truck"></i> Caminhão</button>
+                <button type="button" data-map-action="me"><i class="fa-solid fa-location-dot"></i> Meu GPS</button>
+            </div>
+            <div class="route-map-help" id="route-map-location-status">A rota conecta a Nutricional às entregas. GPS distante da região da rota não desloca nem distorce o mapa.</div>
             <div id="route-map" class="route-map"></div>
         </div>
 
@@ -429,7 +420,7 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
             <section class="painel-score-card" id="painel-score-card" aria-label="Meu desempenho">
                 <div class="painel-score-head">
                     <span class="eyebrow"><i class="fa-solid fa-shield-halved"></i> Meu desempenho</span>
-                    <span class="painel-score-periodo" id="painel-score-periodo">últimos 30 dias</span>
+                    <span class="painel-score-periodo" id="painel-score-periodo">Mês atual</span>
                 </div>
 
                 <div class="painel-score-body">
@@ -473,24 +464,6 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
             </section>
 
             <!-- ══════════════════════════════════════════════════
-                 BLOCO 2: RANKING (anônimo)
-                 ══════════════════════════════════════════════════ -->
-            <section class="painel-ranking-card" id="painel-ranking-card" aria-label="Minha posição no ranking">
-                <div class="painel-ranking-icon">
-                    <i class="fa-solid fa-trophy"></i>
-                </div>
-                <div class="painel-ranking-info">
-                    <span class="eyebrow">Ranking da equipe</span>
-                    <h3 id="painel-ranking-titulo">Sem posição ainda</h3>
-                    <p id="painel-ranking-subtitulo">Complete viagens para entrar no ranking.</p>
-                </div>
-                <div class="painel-ranking-posicao" id="painel-ranking-posicao" hidden>
-                    <strong id="painel-ranking-numero">—</strong>
-                    <small id="painel-ranking-total">de —</small>
-                </div>
-            </section>
-
-            <!-- ══════════════════════════════════════════════════
                  BLOCO 3: RESUMO DO MÊS
                  ══════════════════════════════════════════════════ -->
                       <section class="painel-resumo-card" id="painel-resumo-card" aria-label="Resumo do mês">
@@ -506,9 +479,9 @@ window.MODO_TREINAMENTO       = <?= $modoTreinamento ? 'true' : 'false' ?>;
                         <small>entregas</small>
                     </div>
                     <div class="painel-resumo-item">
-                        <span class="painel-resumo-icon is-money"><i class="fa-solid fa-sack-dollar"></i></span>
-                        <strong id="painel-resumo-valor">R$ 0</strong>
-                        <small>em valor</small>
+                        <span class="painel-resumo-icon is-money"><i class="fa-solid fa-boxes-stacked"></i></span>
+                        <strong id="painel-resumo-volume">0</strong>
+                        <small>itens entregues</small>
                     </div>
                     <div class="painel-resumo-item">
                         <span class="painel-resumo-icon is-km"><i class="fa-solid fa-road"></i></span>

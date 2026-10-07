@@ -21,9 +21,17 @@ class AcertoEmbarqueController
         $this->erpService = new ERPPedidoService($this->pdo);
     }
     
+// v1/src/Controllers/Frota/AcertoEmbarqueController.php
+
 /**
  * GET /v1/frota/acerto/embarques
  * Lista embarques que têm acerto (em andamento ou finalizados)
+ *
+ * 🔥 CORRIGIDO 2026-10-05 (Bug do filtro "Com Problemas"):
+ *   - Aceita o parâmetro `?status=` para filtrar por `frota_embarque.status`.
+ *   - O filtro "problema" agora busca por `embarque_status = 'problema'` OU
+ *     `total_problemas > 0` (Opção C recomendada).
+ *   - Mantém compatibilidade com o parâmetro antigo `?status_acerto=`.
  */
 public function listarParaAcerto(Request $request, Response $response): Response
 {
@@ -35,7 +43,19 @@ public function listarParaAcerto(Request $request, Response $response): Response
     // Embarques ativos também aparecem antes do primeiro acerto ser iniciado.
     $filtros[] = "(ae.id IS NOT NULL OR e.status IN ('em_andamento', 'problema', 'finalizado'))";
     
-    // 🔥 ADICIONADO: Filtrar por status do acerto
+    // 🔥 NOVO: Filtro por status do EMBARQUE (com lógica especial para 'problema')
+    if (!empty($params['status'])) {
+        if ($params['status'] === 'problema') {
+            // Opção C: embarques com status 'problema' OU que já têm problemas registrados no acerto
+            $filtros[] = "(e.status = :embarque_status_problema OR (SELECT COUNT(*) FROM frota_entrega_problema WHERE embarque_id = e.id AND status_problema IN ('pendente', 'em_analise')) > 0)";
+            $bindParams['embarque_status_problema'] = 'problema';
+        } else {
+            // Filtros normais de status de embarque
+            $filtros[] = "e.status = :embarque_status";
+            $bindParams['embarque_status'] = $params['status'];
+        }
+    }
+    // 🔥 MANTIDO: Filtro por status do ACERTO (compatibilidade)
     if (!empty($params['status_acerto'])) {
         $filtros[] = $params['status_acerto'] === 'em_andamento'
             ? "(ae.status = :status_acerto OR (ae.id IS NULL AND e.status = 'em_andamento'))"

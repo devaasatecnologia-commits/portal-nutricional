@@ -137,9 +137,18 @@ function verificarAutenticacao() {
     return true;
 }
 
-// ================================================================
-// CARREGAR EMBARQUES PARA ACERTO
-// ================================================================
+// portal/modules/frota/assets/acerto-embarque.js
+
+/**
+ * Carrega a lista de embarques para acerto, aplicando os filtros.
+ *
+ * 🔥 CORRIGIDO 2026-10-05 (Bug do filtro "Com Problemas"):
+ *   - A função agora decide qual parâmetro enviar para o backend (`status` ou `status_acerto`)
+ *     com base no filtro de status selecionado.
+ *   - Filtros de status de embarque ('planejado', 'em_andamento', 'problema')
+ *     são enviados como `?status=`.
+ *   - Filtros de status de acerto ('pendente', 'finalizado') são enviados como `?status_acerto=`.
+ */
 function carregarEmbarquesParaAcerto(forcar = false) {
     const busca = document.getElementById('filtro-busca')?.value || '';
     const dataInicio = document.getElementById('filtro-data-inicio')?.value || '';
@@ -153,8 +162,22 @@ function carregarEmbarquesParaAcerto(forcar = false) {
         data_fim: dataFim
     });
     
-    if (embarcar.filtros.status) {
-        params.append('status_acerto', embarcar.filtros.status);
+    // ================================================================
+    // 🔥 LÓGICA DE FILTRO CORRIGIDA
+    // ================================================================
+    const filtroStatusAtual = embarcar.filtros.status;
+    if (filtroStatusAtual) {
+        const filtrosDeEmbarque = ['planejado', 'em_andamento', 'finalizado', 'problema'];
+        const filtrosDeAcerto = ['pendente', 'em_andamento', 'finalizado', 'cancelado'];
+
+        // Prioridade 1: Se for um filtro de embarque, envia como `status`
+        if (filtrosDeEmbarque.includes(filtroStatusAtual)) {
+            params.append('status', filtroStatusAtual);
+        }
+        // Prioridade 2: Se for um filtro de acerto, envia como `status_acerto`
+        else if (filtrosDeAcerto.includes(filtroStatusAtual)) {
+            params.append('status_acerto', filtroStatusAtual);
+        }
     }
     
     showLoading('lista-embarques');

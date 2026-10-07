@@ -172,6 +172,12 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .driver-selector-controls { display: flex; gap: 10px; }
 .driver-select-input { flex: 1; border: 1px solid var(--driver-border); border-radius: 10px; background: var(--driver-bg); color: var(--driver-ink); padding: 10px 12px; font-weight: 600; font-size: .88rem; }
 .driver-confirm-btn { border: 0; border-radius: 10px; background: var(--driver-success); color: #fff; padding: 10px 16px; font-weight: 800; font-size: .85rem; cursor: pointer; white-space: nowrap; }
+.admin-training-toggle { display: flex; align-items: flex-start; gap: 10px; border: 1px solid var(--driver-border); border-radius: 10px; padding: 12px; cursor: pointer; }
+.admin-training-toggle input { margin-top: 3px; accent-color: var(--driver-success); }
+.admin-training-toggle span, .admin-training-toggle strong, .admin-training-toggle small { display: block; }
+.admin-training-toggle small { margin-top: 3px; color: var(--driver-muted); font-size: .76rem; }
+.admin-training-warning { margin: 0; border-left: 4px solid #c94b45; border-radius: 8px; background: #fff0ef; padding: 10px 12px; color: #8f2823; font-size: .82rem; font-weight: 700; }
+.admin-training-warning[hidden] { display: none; }
 
 /* Painel administrativo do aplicativo */
 .driver-admin-panel { margin-bottom: 20px; }
@@ -200,7 +206,15 @@ body:has(.motorista-app) { background: var(--driver-bg); }
 .driver-overview-progress span { display: block; height: 100%; background: var(--driver-success); }
 .driver-overview-meta { display: flex; justify-content: space-between; gap: 8px; color: var(--driver-muted); font-size: .72rem; }
 .driver-overview-meta .has-problem { color: var(--driver-danger); font-weight: 800; }
-.is-admin-view .delivery-actions, .is-admin-view .order-actions, .is-admin-view #next-stop-action, .is-admin-view #gps-status, .is-admin-view [data-drawer-action="foto"] { display: none; }
+.is-admin-view #gps-status, .is-admin-view [data-drawer-action="foto"] { display: none; }
+.admin-route-readonly { margin: 0; color: var(--driver-muted); font-size: .8rem; font-weight: 700; }
+.delivery-problem-recipient { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.delivery-problem-recipient strong { flex-basis: 100%; }
+.delivery-problem-contact-missing { color: var(--driver-muted); font-size: .78rem; }
+.delivery-problem-recipient button { border: 1px solid var(--driver-border); border-radius: 999px; background: var(--driver-card); color: var(--driver-ink); padding: 5px 9px; font-size: .72rem; font-weight: 800; cursor: pointer; }
+.delivery-problem-recipient button:hover { border-color: var(--driver-success); }
+.delivery-problem-contact-pending { color: var(--driver-danger); }
+.delivery-problem-confirm-contact { border: 0; border-radius: 8px; background: var(--driver-danger); color: #fff; padding: 8px 10px; font-weight: 800; cursor: pointer; }
 @media (max-width: 820px) { .driver-admin-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 600px) { .driver-admin-head { align-items: stretch; flex-direction: column; gap: 12px; } .driver-admin-search { width: 100%; } .driver-admin-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } .driver-admin-list { grid-template-columns: 1fr; } }
 
@@ -1673,6 +1687,7 @@ body.drawer-open { overflow: hidden; }
 }
 .delivery-card-order-actions button:not(:disabled):hover { color: var(--driver-success); border-color: var(--driver-success); }
 .delivery-card-order-actions button:disabled { opacity: .35; cursor: not-allowed; }
+.delivery-sequential-notice { margin: 0; color: var(--driver-danger); font-size: .78rem; font-weight: 700; }
 
 /* Responsivo */
 @media (max-width: 480px) {
@@ -3041,4 +3056,253 @@ body.drawer-open { overflow: hidden; }
     background: rgba(194, 65, 12, .25);
     color: #fdba74;
     border-color: rgba(194, 65, 12, .45);
+}
+
+/* Visão geral do mapa e comunicação de ocorrências */
+.route-map-wrap {
+    border-radius: 18px;
+    box-shadow: 0 10px 28px rgba(23, 52, 44, .1);
+}
+.route-map-head {
+    min-height: 52px;
+    background: linear-gradient(110deg, rgba(22, 132, 94, .08), transparent 70%);
+}
+.route-map {
+    height: min(62vh, 520px);
+    min-height: 320px;
+}
+.route-map-legend {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 16px;
+    padding: 0 14px 11px;
+    color: var(--driver-muted);
+    font-size: .68rem;
+    font-weight: 700;
+}
+.route-map-legend > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.route-map-legend .stop-marker {
+    width: 20px;
+    height: 20px;
+    font-size: .58rem;
+    font-style: normal;
+}
+.route-map-legend .driver-me-marker {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin: 4px;
+}
+.route-map-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 0 14px 12px;
+}
+.route-map-tools button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 34px;
+    padding: 6px 10px;
+    border: 1px solid var(--driver-border);
+    border-radius: 999px;
+    background: var(--driver-card);
+    color: var(--driver-ink);
+    font-size: .7rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+.route-map-tools button:hover,
+.route-map-tools button:focus-visible {
+    border-color: var(--driver-success);
+    color: var(--driver-success);
+}
+.route-map-help {
+    padding: 0 14px 10px;
+    color: var(--driver-muted);
+    font-size: .68rem;
+}
+.route-stop-marker {
+    display: grid;
+    width: 30px;
+    height: 30px;
+    place-items: center;
+    border: 3px solid #fff;
+    border-radius: 50%;
+    color: #fff;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, .35);
+    cursor: pointer;
+    font-size: .72rem;
+    font-weight: 800;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+.route-stop-marker:hover { transform: scale(1.15); box-shadow: 0 5px 16px rgba(0, 0, 0, .5); }
+.route-stop-pendente { background: #3b82f6; }
+.route-stop-em-entrega { background: #f59e0b; }
+.route-stop-entregue { background: #10b981; }
+.route-stop-problema { background: #ef4444; }
+.route-stop-marker.is-next {
+    animation: pulsarMarcadorRota 1.6s ease-in-out infinite;
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, .6);
+}
+@keyframes pulsarMarcadorRota {
+    0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, .6); }
+    70% { box-shadow: 0 0 0 14px rgba(16, 185, 129, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+}
+.route-origin-marker {
+    display: flex;
+    width: 34px;
+    height: 34px;
+    align-items: center;
+    justify-content: center;
+    border: 3px solid #fff;
+    border-radius: 50% 50% 50% 8px;
+    background: #145d8a;
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, .35);
+    font-size: 14px;
+}
+.route-map-legend .route-origin-marker {
+    width: 18px;
+    height: 18px;
+    border-width: 2px;
+    border-radius: 50%;
+    font-size: 9px;
+}
+#route-map-location-status { min-height: 1.2em; }
+.delivery-card-chips .chip-volume {
+    color: #0f5f43;
+    background: rgba(22, 132, 94, .1);
+    border-color: rgba(22, 132, 94, .2);
+}
+.delivery-card-chips .chip-problema-registrado {
+    color: #9f2d28;
+    background: rgba(201, 75, 69, .1);
+    border-color: rgba(201, 75, 69, .28);
+}
+.delivery-problem-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 7px;
+    margin: 0 0 10px;
+    color: var(--driver-muted);
+    font-size: .72rem;
+    font-weight: 800;
+}
+.delivery-problem-actions a, .delivery-problem-actions button:not(.delivery-problem-confirm-contact) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 10px;
+    border: 1px solid rgba(37, 211, 102, .35);
+    border-radius: 999px;
+    background: rgba(37, 211, 102, .1);
+    color: #128c4a;
+    text-decoration: none;
+    font: inherit;
+    font-size: .72rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+.delivery-problem-actions a:hover, .delivery-problem-actions button:not(.delivery-problem-confirm-contact):hover { background: #25d366; color: #fff; }
+.delivery-card-problem-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 5px 8px;
+    border: 1px solid rgba(201, 75, 69, .28);
+    border-radius: 999px;
+    background: rgba(201, 75, 69, .1);
+    color: #a9322d;
+    font-size: .62rem;
+    font-weight: 900;
+    white-space: nowrap;
+}
+.painel-score-periodo {
+    color: var(--driver-success);
+    background: rgba(22, 132, 94, .12);
+    font-size: .76rem;
+}
+[data-driver-theme="dark"] .delivery-card-chips .chip-problema-registrado {
+    color: #ffaaa4;
+    background: rgba(255, 129, 120, .14);
+    border-color: rgba(255, 129, 120, .28);
+}
+[data-driver-theme="dark"] .delivery-problem-actions a, [data-driver-theme="dark"] .delivery-problem-actions button:not(.delivery-problem-confirm-contact) {
+    color: #4ade80;
+    background: rgba(37, 211, 102, .16);
+}
+[data-driver-theme="dark"] .delivery-card-problem-status {
+    color: #ffaaa4;
+    background: rgba(255, 129, 120, .14);
+}
+.delivery-card-client-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.delivery-card-client-row .delivery-card-client { min-width: 0; }
+.delivery-card-client-row .delivery-card-contact {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 5px;
+    margin: 0;
+}
+.delivery-card-client-row .contact-btn {
+    min-height: 30px;
+    padding: 5px 8px;
+    border-radius: 8px;
+    font-size: .68rem;
+}
+.problem-contact-options {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+    text-align: left;
+}
+.problem-contact-choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--driver-border);
+    border-radius: 10px;
+    background: var(--driver-card);
+    padding: 10px;
+}
+.problem-contact-choice > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.problem-contact-choice button {
+    border: 1px solid var(--driver-border);
+    border-radius: 8px;
+    background: var(--driver-bg);
+    color: var(--driver-ink);
+    padding: 8px 10px;
+    font-size: .75rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+.problem-contact-choice button:first-child { border-color: rgba(37, 211, 102, .35); color: #128c4a; }
+.problem-contact-choice button:hover { filter: brightness(.96); }
+.problem-contact-choice.is-unavailable { color: var(--driver-muted); }
+.problem-contact-choice.is-unavailable small { font-size: .74rem; }
+.delivery-problem-confirm-contact { background: var(--driver-success); }
+@media (max-width: 420px) {
+    .problem-contact-choice { align-items: flex-start; flex-direction: column; }
+    .delivery-card-client-row { gap: 5px; }
+    .delivery-card-client-row .delivery-card-contact .contact-btn { padding: 5px 6px; }
+}
+@media (max-width: 480px) {
+    .route-map { height: 400px; min-height: 320px; }
+    .route-map-legend { gap: 7px 11px; font-size: .64rem; }
+    .route-map-tools { gap: 6px; }
+    .route-map-tools button { min-height: 38px; }
 }

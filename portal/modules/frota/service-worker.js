@@ -4,9 +4,8 @@
 // Versão nova = cache renovado automaticamente no próximo carregamento.
 // SEMPRE incremente este número ao publicar mudanças em HTML/CSS/JS.
 // ======================================================================
-const CACHE_NAME = 'frota-motorista-v31';
+const CACHE_NAME = 'frota-motorista-v49';
 const APP_SHELL = [
-    new URL('motorista-offline.php', self.registration.scope).pathname,
     new URL('assets/motorista-offline.css', self.registration.scope).pathname,
     new URL('assets/motorista-offline.js', self.registration.scope).pathname,
     new URL('assets/frota.js', self.registration.scope).pathname,
@@ -41,7 +40,9 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         caches.keys()
             .then((keys) => Promise.all(
-                keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))
+                keys
+                    .filter((key) => key.startsWith('frota-motorista-') && key !== CACHE_NAME)
+                    .map((key) => caches.delete(key))
             ))
             .then(() => self.clients.claim())
     );
@@ -65,16 +66,33 @@ self.addEventListener('fetch', (event) => {
     if (event.request.mode === 'navigate') {
         event.respondWith(
             fetch(event.request)
-                .then((response) => {
-                    const copy = response.clone();
-                    caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+                .then(async (response) => {
+                    const responsePath = response.url ? new URL(response.url).pathname : '';
+                    if (
+                        path.endsWith('/motorista-offline.php')
+                        && response.status === 200
+                        && responsePath === path
+                        && response.headers.get('content-type')?.includes('text/html')
+                    ) {
+                        try {
+                            const cache = await caches.open(CACHE_NAME);
+                            await cache.put(event.request, response.clone());
+                        } catch (error) {
+                            console.error('[Frota offline] Não foi possível guardar a página offline:', error);
+                        }
+                    }
                     return response;
                 })
-                .catch(() => caches.match(event.request)
-                    .then((cached) => cached || caches.match(
-                        new URL('motorista-offline.php', self.registration.scope).pathname
-                    ))
-                )
+                .catch(async () => {
+                    if (path.endsWith('/motorista-offline.php')) {
+                        const cached = await caches.match(event.request);
+                        if (cached) return cached;
+                    }
+                    return new Response(
+                        '<!doctype html><html lang="pt-BR"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Offline</title><body><h1>Sem conexão</h1><p>Esta tela ainda não está disponível offline. Reconecte-se para abrir novamente o app.</p></body></html>',
+                        { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' } }
+                    );
+                })
         );
         return;
     }
@@ -102,9 +120,11 @@ caches.match(event.request, { ignoreSearch: true }).then((cached) => {
                 }
                 return response;
             }).catch(() => {
-                return caches.match(
-                    new URL('motorista-offline.php', self.registration.scope).pathname
-                );
+                return new Response('', {
+                    status: 503,
+                    statusText: 'Offline asset unavailable',
+                    headers: { 'Cache-Control': 'no-store' }
+                });
             });
         })
     );

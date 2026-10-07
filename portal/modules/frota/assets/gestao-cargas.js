@@ -633,8 +633,15 @@ function renderizarKPIs(kpis) {
     const container = document.getElementById('kpi-cards');
     if (!container) return;
 
+    const totalProblemas = Number(kpis.total_problemas ?? kpis.total ?? 0) || 0;
+    const resolvidos = Number(kpis.resolvidos ?? 0) || 0;
+    const totalEl = document.getElementById('total-problemas');
+    const resolvidosEl = document.getElementById('total-resolvidos');
+    if (totalEl) totalEl.textContent = totalProblemas.toLocaleString('pt-BR');
+    if (resolvidosEl) resolvidosEl.textContent = resolvidos.toLocaleString('pt-BR');
+
     const cards = [
-        { id: 'total', label: 'Total Problemas', value: kpis.total || 0, icon: 'fa-triangle-exclamation', cor: 'primary' },
+        { id: 'total', label: 'Total Problemas', value: totalProblemas, icon: 'fa-triangle-exclamation', cor: 'primary' },
         { id: 'pendentes', label: 'Pendentes', value: kpis.pendentes || 0, icon: 'fa-clock', cor: 'warning' },
         { id: 'em_analise', label: 'Em Análise', value: kpis.em_analise || 0, icon: 'fa-magnifying-glass', cor: 'info' },
         { id: 'resolvidos', label: 'Resolvidos', value: kpis.resolvidos || 0, icon: 'fa-check-circle', cor: 'success' },

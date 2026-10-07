@@ -13,10 +13,10 @@
   const podeTrocarMotorista = isAdminApp;
 
   // ================================================================
-  // MODO TREINAMENTO — ativado via ?treino=1 na URL (PHP injeta em window)
-  // NÃO bloqueia por distância e NÃO grava lat/lng fora do raio
+  // Modo de treinamento inicializado pela URL ou pelo controle administrativo.
   // ================================================================
-  const isTrainingMode = window.MODO_TREINAMENTO === true;
+  let isTrainingMode = window.MODO_TREINAMENTO === true;
+  app.classList.toggle('admin-training-active', isAdminApp && isTrainingMode);
 
   let motoristaId = Number(window.MOTORISTA_ID_INICIAL || app.dataset.motoristaId || 0);
   if (!podeTrocarMotorista && motoristaVinculado > 0) motoristaId = motoristaVinculado;
@@ -39,13 +39,15 @@
   let markerIndex = new Map();
   let truckMarker = null;
   let driverMarker = null;
+  let originMarker = null;
   let routeSourceId = 'driver-route-source';
   let watchId = null;
-  let lastFitBounds = 0;
+  let lastFitBoundsKey = '';
   let painelMotoristas = [];
 
   // 🔥 Pacote 1.5 — filtro de chips
   let filtroStatusAtual = 'pendente';
+  let checkinEmAndamento = false;
 
   // 🔥 Pacote 3 — M3: rastreador da próxima parada
   let ultimaProximaId = null;
@@ -58,12 +60,10 @@
   const CHIP_DISTANCIA_INTERVALO_MS = 30 * 1000;
   const VELOCIDADE_MEDIA_KMH = 40;
 
-  // 🔥 Pacote 5 — Mapa-fitBounds: limite para considerar o motorista "fora"
-  //    Se a distância do motorista até a parada MAIS PRÓXIMA for maior que
-  //    este valor, o fitBounds ignora o driverMarker (foca só nas paradas).
-  //    Motivação: modo treino / caso atípico — motorista a 200km amontoa
-  //    os 35 marcadores num canto minúsculo do mapa.
+  // Evita que uma origem muito distante reduza as paradas a um agrupamento ilegível.
   const LIMITE_FITBOUNDS_KM = 50;
+  const LIMITE_GPS_CAMINHAO_KM = 1;
+  const ORIGEM_NUTRICIONAL = { latitude: -28.979438954992666, longitude: -49.53561648427039 };
 
   // 🔥 Pacote 2 — cache do painel
   const PAINEL_CACHE_TTL = 5 * 60 * 1000;
@@ -369,6 +369,18 @@
   // ================================================================
   // LOGOUT
   // ================================================================
+  async function limparCacheHtmlMotorista() {
+    if (!('caches' in window)) return;
+    const cacheNames = await caches.keys();
+    for (const cacheName of cacheNames.filter((name) => name.startsWith('frota-motorista-'))) {
+      const cache = await caches.open(cacheName);
+      const requests = await cache.keys();
+      await Promise.all(requests
+        .filter((request) => new URL(request.url).pathname.endsWith('/motorista-offline.php'))
+        .map((request) => cache.delete(request)));
+    }
+  }
+
   async function fazerLogout() {
     const fila = getQueue();
     if (fila.length > 0) {
@@ -386,6 +398,18 @@
         await sincronizarFila();
         return;
       }
+    }
+
+    try {
+      await limparCacheHtmlMotorista();
+    } catch (error) {
+      console.error('[Frota offline] Não foi possível limpar a página autenticada do cache:', error);
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Cache offline não removido',
+        text: 'Não foi possível remover a página autenticada deste dispositivo. Feche o navegador após sair.',
+        confirmButtonText: 'Continuar'
+      });
     }
 
     Swal.fire({ title: 'Saindo...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
@@ -452,10 +476,18 @@
       if (legacy.length) {
         offlineQueue = [...offlineQueue, ...legacy.filter((item) => !offlineQueue.some((saved) => saved.operation_id === item.operation_id))];
         await salvarFila(offlineQueue);
-        localStorage.removeItem(queueKey);
       }
-    } catch {
-      offlineQueue = safeParse(localStorage.getItem(queueKey) || '[]', []);
+    } catch (indexedDbError) {
+      console.error('[Frota offline] IndexedDB indisponível ao carregar a fila:', indexedDbError);
+      try {
+        const fallback = safeParse(localStorage.getItem(queueKey) || '[]', []);
+        offlineQueue = [...offlineQueue, ...fallback.filter(
+          (item) => !offlineQueue.some((saved) => saved.operation_id === item.operation_id)
+        )];
+      } catch (storageError) {
+        offlineQueue = [];
+        informarFalhaPersistenciaFila(indexedDbError, storageError);
+      }
     }
 
     const filaEl = $('fila-pendente');
@@ -470,27 +502,84 @@
   // 🩹 CORRIGIDO 2026-09-25 (Pacote 1.5): #fila-pendente é opcional.
   // ================================================================
   async function salvarFila(queue) {
-    offlineQueue = queue;
-
-    const filaEl = $('fila-pendente');
-    if (filaEl) filaEl.textContent = queue.length;
-
-    atualizarDrawerFila();
-
     try {
       const db = await abrirBancoOffline();
-      const tx = db.transaction('fila', 'readwrite');
-      const store = tx.objectStore('fila');
-      store.clear();
-      queue.forEach((item) => store.put(item));
-    } catch {
-      localStorage.setItem(queueKey, JSON.stringify(queue));
+      await new Promise((resolve, reject) => {
+        let tx;
+        try {
+          tx = db.transaction('fila', 'readwrite');
+          const store = tx.objectStore('fila');
+          store.clear();
+          queue.forEach((item) => store.put(item));
+        } catch (error) {
+          try { tx?.abort(); } catch {}
+          db.close();
+          reject(error);
+          return;
+        }
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          const error = tx.error || new Error('Falha ao gravar a fila IndexedDB.');
+          db.close();
+          reject(error);
+        };
+        tx.onabort = () => {
+          const error = tx.error || new Error('A gravação da fila IndexedDB foi cancelada.');
+          db.close();
+          reject(error);
+        };
+      });
+      try {
+        localStorage.removeItem(queueKey);
+      } catch (error) {
+        console.warn('[Frota offline] Não foi possível limpar a fila legada do localStorage:', error);
+      }
+    } catch (indexedDbError) {
+      try {
+        localStorage.setItem(queueKey, JSON.stringify(queue));
+      } catch (storageError) {
+        console.error('[Frota offline] Falharam IndexedDB e localStorage:', indexedDbError, storageError);
+        throw new Error('Não foi possível gravar a fila no IndexedDB nem no armazenamento local.');
+      }
+      console.warn('[Frota offline] IndexedDB falhou; fila gravada no localStorage:', indexedDbError);
+    }
+
+    offlineQueue = queue;
+    const filaEl = $('fila-pendente');
+    if (filaEl) filaEl.textContent = queue.length;
+    atualizarDrawerFila();
+  }
+
+  function informarFalhaPersistenciaFila(error, fallbackError = null) {
+    if (fallbackError) {
+      console.error('[Frota offline] Falha ao persistir fila em ambos os armazenamentos:', error, fallbackError);
+    } else {
+      console.error('[Frota offline] Falha ao persistir fila:', error);
+    }
+    const mensagem = 'A ação não foi salva offline. Mantenha o aplicativo aberto e reconecte para tentar novamente.';
+    const status = $('motorista-status');
+    if (status) status.textContent = mensagem;
+    if (typeof Swal !== 'undefined') {
+      void Swal.fire({ icon: 'error', title: 'Ação não salva', text: mensagem, confirmButtonText: 'OK' });
+    } else {
+      window.alert(mensagem);
     }
   }
-  function saveQueue(queue) {
-    void salvarFila(queue);
+
+  async function saveQueue(queue) {
+    try {
+      await queueReady;
+      await salvarFila(queue);
+    } catch (error) {
+      informarFalhaPersistenciaFila(error);
+      return false;
+    }
     atualizarConflitoRota();
     void navigator.serviceWorker?.ready.then((r) => r.sync?.register('frota-offline-sync')).catch(() => {});
+    return true;
   }
   queueReady = carregarFila();
   function operationId(id, action, body) { return `${motoristaId}:${id}:${action}:${body.data_hora}`; }
@@ -683,10 +772,24 @@
     truckKey = `frota.motorista.${motoristaId}.truck`;
     perfilDados = safeParse(localStorage.getItem(`frota.motorista.${motoristaId}.perfil`) || 'null', null);
     if ($('driver-select-input')) $('driver-select-input').value = String(motoristaId);
+    if ($('motorista-status')) $('motorista-status').textContent = 'Carregando rota do motorista...';
+
+    const cachedDeliveries = safeParse(localStorage.getItem(cacheKey) || '[]', []);
+    if (cachedDeliveries.length) {
+      entregas = cachedDeliveries;
+      rotaVersion = entregas[0]?.embarque_updated_at || null;
+      render();
+      updateSummary();
+      $('motorista-status').textContent = 'Exibindo última rota salva — atualizando...';
+    }
+
     renderizarPainelAdmin();
-    await carregarEntregas();
-    await carregarListaMotoristas();
-    await carregarPerfil();
+    const carregarRota = carregarEntregas();
+    void Promise.allSettled([
+      carregarListaMotoristas(),
+      carregarPerfil()
+    ]);
+    await carregarRota;
     renderizarAvatar();
     $('driver-selector-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -701,112 +804,70 @@
       .trim();
   }
 
-  function formatarMoedaMotorista(valor) {
-    const n = Number(valor);
-    if (isNaN(n)) return 'R$ 0,00';
-    return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-  }
-
   // portal/modules/frota/assets/motorista-offline.js
 
   /**
    * 🔥 NOVO (Pacote 5 - M8, 2026-09-30):
    * Calcula o status de SLA de uma entrega e devolve a label + a cor.
    *
-   * Regras (Opção 3 da decisão travada):
-   *   - data_prevista > hoje              → cinza   · "Prazo: DD/MM"
-   *   - data_prevista === hoje            → amarelo · "Vence hoje"
-   *   - data_prevista === ontem           → laranja · "Atrasado 1 dia"
-   *   - data_prevista < ontem             → vermelho · "Atrasado N dias"
-   *   - entregue no prazo                 → verde   · "Entregue no prazo · DD/MM"
-   *   - entregue com atraso               → laranja escuro · "Entregue com atraso · DD/MM"
+   *   - usa a data de criação do embarque como referência dos dias em atraso
    *
-   * Casos especiais:
-   *   - status 'falha' ou 'cancelada'   → mostra prazo normalmente (informativo)
-   *   - sem data_prevista               → retorna null (chip omitido)
+   * Entregas sem a data de criação do embarque não recebem chip de atraso.
    *
    * @param {object} entrega
    * @returns {{ label: string, cor: string, diasAtraso: number } | null}
    */
   function calcularSlaMotorista(entrega) {
-    if (!entrega || !entrega.data_prevista) return null;
+    if (!entrega || !entrega.embarque_criado_em) return null;
 
-    // ── Normaliza "hoje" (00:00 local)
+    const dia = (value) => {
+      const datePart = String(value || '').slice(0, 10);
+      const date = new Date(`${datePart}T00:00:00`);
+      return Number.isNaN(date.getTime()) ? null : date;
+    };
+    const dataCriacaoEmbarque = dia(entrega.embarque_criado_em);
     const hoje = new Date();
     hoje.setHours(0, 0, 0, 0);
-
-    // ── Parse defensivo de data_prevista (só data, sem hora)
-    const dataPrev = new Date(entrega.data_prevista + 'T00:00:00');
-    if (isNaN(dataPrev.getTime())) return null;
+    if (!dataCriacaoEmbarque) return null;
 
     const status = entrega.status || 'pendente';
     const concluida = status === 'entregue' || status === 'entregue_com_problema';
 
-    // ═══════════════════════════════════════════════════════════════
-    // Caso 1: entrega CONCLUÍDA — compara data de entrega real
-    // ═══════════════════════════════════════════════════════════════
-    if (concluida && entrega.horario_entrega) {
-      const dtEntrega = new Date(entrega.horario_entrega);
-      if (isNaN(dtEntrega.getTime())) return null;
-
-      const diaEntrega = new Date(dtEntrega);
-      diaEntrega.setHours(0, 0, 0, 0);
-
-      const noPrazo = diaEntrega <= dataPrev;
-
-      if (noPrazo) {
+    if (concluida) {
+      if (!entrega.horario_entrega) return null;
+      const diaEntrega = dia(entrega.horario_entrega);
+      if (!diaEntrega) return null;
+      const dias = Math.max(0, Math.round((diaEntrega - dataCriacaoEmbarque) / 86400000));
+      if (dias === 0) {
         return {
-          label: `Entregue no prazo · ${formatarDataSla(entrega.data_prevista)}`,
+          label: 'Entregue no dia do embarque',
           cor: 'verde',
           diasAtraso: 0
         };
-      } else {
-        const dias = Math.round((diaEntrega - dataPrev) / (1000 * 60 * 60 * 24));
-        return {
-          label: `Entregue com atraso · ${dias} ${dias === 1 ? 'dia' : 'dias'}`,
-          cor: 'laranja-escuro',
-          diasAtraso: dias
-        };
       }
+      return {
+        label: `Entregue ${dias} ${dias === 1 ? 'dia' : 'dias'} após o embarque`,
+        cor: 'laranja-escuro',
+        diasAtraso: dias
+      };
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // Caso 2: entrega em aberto — compara com hoje
-    // ═══════════════════════════════════════════════════════════════
-    const diffDias = Math.round((dataPrev - hoje) / (1000 * 60 * 60 * 24));
-
-    // Futuro
-    if (diffDias > 0) {
+    const diffDias = Math.round((hoje - dataCriacaoEmbarque) / 86400000);
+    if (diffDias < 0) {
       return {
-        label: `Prazo: ${formatarDataSla(entrega.data_prevista)}`,
+        label: 'Embarque futuro',
         cor: 'cinza',
         diasAtraso: 0
       };
     }
-
-    // Hoje
     if (diffDias === 0) {
-      return {
-        label: 'Vence hoje',
-        cor: 'amarelo',
-        diasAtraso: 0
-      };
+      return { label: 'Embarque criado hoje', cor: 'amarelo', diasAtraso: 0 };
     }
 
-    // Atrasado 1 dia
-    if (diffDias === -1) {
-      return {
-        label: 'Atrasado 1 dia',
-        cor: 'laranja',
-        diasAtraso: 1
-      };
-    }
-
-    // Atrasado N dias (2+)
     return {
-      label: `Atrasado ${Math.abs(diffDias)} dias`,
-      cor: 'vermelho',
-      diasAtraso: Math.abs(diffDias)
+      label: `Embarque atrasado ${diffDias} ${diffDias === 1 ? 'dia' : 'dias'}`,
+      cor: diffDias === 1 ? 'laranja' : 'vermelho',
+      diasAtraso: diffDias
     };
   }
 
@@ -892,7 +953,11 @@
     if (label) label.textContent = isCollapsed ? 'Mostrar' : 'Ocultar';
 
     if (!isCollapsed && routeMap) {
-      setTimeout(() => routeMap.resize(), 100);
+      setTimeout(() => {
+        if (!routeMap || !routeMap.loaded()) return;
+        routeMap.resize();
+        enquadrarPontosRota();
+      }, 100);
     }
   }
 
@@ -901,10 +966,6 @@
     if (!wrap) return;
     let recolhido = false;
     try { recolhido = localStorage.getItem('frota.motorista.mapaRecolhido') === '1'; } catch (e) {}
-    // Em telas pequenas, começa recolhido por padrão
-    if (window.innerWidth < 480 && localStorage.getItem('frota.motorista.mapaRecolhido') === null) {
-      recolhido = true;
-    }
     if (recolhido) {
       wrap.classList.add('is-collapsed');
       const label = $('route-map-toggle-label');
@@ -989,7 +1050,9 @@
     const total = entregas.length;
     const concluidas = entregas.filter((item) => ['entregue', 'entregue_com_problema'].includes(item.status)).length;
     const emRota = entregas.filter((item) => item.status === 'em_entrega').length;
-    const problemas = entregas.filter((item) => ['falha', 'entregue_com_problema'].includes(item.status)).length;
+    const problemas = entregas.filter((item) =>
+      ['falha', 'entregue_com_problema'].includes(item.status) || Boolean(item.motivo_falha)
+    ).length;
     const faltam = total - concluidas;
     const percentual = total ? Math.round((concluidas / total) * 100) : 0;
 
@@ -1004,69 +1067,22 @@
     if ($('kpi-em-rota'))   $('kpi-em-rota').textContent   = emRota;
     if ($('kpi-problemas')) $('kpi-problemas').textContent = problemas;
 
-    // Próxima parada
-    const proxima = entregas.find((item) => !['entregue', 'entregue_com_problema'].includes(item.status));
-    const card = $('next-stop-card');
-    if (!card) return;
-
-    if (!proxima) {
-      card.hidden = true;
-      return;
-    }
-
-    card.hidden = false;
-
-    const num = Number(proxima.ordem_entrega) || entregas.indexOf(proxima) + 1;
-    if ($('next-stop-num')) $('next-stop-num').textContent = num;
-    if ($('next-stop-name')) $('next-stop-name').textContent = proxima.cliente_nome || `Entrega #${proxima.id}`;
-    if ($('next-stop-address')) $('next-stop-address').textContent = formatAddress(proxima);
-
-    // Chips
-    const distancia = distanciaEntrega(proxima);
-    if ($('next-stop-distance')) {
-      $('next-stop-distance').textContent = distancia !== null ? formatDistance(distancia) : '—';
-    }
-
-    // ETA: 40 km/h + 5 min por parada (estimativa)
-    if ($('next-stop-eta')) {
-      if (distancia !== null) {
-        const minutos = Math.max(2, Math.round((distancia / 40) * 60));
-        const agora = new Date();
-        agora.setMinutes(agora.getMinutes() + minutos);
-        const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-        $('next-stop-eta').textContent = `~${minutos} min · chegar ${hora}`;
-      } else {
-        $('next-stop-eta').textContent = '—';
-      }
-    }
-
-    // Pedidos
-    if ($('next-stop-pedidos')) {
-      const pedidosArr = String(proxima.pedidos_ids || '').split(',').map(s => s.trim()).filter(Boolean);
-      $('next-stop-pedidos').textContent = pedidosArr.length === 0
-        ? 'sem pedido'
-        : pedidosArr.length === 1
-          ? `#${pedidosArr[0]}`
-          : `${pedidosArr.length} pedidos`;
-    }
-
-    // Valor
-    if ($('next-stop-valor')) {
-      $('next-stop-valor').textContent = proxima.valor_total
-        ? formatarMoedaMotorista(proxima.valor_total)
-        : '—';
-    }
-
-        // Botão Cheguei
-    const btnAction = $('next-stop-action');
-    if (btnAction) {
-      btnAction.dataset.id = proxima.id;
-      btnAction.disabled = proxima.status === 'em_entrega';
-      btnAction.textContent = proxima.status === 'em_entrega' ? 'Em atendimento' : 'Cheguei';
-    }
-
-    // 🔥 Pacote 3 — M4: mantém o chip do cabeçalho em sincronia
     atualizarChipDistancia();
+  }
+
+  function quantidadeItensEntrega(entrega) {
+    const volume = entrega?.volume_itens;
+    if (volume !== null && volume !== undefined && volume !== '' && Number.isFinite(Number(volume))) {
+      return Number(volume);
+    }
+    const itens = Array.isArray(entrega?.checklist) ? entrega.checklist : [];
+    return itens.reduce((total, item) => total + (Number(item.quantidade_prevista) || 0), 0);
+  }
+
+  function formatarVolumeItens(quantidade) {
+    const numero = Number(quantidade) || 0;
+    const formatado = numero.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
+    return `${formatado} ${numero === 1 ? 'item' : 'itens'}`;
   }
   // ================================================================
   // RENDERIZAR LISTA DE ENTREGAS — v2 (2026-09-25)
@@ -1165,10 +1181,11 @@
             return item.status === 'entregue' || item.status === 'entregue_com_problema';
           }
           if (filtroStatusAtual === 'problema') {
-            return item.status === 'falha' || item.status === 'entregue_com_problema';
+            return item.status === 'falha' || item.status === 'entregue_com_problema' || Boolean(item.motivo_falha);
           }
           return item.status === filtroStatusAtual;
         });
+    const entregaEmAndamento = entregas.find((item) => item.status === 'em_entrega');
 
     if (!entregasFiltradas.length) {
       list.innerHTML = '<div class="empty-state">Nenhuma parada corresponde ao filtro.</div>';
@@ -1184,6 +1201,9 @@
       const status = item.status || 'pendente';
       const complete = ['entregue', 'entregue_com_problema'].includes(status);
       const emEntrega = status === 'em_entrega';
+      const bloqueadaPorOutraEntrega = Boolean(
+        entregaEmAndamento && Number(entregaEmAndamento.id) !== Number(item.id)
+      );
 
       // Número da parada (ordem original da rota)
       const num = Number(item.ordem_entrega)
@@ -1230,9 +1250,19 @@
           `<span class="chip-pedidos"><i class="fa-solid fa-receipt"></i> ${escapeHtml(pedidosLabel)}</span>`
         );
       }
-      if (item.valor_total) {
+      const volumeItens = quantidadeItensEntrega(item);
+      if (volumeItens > 0) {
         chips.push(
-          `<span class="chip-valor"><i class="fa-solid fa-sack-dollar"></i> ${formatarMoedaMotorista(item.valor_total)}</span>`
+          `<span class="chip-volume"><i class="fa-solid fa-boxes-stacked"></i> ${escapeHtml(formatarVolumeItens(volumeItens))}</span>`
+        );
+      }
+      if (item.motivo_falha) {
+        const motivo = formatarMotivoFalha(item.motivo_falha, item.observacoes_falha);
+        const situacao = item.falha_pendente_sincronizacao
+          ? 'Problema salvo — aguardando sincronização'
+          : 'Problema registrado';
+        chips.push(
+          `<span class="chip-problema-registrado"><i class="fa-solid fa-triangle-exclamation"></i> ${escapeHtml(situacao)}: ${escapeHtml(motivo)}</span>`
         );
       }
       if (d != null) {
@@ -1274,7 +1304,8 @@
         `;
       } else {
         botoes = `
-          <button class="checkin" data-action="checkin" data-id="${item.id}">Cheguei</button>
+          <button class="checkin" data-action="checkin" data-id="${item.id}" ${bloqueadaPorOutraEntrega ? 'disabled' : ''}
+            ${bloqueadaPorOutraEntrega ? `title="Finalize a entrega #${escapeHtml(entregaEmAndamento.id)} antes de iniciar outra"` : ''}>Cheguei</button>
           <button class="checkout" disabled title="Faça o check-in primeiro">Entregue</button>
           <button class="failure" data-action="falha" data-id="${item.id}">Problema</button>
         `;
@@ -1283,8 +1314,7 @@
           // ── Botões de reordenar ───────────────────────────────────
       // 🔥 ALTERADO (Pacote 5 - M7): adicionado botão "Pular"
       const idxOriginal = entregas.indexOf(item);
-      const podePular = !isAdminApp
-                     && !complete
+      const podePular = !complete
                      && idxOriginal < entregas.length - 1;
       const orderActions = `
         <div class="delivery-card-order-actions">
@@ -1306,7 +1336,8 @@
       const classes = [
         'delivery-card',
         complete ? 'is-complete' : '',
-        isProxima ? 'is-next is-expanded' : '',
+        isProxima || item.problema_mostrando ? 'is-expanded' : '',
+        isProxima ? 'is-next' : '',
       ].filter(Boolean).join(' ');
 
       return `
@@ -1318,8 +1349,9 @@
           <header class="delivery-card-head" onclick="toggleDetalhesParada(${item.id})">
             <span class="delivery-card-num">${num}</span>
             <div class="delivery-card-info">
-              <div class="delivery-card-client">
-                ${escapeHtml(item.cliente_nome || `Entrega #${item.id}`)}
+              <div class="delivery-card-client-row">
+                <div class="delivery-card-client">${escapeHtml(item.cliente_nome || `Entrega #${item.id}`)}</div>
+                ${renderBotoesContato(item)}
               </div>
               <div class="delivery-card-meta">
                 ${pedidosArr.length === 1
@@ -1332,6 +1364,7 @@
               </div>
             </div>
             <div class="delivery-card-status-wrap">
+              ${item.motivo_falha ? '<span class="delivery-card-problem-status"><i class="fa-solid fa-triangle-exclamation"></i> Problema registrado</span>' : ''}
               <span class="delivery-card-status status-${status}">
                 ${escapeHtml(statusLabel)}
               </span>
@@ -1344,14 +1377,14 @@
               <i class="fa-solid fa-location-dot"></i>
               <span>${escapeHtml(formatAddress(item))}</span>
             </p>
-
             ${chips.length ? `<div class="delivery-card-chips">${chips.join('')}</div>` : ''}
 
-            ${!isAdminApp ? renderBotoesContato(item) : ''}
+            ${renderAcoesProblema(item)}
 
+            ${bloqueadaPorOutraEntrega ? `<p class="delivery-sequential-notice">A entrega #${escapeHtml(entregaEmAndamento.id)} ainda está em rota. Finalize-a antes de iniciar esta parada.</p>` : ''}
             <div class="delivery-actions">${botoes}</div>
 
-            ${!isAdminApp ? orderActions : ''}
+            ${orderActions}
           </div>
         </article>
       `;
@@ -1437,16 +1470,37 @@
 
     routeMap = new maplibregl.Map({
       container: 'route-map',
-      style: 'https://tiles.openfreemap.org/styles/liberty',
-      center: [-49.53561648427039, -28.979438954992666],
+      style: 'https://tiles.openfreemap.org/styles/bright',
+      center: [ORIGEM_NUTRICIONAL.longitude, ORIGEM_NUTRICIONAL.latitude],
       zoom: 11,
       attributionControl: true
     });
     routeMap.addControl(new maplibregl.NavigationControl(), 'top-right');
+    routeMap.addControl(new maplibregl.ScaleControl(), 'bottom-left');
     routeMap.on('load', () => {
       if (!routeMap.getSource(routeSourceId)) {
         routeMap.addSource(routeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
-        routeMap.addLayer({ id: 'driver-route-line', type: 'line', source: routeSourceId, paint: { 'line-color': '#16845e', 'line-width': 4, 'line-opacity': 0.9 } });
+        routeMap.addLayer({
+          id: 'driver-route-casing',
+          type: 'line',
+          source: routeSourceId,
+          filter: ['==', ['get', 'kind'], 'route'],
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: { 'line-color': '#ffffff', 'line-width': 9, 'line-opacity': 0.9 }
+        });
+        routeMap.addLayer({
+          id: 'driver-route-line',
+          type: 'line',
+          source: routeSourceId,
+          filter: ['==', ['get', 'kind'], 'route'],
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-color': '#10b981',
+            'line-width': 4,
+            'line-opacity': 0.95,
+            'line-dasharray': [2, 1.5]
+          }
+        });
       }
       atualizarMapaRota();
     });
@@ -1454,7 +1508,127 @@
 
   function atualizarLinhaRota(coords) {
     if (!routeMap || !routeMap.getSource(routeSourceId)) return;
-    routeMap.getSource(routeSourceId).setData(coords.length > 1 ? { type: 'FeatureCollection', features: [{ type: 'Feature', geometry: { type: 'LineString', coordinates: coords }, properties: {} }] } : { type: 'FeatureCollection', features: [] });
+    routeMap.getSource(routeSourceId).setData({
+      type: 'FeatureCollection',
+      features: coords.length > 1 ? [{
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: coords },
+        properties: { kind: 'route' }
+      }] : []
+    });
+  }
+
+  function coordenadasValidas(latitude, longitude) {
+    const lat = paraNumero(latitude);
+    const lng = paraNumero(longitude);
+    if (lat === null || lng === null || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+    if (lat === 0 && lng === 0) return null;
+    return { latitude: lat, longitude: lng };
+  }
+
+  function coordenadasEntregaMapa(entrega) {
+    return coordenadasValidas(entrega?.map_latitude, entrega?.map_longitude)
+      || coordenadasValidas(entrega?.latitude, entrega?.longitude);
+  }
+
+  function distanciaEntrePontosKm(a, b) {
+    if (!a || !b) return null;
+    return haversineKm(a.latitude, a.longitude, b.latitude, b.longitude);
+  }
+
+  function obterPontosRota() {
+    return entregas.map((item) => {
+      const point = coordenadasEntregaMapa(item);
+      return point ? { item, ...point } : null;
+    }).filter(Boolean);
+  }
+
+  function obterOrigemMapa() {
+    const telefone = coordenadasValidas(driverPosition?.latitude, driverPosition?.longitude);
+    const caminhao = coordenadasValidas(truckPosition?.latitude, truckPosition?.longitude);
+    let origem = null;
+    if (telefone && caminhao) {
+      if (distanciaEntrePontosKm(telefone, caminhao) <= LIMITE_GPS_CAMINHAO_KM) {
+        origem = { ...caminhao, tipo: 'alinhado', descricao: 'GPS do aparelho alinhado ao caminhão' };
+      } else {
+        origem = { ...telefone, tipo: 'aparelho', descricao: 'GPS deste aparelho (caminhão em outra posição)' };
+      }
+    } else if (telefone) {
+      origem = { ...telefone, tipo: 'aparelho', descricao: 'GPS deste aparelho' };
+    } else if (caminhao) {
+      origem = { ...caminhao, tipo: 'caminhao', descricao: 'posição do caminhão (GPS do aparelho indisponível)' };
+    } else {
+      return { ...ORIGEM_NUTRICIONAL, tipo: 'empresa', descricao: 'sede da Nutricional (GPS indisponível)' };
+    }
+    if (distanciaMinimaDaRota(origem) > LIMITE_FITBOUNDS_KM) {
+      return { ...ORIGEM_NUTRICIONAL, tipo: 'empresa', descricao: 'sede da Nutricional (GPS selecionado distante da rota)' };
+    }
+    return origem;
+  }
+
+  function distanciaMinimaDaRota(origem, pontos = obterPontosRota()) {
+    if (!origem || !pontos.length) return null;
+    return Math.min(...pontos.map((point) => distanciaEntrePontosKm(origem, point)));
+  }
+
+  function criarBoundsRota(incluirOrigem = true) {
+    const bounds = new maplibregl.LngLatBounds();
+    const pontos = obterPontosRota();
+    pontos.forEach((point) => bounds.extend([point.longitude, point.latitude]));
+    const origem = obterOrigemMapa();
+    const distanciaMinima = distanciaMinimaDaRota(origem, pontos);
+    if (incluirOrigem && distanciaMinima !== null && distanciaMinima <= LIMITE_FITBOUNDS_KM) {
+      bounds.extend([origem.longitude, origem.latitude]);
+    }
+    return { bounds, pontos, origem, distanciaMinima };
+  }
+
+  function enquadrarPontosRota() {
+    if (!routeMap) return;
+    const { bounds } = criarBoundsRota(true);
+    if (bounds.isEmpty()) {
+      avisarMapa('Ainda não há coordenadas de entrega para enquadrar.');
+      return;
+    }
+    routeMap.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 700 });
+  }
+
+  function focarNoMapa(alvo) {
+    if (!routeMap) return;
+    if (alvo === 'route') {
+      enquadrarPontosRota();
+      return;
+    }
+    if (alvo === 'next') {
+      const proxima = entregas.find((item) =>
+        !['entregue', 'entregue_com_problema', 'falha', 'cancelada'].includes(item.status)
+      );
+      const point = coordenadasEntregaMapa(proxima);
+      if (!point) {
+        avisarMapa('A próxima parada não tem coordenadas válidas.');
+        return;
+      }
+      routeMap.easeTo({ center: [point.longitude, point.latitude], zoom: 15, duration: 700 });
+      markerIndex.get(`stop-${proxima.id}`)?.marker.togglePopup();
+      return;
+    }
+    const posicao = alvo === 'truck' ? truckPosition : driverPosition;
+    const point = coordenadasValidas(posicao?.latitude, posicao?.longitude);
+    if (!point) {
+      avisarMapa(alvo === 'truck' ? 'A posição do caminhão ainda não está disponível.' : 'A posição GPS deste aparelho ainda não está disponível.');
+      return;
+    }
+    routeMap.easeTo({ center: [point.longitude, point.latitude], zoom: 14, duration: 700 });
+    const marker = alvo === 'truck' ? truckMarker : driverMarker;
+    marker?.togglePopup();
+  }
+
+  function avisarMapa(mensagem) {
+    if (window.Swal) {
+      Swal.fire({ icon: 'info', title: 'Mapa da rota', text: mensagem, confirmButtonText: 'Entendi' });
+    } else {
+      window.alert(mensagem);
+    }
   }
 
   function atualizarMapaRota() {
@@ -1465,55 +1639,69 @@
       return;
     }
         if ($('route-map-wrap')) $('route-map-wrap').hidden = false;
-    // Se estiver recolhido, não precisa redimensionar
     const wrap = $('route-map-wrap');
-    if (wrap && !wrap.classList.contains('is-collapsed') && routeMap) {
-      setTimeout(() => routeMap.resize(), 50);
-    }
     if ($('route-map-offline')) $('route-map-offline').hidden = true;
 
-        // 🔥 M4-fix: normaliza coords (backend manda como string)
-    const rota = entregas
-      .map((item) => ({
-        ...item,
-        __lat: paraNumero(item.latitude),
-        __lng: paraNumero(item.longitude),
-      }))
-      .filter((item) => item.__lat !== null && item.__lng !== null);
+        const idsAtuais = new Set();
+        const { bounds, pontos, origem, distanciaMinima } = criarBoundsRota(true);
+        const origemPertoDaRota = distanciaMinima !== null && distanciaMinima <= LIMITE_FITBOUNDS_KM;
+        const coords = [
+          ...(origemPertoDaRota ? [[origem.longitude, origem.latitude]] : []),
+          ...pontos.map((point) => [point.longitude, point.latitude])
+        ];
+        const proxima = entregas.find((item) =>
+          !['entregue', 'entregue_com_problema', 'falha', 'cancelada'].includes(String(item.status || '').toLowerCase())
+        );
+        const locationStatus = $('route-map-location-status');
+        if (locationStatus) {
+          locationStatus.textContent = origemPertoDaRota
+            ? `Partida: ${origem.descricao}. O mapa mostra a origem e os clientes na ordem da rota.`
+            : `GPS distante das entregas. O mapa enquadra e conecta somente os pontos dos clientes para manter a rota visível.`;
+        }
 
-    const idsAtuais = new Set();
-    const bounds = new maplibregl.LngLatBounds();
-    const coords = [];
+        // ── 1. Entregas: atualiza marcadores existentes, cria os novos, remove os ausentes
+        pontos.forEach(({ item: stop }, index) => {
+          const key = `stop-${stop.id}`;
+          idsAtuais.add(key);
 
-    // ── 1. Entregas: atualiza marcadores existentes, cria os novos, remove os ausentes
-        rota.forEach((stop, index) => {
-      const key = `stop-${stop.id}`;
-      idsAtuais.add(key);
-      coords.push([stop.__lng, stop.__lat]);
-      bounds.extend([stop.__lng, stop.__lat]);
-
-      const isComplete = ['entregue', 'entregue_com_problema'].includes(stop.status);
+          const status = String(stop.status || 'pendente').trim().toLowerCase();
+          const isComplete = ['entregue', 'entregue_com_problema'].includes(status)
+            || Boolean(stop.horario_entrega);
+          const isProblem = status === 'falha'
+            || status === 'entregue_com_problema'
+            || (!isComplete && Boolean(stop.motivo_falha));
+          const isNext = proxima && Number(proxima.id) === Number(stop.id);
+          const statusClass = isProblem ? 'problema' : isComplete ? 'entregue' : status === 'em_entrega' ? 'em-entrega' : 'pendente';
+          const markerClass = `route-stop-marker route-stop-${statusClass}${isNext ? ' is-next' : ''}`;
+          const numeroParada = Number(stop.ordem_entrega) || index + 1;
+          const marcadorLabel = String(numeroParada);
+          const popupHtml = `<strong>Parada ${numeroParada} · ${escapeHtml(stop.cliente_nome || `Entrega #${stop.id}`)}</strong><br>${escapeHtml(formatAddress(stop))}<br>${escapeHtml(formatarVolumeItens(quantidadeItensEntrega(stop)))}<br>Status: ${escapeHtml(isProblem ? 'Problema registrado' : isComplete ? 'Entregue' : status)}`;
       const existing = markerIndex.get(key);
 
       if (existing) {
-        existing.marker.setLngLat([stop.__lng, stop.__lat]);
+            const point = coordenadasEntregaMapa(stop);
+            existing.marker.setLngLat([point.longitude, point.latitude]);
         const el = existing.marker.getElement();
         if (el) {
-          el.textContent = String(index + 1);
-          el.className = `stop-marker${isComplete ? ' is-complete' : ''}`;
+              el.textContent = marcadorLabel;
+          el.className = `maplibregl-marker ${markerClass}`;
         }
-        existing.marker.getPopup()?.setHTML(
-          `<strong>${escapeHtml(stop.cliente_nome || `Entrega #${stop.id}`)}</strong><br>${escapeHtml(formatAddress(stop))}<br>Status: ${escapeHtml(stop.status || 'pendente')}`
-        );
+        existing.marker.getPopup()?.setHTML(popupHtml);
       } else {
         const el = document.createElement('div');
-        el.className = `stop-marker${isComplete ? ' is-complete' : ''}`;
-        el.textContent = String(index + 1);
-        const marker = new maplibregl.Marker({ element: el })
-          .setLngLat([stop.__lng, stop.__lat])
-          .setPopup(new maplibregl.Popup({ offset: 24 }).setHTML(
-            `<strong>${escapeHtml(stop.cliente_nome || `Entrega #${stop.id}`)}</strong><br>${escapeHtml(formatAddress(stop))}<br>Status: ${escapeHtml(stop.status || 'pendente')}`
-          ))
+        el.className = `maplibregl-marker ${markerClass}`;
+        el.textContent = marcadorLabel;
+        el.setAttribute('aria-label', `Parada ${numeroParada}: ${stop.cliente_nome || `Entrega #${stop.id}`}`);
+        el.addEventListener('click', () => {
+          const card = document.querySelector(`.delivery-card[data-entrega-id="${stop.id}"]`);
+          if (!card) return;
+          card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          card.classList.add('is-expanded');
+        });
+        const point = coordenadasEntregaMapa(stop);
+        const marker = new maplibregl.Marker({ element: el, anchor: 'center' })
+          .setLngLat([point.longitude, point.latitude])
+          .setPopup(new maplibregl.Popup({ offset: 24 }).setHTML(popupHtml))
           .addTo(routeMap);
         markerIndex.set(key, { marker, type: 'stop' });
       }
@@ -1528,9 +1716,10 @@
     }
 
     // ── 2. Caminhão
-    if (truckPosition && typeof truckPosition.longitude === 'number' && typeof truckPosition.latitude === 'number') {
+    const truckCoords = coordenadasValidas(truckPosition?.latitude, truckPosition?.longitude);
+    if (truckCoords) {
       if (truckMarker) {
-        truckMarker.setLngLat([truckPosition.longitude, truckPosition.latitude]);
+        truckMarker.setLngLat([truckCoords.longitude, truckCoords.latitude]);
         const el = truckMarker.getElement();
         if (el) {
           const balloon = el.querySelector('.driver-truck-balloon');
@@ -1544,59 +1733,75 @@
         el.className = 'driver-truck-marker';
         el.innerHTML = `<div class="driver-truck-balloon">${escapeHtml(truckPosition.placa || 'Caminhão')}</div><div class="driver-truck-icon"><i class="fa-solid fa-truck"></i></div>`;
         truckMarker = new maplibregl.Marker({ element: el })
-          .setLngLat([truckPosition.longitude, truckPosition.latitude])
+          .setLngLat([truckCoords.longitude, truckCoords.latitude])
           .setPopup(new maplibregl.Popup({ offset: 24 }).setHTML(
             `<strong>${escapeHtml(truckPosition.placa || 'Caminhão')}</strong><br>${escapeHtml(truckPosition.modelo || '')}<br>Fonte: ${truckPosition.fonte === 'cobli' ? 'Cobli (ao vivo)' : 'Cadastro'}`
           ))
           .addTo(routeMap);
       }
-      bounds.extend([truckPosition.longitude, truckPosition.latitude]);
     } else if (truckMarker) {
       truckMarker.remove();
       truckMarker = null;
     }
 
-    // ── 3. Motorista
-    // 🔥 ALTERADO (Pacote 5 - Mapa-fitBounds): se o motorista estiver a mais
-    //    de LIMITE_FITBOUNDS_KM da parada MAIS PRÓXIMA, ele ainda é desenhado
-    //    no mapa, mas NÃO entra no fitBounds (senão amontoa os marcadores).
-    if (driverPosition && typeof driverPosition.longitude === 'number' && typeof driverPosition.latitude === 'number') {
+    // ── 3. Motorista: fica visível no mapa, mas fora do enquadramento automático.
+    const driverCoords = coordenadasValidas(driverPosition?.latitude, driverPosition?.longitude);
+    if (driverCoords) {
       if (driverMarker) {
-        driverMarker.setLngLat([driverPosition.longitude, driverPosition.latitude]);
+        driverMarker.setLngLat([driverCoords.longitude, driverCoords.latitude]);
       } else {
         const el = document.createElement('div');
         el.className = 'driver-me-marker';
         driverMarker = new maplibregl.Marker({ element: el })
-          .setLngLat([driverPosition.longitude, driverPosition.latitude])
+          .setLngLat([driverCoords.longitude, driverCoords.latitude])
           .setPopup(new maplibregl.Popup({ offset: 24 }).setHTML('<strong>Posição do motorista</strong><br>GPS do celular'))
           .addTo(routeMap);
       }
+      const driverElement = driverMarker.getElement();
+      if (driverElement) driverElement.hidden = origem.tipo === 'alinhado';
 
-      // 🔥 NOVO: calcula distância mínima até QUALQUER parada
-      const distMinParada = calcularDistanciaMinimaParadas(driverPosition);
-
-      if (distMinParada !== null && distMinParada > LIMITE_FITBOUNDS_KM) {
-        // Motorista muito longe — NÃO estende bounds (mas o marker continua visível)
-        console.log(
-          `[fitBounds] Motorista a ${distMinParada.toFixed(1)}km da parada mais próxima ` +
-          `(limite: ${LIMITE_FITBOUNDS_KM}km) — foco nas paradas.`
-        );
-      } else {
-        // Comportamento normal: inclui o motorista no fitBounds
-        bounds.extend([driverPosition.longitude, driverPosition.latitude]);
-      }
     } else if (driverMarker) {
       driverMarker.remove();
       driverMarker = null;
     }
+    if (origemPertoDaRota && !originMarker) {
+      const el = document.createElement('div');
+      el.className = 'route-origin-marker';
+      el.innerHTML = '<i class="fa-solid fa-warehouse"></i>';
+      originMarker = new maplibregl.Marker({ element: el, anchor: 'center' })
+        .setLngLat([origem.longitude, origem.latitude])
+        .setPopup(new maplibregl.Popup({ offset: 24 }))
+        .addTo(routeMap);
+    } else if (origemPertoDaRota) {
+      originMarker.setLngLat([origem.longitude, origem.latitude]);
+    }
+    if (originMarker && !origemPertoDaRota) {
+      originMarker.remove();
+      originMarker = null;
+    }
+    if (originMarker) {
+      originMarker.getPopup()?.setHTML(`<strong>${origem.tipo === 'empresa' ? 'Nutricional' : 'Início da rota'}</strong><br>${escapeHtml(origem.descricao)}`);
+    }
     // ── 4. Linha da rota
-    atualizarLinhaRota(coords);
+    atualizarLinhaRota(pontos.length ? coords : []);
 
-    if (!bounds.isEmpty()) {
-      if (Date.now() - lastFitBounds > 5000) {
-        routeMap.fitBounds(bounds, { padding: 50, maxZoom: 14 });
-        lastFitBounds = Date.now();
-      }
+    const boundsKey = JSON.stringify({ coords, origemTipo: origem.tipo });
+    if (!bounds.isEmpty() && boundsKey !== lastFitBoundsKey) {
+      lastFitBoundsKey = boundsKey;
+      setTimeout(() => {
+        if (lastFitBoundsKey !== boundsKey) return;
+        if (!routeMap || !routeMap.loaded()) {
+          lastFitBoundsKey = '';
+          return;
+        }
+        const container = routeMap.getContainer();
+        if (wrap?.classList.contains('is-collapsed') || !container.clientWidth || !container.clientHeight) {
+          lastFitBoundsKey = '';
+          return;
+        }
+        routeMap.resize();
+        routeMap.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+      }, 50);
     }
   }
 
@@ -1676,11 +1881,31 @@
       $('delivery-list').innerHTML = '<div class="empty-state">A rota ainda não foi vinculada a um motorista.</div>';
       return;
     }
+    const startedAt = performance.now();
     try {
       const response = await fetch(`${apiBase}/motoristas/${motoristaId}/entregas/hoje`, { headers: authHeaders(), credentials: 'include' });
       if (!response.ok) throw new Error('Falha ao carregar rota');
-        const payload = await response.json();
+      const payload = await response.json();
+      console.info(`[Frota] Rota do motorista carregada em ${Math.round(performance.now() - startedAt)} ms`);
+      const cacheLocal = safeParse(localStorage.getItem(cacheKey) || '[]', []);
       entregas = payload.data?.entregas || payload.entregas || [];
+      entregas = entregas.map((item) => {
+        const local = cacheLocal.find((cached) => Number(cached.id) === Number(item.id));
+        if (typeof local?.falha_contato_confirmado === 'boolean'
+          && local.motivo_falha
+          && (!item.motivo_falha || local.motivo_falha === item.motivo_falha)) {
+          return {
+            ...item,
+            motivo_falha: local.motivo_falha,
+            observacoes_falha: local.observacoes_falha,
+            falha_pendente_sincronizacao: local.falha_pendente_sincronizacao,
+            falha_contato_confirmado: false,
+            destinatario_falha_contato: local.destinatario_falha_contato,
+            canal_falha_contato: local.canal_falha_contato
+          };
+        }
+        return item;
+      });
       rotaVersion = payload.data?.rota_ativa?.updated_at || entregas[0]?.embarque_updated_at || null;
       driverPosition = safeParse(localStorage.getItem(positionKey) || 'null', null);
       truckPosition = safeParse(localStorage.getItem(truckKey) || 'null', null);
@@ -1691,7 +1916,7 @@
 
       persist();
       $('motorista-status').textContent = 'Rota atualizada agora';
-      await atualizarMapaComCobli();
+      void atualizarMapaComCobli();
     } catch {
             renderCabecalhoEmbarque(null);
       entregas = safeParse(localStorage.getItem(cacheKey) || '[]', []);
@@ -1724,7 +1949,7 @@
     } catch {}
   }
 
-  function aplicarStatusLocal(id, action) {
+  function aplicarStatusLocal(id, action, falha = null) {
     const item = entregas.find((delivery) => Number(delivery.id) === Number(id));
     if (!item) return;
     if (action === 'reverter-pendente') {
@@ -1732,9 +1957,28 @@
     } else if (action === 'checkout') {
       item.status = 'entregue';
     } else if (action === 'falha') {
-      item.status = 'pendente';
+      item.status = falha?.status || 'pendente';
+      item.motivo_falha = falha?.motivo || item.motivo_falha || 'outro';
+      item.observacoes_falha = falha?.observacao || item.observacoes_falha || '';
+      item.falha_pendente_sincronizacao = Boolean(falha?.pendente_sincronizacao);
+      item.problema_mostrando = true;
+      if (falha?.destinatario_whatsapp) {
+        item.destinatario_falha_whatsapp = falha.destinatario_whatsapp;
+      }
+      item.destinatario_falha_contato = falha?.destinatario_contato || item.destinatario_falha_contato || 'gestor';
+      item.canal_falha_contato = falha?.canal_contato || item.canal_falha_contato || 'whatsapp';
+      item.falha_contato_confirmado = false;
     } else {
       item.status = 'em_entrega';
+      if (action === 'checkin') {
+        item.motivo_falha = null;
+        item.observacoes_falha = null;
+        item.falha_pendente_sincronizacao = false;
+        item.problema_mostrando = false;
+        item.falha_contato_confirmado = null;
+        item.destinatario_falha_contato = null;
+        item.canal_falha_contato = null;
+      }
     }
     persist();
   }
@@ -3308,6 +3552,211 @@
     return result.value;
   }
 
+  const contatosProblema = {
+    gestor: { nome: 'GESTOR - SANDRO', telefone: '5548988572766' },
+    faturamento: { nome: 'FATURAMENTO', telefone: '5548996239713' }
+  };
+
+  function obterContatoProblema(destinatario, entrega) {
+    if (destinatario === 'representante') {
+      return {
+        nome: entrega?.representante_nome || 'REPRESENTANTE',
+        telefone: entrega?.representante_telefone || ''
+      };
+    }
+    return contatosProblema[destinatario] || null;
+  }
+
+  async function selecionarDestinatarioProblema(entrega) {
+    const contatos = [
+      ['gestor', obterContatoProblema('gestor', entrega)],
+      ['faturamento', obterContatoProblema('faturamento', entrega)],
+      ['representante', obterContatoProblema('representante', entrega)]
+    ];
+    const opcoes = contatos.map(([id, contato]) => {
+      const whatsDisponivel = Boolean(construirUrlContatoProblema(entrega, id, 'whatsapp'));
+      const ligarDisponivel = Boolean(construirUrlContatoProblema(entrega, id, 'ligacao'));
+      if (!whatsDisponivel && !ligarDisponivel) {
+        return `<div class="problem-contact-choice is-unavailable"><strong>${escapeHtml(contato.nome)}</strong><small>Telefone não cadastrado</small></div>`;
+      }
+      return `<div class="problem-contact-choice">
+        <strong>${escapeHtml(contato.nome)}</strong>
+        <div>
+          ${whatsDisponivel ? `<button type="button" data-problem-contact="${id}" data-problem-channel="whatsapp"><i class="fa-brands fa-whatsapp"></i> WhatsApp</button>` : ''}
+          ${ligarDisponivel ? `<button type="button" data-problem-contact="${id}" data-problem-channel="ligacao"><i class="fa-solid fa-phone"></i> Ligar</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    if (!window.Swal) {
+      const escolha = window.prompt('Contato: gestor, faturamento ou representante.');
+      const destinatario = escolha?.trim().toLowerCase();
+      if (!['gestor', 'faturamento', 'representante'].includes(destinatario)) return null;
+      const canal = window.prompt('Canal: whatsapp ou ligacao.');
+      const meio = canal?.trim().toLowerCase();
+      return ['whatsapp', 'ligacao'].includes(meio)
+        && construirUrlContatoProblema(entrega, destinatario, meio)
+        ? { destinatario, canal: meio }
+        : null;
+    }
+
+    let selecao = null;
+    await Swal.fire({
+      icon: 'warning',
+      title: 'Deseja entrar em contato com quem?',
+      html: `<p>Escolha o destinatário e toque em WhatsApp ou Ligar.</p><div class="problem-contact-options">${opcoes}</div>`,
+      showConfirmButton: false,
+      showCancelButton: true,
+      cancelButtonText: 'Cancelar',
+      allowOutsideClick: false,
+      allowEscapeKey: false,
+      didOpen: (modal) => {
+        modal.querySelectorAll('[data-problem-contact][data-problem-channel]').forEach((button) => {
+          button.addEventListener('click', () => {
+            selecao = {
+              destinatario: button.dataset.problemContact,
+              canal: button.dataset.problemChannel
+            };
+            Swal.close();
+          }, { once: true });
+        });
+      }
+    });
+    return selecao;
+  }
+
+  function formatarMotivoFalha(motivo, observacao = '') {
+    const descricoes = {
+      cliente_ausente: 'Cliente ausente no local',
+      endereco_incorreto: 'Endereço incorreto / não localizado',
+      recusado: 'Recebimento recusado',
+      nao_localizado: 'Local não localizado',
+      veiculo_problema: 'Problema mecânico no veículo',
+      cliente_fechado: 'Cliente fechado (fora do horário)'
+    };
+    return descricoes[motivo] || observacao || motivo || 'Problema sem descrição';
+  }
+
+  function construirUrlContatoProblema(entrega, destinatario, canal, aguardandoSincronizacao = false) {
+    const contato = obterContatoProblema(destinatario, entrega);
+    if (!contato || !entrega) return null;
+
+    const pedidoIds = String(entrega.pedidos_ids || '').split(',').map((id) => id.trim()).filter(Boolean);
+    const linhas = [
+      'Problema na rota de entrega',
+      `Destinatário: ${contato.nome}`,
+      `Embarque: ${entrega.numero_embarque || entrega.embarque_id || '—'}`,
+      `Cliente: ${entrega.cliente_nome || `Entrega #${entrega.id}`}`,
+      `Pedido(s): ${pedidoIds.length ? pedidoIds.join(', ') : '—'}`,
+      `Motivo: ${formatarMotivoFalha(entrega.motivo_falha, entrega.observacoes_falha)}`,
+      `Endereço: ${formatAddress(entrega)}`,
+      aguardandoSincronizacao ? 'Atenção: ocorrência salva no aparelho e aguardando sincronização.' : ''
+    ].filter(Boolean);
+
+    if (canal === 'ligacao') {
+      const telefone = normalizarTelefoneLigar(contato.telefone);
+      return telefone ? `tel:${telefone}` : null;
+    }
+    const telefone = normalizarTelefoneWhatsApp(contato.telefone);
+    return telefone ? `https://wa.me/${telefone}?text=${encodeURIComponent(linhas.join('\n'))}` : null;
+  }
+
+  function abrirContatoProblema(entregaId, destinatario, canal, popup, aguardandoSincronizacao = false) {
+    const entrega = entregas.find((item) => Number(item.id) === Number(entregaId));
+    const url = construirUrlContatoProblema(entrega, destinatario, canal, aguardandoSincronizacao);
+    if (!url) {
+      if (popup && !popup.closed) popup.close();
+      if (window.Swal) {
+        void Swal.fire({ icon: 'error', title: 'Contato indisponível', text: 'Não há telefone válido cadastrado para este destinatário.' });
+      } else {
+        window.alert('Não há telefone válido cadastrado para este destinatário.');
+      }
+      return false;
+    }
+
+    if (popup && !popup.closed) {
+      popup.opener = null;
+      popup.location.href = url;
+      return true;
+    }
+
+    const novaAba = window.open(url, '_blank');
+    if (novaAba) {
+      novaAba.opener = null;
+      return true;
+    }
+    if (window.Swal) {
+      void Swal.fire({
+        icon: 'warning',
+        title: 'O navegador bloqueou o contato',
+        html: `<a class="route-tool" href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">Abrir ${canal === 'ligacao' ? 'discador' : 'WhatsApp'}</a>`
+      });
+    } else {
+      window.alert('O navegador bloqueou o contato. Abra o link novamente para continuar.');
+    }
+    return false;
+  }
+
+  async function confirmarContatoProblema(entregaId, popup = null, aguardandoSincronizacao = false) {
+    const entrega = entregas.find((item) => Number(item.id) === Number(entregaId));
+    if (!entrega) return false;
+    const destinatario = entrega.destinatario_falha_contato;
+    const canal = entrega.canal_falha_contato || 'whatsapp';
+    const url = construirUrlContatoProblema(entrega, destinatario, canal, aguardandoSincronizacao);
+    if (!url) {
+      if (popup && !popup.closed) popup.close();
+      if (window.Swal) {
+        await Swal.fire({ icon: 'error', title: 'Contato indisponível', text: 'Confira o telefone do destinatário e tente novamente.' });
+      }
+      return false;
+    }
+
+    abrirContatoProblema(entregaId, destinatario, canal, popup, aguardandoSincronizacao);
+    const nomeContato = obterContatoProblema(destinatario, entrega)?.nome || 'destinatário';
+    const opcoesContato = [
+      ['gestor', obterContatoProblema('gestor', entrega)],
+      ['faturamento', obterContatoProblema('faturamento', entrega)],
+      ['representante', obterContatoProblema('representante', entrega)]
+    ].flatMap(([id, contato]) => ['whatsapp', 'ligacao'].map((meio) => {
+      const contatoUrl = construirUrlContatoProblema(entrega, id, meio, aguardandoSincronizacao);
+      if (!contatoUrl) return '';
+      return `<button type="button" class="route-tool" data-problem-contact="${id}" data-problem-channel="${meio}" data-problem-delivery="${entrega.id}">${meio === 'ligacao' ? 'Ligar' : 'WhatsApp'} — ${escapeHtml(contato.nome)}</button>`;
+    })).filter(Boolean).join(' ');
+    const retry = `<p>Se não houver internet, escolha “Ligar”. Se ainda não conseguiu, tente outro contato:</p><div class="problem-contact-retry">${opcoesContato}</div>`;
+    const confirmado = window.Swal
+      ? (await Swal.fire({
+          icon: 'warning',
+          title: 'Confirme o contato',
+          html: `<p>Depois de ${canal === 'ligacao' ? 'realizar a ligação' : 'enviar a mensagem'} para ${escapeHtml(nomeContato)}, confirme abaixo. A rota ficará bloqueada até a confirmação.</p>${retry}`,
+          confirmButtonText: `Sim, ${canal === 'ligacao' ? 'realizei a ligação' : 'enviei a mensagem'}`,
+          confirmButtonColor: '#16845e',
+          allowOutsideClick: false,
+          allowEscapeKey: false,
+          showCancelButton: false
+        })).isConfirmed
+      : window.confirm(`Você já ${canal === 'ligacao' ? 'realizou a ligação' : 'enviou a mensagem'} para ${nomeContato}? A rota ficará bloqueada até confirmar.`);
+
+    if (!confirmado) return false;
+    entrega.falha_contato_confirmado = true;
+    persist();
+    return true;
+  }
+
+  async function retomarContatoProblema(entregaId) {
+    const entrega = entregas.find((item) => Number(item.id) === Number(entregaId));
+    if (!entrega || entrega.falha_contato_confirmado !== false) return;
+    const selecao = await selecionarDestinatarioProblema(entrega);
+    if (!selecao) return;
+    entrega.destinatario_falha_contato = selecao.destinatario;
+    entrega.canal_falha_contato = selecao.canal;
+    persist();
+    await confirmarContatoProblema(
+      entregaId,
+      null,
+      Boolean(entrega.falha_pendente_sincronizacao)
+    );
+  }
+
 // portal/modules/frota/assets/motorista-offline.js
 
   async function obterDadosDaAcao(action) {
@@ -3316,6 +3765,9 @@
     if (action === 'falha') {
       const motivo = await selecionarMotivoFalha();
       if (!motivo) return null;
+      const entrega = entregas.find((item) => Number(item.id) === Number(window.__currentCheckinId));
+      const contatoProblema = await selecionarDestinatarioProblema(entrega);
+      if (!contatoProblema) return null;
 
       const motivosValidos = [
         'cliente_ausente', 'endereco_incorreto', 'recusado',
@@ -3323,11 +3775,15 @@
       ];
 
       const ehPadronizado = motivosValidos.includes(motivo);
+      const codigoMotivo = ehPadronizado ? motivo : 'outro';
+      const descricaoMotivo = formatarMotivoFalha(codigoMotivo, ehPadronizado ? '' : motivo);
 
       return {
         motorista_id: motoristaId,
-        motivo: ehPadronizado ? motivo : 'outro',
-        observacao: ehPadronizado ? motivo : motivo,
+        motivo: codigoMotivo,
+        observacao: descricaoMotivo,
+        destinatario_contato: contatoProblema.destinatario,
+        canal_contato: contatoProblema.canal,
         data_hora: new Date().toISOString()
       };
     }
@@ -3396,7 +3852,7 @@
           </div>
           <p style="margin:12px 0 0;font-size:0.82rem;color:#64748b;">
             <i class="fa-solid fa-graduation-cap"></i>
-            MODO TREINAMENTO — em produção você seria bloqueado.
+            MODO TREINAMENTO — a ação será gravada; somente a validação de distância é liberada.
           </p>
         </div>
       `,
@@ -3448,15 +3904,73 @@
     });
   }
 
+  function existeContatoProblemaPendente() {
+    return entregas.some((item) => item.falha_contato_confirmado === false && Boolean(item.motivo_falha));
+  }
+
+  async function exigirContatoConfirmado() {
+    if (!existeContatoProblemaPendente()) return true;
+    if (window.Swal) {
+      await Swal.fire({
+        icon: 'warning',
+        title: 'Contato obrigatório pendente',
+        text: 'Confirme o envio da mensagem ou a realização da ligação do problema registrado antes de continuar a rota.',
+        confirmButtonText: 'Entendi',
+        confirmButtonColor: '#c94b45',
+        allowOutsideClick: false
+      });
+    } else {
+      window.alert('Confirme o envio da mensagem ou a realização da ligação do problema registrado antes de continuar a rota.');
+    }
+    return false;
+  }
+
 // portal/modules/frota/assets/motorista-offline.js
 
-  async function executarAcao(id, action) {
+  async function executarAcao(id, action, whatsappWindow = null) {
+    if (action === 'checkin') {
+      const entregaAtiva = entregas.find((item) =>
+        item.status === 'em_entrega' && Number(item.id) !== Number(id)
+      );
+      if (entregaAtiva) {
+        const mensagem = `Finalize a entrega #${entregaAtiva.id} antes de iniciar outra.`;
+        if (window.Swal) {
+          await Swal.fire({ icon: 'warning', title: 'Entrega em andamento', text: mensagem, confirmButtonText: 'Entendi' });
+        } else {
+          window.alert(mensagem);
+        }
+        return;
+      }
+      if (checkinEmAndamento) return;
+      checkinEmAndamento = true;
+      try {
+        return await executarAcaoInterna(id, action, whatsappWindow);
+      } finally {
+        checkinEmAndamento = false;
+      }
+    }
+    return executarAcaoInterna(id, action, whatsappWindow);
+  }
+
+  async function executarAcaoInterna(id, action, whatsappWindow = null) {
+    if (action !== 'falha' && !(await exigirContatoConfirmado())) {
+      if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
+      return;
+    }
     // 🔥 NOVO (Pacote 5 - M6): Guarda o ID para a função de obter dados acessar
     window.__currentCheckinId = id;
 
     const position = await getPositionFast();
-    const body = { ...(await obterDadosDaAcao(action)), ...position };
-    if (!body) return;
+    const dadosAcao = await obterDadosDaAcao(action);
+    if (!dadosAcao) {
+      if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
+      return;
+    }
+    const destinatarioContato = action === 'falha' ? dadosAcao.destinatario_contato : null;
+    const canalContato = action === 'falha' ? dadosAcao.canal_contato : null;
+    delete dadosAcao.destinatario_contato;
+    delete dadosAcao.canal_contato;
+    const body = { ...dadosAcao, ...position };
 
     const request = {
       id,
@@ -3471,11 +3985,18 @@
     // ── Offline: enfileira direto
     if (!online()) {
       const queue = getQueue();
-      if (!queue.some((item) => item.operation_id === request.operation_id)) {
-        saveQueue([...queue, request]);
+      if (
+        !queue.some((item) => item.operation_id === request.operation_id)
+        && !(await saveQueue([...queue, request]))
+      ) {
+        if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
+        return;
       }
-      aplicarStatusLocal(id, action);
+      aplicarStatusLocal(id, action, action === 'falha'
+        ? { ...body, destinatario_contato: destinatarioContato, canal_contato: canalContato, pendente_sincronizacao: true }
+        : null);
       avisarSalvoOffline(action);
+      if (action === 'falha') await confirmarContatoProblema(id, whatsappWindow, true);
       return;
     }
 
@@ -3495,7 +4016,10 @@
 
         if (aviso.code === 'FORA_DO_RAIO') {
           const confirmou = await confirmarForaDoRaio(aviso);
-          if (!confirmou) return;
+          if (!confirmou) {
+            if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
+            return;
+          }
 
           // Reenvia com a flag de confirmação
           request.body.confirmar_fora_raio = true;
@@ -3513,26 +4037,52 @@
       // ── Erro 4xx: bloqueio real do servidor
       if (response.status >= 400 && response.status < 500) {
         let mensagem = 'Ação não aceita pelo servidor.';
-        try { const payload = await response.json(); mensagem = payload.error || mensagem; } catch {}
+        let payload = {};
+        try {
+          payload = await response.json();
+          mensagem = payload.error || mensagem;
+        } catch {}
         if (typeof Swal !== 'undefined') {
-          Swal.fire({ icon: 'warning', title: 'Não foi possível confirmar', text: mensagem, confirmButtonText: 'OK' });
+          await Swal.fire({ icon: 'warning', title: 'Não foi possível confirmar', text: mensagem, confirmButtonText: 'OK' });
         } else {
           window.alert(mensagem);
         }
+        if (payload.code === 'ENTREGA_EM_ANDAMENTO') await carregarEntregas();
+        if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
         return;
       }
 
       if (!response.ok) throw new Error('Ação não aceita');
-      aplicarStatusLocal(id, action);
+      if (action === 'falha') {
+        const payload = await response.json();
+        if (!payload.success) throw new Error(payload.error || 'O problema não foi confirmado pelo servidor.');
+        aplicarStatusLocal(id, action, {
+          ...body,
+          status: payload.data?.status,
+          destinatario_contato: destinatarioContato,
+          canal_contato: canalContato,
+          pendente_sincronizacao: false
+        });
+        await confirmarContatoProblema(id, whatsappWindow);
+      } else {
+        aplicarStatusLocal(id, action);
+      }
 
     } catch {
       // ── Falha de rede/5xx: enfileira
       const queue = getQueue();
-      if (!queue.some((item) => item.operation_id === request.operation_id)) {
-        saveQueue([...queue, request]);
+      if (
+        !queue.some((item) => item.operation_id === request.operation_id)
+        && !(await saveQueue([...queue, request]))
+      ) {
+        if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
+        return;
       }
-      aplicarStatusLocal(id, action);
+      aplicarStatusLocal(id, action, action === 'falha'
+        ? { ...body, destinatario_contato: destinatarioContato, canal_contato: canalContato, pendente_sincronizacao: true }
+        : null);
       avisarSalvoOffline(action);
+      if (action === 'falha') await confirmarContatoProblema(id, whatsappWindow, true);
     }
   }
 
@@ -3549,8 +4099,12 @@
    *     a fila intacta (não descarta a operação).
    */
   async function salvarOrdem() {
+    if (!(await exigirContatoConfirmado())) return false;
     const embarqueId = entregas[0]?.embarque_id;
-    if (!embarqueId) return;
+    if (!embarqueId) {
+      $('motorista-status').textContent = 'Não foi possível salvar a ordem: rota sem embarque associado.';
+      return false;
+    }
 
     // 🔥 NOVO: operation_id com timestamp — evita conflito de idempotência
     const timestamp = Date.now();
@@ -3572,8 +4126,7 @@
     // ── Modo offline: enfileira
     if (!online()) {
       const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
-      return;
+      return await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
     }
 
     // ── Modo online: envia
@@ -3588,7 +4141,9 @@
     } catch (networkErr) {
       // Falha de rede: enfileira
       const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
+      if (!(await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]))) {
+        return false;
+      }
       throw networkErr;
     }
 
@@ -3596,12 +4151,12 @@
     if (response.status === 409) {
       $('motorista-status').textContent = 'Conflito: o gestor alterou a rota. Atualize antes de salvar novamente.';
       const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      saveQueue([...queue, {
+      if (!(await saveQueue([...queue, {
         ...request,
         type: 'reordenar',
         operation_id: operationIdValue,
         conflict: true
-      }]);
+      }]))) return false;
       atualizarConflitoRota();
       throw new Error('A rota foi alterada pelo gestor');
     }
@@ -3621,7 +4176,9 @@
     // ── 5xx ou outros: enfileira para retry
     if (!response.ok) {
       const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
+      if (!(await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]))) {
+        return false;
+      }
       throw new Error('Não foi possível salvar a ordem (HTTP ' + response.status + ')');
     }
 
@@ -3637,11 +4194,19 @@
   }
 
   async function mover(index, delta) {
+    if (!(await exigirContatoConfirmado())) return;
     const target = index + delta;
     if (target < 0 || target >= entregas.length) return;
+    const ordemAnterior = [...entregas];
     [entregas[index], entregas[target]] = [entregas[target], entregas[index]];
     persist();
-    try { await salvarOrdem(); }
+    try {
+      if (!(await salvarOrdem())) {
+        entregas.splice(0, entregas.length, ...ordemAnterior);
+        persist();
+        return;
+      }
+    }
     catch { $('motorista-status').textContent = 'Ordem alterada localmente; será salva quando houver conexão'; }
   }
 
@@ -3657,6 +4222,7 @@
    *   - Feedback: toast discreto (opção A — sem confirmação)
    */
   async function pularParada(entregaId) {
+    if (!(await exigirContatoConfirmado())) return;
     const id = Number(entregaId);
     const item = entregas.find((e) => Number(e.id) === id);
     if (!item) {
@@ -3713,6 +4279,7 @@
     }
 
     // ── Reordena local: remove do índice atual e joga para o fim
+    const ordemAnterior = [...entregas];
     const [movida] = entregas.splice(idx, 1);
     entregas.push(movida);
 
@@ -3721,7 +4288,11 @@
 
     // ── Sincroniza com o backend
     try {
-      await salvarOrdem();
+      if (!(await salvarOrdem())) {
+        entregas.splice(0, entregas.length, ...ordemAnterior);
+        persist();
+        return;
+      }
 
       if (typeof Swal !== 'undefined') {
         const Toast = Swal.mixin({
@@ -3776,6 +4347,7 @@
    *   - Reusa persist() + salvarOrdem()
    */
   async function inverterRota() {
+    if (!(await exigirContatoConfirmado())) return;
     // ── Separa pendentes e concluídas
     const concluidoStatus = ['entregue', 'entregue_com_problema', 'falha', 'cancelada'];
 
@@ -3847,6 +4419,7 @@
     const novaOrdem = [...pendentesInvertidas, ...concluidas];
 
     // ── Substitui o array global (mesmo objeto de referência)
+    const ordemAnterior = [...entregas];
     entregas.length = 0;
     entregas.push(...novaOrdem);
 
@@ -3855,7 +4428,11 @@
 
     // ── Sincroniza com o backend (mesmo fluxo do M7)
     try {
-      await salvarOrdem();
+      if (!(await salvarOrdem())) {
+        entregas.splice(0, entregas.length, ...ordemAnterior);
+        persist();
+        return;
+      }
 
       if (typeof Swal !== 'undefined') {
         const Toast = Swal.mixin({
@@ -3918,7 +4495,13 @@
             });
 
             if (retry.ok) {
-              // ok, não devolve à fila
+              if (request.action === 'falha') {
+                const entrega = entregas.find((item) => Number(item.id) === Number(request.id));
+                if (entrega) {
+                  entrega.falha_pendente_sincronizacao = false;
+                  persist();
+                }
+              }
               continue;
             }
           }
@@ -3933,8 +4516,23 @@
               else if (dados?.error) mensagem = dados.error;
             } catch {}
             falhas.push({ id: request.id, action: request.action, mensagem });
+            if (request.action === 'falha') {
+              const entrega = entregas.find((item) => Number(item.id) === Number(request.id));
+              if (entrega) {
+                entrega.motivo_falha = null;
+                entrega.observacoes_falha = null;
+                entrega.falha_pendente_sincronizacao = false;
+                persist();
+              }
+            }
           } else {
             remaining.push(request);
+          }
+        } else if (request.action === 'falha') {
+          const entrega = entregas.find((item) => Number(item.id) === Number(request.id));
+          if (entrega) {
+            entrega.falha_pendente_sincronizacao = false;
+            persist();
           }
         }
       } catch {
@@ -3942,7 +4540,12 @@
       }
     }
 
-    await salvarFila(remaining);
+    try {
+      await salvarFila(remaining);
+    } catch (error) {
+      informarFalhaPersistenciaFila(error);
+      return;
+    }
     atualizarConflitoRota();
     await enviarFotoPendente();
 
@@ -4020,6 +4623,12 @@
   });
 
   document.addEventListener('click', (event) => {
+    const mapAction = event.target.closest('[data-map-action]');
+    if (mapAction) {
+      focarNoMapa(mapAction.dataset.mapAction);
+      return;
+    }
+
     const driverCard = event.target.closest('[data-driver-id]');
     if (driverCard) {
       selecionarMotorista(driverCard.dataset.driverId);
@@ -4029,10 +4638,41 @@
      // ── Botões de contato (WhatsApp / Ligar) — Pacote 3
     const contactBtn = event.target.closest('[data-contact]');
     if (contactBtn) {
-      if (isAdminApp) return;
       const id = Number(contactBtn.dataset.id);
       if (contactBtn.dataset.contact === 'whatsapp') abrirWhatsAppCliente(id);
       else if (contactBtn.dataset.contact === 'ligar') ligarParaCliente(id);
+      return;
+    }
+
+    const problemContactBtn = event.target.closest('[data-problem-contact][data-problem-channel]');
+    if (problemContactBtn) {
+      const id = Number(problemContactBtn.dataset.problemDelivery
+        || problemContactBtn.closest('.delivery-card')?.dataset.entregaId);
+      const entrega = entregas.find((item) => Number(item.id) === id);
+      if (!entrega) return;
+      const wasConfirmingContact = Boolean(window.Swal?.isVisible());
+      entrega.destinatario_falha_contato = problemContactBtn.dataset.problemContact;
+      entrega.canal_falha_contato = problemContactBtn.dataset.problemChannel;
+      persist();
+      abrirContatoProblema(
+        id,
+        entrega.destinatario_falha_contato,
+        entrega.canal_falha_contato,
+        null,
+        Boolean(entrega.falha_pendente_sincronizacao)
+      );
+      if (wasConfirmingContact) {
+        Swal.close();
+        window.setTimeout(() => {
+          confirmarContatoProblema(id, null, Boolean(entrega.falha_pendente_sincronizacao));
+        }, 0);
+      }
+      return;
+    }
+
+    const resumeProblemContact = event.target.closest('[data-resume-problem-contact]');
+    if (resumeProblemContact) {
+      retomarContatoProblema(Number(resumeProblemContact.dataset.resumeProblemContact));
       return;
     }
 
@@ -4040,7 +4680,10 @@
     // 🔥 ALTERADO (Pacote 5 - M7): inclui [data-skip]
     const button = event.target.closest('[data-action], [data-order], [data-skip]');
     if (button) {
-      if (isAdminApp) return;
+      if (existeContatoProblemaPendente()) {
+        exigirContatoConfirmado();
+        return;
+      }
 
       // 🔥 NOVO (M7): Pular parada
       if (button.dataset.skip !== undefined) {
@@ -4050,6 +4693,9 @@
 
       if (button.dataset.action === 'checkout') {
         abrirCheckout(entregas.find((item) => Number(item.id) === Number(button.dataset.id)));
+      } else if (button.dataset.action === 'falha') {
+        const whatsappWindow = window.open('about:blank', '_blank');
+        executarAcao(button.dataset.id, 'falha', whatsappWindow);
       } else if (button.dataset.action) {
         executarAcao(button.dataset.id, button.dataset.action);
       }
@@ -4075,13 +4721,6 @@
     }
   });
 
-  $('next-stop-action')?.addEventListener('click', () => {
-    const item = entregas.find((delivery) => Number(delivery.id) === Number($('next-stop-action').dataset.id));
-    if (!item) return;
-    if (item.status === 'em_entrega') abrirCheckout(item);
-    else executarAcao(item.id, 'checkin');
-  });
-
   $('checkout-cancel')?.addEventListener('click', () => { $('checkout-modal').hidden = true; });
   $('signature-clear')?.addEventListener('click', limparAssinatura);
 
@@ -4090,6 +4729,7 @@
   // ================================================================
   $('checkout-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    if (!(await exigirContatoConfirmado())) return;
 
     const id = Number($('checkout-form').dataset.deliveryId);
     if (!id) return;
@@ -4125,7 +4765,12 @@
 
     // ── Offline
     if (!online()) {
-      saveQueue([...getQueue(), request]);
+      if (!(await saveQueue([...getQueue(), request]))) {
+        aplicarStatusLocal(id, 'reverter-pendente');
+        $('checkout-modal').hidden = false;
+        document.body.classList.add('driver-modal-open');
+        return;
+      }
       avisarSalvoOffline('checkout');
       return;
     }
@@ -4204,8 +4849,14 @@
   await carregarEntregas();
     } catch (err) {
       const queue = getQueue();
-      if (!queue.some((item) => item.operation_id === request.operation_id)) {
-        saveQueue([...queue, request]);
+      if (
+        !queue.some((item) => item.operation_id === request.operation_id)
+        && !(await saveQueue([...queue, request]))
+      ) {
+        aplicarStatusLocal(id, 'reverter-pendente');
+        $('checkout-modal').hidden = false;
+        document.body.classList.add('driver-modal-open');
+        return;
       }
       avisarSalvoOffline('checkout');
     }
@@ -4249,7 +4900,12 @@
   $('btn-inverter-rota')?.addEventListener('click', inverterRota);
   $('route-conflict-refresh')?.addEventListener('click', async () => { await carregarEntregas(); $('route-conflict').hidden = true; });
   $('route-conflict-discard')?.addEventListener('click', async () => {
-    await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict)));
+    try {
+      await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict)));
+    } catch (error) {
+      informarFalhaPersistenciaFila(error);
+      return;
+    }
     $('route-conflict').hidden = true;
     $('motorista-status').textContent = 'Ordenação local descartada; rota do gestor preservada.';
     await carregarEntregas();
@@ -4264,6 +4920,46 @@
       return;
     }
     await selecionarMotorista(val);
+  });
+
+  $('admin-training-toggle')?.addEventListener('change', async (event) => {
+    const toggle = event.currentTarget;
+    const activate = toggle.checked;
+    if (activate && !motoristaId) {
+      toggle.checked = false;
+      if (window.Swal) {
+        await Swal.fire({ icon: 'warning', title: 'Selecione um motorista primeiro', confirmButtonText: 'OK' });
+      } else {
+        window.alert('Selecione um motorista antes de ativar o modo de treino.');
+      }
+      return;
+    }
+
+    if (activate) {
+      const confirmed = window.Swal
+        ? (await Swal.fire({
+            icon: 'warning',
+            title: 'As ações serão gravadas na operação real',
+            text: 'O modo de treino apenas libera a validação de distância. Check-in, entrega, problema e reordenação alteram a rota real.',
+            showCancelButton: true,
+            confirmButtonText: 'Entendi, ativar',
+            cancelButtonText: 'Cancelar',
+            confirmButtonColor: '#c94b45',
+            allowOutsideClick: false
+          })).isConfirmed
+        : window.confirm('As ações serão gravadas na operação real. Deseja ativar?');
+      if (!confirmed) {
+        toggle.checked = false;
+        return;
+      }
+    }
+
+    isTrainingMode = activate;
+    window.MODO_TREINAMENTO = activate;
+    app.classList.toggle('admin-training-active', isAdminApp && activate);
+    const warning = $('admin-training-warning');
+    if (warning) warning.hidden = !activate;
+    render();
   });
 
   $('driver-admin-search')?.addEventListener('input', renderizarPainelAdmin);
@@ -4356,7 +5052,6 @@
  // ─── BOOT ───
   aplicarTema();
   setConnectionState();
-  bindNextStopContact();       
   bindChipDistancia();            
   iniciarTimerChipDistancia();    
   carregarPainelAdmin();
@@ -4554,7 +5249,10 @@
     setTxt('embarque-header-veiculo',
       [info.veiculo_placa, info.veiculo_modelo].filter(Boolean).join(' · ') || '—');
     setTxt('embarque-header-motorista', info.motorista_nome || '—');
-    setTxt('embarque-header-valor', formatarMoedaMotorista(info.valor_total || 0));
+    const volumeTotal = info.volume_total !== undefined
+      ? Number(info.volume_total) || 0
+      : entregas.reduce((total, entrega) => total + quantidadeItensEntrega(entrega), 0);
+    setTxt('embarque-header-volume', formatarVolumeItens(volumeTotal));
     setTxt('embarque-header-peso', formatarPesoMotorista(info.peso_total || 0));
     setTxt('embarque-header-saida', info.data_saida ? formatarDataMotorista(info.data_saida) : '—');
 
@@ -4636,7 +5334,7 @@
       if (e.status === 'entregue' || e.status === 'entregue_com_problema') {
         contagens.entregue++;
       }
-      if (e.status === 'falha' || e.status === 'entregue_com_problema') {
+      if (e.status === 'falha' || e.status === 'entregue_com_problema' || e.motivo_falha) {
         contagens.problema++;
       }
       if (e.status === 'pendente')    contagens.pendente++;
@@ -4655,9 +5353,8 @@
   //
   // Estrutura de dados esperada do backend:
   //   {
-  //     resumo_mes: { total_entregas, entregas_concluidas, falhas, valor_total, tempo_medio_min, km_rodados },
+  //     resumo_mes: { total_entregas, entregas_concluidas, falhas, volume_total, tempo_medio_min, km_rodados },
   //     cobli:      { score, variacao, km_rodados, eventos, velocidade_media, atualizado_em },
-  //     ranking:    { posicao, total_motoristas, percentil },
   //     caminhao_hoje: { id, placa, modelo, marca, odometro_atual, velocidade_atual,
   //                      latitude, longitude, ultima_posicao, tempo_parado_min, status } | null,
   //     ultimos_embarques: [ { id, numero_embarque, status, data_saida, data_retorno,
@@ -4667,7 +5364,7 @@
 
   // Cache do painel (5 min) — decisão E do Pacote 2
   // Nota: PAINEL_CACHE_TTL foi movido para o topo do IIFE.
-  const painelCacheKey = () => `frota.motorista.${motoristaId}.painel.cache`;
+  const painelCacheKey = () => `frota.motorista.${motoristaId}.painel.cache.v2`;
 
   /** Lê o cache (se válido) do painel. Retorna null se expirou ou não existe. */
   function lerCachePainel() {
@@ -4781,7 +5478,6 @@
    */
   function renderizarPainel(dados) {
     renderScorePainel(dados.cobli || {});
-    renderRankingPainel(dados.ranking || {});
     renderResumoMesPainel(dados.resumo_mes || {});
     renderCaminhaoPainel(dados.caminhao_hoje || null);
     renderUltimosEmbarquesPainel(dados.ultimos_embarques || []);
@@ -4806,6 +5502,11 @@
     const gauge  = $('painel-score-fill');
     const numero = $('painel-score-numero');
     const periodo = $('painel-score-periodo');
+    if (periodo) {
+      periodo.textContent = 'Mês atual · ' + new Date().toLocaleDateString('pt-BR', {
+        month: 'long', year: 'numeric'
+      });
+    }
 
     const temScore = cobli && cobli.score !== null && cobli.score !== undefined && !Number.isNaN(Number(cobli.score));
 
@@ -4857,58 +5558,6 @@
       }
     }
 
-    // ── Período
-    if (periodo && cobli.atualizado_em) {
-      periodo.textContent = 'atualizado em ' + formatarDataCurtaPainel(cobli.atualizado_em);
-    } else if (periodo) {
-      periodo.textContent = 'últimos 30 dias';
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // BLOCO 2: RANKING (anônimo)
-  // ─────────────────────────────────────────────────────────────
-  function renderRankingPainel(ranking) {
-    const titulo = $('painel-ranking-titulo');
-    const sub    = $('painel-ranking-subtitulo');
-    const posBox = $('painel-ranking-posicao');
-    const num    = $('painel-ranking-numero');
-    const total  = $('painel-ranking-total');
-
-    const temPosicao = ranking
-      && ranking.posicao !== null
-      && ranking.posicao !== undefined
-      && Number(ranking.posicao) > 0;
-
-    if (!temPosicao) {
-      if (titulo) titulo.textContent = 'Sem posição ainda';
-      if (sub)    sub.textContent    = 'Complete viagens para entrar no ranking.';
-      if (posBox) posBox.hidden = true;
-      return;
-    }
-
-    const pos = Number(ranking.posicao);
-    const tot = Number(ranking.total_motoristas) || 0;
-    const perc = Number(ranking.percentil);
-
-    // Texto amigável conforme a posição
-    let msg;
-    if (pos === 1)      msg = 'Você lidera o ranking! 🥇';
-    else if (pos <= 3)  msg = 'Você está no pódio! 🏆';
-    else if (pos <= Math.max(3, Math.ceil(tot * 0.10))) msg = 'Você está no top 10% da equipe!';
-    else if (pos <= Math.ceil(tot * 0.30)) msg = 'Você está no top 30% da equipe.';
-    else                msg = 'Continue assim — cada viagem melhora sua posição.';
-
-    if (titulo) titulo.textContent = msg;
-    if (sub && !Number.isNaN(perc)) {
-      sub.textContent = `Você está à frente de ${perc}% dos motoristas.`;
-    } else if (sub) {
-      sub.textContent = 'Ranking calculado com base no seu desempenho de segurança.';
-    }
-
-    if (posBox) posBox.hidden = false;
-    if (num)   num.textContent = `${pos}º`;
-    if (total) total.textContent = `de ${tot} motoristas`;
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -4926,12 +5575,12 @@
     const concluidas = Number(resumo.entregas_concluidas) || 0;
     const total      = Number(resumo.total_entregas) || 0;
     const falhas     = Number(resumo.falhas) || 0;
-    const valor      = Number(resumo.valor_total) || 0;
+    const volume     = Number(resumo.volume_total) || 0;
     const km         = Number(resumo.km_rodados) || 0;
     const tempoMed   = Number(resumo.tempo_medio_min) || 0;
 
     if ($('painel-resumo-entregas')) $('painel-resumo-entregas').textContent = concluidas;
-    if ($('painel-resumo-valor'))    $('painel-resumo-valor').textContent    = formatarMoedaPainel(valor);
+    if ($('painel-resumo-volume'))   $('painel-resumo-volume').textContent   = volume.toLocaleString('pt-BR', { maximumFractionDigits: 2 });
     if ($('painel-resumo-km'))       $('painel-resumo-km').textContent       = formatarKmPainel(km);
     if ($('painel-resumo-tempo'))    $('painel-resumo-tempo').textContent    = formatarMinutosPainel(tempoMed);
 
@@ -5079,15 +5728,6 @@
   // ─────────────────────────────────────────────────────────────
   // HELPERS DE FORMATAÇÃO DO PAINEL
   // ─────────────────────────────────────────────────────────────
-  function formatarMoedaPainel(valor) {
-    const n = Number(valor);
-    if (isNaN(n) || n === 0) return 'R$ 0';
-    if (n >= 1000) {
-      return 'R$ ' + (n / 1000).toFixed(1).replace('.', ',') + 'k';
-    }
-    return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-  }
-
   function formatarKmPainel(km) {
     const n = Number(km);
     if (isNaN(n) || n === 0) return '0 km';
@@ -5117,7 +5757,7 @@
   // PACOTE 3 — M1+M2: CONTATO COM CLIENTE (WhatsApp + Ligar)
   // 2026-09-25
   //
-  // - Botões no next-stop-card (topo) e no card expandido.
+  // - Botões no card expandido de cada entrega.
   // - WhatsApp: link wa.me com mensagem pronta (motorista revisa e envia).
   // - Ligar: link tel: direto.
   // - Só exibe botões se a entrega tiver cliente_telefone.
@@ -5245,6 +5885,8 @@
                 class="contact-btn is-whatsapp"
                 data-contact="whatsapp"
                 data-id="${entrega.id}"
+                onclick="event.stopPropagation()"
+                aria-label="Enviar WhatsApp ao cliente"
                 ${!temTelefone ? 'disabled title="Sem telefone cadastrado"' : 'title="Enviar WhatsApp ao cliente"'}>
           <i class="fa-brands fa-whatsapp"></i> WhatsApp
         </button>
@@ -5252,6 +5894,8 @@
                 class="contact-btn is-call"
                 data-contact="ligar"
                 data-id="${entrega.id}"
+                onclick="event.stopPropagation()"
+                aria-label="Ligar para o cliente"
                 ${!temTelefone ? 'disabled title="Sem telefone cadastrado"' : 'title="Ligar para o cliente"'}>
           <i class="fa-solid fa-phone"></i> Ligar
         </button>
@@ -5259,17 +5903,22 @@
     `;
   }
 
-  /** Bind estático dos botões do next-stop-card. */
-  function bindNextStopContact() {
-    $('next-stop-whatsapp')?.addEventListener('click', () => {
-      const id = $('next-stop-action')?.dataset.id;
-      if (id) abrirWhatsAppCliente(id);
-    });
-    $('next-stop-ligar')?.addEventListener('click', () => {
-      const id = $('next-stop-action')?.dataset.id;
-      if (id) ligarParaCliente(id);
-    });
+  function renderAcoesProblema(entrega) {
+    if (!entrega.motivo_falha) return '';
+    const aguardandoSync = Boolean(entrega.falha_pendente_sincronizacao);
+    if (entrega.falha_contato_confirmado !== false) return '';
+    const statusContato = `<strong class="delivery-problem-contact-pending">Contato pendente — a rota está bloqueada até a confirmação.</strong>
+      <button type="button" class="delivery-problem-confirm-contact" data-resume-problem-contact="${entrega.id}">
+        <i class="fa-solid fa-address-book"></i> Continuar contato
+      </button>`;
+    return `
+      <div class="delivery-problem-actions">
+        ${aguardandoSync ? '<strong>Problema aguardando sincronização</strong>' : ''}
+        ${statusContato}
+      </div>
+    `;
   }
+
     // ════════════════════════════════════════════════════════════════
   // PACOTE 3 — M3: TOAST "PRÓXIMA PARADA MUDOU"
   // 2026-09-25
@@ -5585,9 +6234,7 @@
 
     const linhas = [];
     linhas.push(`<div class="detalhes-linha"><span>Status</span><strong>${escapeHtml(statusLabel)}</strong></div>`);
-    if (entrega.valor_total) {
-      linhas.push(`<div class="detalhes-linha"><span>Valor</span><strong>${formatarMoedaMotorista(entrega.valor_total)}</strong></div>`);
-    }
+    linhas.push(`<div class="detalhes-linha"><span>Volume total</span><strong>${escapeHtml(formatarVolumeItens(quantidadeItensEntrega(entrega)))}</strong></div>`);
     if (entrega.peso_total) {
       linhas.push(`<div class="detalhes-linha"><span>Peso</span><strong>${formatarPesoMotorista(entrega.peso_total)}</strong></div>`);
     }

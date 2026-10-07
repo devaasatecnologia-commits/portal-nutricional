@@ -1309,6 +1309,38 @@ class CobliController
     public function posicaoVeiculo(Request $request, Response $response, array $args): Response
     {
         $veiculoId = (int)$args['id'];
+        if ($veiculoId <= 0) {
+            return $this->json($response, ['success' => false, 'error' => 'ID do veículo inválido'], 400);
+        }
+
+        if (!$this->usuarioTemAcessoGestao($request)) {
+            $user = $request->getAttribute('user') ?? [];
+            $motoristaId = (int)($user['motorista_id'] ?? 0);
+            if ($motoristaId <= 0) {
+                return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+            }
+            $stmtAcesso = $this->pdo->prepare("
+                SELECT 1
+                FROM frota_motorista m
+                WHERE m.id = :motorista_id
+                  AND (
+                    m.veiculo_atual_id = :veiculo_id
+                    OR EXISTS (
+                        SELECT 1 FROM frota_embarque eb
+                        WHERE eb.motorista_id = m.id
+                          AND eb.veiculo_id = :veiculo_id
+                          AND eb.status = 'em_andamento'
+                    )
+                  )
+            ");
+            $stmtAcesso->execute([
+                'motorista_id' => $motoristaId,
+                'veiculo_id' => $veiculoId
+            ]);
+            if (!$stmtAcesso->fetchColumn()) {
+                return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado a este veículo'], 403);
+            }
+        }
 
         $stmt = $this->pdo->prepare("SELECT cobli_device_id FROM frota_cobli_dispositivo WHERE veiculo_id = :id AND ativo = TRUE");
         $stmt->execute(['id' => $veiculoId]);
@@ -1859,6 +1891,16 @@ class CobliController
             return null;
         }
         return $valor ? '1' : '0';
+    }
+
+    private function usuarioTemAcessoGestao(Request $request): bool
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        return (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
     }
 
     private function json($response, $data, $status = 200): Response

@@ -30,6 +30,14 @@ As permissoes do portal dependem de `sistema_modulos`, `sistema_setores` e
 `usuario_permissoes`. Administradores ativos em `usuarios_admin` recebem acesso
 global conforme o controller de autenticacao.
 
+As operacoes administrativas da Frota exigem permissao `admin`, `frota` ou
+`gestao-cargas`. O motorista autenticado pode consultar e operar apenas as
+entregas e o veiculo ligados ao `motorista_id` do JWT; a reordenacao offline
+tambem valida o embarque atribuido, a versao da rota e a lista completa de
+entregas sem duplicatas. Rastreamento geral, administracao da integracao Cobli e
+operacoes de cadastro ficam restritos a usuarios de gestao; o motorista so pode
+consultar a posicao do proprio veiculo vinculado.
+
 ## Fluxo da Frota
 
 1. Gestor importa embarques e pedidos do ERP.
@@ -43,6 +51,20 @@ global conforme o controller de autenticacao.
    `frota_acerto_embarque`, com pedidos e itens de acerto.
 8. Problemas do checkout são registrados em `frota_entrega_problema` para a
    Gestão de Cargas.
+
+## Otimizacao de rotas
+
+O otimizador considera tempo rodoviario por caminhão usando a matriz Valhalla,
+com melhoria da ordem por vizinho mais proximo e 2-opt. A rota inicia e termina
+no centro de distribuicao; a resposta inclui distancia e duracao estimadas e a
+geometria quando disponivel. Falha ou indisponibilidade do Valhalla deve ser
+informada ao usuario; nao substitua silenciosamente o custo rodoviario por
+distancia em linha reta. Consulte [VALHALLA_SETUP.md](VALHALLA_SETUP.md) para
+configuracao e validacao local.
+
+O service worker nao armazena paginas de login/redirecionamento no cache. A
+pagina autenticada do motorista e removida do cache ao sair da conta; a fila
+pendente permanece por motorista para nao descartar operacoes offline.
 
 ## Tabelas principais
 
@@ -81,3 +103,10 @@ integracoes externas.
 - Segredos devem existir somente no ambiente de execucao.
 - O bootstrap deve falhar se segredos obrigatorios estiverem ausentes.
 - Testes devem usar usuarios e dados ficticios.
+- O `.env.example` documenta nomes e valores nao secretos; solicite credenciais
+  pelo [processo Bitwarden](SECRETS_ACCESS.md). Nao copie `.env` de outra pessoa.
+- O schema PostgreSQL e externo e nao esta versionado integralmente. Confirme
+  o estado do ambiente antes de qualquer SQL e aplique mudancas primeiro em
+  homologacao, com backup, revisao e aprovacao do responsavel.
+- Use [HANDBOOK.md](HANDBOOK.md) como indice de continuidade e nao trate
+  snapshots em `tokens/` como fonte atual de verdade.

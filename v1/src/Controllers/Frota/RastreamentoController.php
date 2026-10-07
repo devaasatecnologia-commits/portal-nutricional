@@ -464,22 +464,94 @@ class RastreamentoController
     public function atualizarPosicao(Request $request, Response $response): Response
     {
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        
-        $veiculoId = (int)($input['veiculo_id'] ?? 0);
-        $motoristaId = (int)($input['motorista_id'] ?? 0);
-        $lat = (float)($input['lat'] ?? 0);
-        $lng = (float)($input['lng'] ?? 0);
-        $velocidade = (float)($input['velocidade'] ?? 0);
-        $precisao = (float)($input['precisao'] ?? 0);
-        $embarqueId = (int)($input['embarque_id'] ?? 0);
-        
-        if ($lat == 0 || $lng == 0) {
+        if (!is_array($input)) {
             return $this->json($response, [
                 'success' => false,
-                'error' => 'Latitude e longitude são obrigatórios'
+                'error' => 'Payload de posição inválido'
             ], 400);
         }
-        
+        $user = $request->getAttribute('user') ?? [];
+        $isGestor = $this->usuarioTemAcessoGestao($request);
+
+        foreach (['lat', 'lng'] as $coordinate) {
+            if (!isset($input[$coordinate]) || !is_numeric($input[$coordinate]) || !is_finite((float)$input[$coordinate])) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Latitude e longitude válidas são obrigatórias'
+                ], 400);
+            }
+        }
+
+        $lat = (float)$input['lat'];
+        $lng = (float)$input['lng'];
+        $velocidade = is_numeric($input['velocidade'] ?? 0) ? (float)($input['velocidade'] ?? 0) : -1;
+        $precisao = is_numeric($input['precisao'] ?? 0) ? (float)($input['precisao'] ?? 0) : -1;
+        if (abs($lat) > 90 || abs($lng) > 180
+            || !is_finite($velocidade) || $velocidade < 0
+            || !is_finite($precisao) || $precisao < 0
+        ) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Coordenadas, velocidade ou precisão fora do intervalo válido'
+            ], 400);
+        }
+
+        $veiculoId = (int)($input['veiculo_id'] ?? 0);
+        $motoristaId = (int)($input['motorista_id'] ?? 0);
+        $embarqueId = (int)($input['embarque_id'] ?? 0);
+        if ($veiculoId < 0 || $motoristaId < 0 || $embarqueId < 0) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'IDs de veículo, motorista e embarque não podem ser negativos'
+            ], 400);
+        }
+
+        if (!$isGestor) {
+            $motoristaId = (int)($user['motorista_id'] ?? 0);
+            if ($motoristaId <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Acesso não autorizado para atualizar posições'
+                ], 403);
+            }
+
+            $stmt = $this->pdo->prepare("
+                SELECT m.veiculo_atual_id, eb.id AS embarque_id, eb.veiculo_id AS embarque_veiculo_id
+                FROM frota_motorista m
+                LEFT JOIN LATERAL (
+                    SELECT id, veiculo_id
+                    FROM frota_embarque
+                    WHERE motorista_id = m.id AND status = 'em_andamento'
+                    ORDER BY id DESC
+                    LIMIT 1
+                ) eb ON TRUE
+                WHERE m.id = :motorista_id
+            ");
+            $stmt->execute(['motorista_id' => $motoristaId]);
+            $motorista = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$motorista) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Motorista não encontrado'
+                ], 404);
+            }
+
+            $embarqueAutorizadoId = (int)($motorista['embarque_id'] ?? 0);
+            $veiculoAutorizadoId = (int)($motorista['embarque_veiculo_id'] ?? 0)
+                ?: (int)($motorista['veiculo_atual_id'] ?? 0);
+            if (($veiculoId > 0 && $veiculoId !== $veiculoAutorizadoId)
+                || ($embarqueId > 0 && $embarqueId !== $embarqueAutorizadoId)
+            ) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'A posição não corresponde ao veículo ou embarque associado ao motorista'
+                ], 403);
+            }
+
+            $veiculoId = $veiculoAutorizadoId;
+            $embarqueId = $embarqueAutorizadoId;
+        }
+
         // Se não veio veiculo_id, buscar pelo motorista
         if ($veiculoId == 0 && $motoristaId > 0) {
             $stmt = $this->pdo->prepare("SELECT veiculo_atual_id FROM frota_motorista WHERE id = :id");
@@ -986,5 +1058,15 @@ class RastreamentoController
         return $response->withStatus($status)
                        ->withHeader('Content-Type', 'application/json; charset=utf-8')
                        ->withHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    }
+
+    private function usuarioTemAcessoGestao(Request $request): bool
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        return (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
     }
 }

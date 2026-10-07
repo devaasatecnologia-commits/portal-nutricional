@@ -87,7 +87,6 @@ class HealthController
             return [
                 'ok'         => false,
                 'latency_ms' => (int)round((microtime(true) - $inicio) * 1000),
-                'error'      => substr($e->getMessage(), 0, 200),
             ];
         }
     }
@@ -124,7 +123,6 @@ class HealthController
             $resultado['configurado'] = !empty($configurado);
 
             if (!$resultado['configurado']) {
-                $resultado['error'] = 'Chave de API não configurada';
                 return $resultado;
             }
 
@@ -137,18 +135,19 @@ class HealthController
             $resultado['latency_ms'] = (int)round((microtime(true) - $inicio) * 1000);
             $resultado['ok'] = (bool)($teste['success'] ?? false);
 
-            if (!$resultado['ok']) {
-                $resultado['error'] = substr((string)($teste['error'] ?? 'Falha desconhecida'), 0, 200);
-            }
         } catch (\Throwable $e) {
             $resultado['ok'] = false;
-            $resultado['error'] = substr($e->getMessage(), 0, 200);
         }
 
         // Salva no cache só se a resposta é confiável (evita cachear falha
         // de rede por 60s e ficar mostrando down desnecessariamente)
         if ($resultado['ok'] || $resultado['configurado'] === false) {
-            @file_put_contents($cacheFile, json_encode($resultado));
+            $cacheJson = json_encode($resultado);
+            if ($cacheJson === false) {
+                error_log('[Frota health] Não foi possível serializar o cache de saúde da Cobli.');
+            } elseif (file_put_contents($cacheFile, $cacheJson) === false) {
+                error_log('[Frota health] Não foi possível gravar o cache de saúde da Cobli.');
+            }
         }
 
         return $resultado;

@@ -77,15 +77,12 @@ class MotoristaController
                 SELECT embarque.*
                 FROM frota_embarque embarque
                 WHERE embarque.motorista_id = m.id
-                  AND (
-                      embarque.status IN ('planejado', 'em_andamento')
-                      OR DATE(embarque.data_saida) = CURRENT_DATE
-                  )
                 ORDER BY
                     CASE WHEN embarque.status = 'em_andamento' THEN 0
-                         WHEN embarque.status = 'planejado' THEN 1
-                         ELSE 2 END,
-                    embarque.data_saida DESC,
+                         WHEN COALESCE(embarque.data_saida::date, embarque.created_at::date) = CURRENT_DATE THEN 1
+                         WHEN embarque.status = 'planejado' THEN 2
+                         ELSE 3 END,
+                    COALESCE(embarque.data_saida, embarque.created_at) DESC,
                     embarque.id DESC
                 LIMIT 1
             ) eb ON TRUE
@@ -96,7 +93,7 @@ class MotoristaController
                     COUNT(*) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')) AS concluidas,
                     COUNT(*) FILTER (WHERE e.status = 'em_entrega') AS em_entrega,
                     COUNT(*) FILTER (WHERE e.status = 'pendente') AS pendentes,
-                    COUNT(*) FILTER (WHERE e.status IN ('falha', 'entregue_com_problema')) AS problemas
+                    COUNT(*) FILTER (WHERE e.status IN ('falha', 'entregue_com_problema') OR e.motivo_falha IS NOT NULL) AS problemas
                 FROM frota_entrega e
                 WHERE e.embarque_id = eb.id
             ) entregas ON TRUE
@@ -293,10 +290,27 @@ class MotoristaController
         $stmt = $this->pdo->prepare("
             SELECT 
                 e.*,
+                CASE
+                    WHEN c.latitude IS NOT NULL
+                     AND c.longitude IS NOT NULL
+                     AND c.latitude <> 0
+                     AND c.longitude <> 0
+                    THEN c.latitude
+                    ELSE e.latitude
+                END AS map_latitude,
+                CASE
+                    WHEN c.latitude IS NOT NULL
+                     AND c.longitude IS NOT NULL
+                     AND c.latitude <> 0
+                     AND c.longitude <> 0
+                    THEN c.longitude
+                    ELSE e.longitude
+                END AS map_longitude,
                 eb.numero_embarque,
                 v.placa
             FROM frota_entrega e
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
+            LEFT JOIN frota_cliente c ON c.id = e.cliente_id
             LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
             WHERE eb.motorista_id = :motorista_id
             ORDER BY e.created_at DESC
@@ -330,6 +344,9 @@ class MotoristaController
     
     public function criar(Request $request, Response $response): Response
 {
+    if (!$this->usuarioTemAcessoGestao($request)) {
+        return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+    }
     $data = json_decode($request->getBody()->getContents(), true) ?? [];
     
     // Verificar se já existe pelo erp_id
@@ -389,6 +406,9 @@ class MotoristaController
      */
     public function atualizar(Request $request, Response $response, array $args): Response
     {
+        if (!$this->usuarioTemAcessoGestao($request)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
@@ -444,6 +464,9 @@ class MotoristaController
      */
     public function deletar(Request $request, Response $response, array $args): Response
     {
+        if (!$this->usuarioTemAcessoGestao($request)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $id = (int)$args['id'];
         
         // Verificar se existe
@@ -588,9 +611,76 @@ class MotoristaController
             return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
         }
 
+        $inicioCarregamentoCompleto = microtime(true);
+        $inicioEtapaCarregamento = $inicioCarregamentoCompleto;
+        $registrarTempoEtapa = static function (string $etapa) use (&$inicioEtapaCarregamento): void {
+            $duracao = microtime(true) - $inicioEtapaCarregamento;
+            if ($duracao >= 2) {
+                error_log(sprintf('[Frota entregasHoje] %s took %.3fs', $etapa, $duracao));
+            }
+            $inicioEtapaCarregamento = microtime(true);
+        };
+
+        $stmtEmbarque = $this->pdo->prepare("
+            SELECT id
+            FROM frota_embarque
+            WHERE motorista_id = :motorista_id
+              AND (
+                  status = 'em_andamento'
+                  OR COALESCE(data_saida::date, created_at::date) = CURRENT_DATE
+              )
+            ORDER BY CASE WHEN status = 'em_andamento' THEN 0 ELSE 1 END,
+                     created_at DESC
+            LIMIT 1
+        ");
+        $stmtEmbarque->execute(['motorista_id' => $id]);
+        $embarqueId = $stmtEmbarque->fetchColumn();
+
+        if (!$embarqueId) {
+            $stmtEmbarque = $this->pdo->prepare("
+                SELECT id
+                FROM frota_embarque
+                WHERE motorista_id = :motorista_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            ");
+            $stmtEmbarque->execute(['motorista_id' => $id]);
+            $embarqueId = $stmtEmbarque->fetchColumn();
+        }
+        $registrarTempoEtapa('select embarque');
+
+        if (!$embarqueId) {
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'entregas' => [],
+                    'embarque_info' => null,
+                    'rota_ativa' => null,
+                    'proxima_entrega' => null,
+                    'resumo' => ['total' => 0, 'pendentes' => 0, 'em_entrega' => 0, 'entregues' => 0, 'falhas' => 0, 'progresso' => 0]
+                ]
+            ]);
+        }
+
         $sql = "
             SELECT 
                 e.*,
+                CASE
+                    WHEN c.latitude IS NOT NULL
+                     AND c.longitude IS NOT NULL
+                     AND c.latitude <> 0
+                     AND c.longitude <> 0
+                    THEN c.latitude
+                    ELSE e.latitude
+                END AS map_latitude,
+                CASE
+                    WHEN c.latitude IS NOT NULL
+                     AND c.longitude IS NOT NULL
+                     AND c.latitude <> 0
+                     AND c.longitude <> 0
+                    THEN c.longitude
+                    ELSE e.longitude
+                END AS map_longitude,
                 eb.numero_embarque,
                 eb.data_saida,
                 eb.veiculo_id,
@@ -599,51 +689,20 @@ class MotoristaController
                 v.latitude as veiculo_lat,
                 v.longitude as veiculo_lng,
                 eb.id as embarque_id,
-                eb.updated_at as embarque_updated_at
+                eb.updated_at as embarque_updated_at,
+                eb.created_at as embarque_criado_em
             FROM frota_entrega e
+            LEFT JOIN frota_cliente c ON c.id = e.cliente_id
             LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
             LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
-           WHERE eb.motorista_id = :motorista_id
-  AND (
-      DATE(e.created_at) = CURRENT_DATE
-      OR e.status IN ('pendente', 'em_entrega')
-      OR e.status IN ('entregue', 'entregue_com_problema', 'falha', 'cancelada')
-  )
-ORDER BY e.ordem_entrega ASC
+            WHERE eb.id = :embarque_id
+            ORDER BY e.ordem_entrega ASC
         ";
 
         $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['motorista_id' => $id]);
+        $stmt->execute(['embarque_id' => (int)$embarqueId]);
         $entregas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        // Fallback: se não achou nada hoje, busca do último embarque
-        if (empty($entregas)) {
-            $stmtLast = $this->pdo->prepare("
-                SELECT 
-                    e.*,
-                    eb.numero_embarque,
-                    eb.data_saida,
-                    eb.veiculo_id,
-                    v.placa,
-                    v.modelo,
-                    v.latitude as veiculo_lat,
-                    v.longitude as veiculo_lng,
-                    eb.id as embarque_id,
-                    eb.updated_at as embarque_updated_at
-                FROM frota_entrega e
-                LEFT JOIN frota_embarque eb ON eb.id = e.embarque_id
-                LEFT JOIN frota_veiculo v ON v.id = eb.veiculo_id
-                WHERE eb.motorista_id = :motorista_id
-                  AND eb.id = (
-                      SELECT id FROM frota_embarque 
-                      WHERE motorista_id = :motorista_id 
-                      ORDER BY created_at DESC LIMIT 1
-                  )
-                ORDER BY e.ordem_entrega ASC
-            ");
-            $stmtLast->execute(['motorista_id' => $id]);
-            $entregas = $stmtLast->fetchAll(\PDO::FETCH_ASSOC);
-        }
+        $registrarTempoEtapa('select route deliveries');
 
         if (empty($entregas)) {
             return $this->json($response, [
@@ -683,6 +742,44 @@ ORDER BY e.ordem_entrega ASC
         }
         $pedidosErpIds = array_keys($pedidosErpIds);
 
+        if ($entregaIds && $pedidosErpIds) {
+            $placeholdersEntregas = implode(',', array_fill(0, count($entregaIds), '?'));
+            $stmtRepresentantes = $this->pdo->prepare("
+                WITH entrega_pedidos AS (
+                    SELECT
+                        e.id AS entrega_id,
+                        pedido_id.valor::integer AS pedido_id
+                    FROM frota_entrega e
+                    CROSS JOIN LATERAL regexp_split_to_table(
+                        COALESCE(NULLIF(e.pedidos_ids, ''), e.pedido_id::text, ''),
+                        ','
+                    ) AS pedido_id(valor)
+                    WHERE e.id IN ({$placeholdersEntregas})
+                      AND pedido_id.valor ~ '^[0-9]+$'
+                )
+                SELECT DISTINCT ON (ep.entrega_id)
+                    ep.entrega_id,
+                    vend.fantasia AS representante_nome,
+                    vend.fone AS representante_telefone
+                FROM entrega_pedidos ep
+                INNER JOIN pedido p ON p.idpedido = ep.pedido_id
+                INNER JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
+                ORDER BY ep.entrega_id, p.idpedido
+            ");
+            $stmtRepresentantes->execute($entregaIds);
+            $representantesPorEntrega = [];
+            foreach ($stmtRepresentantes->fetchAll(\PDO::FETCH_ASSOC) as $representante) {
+                $representantesPorEntrega[$representante['entrega_id']] = $representante;
+            }
+            foreach ($entregas as &$entrega) {
+                $representante = $representantesPorEntrega[$entrega['id']] ?? null;
+                $entrega['representante_nome'] = $representante['representante_nome'] ?? null;
+                $entrega['representante_telefone'] = $representante['representante_telefone'] ?? null;
+            }
+            unset($entrega);
+        }
+        $registrarTempoEtapa('select representatives');
+
         $itensErpPorPedido = [];
         if (!empty($pedidosErpIds)) {
             $placeholders = implode(',', array_fill(0, count($pedidosErpIds), '?'));
@@ -708,6 +805,7 @@ ORDER BY e.ordem_entrega ASC
                 $itensErpPorPedido[$itemErp['idpedido']][] = $itemErp;
             }
         }
+        $registrarTempoEtapa('select order items');
 
         // ── 2. Checklist já registrado (só para enriquecer)
         $checklistRegistradoPorEntrega = [];
@@ -745,8 +843,10 @@ ORDER BY e.ordem_entrega ASC
                 }
             }
         }
+        $registrarTempoEtapa('select checklist and levas');
 
         // ── 3. Cruzar: para cada entrega, montar o checklist completo
+        $volumeTotalEmbarque = 0.0;
         foreach ($entregas as &$entrega) {
             $entregaId = (int)$entrega['id'];
 
@@ -756,7 +856,7 @@ ORDER BY e.ordem_entrega ASC
             //   O frontend usa `typeof x === 'number'` e falha silenciosamente.
             //   Forçamos cast para float/null aqui, uma vez, e o resto do app
             //   (motorista, admin, futuros consumidores) já recebe number.
-            foreach (['latitude', 'longitude', 'veiculo_lat', 'veiculo_lng'] as $campoCoordenada) {
+            foreach (['latitude', 'longitude', 'map_latitude', 'map_longitude', 'veiculo_lat', 'veiculo_lng'] as $campoCoordenada) {
                 if (array_key_exists($campoCoordenada, $entrega)) {
                     $entrega[$campoCoordenada] = ($entrega[$campoCoordenada] === null || $entrega[$campoCoordenada] === '')
                         ? null
@@ -771,11 +871,10 @@ ORDER BY e.ordem_entrega ASC
             if (empty($idsDaEntrega) && !empty($entrega['pedido_id'])) {
                 $idsDaEntrega = [(int)$entrega['pedido_id']];
             }
-            if (!empty($entrega['pedidos_ids'])) {
-                $idsDaEntrega = array_filter(array_map('intval', explode(',', $entrega['pedidos_ids'])));
-            }
-            if (empty($idsDaEntrega) && !empty($entrega['pedido_id'])) {
-                $idsDaEntrega = [(int)$entrega['pedido_id']];
+            foreach (array_unique($idsDaEntrega) as $pedidoId) {
+                foreach ($itensErpPorPedido[$pedidoId] ?? [] as $itemErp) {
+                    $volumeTotalEmbarque += (float)$itemErp['quantidade_prevista'];
+                }
             }
 
             $itensConsolidados = [];
@@ -893,11 +992,7 @@ ORDER BY e.ordem_entrega ASC
             $stmtEmbarqueInfo = $this->pdo->prepare("
                 SELECT 
                     e.id, e.numero_embarque, e.erp_embarque_id, e.nome_embarque as rota, e.status as status_embarque, e.data_saida, e.data_retorno,
-                    v.placa as veiculo_placa, v.modelo as veiculo_modelo, m.nome as motorista_nome,
-                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id) as total_entregas,
-                    (SELECT COUNT(*) FROM frota_entrega WHERE embarque_id = e.id AND status IN ('entregue', 'entregue_com_problema')) as entregas_concluidas,
-                    (SELECT COALESCE(SUM(valor_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as valor_total,
-                    (SELECT COALESCE(SUM(peso_total), 0) FROM frota_entrega WHERE embarque_id = e.id) as peso_total
+                    v.placa as veiculo_placa, v.modelo as veiculo_modelo, m.nome as motorista_nome
                 FROM frota_embarque e
                 LEFT JOIN frota_veiculo v ON v.id = e.veiculo_id
                 LEFT JOIN frota_motorista m ON m.id = e.motorista_id
@@ -914,10 +1009,10 @@ ORDER BY e.ordem_entrega ASC
                     'veiculo_placa' => $info['veiculo_placa'],
                     'veiculo_modelo' => $info['veiculo_modelo'],
                     'motorista_nome' => $info['motorista_nome'],
-                    'valor_total' => (float)$info['valor_total'],
-                    'peso_total' => (float)$info['peso_total'],
-                    'total_entregas' => (int)$info['total_entregas'],
-                    'entregas_concluidas' => (int)$info['entregas_concluidas'],
+                    'volume_total' => $volumeTotalEmbarque,
+                    'peso_total' => array_sum(array_map(static fn($item) => (float)($item['peso_total'] ?? 0), $entregas)),
+                    'total_entregas' => $total,
+                    'entregas_concluidas' => $entregues,
                     'status_embarque' => $info['status_embarque'],
                     'data_saida' => $info['data_saida'],
                     'data_retorno' => $info['data_retorno'],
@@ -933,6 +1028,16 @@ ORDER BY e.ordem_entrega ASC
         ");
         $stmtRota->execute(['motorista_id' => $id]);
        $rotaAtiva = $stmtRota->fetch(\PDO::FETCH_ASSOC) ?: null;
+        $registrarTempoEtapa('build response');
+        $tempoTotalCarregamento = microtime(true) - $inicioCarregamentoCompleto;
+        if ($tempoTotalCarregamento >= 2) {
+            error_log(sprintf(
+                '[Frota entregasHoje] total %.3fs (%d deliveries, %d orders)',
+                $tempoTotalCarregamento,
+                count($entregas),
+                count($pedidosErpIds)
+            ));
+        }
 
         return $this->json($response, [
             'success' => true,
@@ -1027,6 +1132,9 @@ ORDER BY e.ordem_entrega ASC
     public function iniciarRota(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         // Buscar próximo embarque planejado
         $stmt = $this->pdo->prepare("
@@ -1099,6 +1207,9 @@ ORDER BY e.ordem_entrega ASC
     public function finalizarRota(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         
         // Buscar embarque em andamento
         $stmt = $this->pdo->prepare("
@@ -1196,12 +1307,7 @@ ORDER BY e.ordem_entrega ASC
         }
 
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $user = $request->getAttribute('user') ?? [];
-        $permissoes = $user['permissoes'] ?? [];
-        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
-        $motoristaAutenticado = (int)($user['motorista_id'] ?? 0);
-
-        if (!$isAdmin && $motoristaAutenticado !== $id) {
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Motorista não autorizado'
@@ -1302,6 +1408,9 @@ ORDER BY e.ordem_entrega ASC
     public function estatisticas(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $dias = (int)($request->getQueryParams()['dias'] ?? 30);
         
         // Usar função PostgreSQL
@@ -1358,6 +1467,9 @@ ORDER BY e.ordem_entrega ASC
     public function registrarOcorrencia(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
         $tipo = $input['tipo'] ?? '';
@@ -1430,6 +1542,9 @@ ORDER BY e.ordem_entrega ASC
      */
     public function enviarNotificacao(Request $request, Response $response, array $args): Response
     {
+        if (!$this->usuarioTemAcessoGestao($request)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
@@ -1513,6 +1628,9 @@ ORDER BY e.ordem_entrega ASC
     public function marcarNotificacaoLida(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $notifId = (int)$args['notif_id'];
         
         $stmt = $this->pdo->prepare("
@@ -1535,6 +1653,9 @@ ORDER BY e.ordem_entrega ASC
     public function iniciarJornada(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
         $lat = (float)($input['lat'] ?? 0);
@@ -1581,6 +1702,9 @@ ORDER BY e.ordem_entrega ASC
     public function finalizarJornada(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         
         $lat = (float)($input['lat'] ?? 0);
@@ -1640,6 +1764,9 @@ ORDER BY e.ordem_entrega ASC
     public function historicoJornada(Request $request, Response $response, array $args): Response
     {
         $id = (int)$args['id'];
+        if (!$this->usuarioPodeAcessarMotorista($request, $id)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+        }
         $limite = (int)($request->getQueryParams()['limite'] ?? 30);
         
         $stmt = $this->pdo->prepare("
@@ -1686,8 +1813,7 @@ ORDER BY e.ordem_entrega ASC
      * Retorna:
      * - Score desempenho interno (do cache Cobli)
      * - Score Cobli (frota_cobli_score_cache)
-     * - Ranking (posição do motorista, sem nomes)
-     * - Resumo do mês (entregas, valor, km, tempo)
+     * - Resumo do mês (entregas, volume de itens, km, tempo)
      * - Caminhão hoje (posição + odômetro + velocidade + tempo parado)
      * - Últimos 5 embarques
      *
@@ -1705,9 +1831,8 @@ ORDER BY e.ordem_entrega ASC
             // 1. Resumo do Mês
             $resumo = $this->getResumoMes($id);
 
-            // 2. Score Cobli + Ranking
+            // 2. Score Cobli
             $cobli = $this->getCobliScoreMotorista($id);
-            $ranking = $this->getRankingMotorista($id);
 
             // 3. Caminhão Hoje
             $caminhao = $this->getCaminhaoHoje($id);
@@ -1720,7 +1845,6 @@ ORDER BY e.ordem_entrega ASC
                 'data' => [
                     'resumo_mes' => $resumo,
                     'cobli' => $cobli,
-                    'ranking' => $ranking,
                     'caminhao_hoje' => $caminhao,
                     'ultimos_embarques' => $embarques,
                 ]
@@ -1751,14 +1875,29 @@ ORDER BY e.ordem_entrega ASC
             SELECT
                 COUNT(e.id) AS total_entregas,
                 COUNT(e.id) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')) AS entregas_concluidas,
-                COUNT(e.id) FILTER (WHERE e.status = 'falha') AS falhas,
-                COALESCE(SUM(e.valor_total) FILTER (WHERE e.status IN ('entregue', 'entregue_com_problema')), 0) AS valor_total,
+                COUNT(e.id) FILTER (WHERE e.status = 'falha' OR e.motivo_falha IS NOT NULL) AS falhas,
+                COALESCE(SUM(
+                    CASE WHEN e.status IN ('entregue', 'entregue_com_problema') THEN (
+                        SELECT COALESCE(SUM(pi.qt), 0)
+                        FROM pedido_item pi
+                        WHERE pi.ativo = 'S'
+                          AND pi.idpedido IN (
+                              SELECT value::integer
+                              FROM regexp_split_to_table(
+                                  COALESCE(NULLIF(e.pedidos_ids, ''), e.pedido_id::text, ''),
+                                  ','
+                              ) value
+                              WHERE value ~ '^[0-9]+$'
+                          )
+                    ) ELSE 0 END
+                ), 0) AS volume_total,
                 COALESCE(AVG(EXTRACT(EPOCH FROM (e.horario_entrega - e.horario_checkin))/60) FILTER (WHERE e.status = 'entregue' AND e.horario_checkin IS NOT NULL), 0) AS tempo_medio_min
             FROM frota_entrega e
             INNER JOIN frota_embarque eb ON eb.id = e.embarque_id
             WHERE eb.motorista_id = :motorista_id
               AND e.status IN ('entregue', 'entregue_com_problema', 'falha')
-              AND DATE(e.horario_entrega) >= DATE_TRUNC('month', CURRENT_DATE)
+              AND COALESCE(e.horario_entrega, e.updated_at, e.created_at) >= DATE_TRUNC('month', CURRENT_DATE)
+              AND COALESCE(e.horario_entrega, e.updated_at, e.created_at) < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
         ";
 
         $stmt = $this->pdo->prepare($sql);
@@ -1774,6 +1913,7 @@ ORDER BY e.ordem_entrega ASC
             WHERE s.aggregation_type = 'DRIVER'
               AND cm.motorista_id = :motorista_id
               AND s.periodo_fim >= DATE_TRUNC('month', CURRENT_DATE)
+              AND s.periodo_fim < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
             ORDER BY s.atualizado_em DESC, s.id DESC
             LIMIT 1
         ");
@@ -1784,7 +1924,7 @@ ORDER BY e.ordem_entrega ASC
             'total_entregas'      => (int)($row['total_entregas'] ?? 0),
             'entregas_concluidas' => (int)($row['entregas_concluidas'] ?? 0),
             'falhas'              => (int)($row['falhas'] ?? 0),
-            'valor_total'         => (float)($row['valor_total'] ?? 0),
+            'volume_total'        => (float)($row['volume_total'] ?? 0),
             'tempo_medio_min'     => round((float)($row['tempo_medio_min'] ?? 0), 1),
             'km_rodados'          => round($km, 1),
         ];
@@ -1801,7 +1941,7 @@ ORDER BY e.ordem_entrega ASC
      */
     private function getCobliScoreMotorista(int $motoristaId): array
     {
-        $cacheKey = "cobli_score_motorista_{$motoristaId}";
+        $cacheKey = "cobli_score_motorista_mes_atual_{$motoristaId}";
         $cacheFile = sys_get_temp_dir() . '/' . $cacheKey . '.json';
         if (file_exists($cacheFile) && (time() - filemtime($cacheFile)) < 300) {
             $cached = json_decode(file_get_contents($cacheFile), true);
@@ -1834,6 +1974,8 @@ ORDER BY e.ordem_entrega ASC
                     FROM frota_cobli_score_cache
                     WHERE aggregation_type = 'DRIVER'
                       AND entity_id = :entity_id
+                      AND periodo_fim >= DATE_TRUNC('month', CURRENT_DATE)
+                      AND periodo_fim < DATE_TRUNC('month', CURRENT_DATE) + INTERVAL '1 month'
                     ORDER BY periodo_fim DESC
                     LIMIT 1
                 ");
@@ -1869,75 +2011,6 @@ ORDER BY e.ordem_entrega ASC
         }
 
         file_put_contents($cacheFile, json_encode($resultado));
-
-        return $resultado;
-    }
-
-       /**
-     * Posição do motorista no ranking Cobli (Opção B: sempre do cache).
-     * Retorna apenas: posição, total e percentil.
-     *
-     * 🔥 CORRIGIDO 2026-09-25 (Pacote 2):
-     *   - Antes a `posicao` vinha de uma query RANK() sobre o cache mas
-     *     o `total` vinha de uma subquery separada. Isso gerava
-     *     inconsistências (ex: "23º de 16").
-     *   - Agora ambos vêm da MESMA query. Se o cache tem 16, mostra
-     *     "5º de 16". Se tiver 64, mostra "23º de 64".
-     *   - Anônimo: nunca retorna nome de outros motoristas.
-     */
-    private function getRankingMotorista(int $motoristaId): array
-    {
-        $resultado = [
-            'posicao'          => null,
-            'total_motoristas' => 0,
-            'percentil'        => null,
-        ];
-
-        try {
-            // Buscar o vínculo
-            $stmt = $this->pdo->prepare("
-                SELECT cobli_driver_id
-                FROM frota_cobli_motorista
-                WHERE motorista_id = :motorista_id
-            ");
-            $stmt->execute(['motorista_id' => $motoristaId]);
-            $cobliDriverId = $stmt->fetchColumn();
-
-            if (!$cobliDriverId) return $resultado;
-
-            // 🔥 Posição e total vêm da MESMA query — sempre consistentes
-            $stmt = $this->pdo->prepare("
-                WITH ranking_atual AS (
-                    SELECT
-                        entity_id,
-                        RANK() OVER (ORDER BY score DESC) AS posicao,
-                        COUNT(*) OVER ()                   AS total
-                    FROM frota_cobli_score_cache
-                    WHERE aggregation_type = 'DRIVER'
-                      AND periodo_fim >= DATE_TRUNC('month', CURRENT_DATE)
-                )
-                SELECT posicao, total
-                FROM ranking_atual
-                WHERE entity_id = :entity_id
-                LIMIT 1
-            ");
-            $stmt->execute(['entity_id' => $cobliDriverId]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-            if ($row && $row['posicao'] !== null) {
-                $posicao = (int)$row['posicao'];
-                $total   = (int)$row['total'];
-                $resultado = [
-                    'posicao'          => $posicao,
-                    'total_motoristas' => $total,
-                    'percentil'        => $total > 0
-                        ? (int)round((1 - ($posicao - 1) / $total) * 100)
-                        : 0,
-                ];
-            }
-        } catch (\Exception $e) {
-            error_log('[PainelPessoal] Erro ao buscar ranking: ' . $e->getMessage());
-        }
 
         return $resultado;
     }

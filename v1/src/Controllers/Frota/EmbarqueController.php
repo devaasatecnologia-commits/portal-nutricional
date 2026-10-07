@@ -516,13 +516,15 @@ public function deletar(Request $request, Response $response, array $args): Resp
             $resultado = $this->otimizadorRotas->otimizar($id);
             
             if (!$resultado['success']) {
-                return $this->json($response, $resultado, 400);
+                $status = ($resultado['code'] ?? null) === 'service_unavailable' ? 503 : 400;
+                return $this->json($response, $resultado, $status);
             }
             
             return $this->json($response, [
                 'success' => true,
                 'data' => $resultado['data'],
                 'rota' => $resultado['rota'],
+                'geometria' => $resultado['geometria'] ?? [],
                 'metricas' => $resultado['metricas']
             ]);
             

@@ -372,6 +372,12 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
     {
         $embarqueId = (int)($args['id'] ?? 0);
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        if (!is_array($input)) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Payload de reordenação inválido'
+            ], 400);
+        }
         $novaOrdem = $input['ordem'] ?? [];
         
         if ($embarqueId <= 0) {
@@ -381,18 +387,105 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
             ], 400);
         }
         
-        if (empty($novaOrdem)) {
+        if (!is_array($novaOrdem) || empty($novaOrdem)) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Nova ordem não fornecida'
             ], 400);
         }
+
+        foreach ($novaOrdem as $entregaId) {
+            if ((!is_int($entregaId) && !(is_string($entregaId) && ctype_digit($entregaId))) || (int)$entregaId <= 0) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'A ordem contém um ID de entrega inválido'
+                ], 400);
+            }
+        }
+        $novaOrdem = array_values(array_map('intval', $novaOrdem));
+        if (count(array_unique($novaOrdem)) !== count($novaOrdem)) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'A ordem não pode conter entregas duplicadas'
+            ], 400);
+        }
+        if (isset($input['expected_updated_at']) && !is_string($input['expected_updated_at'])) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Versão da rota inválida'
+            ], 400);
+        }
+
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $isGestor = (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
         
         try {
             $pdo = $this->pdo;
             $pdo->beginTransaction();
-            
-            // Atualizar ordem de cada entrega
+
+            $stmtEmbarque = $pdo->prepare("
+                SELECT motorista_id, updated_at
+                FROM frota_embarque
+                WHERE id = :embarque_id
+                FOR UPDATE
+            ");
+            $stmtEmbarque->execute(['embarque_id' => $embarqueId]);
+            $embarque = $stmtEmbarque->fetch(\PDO::FETCH_ASSOC);
+            if (!$embarque) {
+                $pdo->rollBack();
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Embarque não encontrado'
+                ], 404);
+            }
+
+            if (!$isGestor && (
+                (int)($user['motorista_id'] ?? 0) <= 0
+                || (int)$embarque['motorista_id'] !== (int)$user['motorista_id']
+            )) {
+                $pdo->rollBack();
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Acesso não autorizado a este embarque'
+                ], 403);
+            }
+
+            $versaoEsperada = trim($input['expected_updated_at'] ?? '');
+            if ($versaoEsperada !== '' && $versaoEsperada !== (string)$embarque['updated_at']) {
+                $pdo->rollBack();
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'A rota foi alterada desde a última atualização',
+                    'code' => 'ROTA_DESATUALIZADA'
+                ], 409);
+            }
+
+            $stmtEntregas = $pdo->prepare("
+                SELECT id
+                FROM frota_entrega
+                WHERE embarque_id = :embarque_id
+                ORDER BY id
+                FOR UPDATE
+            ");
+            $stmtEntregas->execute(['embarque_id' => $embarqueId]);
+            $idsAtuais = array_map('intval', $stmtEntregas->fetchAll(\PDO::FETCH_COLUMN));
+            $idsRecebidos = $novaOrdem;
+            sort($idsAtuais, SORT_NUMERIC);
+            sort($idsRecebidos, SORT_NUMERIC);
+            if ($idsAtuais !== $idsRecebidos) {
+                $pdo->rollBack();
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'A lista de entregas do embarque mudou; atualize a rota antes de reordenar',
+                    'code' => 'ROTA_DESATUALIZADA'
+                ], 409);
+            }
+
+            // Atualizar ordem de todas as entregas sob bloqueio transacional.
             foreach ($novaOrdem as $posicao => $entregaId) {
                 $stmt = $pdo->prepare("
                     UPDATE frota_entrega 
@@ -407,6 +500,15 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                     'embarque_id' => $embarqueId
                 ]);
             }
+
+            $stmtVersao = $pdo->prepare("
+                UPDATE frota_embarque
+                SET updated_at = NOW()
+                WHERE id = :embarque_id
+                RETURNING updated_at
+            ");
+            $stmtVersao->execute(['embarque_id' => $embarqueId]);
+            $updatedAt = $stmtVersao->fetchColumn();
             
             $pdo->commit();
             
@@ -415,18 +517,19 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                 'message' => 'Ordem atualizada com sucesso',
                 'data' => [
                     'embarque_id' => $embarqueId,
-                    'total_entregas' => count($novaOrdem)
+                    'total_entregas' => count($novaOrdem),
+                    'updated_at' => $updatedAt
                 ]
             ]);
             
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             error_log('[Reordenar] Erro: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => 'Não foi possível atualizar a ordem das entregas'
             ], 500);
         }
     }

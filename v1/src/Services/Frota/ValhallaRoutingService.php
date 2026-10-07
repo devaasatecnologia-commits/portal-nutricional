@@ -37,15 +37,7 @@ class ValhallaRoutingService
             'costing' => 'truck',
             'units' => 'kilometers',
             'directions_options' => ['units' => 'kilometers'],
-            'costing_options' => [
-                'truck' => array_filter([
-                    'height' => $this->number($vehicle['altura'] ?? $_ENV['TRUCK_HEIGHT'] ?? null),
-                    'width' => $this->number($vehicle['largura'] ?? $_ENV['TRUCK_WIDTH'] ?? null),
-                    'length' => $this->number($vehicle['comprimento'] ?? $_ENV['TRUCK_LENGTH'] ?? null),
-                    'weight' => $this->number($vehicle['peso'] ?? $vehicle['capacidade_peso'] ?? $_ENV['TRUCK_WEIGHT'] ?? null),
-                    'fixed_speed' => $this->number($_ENV['TRUCK_FIXED_SPEED'] ?? null)
-                ], static fn ($value) => $value !== null)
-            ]
+            'costing_options' => ['truck' => $this->costingOptions($vehicle)]
         ];
 
         try {
@@ -73,6 +65,103 @@ class ValhallaRoutingService
             error_log('Valhalla indisponível: ' . $exception->getMessage());
             return ['success' => false, 'error' => 'Serviço de roteamento Valhalla indisponível'];
         }
+    }
+
+    public function timeDistanceMatrix(array $points, array $vehicle = []): array
+    {
+        if (count($points) < 2) {
+            return ['success' => false, 'error' => 'A matriz precisa de pelo menos dois pontos'];
+        }
+
+        $locations = [];
+        foreach ($points as $point) {
+            $latitude = $point['latitude'] ?? null;
+            $longitude = $point['longitude'] ?? null;
+            if (
+                !is_numeric($latitude)
+                || !is_numeric($longitude)
+                || (float)$latitude < -90
+                || (float)$latitude > 90
+                || (float)$longitude < -180
+                || (float)$longitude > 180
+            ) {
+                return ['success' => false, 'error' => 'A rota contém coordenadas inválidas'];
+            }
+
+            $locations[] = ['lat' => (float)$latitude, 'lon' => (float)$longitude];
+        }
+
+        $payload = [
+            'sources' => $locations,
+            'targets' => $locations,
+            'costing' => 'truck',
+            'units' => 'kilometers',
+            'verbose' => true,
+            'costing_options' => ['truck' => $this->costingOptions($vehicle)]
+        ];
+
+        try {
+            $response = $this->client->post($this->baseUrl . '/sources_to_targets', [
+                'headers' => ['Accept' => 'application/json'],
+                'json' => $payload
+            ]);
+            $data = json_decode((string)$response->getBody(), true);
+            $cells = $data['sources_to_targets'] ?? null;
+            $pointCount = count($locations);
+
+            if (!is_array($cells) || count($cells) !== $pointCount * $pointCount) {
+                return ['success' => false, 'error' => 'Valhalla retornou uma matriz de rotas inválida'];
+            }
+
+            $matrix = array_fill(0, $pointCount, []);
+            foreach ($cells as $index => $cell) {
+                if (!is_array($cell)) {
+                    return ['success' => false, 'error' => 'Valhalla retornou uma matriz de rotas inválida'];
+                }
+
+                $from = intdiv($index, $pointCount);
+                $to = $index % $pointCount;
+                $time = $cell['time'] ?? null;
+                $distance = $cell['distance'] ?? null;
+                if (
+                    ($time !== null && (!is_numeric($time) || (float)$time < 0))
+                    || ($distance !== null && (!is_numeric($distance) || (float)$distance < 0))
+                ) {
+                    return ['success' => false, 'error' => 'Valhalla retornou métricas de rota inválidas'];
+                }
+
+                $matrix[$from][$to] = [
+                    'time_seconds' => is_numeric($time) ? (float)$time : null,
+                    'distance_km' => is_numeric($distance) ? (float)$distance : null
+                ];
+            }
+
+            return [
+                'success' => true,
+                'provider' => 'valhalla',
+                'profile' => 'truck',
+                'matrix' => $matrix,
+                'warnings' => is_array($data['warnings'] ?? null) ? $data['warnings'] : []
+            ];
+        } catch (GuzzleException $exception) {
+            error_log('Matriz Valhalla indisponível: ' . $exception->getMessage());
+            return [
+                'success' => false,
+                'code' => 'service_unavailable',
+                'error' => 'Serviço de roteamento Valhalla indisponível'
+            ];
+        }
+    }
+
+    private function costingOptions(array $vehicle): array
+    {
+        return array_filter([
+            'height' => $this->number($vehicle['altura'] ?? $_ENV['TRUCK_HEIGHT'] ?? null),
+            'width' => $this->number($vehicle['largura'] ?? $_ENV['TRUCK_WIDTH'] ?? null),
+            'length' => $this->number($vehicle['comprimento'] ?? $_ENV['TRUCK_LENGTH'] ?? null),
+            'weight' => $this->number($vehicle['peso'] ?? $vehicle['capacidade_peso'] ?? $_ENV['TRUCK_WEIGHT'] ?? null),
+            'fixed_speed' => $this->number($_ENV['TRUCK_FIXED_SPEED'] ?? null)
+        ], static fn ($value) => $value !== null);
     }
 
     private function number($value): ?float

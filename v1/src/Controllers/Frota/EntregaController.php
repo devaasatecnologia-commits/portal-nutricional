@@ -21,8 +21,7 @@ class EntregaController
     /**
      * Detecta se a requisição está em modo treinamento.
      *
-     * Ativado via header `X-Training-Mode: 1` (enviado pelo app do motorista
-     * quando a URL tem `?treino=1`).
+     * Ativado via header `X-Training-Mode: 1` apenas para usuários de gestão.
      *
      * Em modo treinamento:
      *   - checkin/checkout NÃO são bloqueados por distância
@@ -30,7 +29,14 @@ class EntregaController
      */
     private function isTrainingMode(Request $request): bool
     {
-        return $request->getHeaderLine('X-Training-Mode') === '1';
+        $user = $request->getAttribute('user') ?? [];
+        $permissoes = $user['permissoes'] ?? [];
+        $podeTreinar = (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
+            || in_array('frota', $permissoes, true)
+            || in_array('gestao-cargas', $permissoes, true);
+
+        return $podeTreinar && $request->getHeaderLine('X-Training-Mode') === '1';
     }
     /**
      * GET /v1/frota/entregas
@@ -39,6 +45,8 @@ class EntregaController
     public function listar(Request $request, Response $response): Response
     {
         $params = $request->getQueryParams();
+        $user = $request->getAttribute('user') ?? [];
+        $temAcessoGestao = $this->usuarioTemAcessoGestao($request);
         
         $filtros = [];
         $bindParams = [];
@@ -51,9 +59,17 @@ class EntregaController
             $filtros[] = "e.embarque_id = :embarque_id";
             $bindParams['embarque_id'] = (int)$params['embarque_id'];
         }
-        if (!empty($params['motorista_id'])) {
+        if ($temAcessoGestao && !empty($params['motorista_id'])) {
             $filtros[] = "eb.motorista_id = :motorista_id";
             $bindParams['motorista_id'] = (int)$params['motorista_id'];
+        }
+        if (!$temAcessoGestao) {
+            $motoristaId = (int)($user['motorista_id'] ?? 0);
+            if ($motoristaId <= 0) {
+                return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado'], 403);
+            }
+            $filtros[] = "eb.motorista_id = :motorista_id_autenticado";
+            $bindParams['motorista_id_autenticado'] = $motoristaId;
         }
         if (!empty($params['cliente_id'])) {
             $filtros[] = "e.cliente_id = :cliente_id";
@@ -72,8 +88,8 @@ class EntregaController
         
         $where = !empty($filtros) ? 'WHERE ' . implode(' AND ', $filtros) : '';
         
-        $limite = (int)($params['limite'] ?? 20);
-        $pagina = (int)($params['pagina'] ?? 1);
+        $limite = max(1, min((int)($params['limite'] ?? 20), 100));
+        $pagina = max(1, (int)($params['pagina'] ?? 1));
         $offset = ($pagina - 1) * $limite;
         
         $sql = "
@@ -191,6 +207,9 @@ class EntregaController
                 'success' => false,
                 'error' => 'Entrega não encontrada'
             ], 404);
+        }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado a esta entrega'], 403);
         }
 
     // ================================================================
@@ -315,6 +334,7 @@ class EntregaController
         e.observacoes,
         e.foto_entrega_url,
         eb.numero_embarque,
+        eb.motorista_id,
         m.nome as motorista_nome,
         m.telefone as motorista_telefone,
         v.placa,
@@ -339,6 +359,9 @@ class EntregaController
                 'success' => false,
                 'error' => 'Código de rastreamento não encontrado'
             ], 404);
+        }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado a esta entrega'], 403);
         }
         
         $entrega['timeline'] = $this->gerarTimeline($entrega['id']);
@@ -367,10 +390,6 @@ class EntregaController
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         $operationId = $this->getOfflineOperationId($request, $input);
-        $previousOperation = $this->getOfflineOperation($operationId);
-        if ($previousOperation) {
-            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
-        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         $desktop = (bool)($input['desktop'] ?? false);
@@ -380,8 +399,12 @@ class EntregaController
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
         }
-        if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
             return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
+        }
+        $previousOperation = $this->getOfflineOperation($operationId, $id, 'checkin');
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
         }
 
         if ($entrega['status'] === 'entregue') {
@@ -477,8 +500,48 @@ class EntregaController
         $latGravar = $gravarCoordenadas ? $lat : null;
         $lngGravar = $gravarCoordenadas ? $lng : null;
 
-        // Registrar check-in
-        $stmt = $this->pdo->prepare("
+        try {
+            $this->pdo->beginTransaction();
+
+            $motoristaId = (int)($entrega['motorista_id'] ?? 0);
+            if ($motoristaId > 0) {
+                $stmt = $this->pdo->prepare("
+                    SELECT id
+                    FROM frota_motorista
+                    WHERE id = :motorista_id
+                    FOR UPDATE
+                ");
+                $stmt->execute(['motorista_id' => $motoristaId]);
+
+                $stmt = $this->pdo->prepare("
+                    SELECT e.id
+                    FROM frota_entrega e
+                    INNER JOIN frota_embarque eb ON eb.id = e.embarque_id
+                    WHERE eb.motorista_id = :motorista_id
+                      AND e.status = 'em_entrega'
+                      AND e.id <> :entrega_id
+                    ORDER BY e.horario_checkin ASC NULLS LAST, e.id ASC
+                    LIMIT 1
+                ");
+                $stmt->execute([
+                    'motorista_id' => $motoristaId,
+                    'entrega_id' => $id
+                ]);
+                $entregaAtivaId = $stmt->fetchColumn();
+
+                if ($entregaAtivaId) {
+                    $this->pdo->rollBack();
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => "Finalize a entrega #{$entregaAtivaId} antes de iniciar outra.",
+                        'code' => 'ENTREGA_EM_ANDAMENTO',
+                        'entrega_em_andamento_id' => (int)$entregaAtivaId
+                    ], 409);
+                }
+            }
+
+            // Registrar check-in
+            $stmt = $this->pdo->prepare("
             INSERT INTO frota_checkin 
             (entrega_id, motorista_id, tipo, latitude, longitude, foto_url, observacoes, data_hora)
             VALUES (
@@ -491,57 +554,70 @@ class EntregaController
                 :observacoes,
                 NOW()
             )
-        ");
-        $stmt->execute([
-            'entrega_id' => $id,
-            'entrega_id2' => $id,
-            'lat' => $latGravar,
-            'lng' => $lngGravar,
-            'foto' => $fotoUrl,
-            'observacoes' => $motivoAtraso // 🔥 NOVO (Pacote 5 - M6)
-        ]);
+            ");
+            $stmt->execute([
+                'entrega_id' => $id,
+                'entrega_id2' => $id,
+                'lat' => $latGravar,
+                'lng' => $lngGravar,
+                'foto' => $fotoUrl,
+                'observacoes' => $motivoAtraso
+            ]);
 
-        // Atualizar entrega
-        $stmt = $this->pdo->prepare("
+            // Atualizar entrega
+            $stmt = $this->pdo->prepare("
             UPDATE frota_entrega 
                 SET status = 'em_entrega',
                 horario_checkin = NOW(),
                 lat_checkin = :lat,
                 lng_checkin = :lng,
                 foto_checkin_url = :foto,
+                motivo_falha = NULL,
+                observacoes_falha = NULL,
                 updated_at = NOW()
                 WHERE id = :id
-        ");
-        $stmt->execute([
-            'id' => $id,
-            'lat' => $latGravar,
-            'lng' => $lngGravar,
-            'foto' => $fotoUrl
-        ]);
+            ");
+            $stmt->execute([
+                'id' => $id,
+                'lat' => $latGravar,
+                'lng' => $lngGravar,
+                'foto' => $fotoUrl
+            ]);
 
-        // LOG
-        $logDescricao = "Check-in registrado para entrega #{$id}"
-            . ($desktop ? ' (desktop)' : '')
-            . ($isTraining ? ' [MODO TREINAMENTO]' : '')
-            . (!$gravarCoordenadas ? ' [sem GPS - fora do raio]' : '')
-            . ($motivoAtraso ? " [ATRASO: {$motivoAtraso}]" : ''); // 🔥 NOVO (Pacote 5 - M6)
+            // LOG
+            $logDescricao = "Check-in registrado para entrega #{$id}"
+                . ($desktop ? ' (desktop)' : '')
+                . ($isTraining ? ' [MODO TREINAMENTO]' : '')
+                . (!$gravarCoordenadas ? ' [sem GPS - fora do raio]' : '')
+                . ($motivoAtraso ? " [ATRASO: {$motivoAtraso}]" : '');
 
-        $this->registrarLogEntrega($id, 'checkin', $logDescricao, $usuarioId);
+            $this->registrarLogEntrega($id, 'checkin', $logDescricao, $usuarioId);
 
-        $payload = [
-            'success' => true,
-            'message' => 'Check-in registrado com sucesso!',
-            'data' => [
-                'entrega_id' => $id,
-                'status' => 'em_entrega',
-                'horario_checkin' => date('Y-m-d H:i:s'),
-                'gps_registrado' => $gravarCoordenadas,
-                'modo_treinamento' => $isTraining,
-                'motivo_atraso' => $motivoAtraso // 🔥 NOVO (Pacote 5 - M6)
-            ]
-        ];
-        $this->saveOfflineOperation($operationId, $id, 'checkin', $payload, 200);
-        return $this->json($response, $payload);
+            $payload = [
+                'success' => true,
+                'message' => 'Check-in registrado com sucesso!',
+                'data' => [
+                    'entrega_id' => $id,
+                    'status' => 'em_entrega',
+                    'horario_checkin' => date('Y-m-d H:i:s'),
+                    'gps_registrado' => $gravarCoordenadas,
+                    'modo_treinamento' => $isTraining,
+                    'motivo_atraso' => $motivoAtraso
+                ]
+            ];
+            $this->saveOfflineOperation($operationId, $id, 'checkin', $payload, 200);
+            $this->pdo->commit();
+            return $this->json($response, $payload);
+        } catch (\Throwable $exception) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            error_log('[Frota checkin] Falha ao registrar check-in #' . $id . ': ' . $exception->getMessage());
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Não foi possível registrar a chegada. Tente novamente.'
+            ], 500);
+        }
     }
        /**
      * POST /v1/frota/entregas/{id}/checkout
@@ -561,10 +637,6 @@ class EntregaController
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         $operationId = $this->getOfflineOperationId($request, $input);
-        $previousOperation = $this->getOfflineOperation($operationId);
-        if ($previousOperation) {
-            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
-        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         $isTraining = $this->isTrainingMode($request);
@@ -614,8 +686,12 @@ class EntregaController
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
         }
-        if (!$this->motoristaPodeOperarEntrega($request, $entrega, $desktop)) {
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
             return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
+        }
+        $previousOperation = $this->getOfflineOperation($operationId, $id, 'checkout');
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
         }
 
         if ($entrega['status'] === 'entregue') {
@@ -1076,6 +1152,13 @@ class EntregaController
                 'error' => 'ID da entrega inválido'
             ], 400);
         }
+        $entrega = $this->getEntrega($entregaId);
+        if (!$entrega) {
+            return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
+        }
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso não autorizado a esta entrega'], 403);
+        }
 
         try {
             $stmt = $this->pdo->prepare("
@@ -1136,7 +1219,7 @@ class EntregaController
             error_log('[Levas] Erro ao listar: ' . $e->getMessage());
             return $this->json($response, [
                 'success' => false,
-                'error' => 'Erro ao carregar levas: ' . $e->getMessage()
+                'error' => 'Não foi possível carregar as levas desta entrega'
             ], 500);
         }
     }
@@ -1148,10 +1231,6 @@ class EntregaController
         $id = (int)$args['id'];
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
         $operationId = $this->getOfflineOperationId($request, $input);
-        $previousOperation = $this->getOfflineOperation($operationId);
-        if ($previousOperation) {
-            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
-        }
         $user = $request->getAttribute('user');
         $usuarioId = $user['idusuario'] ?? 0;
         
@@ -1160,8 +1239,16 @@ class EntregaController
             return $this->json($response, ['success' => false, 'error' => 'Motivo da falha é obrigatório'], 400);
         }
         
-        $motivosValidos = ['cliente_ausente', 'endereco_incorreto', 'recusado', 'nao_localizado', 'outro'];
-        if (!in_array($motivo, $motivosValidos)) {
+        $motivosValidos = [
+            'cliente_ausente',
+            'endereco_incorreto',
+            'recusado',
+            'nao_localizado',
+            'veiculo_problema',
+            'cliente_fechado',
+            'outro'
+        ];
+        if (!in_array($motivo, $motivosValidos, true)) {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Motivo inválido. Opções: ' . implode(', ', $motivosValidos)
@@ -1172,8 +1259,12 @@ class EntregaController
         if (!$entrega) {
             return $this->json($response, ['success' => false, 'error' => 'Entrega não encontrada'], 404);
         }
-        if (!$this->motoristaPodeOperarEntrega($request, $entrega, (bool)($input['desktop'] ?? false))) {
+        if (!$this->motoristaPodeOperarEntrega($request, $entrega)) {
             return $this->json($response, ['success' => false, 'error' => 'Motorista não autorizado para esta entrega'], 403);
+        }
+        $previousOperation = $this->getOfflineOperation($operationId, $id, 'falha');
+        if ($previousOperation) {
+            return $this->json($response, $previousOperation['response'], $previousOperation['status_code']);
         }
         
         $lat = (float)($input['latitude'] ?? 0);
@@ -1192,7 +1283,7 @@ class EntregaController
             VALUES (
                 :entrega_id,
                 (SELECT motorista_id FROM frota_embarque WHERE id = (SELECT embarque_id FROM frota_entrega WHERE id = :entrega_id2)),
-                'endereco_incorreto',
+                :tipo,
                 :descricao,
                 :lat,
                 :lng,
@@ -1203,6 +1294,7 @@ class EntregaController
         $stmt->execute([
             'entrega_id' => $id,
             'entrega_id2' => $id,
+            'tipo' => $motivo,
             'descricao' => $input['observacao'] ?? $motivo,
             'lat' => $lat,
             'lng' => $lng
@@ -1438,20 +1530,23 @@ class EntregaController
         return $stmt->fetch(\PDO::FETCH_ASSOC);
     }
 
-    private function motoristaPodeOperarEntrega(Request $request, array $entrega, bool $desktop): bool
+    private function motoristaPodeOperarEntrega(Request $request, array $entrega): bool
+    {
+        if ($this->usuarioTemAcessoGestao($request)) return true;
+
+        $user = $request->getAttribute('user') ?? [];
+        $motoristaId = (int)($user['motorista_id'] ?? 0);
+        return $motoristaId > 0 && $motoristaId === (int)($entrega['motorista_id'] ?? 0);
+    }
+
+    private function usuarioTemAcessoGestao(Request $request): bool
     {
         $user = $request->getAttribute('user') ?? [];
         $permissoes = $user['permissoes'] ?? [];
-        $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $permissoes, true);
-        $temAcessoGestao = $isAdmin
+        return (bool)($user['is_admin'] ?? false)
+            || in_array('admin', $permissoes, true)
             || in_array('frota', $permissoes, true)
             || in_array('gestao-cargas', $permissoes, true);
-
-        if ($desktop) return $temAcessoGestao;
-        if ($isAdmin) return true;
-
-        $motoristaId = (int)($user['motorista_id'] ?? 0);
-        return $motoristaId > 0 && $motoristaId === (int)($entrega['motorista_id'] ?? 0);
     }
     
     private function getConfig($chave, $padrao = null)
@@ -1574,7 +1669,7 @@ class EntregaController
         return $operationId !== '' ? substr($operationId, 0, 160) : null;
     }
 
-    private function getOfflineOperation(?string $operationId): ?array
+    private function getOfflineOperation(?string $operationId, int $entregaId, string $acao): ?array
     {
         if (!$operationId) return null;
 
@@ -1584,8 +1679,14 @@ class EntregaController
                 SELECT response_body, status_code
                 FROM frota_operacao_offline
                 WHERE operation_id = :operation_id
+                  AND entrega_id = :entrega_id
+                  AND acao = :acao
             ");
-            $stmt->execute(['operation_id' => $operationId]);
+            $stmt->execute([
+                'operation_id' => $operationId,
+                'entrega_id' => $entregaId,
+                'acao' => $acao
+            ]);
             $operation = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$operation) return null;
 

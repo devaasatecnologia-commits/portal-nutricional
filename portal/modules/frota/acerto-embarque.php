@@ -35,8 +35,8 @@ require_once __DIR__ . '/../../estrutura/header.php';
 <!-- ================================================================
    HIDDEN INPUTS
    ================================================================ -->
-<input type="hidden" id="user_id" value="<?= $_SESSION['uid'] ?? $_SESSION['idusuario'] ?? 0 ?>">
-<input type="hidden" id="user_nome" value="<?= $_SESSION['uname'] ?? $_SESSION['username'] ?? 'Gestor' ?>">
+<input type="hidden" id="user_id" value="<?= (int)($_SESSION['uid'] ?? $_SESSION['idusuario'] ?? 0) ?>">
+<input type="hidden" id="user_nome" value="<?= htmlspecialchars((string)($_SESSION['uname'] ?? $_SESSION['username'] ?? 'Gestor'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
 
 <!-- ================================================================
    CONTEÚDO PRINCIPAL

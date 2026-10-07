@@ -3225,7 +3225,9 @@ function desenharMapaEmbarque() {
         embarqueMapMarkers.push(marker);
     });
 
-    // Atualiza a linha (rota)
+    if (pontos.length > 1) pontos.push([DISTRIBUIDORA_LNG, DISTRIBUIDORA_LAT]);
+
+    // Atualiza a linha (saída e retorno ao CD)
     atualizarLinhaRotaEmbarque(pontos);
 
     // Ajusta o zoom
@@ -3330,14 +3332,31 @@ function recalcularRotaEmbarque() {
         pontosLngLat.push([lng, lat]);
     });
 
+    if (pontosLngLat.length > 1) {
+        const retorno = calcularDistancia(
+            anterior.lat,
+            anterior.lng,
+            DISTRIBUIDORA_LAT,
+            DISTRIBUIDORA_LNG
+        );
+        if (retorno !== null) distancia += retorno;
+        pontosLngLat.push([DISTRIBUIDORA_LNG, DISTRIBUIDORA_LAT]);
+    }
+
     // Atualiza a linha no mapa (com animação)
     atualizarLinhaRotaEmbarque(pontosLngLat);
 
     // Atualiza os textos no DOM
     const elDist = document.querySelector('.swal-embarque-distancia');
     const elTempo = document.querySelector('.swal-embarque-tempo');
-    if (elDist) elDist.textContent = distancia.toFixed(1) + ' km';
-    if (elTempo) elTempo.textContent = Math.round(distancia / 40 * 60) + ' min';
+    if (elDist) {
+        elDist.textContent = distancia.toFixed(1) + ' km';
+        elDist.title = 'Estimativa em linha reta, incluindo retorno ao CD';
+    }
+    if (elTempo) {
+        elTempo.textContent = Math.round(distancia / 40 * 60) + ' min';
+        elTempo.title = 'Estimativa em linha reta a 40 km/h, incluindo retorno ao CD';
+    }
 
     // Renumera os itens da lista
     document.querySelectorAll('.swal-entrega-item').forEach((el, i) => {
@@ -3376,13 +3395,23 @@ function salvarOrdemEmbarque() {
         if (!token) return;
         const ordem = entregasAtuais.map(e => e.id);
         try {
-            await fetch(`${API_BASE}/frota/embarques/${embarqueIdDetalhes}/reordenar`, {
+            const response = await fetch(`${API_BASE}/frota/embarques/${embarqueIdDetalhes}/reordenar`, {
                 method: 'POST',
                 headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ordem })
             });
-        } catch (e) {
-            console.warn('Erro ao salvar ordem:', e);
+            if (!response.ok) {
+                let mensagem = `Erro HTTP ${response.status}`;
+                try {
+                    const payload = await response.json();
+                    mensagem = payload.error || mensagem;
+                } catch {}
+                console.error('Erro ao salvar ordem:', mensagem);
+                mostrarNotificacao(`Não foi possível salvar a ordem: ${escapeHtml(mensagem)}`, 'error');
+            }
+        } catch (error) {
+            console.warn('Erro ao salvar ordem:', error);
+            mostrarNotificacao('Não foi possível salvar a ordem por falha de conexão.', 'error');
         }
     }, 500);
 }
@@ -3438,31 +3467,6 @@ function initSortableEmbarque() {
     });
 }
 
-
-// ======================================================================
-// OTIMIZAR ROTA
-// ======================================================================
-                    async function otimizarRota() {
-                        const id = embarqueIdDetalhes;
-                        if (!id) return;
-                        const token = getAuthToken();
-                        if (!token) return;
-                        try {
-                            const response = await fetch(API_BASE + '/frota/embarques/' + id + '/otimizar-rota', {
-                                method: 'POST',
-                                headers: { 'Authorization': 'Bearer ' + token }
-                            });
-                            if (response.ok) {
-                                const dados = await response.json();
-                                if (dados.success) {
-                                    mostrarNotificacao('Rota otimizada com sucesso!', 'success');
-                                    verDetalhes(id);
-                                }
-                            }
-                        } catch (e) {
-                            mostrarNotificacao('Erro ao otimizar rota', 'error');
-                        }
-                    }
 
 // ======================================================================
 // VER ITENS DO CHECKOUT
@@ -5174,7 +5178,7 @@ async function abrirModalEmbarqueSwal(emb) {
     // 🔥 Guarda o emb para reabrir caso a modal filha derrube esta
     window.__embarqueBackup = emb;
 
-    // Distância e tempo previstos
+    // Estimativa em linha reta, incluindo saída e retorno ao CD.
     let distancia = 0;
     let anterior = { lat: DISTRIBUIDORA_LAT, lng: DISTRIBUIDORA_LNG };
     entregasAtuais.forEach(e => {
@@ -5183,6 +5187,10 @@ async function abrirModalEmbarqueSwal(emb) {
         if (d !== null) distancia += d;
         anterior = { lat: parseFloat(e.latitude), lng: parseFloat(e.longitude) };
     });
+    if (entregasAtuais.length > 0) {
+        const retorno = calcularDistancia(anterior.lat, anterior.lng, DISTRIBUIDORA_LAT, DISTRIBUIDORA_LNG);
+        if (retorno !== null) distancia += retorno;
+    }
 
     const isEditavel = emb.status === 'planejado';
 
@@ -5202,8 +5210,8 @@ async function abrirModalEmbarqueSwal(emb) {
                 <span><i class="fa-solid fa-truck-fast"></i> ${emb.veiculo_placa || 'Sem veículo'}</span>
                 <span><i class="fa-solid fa-user"></i> ${emb.motorista_nome || 'Sem motorista'}</span>
                 <span><i class="fa-solid fa-box"></i> ${concluidas}/${totalEntregas} entregas</span>
-                <span><i class="fa-solid fa-route"></i> <strong class="swal-embarque-distancia">${distancia.toFixed(1)} km</strong></span>
-                <span><i class="fa-solid fa-clock"></i> <strong class="swal-embarque-tempo">${Math.round(distancia / 40 * 60)} min</strong></span>
+                <span><i class="fa-solid fa-route"></i> <strong class="swal-embarque-distancia" title="Estimativa em linha reta, incluindo retorno ao CD">${distancia.toFixed(1)} km</strong></span>
+                <span><i class="fa-solid fa-clock"></i> <strong class="swal-embarque-tempo" title="Estimativa em linha reta a 40 km/h, incluindo retorno ao CD">${Math.round(distancia / 40 * 60)} min</strong></span>
                 <span><i class="fa-solid fa-percent"></i> ${progresso}% concluído</span>
             </div>
         </div>
@@ -5225,7 +5233,7 @@ async function abrirModalEmbarqueSwal(emb) {
 
     const acoesHtml = isEditavel ? `
         <div class="swal-embarque-acoes">
-            <button type="button" class="swal-acao-btn" onclick="otimizarRotaEmbarque()" title="Ordenar por proximidade">
+            <button type="button" class="swal-acao-btn" onclick="otimizarRotaEmbarque()" title="Minimizar tempo rodoviário para caminhão, com saída e retorno ao CD">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Otimizar
             </button>
             <button type="button" class="swal-acao-btn" onclick="inverterRotaEmbarque()" title="Inverter ordem">
@@ -5557,53 +5565,84 @@ function mudarAbaEmbarque(aba, btn) {
     }
 }
 
-function otimizarRotaEmbarque() {
+async function otimizarRotaEmbarque() {
     if (!window.__embarqueEstado?.isEditavel) return;
+    if (window.__embarqueEstado.otimizandoRota) return;
 
-    // Guarda estado atual para desfazer
-    window.__embarqueEstado.snapshotHistorico.push(entregasAtuais.map(e => e.id));
+    const id = embarqueIdDetalhes;
+    const token = getAuthToken();
+    if (!id || !token) {
+        mostrarNotificacao('Não foi possível identificar o embarque ou autenticar a operação.', 'error');
+        return;
+    }
 
-    // Algoritmo do vizinho mais próximo partindo da distribuidora
-    const naoVisitados = [...entregasAtuais];
-    const rota = [];
-    let atual = { lat: DISTRIBUIDORA_LAT, lng: DISTRIBUIDORA_LNG };
-
-    while (naoVisitados.length) {
-        let melhorIdx = 0;
-        let melhorDist = Infinity;
-        naoVisitados.forEach((e, i) => {
-            if (!e.latitude || !e.longitude) return;
-            const d = calcularDistancia(atual.lat, atual.lng, parseFloat(e.latitude), parseFloat(e.longitude));
-            if (d !== null && d < melhorDist) {
-                melhorDist = d;
-                melhorIdx = i;
-            }
+    window.__embarqueEstado.otimizandoRota = true;
+    try {
+        const response = await fetch(`${API_BASE}/frota/embarques/${id}/otimizar-rota`, {
+            method: 'POST',
+            headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/json' }
         });
-        const escolhida = naoVisitados.splice(melhorIdx, 1)[0];
-        rota.push(escolhida);
-        if (escolhida.latitude && escolhida.longitude) {
-            atual = { lat: parseFloat(escolhida.latitude), lng: parseFloat(escolhida.longitude) };
+        const resultado = await response.json().catch(() => null);
+        if (!response.ok || !resultado?.success) {
+            throw new Error(resultado?.error || `Falha ao otimizar a rota (HTTP ${response.status}).`);
         }
-    }
 
-    entregasAtuais = rota;
-    redesenharListaEmbarque();
-    desenharMapaEmbarque();       // 🔥 NOVO
-    recalcularRotaEmbarque();
+        const km = Number(resultado.metricas?.distancia_total_km);
+        const minutos = Number(resultado.metricas?.tempo_estimado_min);
+        if (!Number.isFinite(km) || !Number.isFinite(minutos)) {
+            throw new Error('A API não retornou métricas de viagem válidas.');
+        }
 
-    // Enquadra a nova rota no mapa
-    if (embarqueMapa && entregasAtuais.length > 0) {
-        const bounds = new maplibregl.LngLatBounds();
-        bounds.extend([DISTRIBUIDORA_LNG, DISTRIBUIDORA_LAT]);
-        entregasAtuais.forEach(e => {
-            if (e.latitude && e.longitude) {
-                bounds.extend([parseFloat(e.longitude), parseFloat(e.latitude)]);
-            }
+        const atuaisPorId = new Map(entregasAtuais.map(entrega => [Number(entrega.id), entrega]));
+        const novaRota = (resultado.rota || []).map((parada, index) => {
+            const atual = atuaisPorId.get(Number(parada.id));
+            return atual
+                ? {
+                    ...atual,
+                    latitude: parada.latitude ?? atual.latitude,
+                    longitude: parada.longitude ?? atual.longitude,
+                    ordem_entrega: index + 1
+                }
+                : null;
         });
-        try { embarqueMapa.fitBounds(bounds, { padding: 60, maxZoom: 14, duration: 500 }); } catch (err) {}
-    }
+        if (novaRota.length !== entregasAtuais.length || novaRota.some(parada => parada === null)) {
+            throw new Error('A API retornou uma sequência de entregas inconsistente. Atualize o embarque.');
+        }
 
-    mostrarNotificacao('Rota otimizada por proximidade', 'success');
+        window.__embarqueEstado.snapshotHistorico.push(entregasAtuais.map(entrega => entrega.id));
+        entregasAtuais = novaRota;
+        redesenharListaEmbarque();
+        desenharMapaEmbarque();
+        recalcularRotaEmbarque();
+        const geometria = Array.isArray(resultado.geometria)
+            ? resultado.geometria
+                .map(ponto => [Number(ponto.longitude), Number(ponto.latitude)])
+                .filter(coordenada => coordenada.every(Number.isFinite))
+            : [];
+        if (geometria.length > 1) atualizarLinhaRotaEmbarque(geometria);
+
+        const elDist = document.querySelector('.swal-embarque-distancia');
+        const elTempo = document.querySelector('.swal-embarque-tempo');
+        if (elDist) {
+            elDist.textContent = `${km.toFixed(1)} km`;
+            elDist.title = 'Distância rodoviária estimada pelo Valhalla, ida e volta ao CD';
+        }
+        if (elTempo) {
+            elTempo.textContent = `${Math.round(minutos)} min`;
+            elTempo.title = 'Tempo rodoviário estimado pelo Valhalla no perfil caminhão, ida e volta ao CD';
+        }
+
+        const avisos = Array.isArray(resultado.data?.avisos)
+            ? resultado.data.avisos.map(aviso => typeof aviso === 'string' ? aviso : aviso?.message).filter(Boolean)
+            : [];
+        const mensagem = `Rota otimizada por tempo rodoviário de caminhão, ida e volta ao CD: ${km.toFixed(1)} km e ${Math.round(minutos)} min.`
+            + (avisos.length ? ` Aviso do Valhalla: ${avisos.join('; ')}` : '');
+        mostrarNotificacao(escapeHtml(mensagem), avisos.length ? 'warning' : 'success');
+    } catch (error) {
+        mostrarNotificacao(escapeHtml(error.message || 'Não foi possível otimizar a rota.'), 'error');
+    } finally {
+        if (window.__embarqueEstado) window.__embarqueEstado.otimizandoRota = false;
+    }
 }
 function inverterRotaEmbarque() {
     if (!window.__embarqueEstado?.isEditavel) return;
@@ -6010,7 +6049,6 @@ window.finalizarEmbarque = finalizarEmbarque;
 window.finalizarGrupo = finalizarGrupo;
 window.cancelarEmbarque = cancelarEmbarque;
 window.cancelarGrupo = cancelarGrupo;
-window.otimizarRota = otimizarRota;
 window.criarRotasSelecionadas = criarRotasSelecionadas;
 window.fecharModal = fecharModal;
 window.toggleTheme = toggleTheme;
