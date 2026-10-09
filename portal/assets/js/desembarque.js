@@ -258,6 +258,47 @@ async function processarLeituraDesembarque(codigo) {
     }
 }
 
+// Mostra onde o item já está guardado e pré-seleciona a seção padrão dele
+async function sugerirEnderecoItem(iditem) {
+    const box = document.getElementById('swalSugestao');
+    const secaoSel = document.getElementById('swalSecao');
+    const endSel = document.getElementById('swalEndereco');
+    if (!box) return;
+
+    const escapar = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    const escolher = async (idsecao, idendereco) => {
+        secaoSel.value = String(idsecao);
+        secaoSel.dispatchEvent(new Event('change'));
+        for (let i = 0; i < 20 && !endSel.querySelector(`option[value="${idendereco}"]`); i++) {
+            await new Promise(r => setTimeout(r, 150));
+        }
+        if (endSel.querySelector(`option[value="${idendereco}"]`)) endSel.value = String(idendereco);
+    };
+
+    try {
+        const s = await apiFetch(`v1/desembarque/sugestao-endereco/${iditem}`, 'GET');
+        const atuais = (s && s.enderecos_atuais) || [];
+        const vistos = new Set();
+        const unicos = atuais.filter(e => !vistos.has(e.idendereco) && vistos.add(e.idendereco));
+
+        if (unicos.length) {
+            box.innerHTML = '<div style="font-weight:800; color:#166534; margin-bottom:4px;">📍 Já guardado em (toque para usar):</div>' +
+                unicos.map(e => `<button type="button" data-sec="${e.idsecao}" data-end="${e.idendereco}"
+                    style="margin:0 4px 4px 0; padding:5px 10px; border-radius:8px; border:1px solid #86efac; background:#fff; font-weight:800; color:#166534;">
+                    ${escapar(e.endereco)} <span style="font-weight:600; color:#64748b;">(disp. ${e.disponivel})</span></button>`).join('');
+            box.querySelectorAll('button').forEach(b =>
+                b.addEventListener('click', () => escolher(b.dataset.sec, b.dataset.end)));
+            await escolher(unicos[0].idsecao, unicos[0].idendereco);
+        } else if (s && s.secao_padrao) {
+            box.innerHTML = `<div style="color:#64748b;">Item sem endereço ainda. Seção padrão: <b>${escapar(s.secao_padrao.descricao)}</b></div>`;
+            secaoSel.value = String(s.secao_padrao.idsecao);
+            secaoSel.dispatchEvent(new Event('change'));
+        }
+    } catch (e) {
+        box.innerHTML = '';
+    }
+}
+
 /// ==========================================================================
 // MODAL DE CONFERÊNCIA (COM FOTO + ENDEREÇAMENTO)
 // ==========================================================================
@@ -305,6 +346,7 @@ async function exibirModalConferencia(item) {
                     <label style="display:block; text-align:left; font-size:0.7rem; font-weight:700; color:#166534; margin-bottom:4px;">
                         <i class="fa-solid fa-map-pin"></i> ENDEREÇO (Seção)
                     </label>
+              <div id="swalSugestao" style="text-align:left; font-size:0.75rem; margin-bottom:8px;"></div>
               <select id="swalSecao" class="swal2-input" style="margin:0; width:100%; height:45px; font-size:1rem; background:white;">
     <option value="">Carregando seções...</option>
 </select>
@@ -359,6 +401,7 @@ async function exibirModalConferencia(item) {
             }
         });
         
+        await sugerirEnderecoItem(item.cod_item);
     } catch (e) {
         document.getElementById('swalSecao').innerHTML = '<option value="">Erro ao carregar</option>';
     }

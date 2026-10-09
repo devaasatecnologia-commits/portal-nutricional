@@ -4,6 +4,7 @@ namespace Nutricional\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
+use Nutricional\Services\EnderecoItemService;
 
 class DepositoController
 {
@@ -14,6 +15,45 @@ class DepositoController
         $this->pdo = \getPDO();
     }
     
+    /**
+     * GET /v1/deposito/buscar-item?q=
+     * Localiza o item (código, barras, referência ou nome) e mostra onde ele está endereçado.
+     */
+    public function buscarItem(Request $request, Response $response): Response
+    {
+        $q = trim((string)($request->getQueryParams()['q'] ?? ''));
+        if (mb_strlen($q) < 2) {
+            $response->getBody()->write(json_encode([]));
+            return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT i.iditem, i.descricao, i.referencia, i.path_foto_master
+                FROM item i
+                WHERE i.iditem::text = :exato
+                   OR i.referencia = :exato
+                   OR i.iditem IN (SELECT iditem FROM codigo_barra WHERE idbarra = :exato)
+                   OR i.descricao ILIKE :parcial
+                ORDER BY (i.iditem::text = :exato) DESC, i.descricao
+                LIMIT 20");
+            $stmt->execute(['exato' => $q, 'parcial' => '%' . $q . '%']);
+            $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            $mapa = (new EnderecoItemService($this->pdo))->porItens(array_column($itens, 'iditem'));
+            foreach ($itens as &$it) {
+                $it['enderecos'] = $mapa[(int)$it['iditem']] ?? [];
+            }
+
+            $response->getBody()->write(json_encode($itens));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Throwable $e) {
+            error_log('[Deposito] buscar-item: ' . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => 'Erro ao buscar item']));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
     /**
      * GET /v1/deposito/secoes
      */

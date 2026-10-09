@@ -3,6 +3,7 @@ namespace Nutricional\Controllers;
 
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
+use Nutricional\Services\EnderecoItemService;
 
 class SeparacaoController
 {
@@ -128,7 +129,23 @@ class SeparacaoController
             $stmt->execute([$idembarque, $idembarque, $idembarque]);
             $itens = $stmt->fetchAll();
 
+            $enderecosPorItem = [];
+            try {
+                $enderecosPorItem = (new EnderecoItemService($this->pdo))
+                    ->porItens(array_column($itens, 'cod_item'));
+            } catch (\Throwable $e) {
+                error_log('[Separacao] Falha ao carregar enderecos do deposito: ' . $e->getMessage());
+            }
+
             foreach ($itens as &$item) {
+                $ends = $enderecosPorItem[(int)$item['cod_item']] ?? [];
+                $item['enderecos'] = array_map(fn($e) => [
+                    'endereco' => $e['endereco'],
+                    'secao' => $e['secao'],
+                    'lote' => $e['lote'],
+                ], $ends);
+                $item['endereco_resumo'] = EnderecoItemService::resumo($ends);
+
                 $lista = explode(',', $item['todos_codigos']);
                 $item['cod_barras'] = $lista[0];
 

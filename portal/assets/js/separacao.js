@@ -257,6 +257,7 @@ function render() {
                     </div>
                     <div class="qty-tag">Saldo Estoque: ${Number(parseFloat(saldoItem).toFixed(3))}</div>
                 </div>
+                ${blocoEndereco(i)}
                 ${avisoCarregado}
                 <div style="font-size:0.55rem; color:#94a3b8; margin-top:5px; display:flex; justify-content:space-between;">
                     <span>EAN: ${i.cod_barras || 'S/ COD'}</span>
@@ -278,6 +279,23 @@ function render() {
     }
 
     listaAlvo.innerHTML = h || '<div style="text-align:center;padding:40px; color:#94a3b8;">Nenhum item pendente.</div>';
+}
+
+// Endereço do item no Depósito (vem de lote_endereco, mais antigo primeiro)
+function blocoEndereco(item, grande) {
+    const ends = Array.isArray(item.enderecos) ? item.enderecos : [];
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    if (!ends.length) {
+        return `<div style="background:#f1f5f9; padding:3px 6px; border-radius:4px; font-size:${grande ? '0.75rem' : '0.6rem'}; color:#64748b; font-weight:700; margin-top:3px;">
+            <i class="fa-solid fa-location-dot"></i> SEM ENDEREÇO NO DEPÓSITO</div>`;
+    }
+    const vistos = new Set();
+    const chips = ends.filter(e => !vistos.has(e.endereco) && vistos.add(e.endereco)).slice(0, grande ? 6 : 3)
+        .map(e => `<span style="background:#fef3c7; color:#92400e; padding:2px 7px; border-radius:6px; font-weight:900; font-size:${grande ? '1.1rem' : '0.7rem'};">${esc(e.endereco)}</span>`)
+        .join(' ');
+    return `<div style="margin-top:4px; display:flex; flex-wrap:wrap; gap:4px; align-items:center;" title="${esc(ends[0].secao)}">
+        <i class="fa-solid fa-location-dot" style="color:#d97706;"></i> ${chips}
+        ${grande ? `<div style="width:100%; font-size:0.65rem; color:#92400e;">${esc(ends[0].secao)}</div>` : ''}</div>`;
 }
 
 // ==========================================================================
@@ -338,6 +356,7 @@ async function processarLeitura(codigo) {
         html: `<div style="display:flex; flex-direction:column; align-items:center;">
             <img src="${fotoUrl}" style="width:80px; height:80px; object-fit:contain; border-radius:10px; margin-bottom:5px;">
             <div style="font-weight:800; font-size:0.85rem; color:#274036; text-align:center;">${item.descricao || item.nome_item}</div>
+            ${blocoEndereco(item, true)}
             <div style="color:#ef4444; font-weight:800; font-size:1rem; margin-top:8px;">FALTA SEPARAR: ${saldoFormatado}</div>
         </div>`,
         input: 'text',

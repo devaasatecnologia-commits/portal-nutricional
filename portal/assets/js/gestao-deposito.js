@@ -427,3 +427,37 @@ window.salvarEndereco = salvarEndereco;
 window.deletarEndereco = deletarEndereco;
 window.verLotesEndereco = verLotesEndereco;
 window.carregarSecoes = carregarSecoes;
+// Localizar item: mostra em quais endereços e lotes o item está guardado
+(function () {
+    const campo = document.getElementById('buscaItemDeposito');
+    const saida = document.getElementById('resultadoBuscaItem');
+    if (!campo || !saida) return;
+
+    const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let timer = null;
+
+    async function buscar() {
+        const q = campo.value.trim();
+        if (q.length < 2) { saida.innerHTML = ''; return; }
+        try {
+            const itens = await apiFetch('v1/deposito/buscar-item?q=' + encodeURIComponent(q), 'GET');
+            if (!Array.isArray(itens) || !itens.length) {
+                saida.innerHTML = '<p class="text-sm text-slate-400">Nenhum item encontrado.</p>';
+                return;
+            }
+            saida.innerHTML = itens.map(it => {
+                const ends = (it.enderecos || []).map(e =>
+                    `<span class="inline-block bg-amber-100 text-amber-800 rounded-lg px-2 py-1 text-xs font-bold mr-1 mb-1">
+                        ${esc(e.endereco)} · lote ${esc(e.lote)} · ${Number(e.quantidade)} un</span>`).join('');
+                return `<div class="p-3 rounded-xl border border-slate-100">
+                    <div class="text-sm font-bold text-slate-800">${esc(it.descricao)} <span class="text-slate-400 font-medium">#${esc(it.iditem)}</span></div>
+                    <div class="mt-1">${ends || '<span class="text-xs text-slate-400">Sem endereço no depósito</span>'}</div>
+                </div>`;
+            }).join('');
+        } catch (e) {
+            saida.innerHTML = '<p class="text-sm text-red-500">Erro ao buscar item.</p>';
+        }
+    }
+
+    campo.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(buscar, 350); });
+})();

@@ -14,14 +14,46 @@
         return !!(a && a !== campo() && a.matches && a.matches(CAMPOS));
     }
 
+    // Padrão: sem teclado (coletor). Um toque no campo libera o teclado para digitar o código à mão.
+    let digitando = false;
+
+    function voltarModoColetor() {
+        digitando = false;
+        const el = campo();
+        if (el) el.setAttribute('inputmode', 'none');
+    }
+
+    function liberarTeclado() {
+        const el = campo();
+        if (!el) return;
+        digitando = true;
+        el.setAttribute('inputmode', 'text');
+        // O navegador só reavalia o teclado ao focar de novo
+        el.blur();
+        setTimeout(() => el.focus({ preventScroll: true }), 30);
+    }
+
     function focar() {
         const el = campo();
         if (!el || el.offsetParent === null || document.hidden || ocupado()) return;
         // Sem readonly/teclado virtual: o coletor digita como teclado e o campo aceita digitação manual
         el.removeAttribute('readonly');
-        el.setAttribute('inputmode', 'none');
+        if (!digitando) el.setAttribute('inputmode', 'none');
         if (document.activeElement !== el) el.focus({ preventScroll: true });
     }
+
+    document.addEventListener('pointerup', e => {
+        const el = campo();
+        if (el && e.target === el && e.isTrusted && !digitando) liberarTeclado();
+    }, true);
+
+    document.addEventListener('focusout', e => {
+        if (e.target === campo() && digitando) setTimeout(() => { if (document.activeElement !== campo()) voltarModoColetor(); }, 200);
+    });
+
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && e.target === campo() && digitando) setTimeout(voltarModoColetor, 50);
+    }, true);
 
     // Cliques em áreas não editáveis devolvem o foco ao bipe
     document.addEventListener('click', e => {

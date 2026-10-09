@@ -888,6 +888,7 @@ $protected->group('/meta-builder', function ($group) {
 $protected->group('/deposito', function ($group) {
     $controller = new DepositoController();
     $group->get('/secoes', [$controller, 'getSecoes']);
+    $group->get('/buscar-item', [$controller, 'buscarItem']);
     $group->get('/enderecos/{idsecao}', [$controller, 'getEnderecos']);
     $group->get('/lotes-endereco/{idendereco}', [$controller, 'getLotesPorEndereco']);
     $group->post('/endereco', [$controller, 'salvarEndereco']);
@@ -922,6 +923,7 @@ $protected->group('/desembarque', function ($group) {
     $group->post('/confirmar', [$controller, 'confirmarItem']);
     $group->post('/finalizar/{idoc}', [$controller, 'finalizarConferencia']);
     $group->get('/secoes', [$controller, 'getSecoes']);
+    $group->get('/sugestao-endereco/{iditem}', [$controller, 'getSugestaoEndereco']);
     $group->post('/foto', [$controller, 'uploadFoto']);
     $group->get('/enderecos/{idsecao}', [$controller, 'getEnderecos']);
 });

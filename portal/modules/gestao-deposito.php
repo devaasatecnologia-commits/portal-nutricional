@@ -77,6 +77,14 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- Localizar item -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6">
+        <label class="block text-xs font-bold text-slate-400 uppercase mb-2"><i class="fa-solid fa-magnifying-glass mr-1"></i> Localizar item no depósito</label>
+        <input type="text" id="buscaItemDeposito" autocomplete="off" placeholder="Código, código de barras, referência ou nome do item"
+               class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-semibold">
+        <div id="resultadoBuscaItem" class="mt-3 space-y-2"></div>
+    </div>
+
     <!-- Lista de Seções -->
     <div id="listaSecoes" class="space-y-3">
         <p class="text-center text-slate-400 py-8">Carregando...</p>

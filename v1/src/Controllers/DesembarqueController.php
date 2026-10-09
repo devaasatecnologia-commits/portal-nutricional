@@ -4,6 +4,7 @@ namespace Nutricional\Controllers;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
+use Nutricional\Services\EnderecoItemService;
 
 class DesembarqueController
 {
@@ -481,6 +482,11 @@ if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
             :idfilial, :iditem, :lote, :idendereco, 1, 
             :qtd, :idoc, :idsecao, CURRENT_DATE, :usuario, :obs
         )
+        ON CONFLICT (idfilial, iditem, lote, idendereco) DO UPDATE
+        SET quantidade = lote_endereco.quantidade + EXCLUDED.quantidade,
+            idoc = EXCLUDED.idoc,
+            usuario = EXCLUDED.usuario,
+            observacao = EXCLUDED.observacao
     ")->execute([
         'idfilial' => (int)$ocItem['idfilial'],
         'iditem' => $iditem,
@@ -518,6 +524,38 @@ if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
             return $response->withStatus(500);
         }
     }
+    /**
+     * GET /v1/desembarque/sugestao-endereco/{iditem}
+     * Onde o item já está guardado e a seção padrão dele, para o conferente endereçar sem procurar.
+     */
+    public function getSugestaoEndereco(Request $request, Response $response, array $args): Response
+    {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
+        $iditem = (int)($args['iditem'] ?? 0);
+        if ($iditem <= 0) {
+            return $this->json($response, ['error' => 'Item inválido'], 422);
+        }
+
+        try {
+            $svc = new EnderecoItemService($this->pdo);
+            $existentes = array_map(function ($e) {
+                $stmt = $this->pdo->prepare("SELECT capacidade - ocupado FROM secao_enderecos WHERE idsecao = ? AND idendereco = ?");
+                $stmt->execute([$e['idsecao'], $e['idendereco']]);
+                $e['disponivel'] = round((float)$stmt->fetchColumn(), 2);
+                return $e;
+            }, $svc->porItem($iditem));
+
+            return $this->json($response, [
+                'enderecos_atuais' => $existentes,
+                'secao_padrao' => $svc->secaoPadrao($iditem),
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[Desembarque] sugestao-endereco: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Erro ao consultar endereços do item'], 500);
+        }
+    }
+
     /**
  * GET /v1/desembarque/enderecos/{idsecao}
  * Lista endereços disponíveis de uma seção
