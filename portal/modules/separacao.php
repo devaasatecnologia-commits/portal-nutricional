@@ -102,7 +102,10 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <div id="reader" style="display:none;" class="rounded-2xl overflow-hidden border-4 border-emerald-600 mb-4 shadow-2xl bg-black"></div>
 
-        <div class="sticky top-20 z-40 pb-4">
+        <div id="scan-spacer" style="height: 96px;"></div>
+
+        <div id="scan-bar" class="scan-bar-fixed">
+          <div class="scan-bar-inner">
             <div class="relative group">
                 <input type="text" id="barcode-input" 
                 class="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-14 text-lg font-bold focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 transition-all shadow-lg text-slate-800"
@@ -116,6 +119,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <i class="fa-solid fa-camera"></i>
                 </button>
             </div>
+          </div>
         </div>
 
         <div id="container-finalizar" style="display:none;" class="mb-6">
