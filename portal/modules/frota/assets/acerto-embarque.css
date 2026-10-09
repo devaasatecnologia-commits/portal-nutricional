@@ -331,6 +331,17 @@ body {
 .acerto-conferencia-strip .is-danger { background: rgba(220, 38, 38, .08); color: #dc2626; }
 .acerto-conferencia-strip button { margin-left: auto; border: 1px solid rgba(var(--nutri-accent-rgb), .35); border-radius: 8px; background: rgba(var(--nutri-accent-rgb), .1); color: var(--nutri-primary); padding: 6px 10px; font-size: .74rem; font-weight: 900; cursor: pointer; }
 .acerto-conferencia-strip button:hover { background: var(--nutri-accent); color: #fff; }
+.acerto-problema-status { display: inline-flex; align-items: center; border-radius: 999px; padding: 3px 8px; font-size: .66rem; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.acerto-problema-status-open { background: #fee2e2; color: #991b1b; }
+.acerto-problema-status-review { background: #fef3c7; color: #92400e; }
+.acerto-problema-status-resolved { background: #dcfce7; color: #166534; }
+.acerto-problema-status-cancelled { background: #e2e8f0; color: #475569; }
+.acerto-problema-status-unknown { background: #f1f5f9; color: #475569; }
+[data-theme="dark"] .acerto-problema-status-open { background: #450a0a; color: #fca5a5; }
+[data-theme="dark"] .acerto-problema-status-review { background: #451a03; color: #fcd34d; }
+[data-theme="dark"] .acerto-problema-status-resolved { background: #052e16; color: #86efac; }
+[data-theme="dark"] .acerto-problema-status-cancelled,
+[data-theme="dark"] .acerto-problema-status-unknown { background: #1f2937; color: #cbd5e1; }
 .acerto-entry-more { margin-left: auto; min-width: min(260px, 100%); position: relative; }
 .acerto-entry-more summary { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-height: 32px; border: 1px solid var(--nutri-border); border-radius: 10px; background: var(--nutri-card-bg); color: var(--nutri-text); padding: 6px 10px; cursor: pointer; list-style: none; }
 .acerto-entry-more summary::-webkit-details-marker { display: none; }

@@ -39,17 +39,30 @@ nao atende ao criterio de tempo rodoviario selecionado.
 
 ## Instalação recomendada
 
-O Valhalla deve ser instalado em um servidor Linux ou Docker. O computador Windows local atual não possui Docker instalado.
+O computador Windows usado na revisao nao possui Docker e nao tem
+`VALHALLA_URL` configurada. A integracao PHP esta implementada, mas ainda nao
+foi validada contra uma instancia Valhalla real; portanto, otimizacao rodoviaria
+nao esta pronta para operacao ate existir um endpoint acessivel e o teste de
+homologacao passar.
 
-Exemplo com a imagem oficial, em um servidor Linux com Docker:
+A cobertura aprovada para planejamento e **Sul com corredores frequentes ate
+SP/MS**. O recorte precisa incluir as areas de origem/destino e margens
+suficientes nos limites para que uma rota nao seja cortada. O extrato oficial
+Geofabrik consultado em 2026-10-07 oferecia o Brasil inteiro em PBF com cerca de
+1,9 GB; esse arquivo nacional nao equivale ao recorte desejado, e o tamanho dos
+tiles Valhalla gerados sera diferente e maior que o arquivo de entrada.
+Fonte consultada: [Geofabrik — extrato do Brasil](https://download.geofabrik.de/south-america/brazil.html).
 
-```bash
-docker run -d --name valhalla -p 8002:8002 \
-  -e tile_urls=https://download.geofabrik.de/south-america/brazil-latest.osm.pbf \
-  ghcr.io/valhalla/valhalla:latest
-```
+Nao iniciar a carga do Brasil inteiro por conveniencia. Antes de baixar ou
+gerar tiles, definir o servidor Linux/Docker de destino, memoria, CPU e espaco
+disponivel, preparar e validar o poligono regional, estimar o espaco final e
+definir atualizacao dos dados OSM. Persistir os tiles em volume duravel; nao os
+regenerar a cada reinicio do container.
 
-Para produção, prefira gerar os tiles da região necessária e persistir `/custom_files` em volume. O processo de geração dos tiles pode levar tempo e consumir bastante espaço.
+Na implantacao, publicar o Valhalla apenas em rede privada, limitar quem pode
+consultar o servico e configurar `VALHALLA_URL` para um endpoint acessivel pela
+API. Nao expor a porta de roteamento diretamente a internet. Configurar timeout
+e limites de recurso do servidor conforme testes com rotas representativas.
 
 ## Integração
 
@@ -59,4 +72,7 @@ Para produção, prefira gerar os tiles da região necessária e persistir `/cus
   entregas atuais permanecem funcionais, mas nao se confirma uma otimizacao.
 - A chave GraphHopper não é necessária para esta solução.
 
-Antes de produção, configurar autenticação/rede privada para o serviço Valhalla e monitorar uso de CPU, memória e armazenamento dos tiles.
+Antes de producao, validar rotas com os tipos de caminhao reais e restricoes
+disponiveis, confirmar cobertura nos corredores usados, monitorar uso de CPU,
+memoria, armazenamento e latencia e documentar como atualizar/voltar os tiles.
+Nenhum download OSM ou deploy foi executado nesta revisao.

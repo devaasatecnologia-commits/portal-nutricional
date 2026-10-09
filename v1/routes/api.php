@@ -570,19 +570,20 @@ $protected->group('/separacao', function ($group) {
         // ======================================================================
 $protected->group('/carregamento', function ($group) {
    $controller = new CarregamentoController();
+   $estornoController = new \Nutricional\Controllers\CarregamentoEstornoController();
     $group->get('/embarques', [$controller, 'getEmbarques']);
     $group->get('/itens/{idembarque}', [$controller, 'getItens']);
     $group->post('/confirmar', [$controller, 'confirmarItem']);
-    $group->delete('/estornar/{iditem}/{idembarque}', [$controller, 'estornarItem']);
+    $group->delete('/estornar/{iditem}/{idembarque}', [$estornoController, 'estornarItem']);
     $group->post('/finalizar/{idembarque}', [$controller, 'finalizarEmbarque']);
     $group->post('/foto', [$controller, 'uploadFoto']);
     $group->get('/fotos/{idembarque}', [$controller, 'getFotos']);
     $group->get('/foto/{idfoto}', [$controller, 'getFoto']);
     $group->get('/resumo/{idembarque}', [$controller, 'getResumo']);
-    $group->post('/desfazer', [$controller, 'desfazerCarregamento']);
+    $group->post('/desfazer', [$estornoController, 'desfazerCarregamento']);
     $group->get('/subidas/{idembarque}/{iditem}', [$controller, 'getSubidas']);
-    $group->post('/subida/estornar', [$controller, 'estornarSubida']);
-    $group->post('/subidas-todas/estornar', [$controller, 'estornarTodasSubidas']);
+    $group->post('/subida/estornar', [$estornoController, 'estornarSubida']);
+    $group->post('/subidas-todas/estornar', [$estornoController, 'estornarTodasSubidas']);
 });
 
         // ======================================================================
@@ -620,8 +621,10 @@ $protected->group('/xml', function ($group) {
 $protected->group('/auditoria', function ($group) {
     $controller = new AuditoriaController();
     $group->get('/resumo', [$controller, 'getResumo']);
+    $group->get('/carregamentos', [$controller, 'getCarregamentos']);
     $group->get('/ranking', [$controller, 'getRankingOperadores']);
     $group->get('/timeline/{idembarque}', [$controller, 'getTimeline']);
+    $group->get('/dossie/{idembarque}', [$controller, 'getDossieEmbarque']);
     $group->get('/embarque/{idembarque}', [$controller, 'getDetalhesEmbarque']);
     $group->get('/itens/{idembarque}', [$controller, 'getItensEmbarque']);
     $group->get('/itens/{idembarque}/{tipo}', [$controller, 'getItensEmbarque']);

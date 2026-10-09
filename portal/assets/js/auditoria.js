@@ -48,6 +48,16 @@ function fecharModalFoto() {
         return parseFloat(peso || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
     }
 
+    function escapeHtml(value) {
+        return String(value ?? '').replace(/[&<>"']/g, (char) => ({
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#39;'
+        })[char]);
+    }
+
     function formatarData(data) {
         if (!data) return '--:--';
         try {
@@ -58,6 +68,18 @@ function fecharModalFoto() {
         }
     }
 
+    function timestampAuditoria(data) {
+        const match = String(data || '').match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+        if (match) {
+            return new Date(
+                Number(match[3]), Number(match[2]) - 1, Number(match[1]),
+                Number(match[4]), Number(match[5]), Number(match[6])
+            ).getTime();
+        }
+        const timestamp = Date.parse(data);
+        return Number.isNaN(timestamp) ? 0 : timestamp;
+    }
+
     function getStatusBadge(status) {
         const badges = {
             'PENDENTE': '<span class="badge bg-warning"><i class="fa-solid fa-clock"></i> Pendente</span>',
@@ -65,7 +87,7 @@ function fecharModalFoto() {
             'CONCLUIDO': '<span class="badge bg-success"><i class="fa-solid fa-check-circle"></i> Concluído</span>',
             'CARREGADO': '<span class="badge bg-primary"><i class="fa-solid fa-truck"></i> Carregado</span>'
         };
-        return badges[status] || `<span class="badge bg-secondary">${status || '---'}</span>`;
+        return badges[status] || `<span class="badge bg-secondary">${escapeHtml(status || '---')}</span>`;
     }
 
     // ======================================================================
@@ -79,7 +101,11 @@ function fecharModalFoto() {
         const url = `${apiRoot}/auditoria${endpoint}${queryString ? (apiRoot.includes('?') ? '&' : '?') + queryString : ''}`;
         
         const resp = await fetchWithAuth(url);
-        return resp.json();
+        const data = await resp.json();
+        if (!resp.ok || data?.error) {
+            throw new Error(data?.error || `Falha na API de auditoria (HTTP ${resp.status})`);
+        }
+        return data;
     }
 
     // ======================================================================
@@ -156,12 +182,16 @@ function fecharModalFoto() {
 
     async function carregarCarregamento() {
         const tbody = document.getElementById('tbodyCarregamento');
+        const inicio = document.getElementById('dataInicio')?.value || '';
+        const fim = document.getElementById('dataFim')?.value || '';
         
         tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>';
         
         try {
-            const resp = await fetchWithAuth(`${apiRoot}/carregamento/embarques`);
-            const dados = await resp.json();
+            const dados = await apiCall('/carregamentos', { inicio, fim });
+            if (!Array.isArray(dados)) {
+                throw new Error('A API retornou uma lista de carregamentos inválida');
+            }
             dadosCarregamento = dados;
             
             document.getElementById('countCarregamento').textContent = `(${dados.length})`;
@@ -171,22 +201,12 @@ function fecharModalFoto() {
                 return;
             }
             
-            const detalhes = await Promise.all(dados.map(async (emb) => {
-                try {
-                    const resp = await fetchWithAuth(`${apiRoot}/carregamento/resumo/${emb.idembarque}`);
-                    const resumo = await resp.json();
-                    return { ...emb, ...resumo };
-                } catch { return emb; }
-            }));
-            
-            dadosCarregamento = detalhes;
-            
-            tbody.innerHTML = detalhes.map(item => `
+            tbody.innerHTML = dados.map(item => `
               <tr>
         <td data-label="Emb."><strong>#${item.idembarque}</strong></td>
-        <td data-label="Rota">${item.rota || 'Interno'}</td>
-        <td data-label="Placa">${item.placa || '---'}</td>
-        <td data-label="Motorista">${item.motorista || '---'}</td>
+        <td data-label="Rota">${escapeHtml(item.rota || 'Interno')}</td>
+        <td data-label="Placa">${escapeHtml(item.placa || '---')}</td>
+        <td data-label="Motorista">${escapeHtml(item.motorista || '---')}</td>
         <td data-label="Peso">${formatarPeso(item.totalpesobruto)} kg</td>
         <td data-label="Status">${getStatusBadge(item.status_logistico)}</td>
         <td data-label="Ação">
@@ -198,7 +218,7 @@ function fecharModalFoto() {
             `).join('');
         } catch (e) {
             console.error('Erro carregamento:', e);
-            tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-danger">Erro ao carregar</td></tr>';
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger">Erro ao carregar: ${escapeHtml(e.message)}</td></tr>`;
         }
     }
 
@@ -247,13 +267,124 @@ async function verTimeline(id) {
     abrirModalTimeline();
     
     try {
-        const [timeline, itens] = await Promise.all([
+        const [timeline, itens, dossie] = await Promise.all([
             apiCall(`/timeline/${id}`),
-            apiCall(`/itens/${id}/todos`)
+            apiCall(`/itens/${id}/todos`),
+            apiCall(`/dossie/${id}`)
         ]);
         
         // ========== FILTROS NO TOPO ==========
+        window.dossieAuditoriaAtual = dossie;
+        const totaisDossie = dossie.itens.reduce((totais, item) => {
+            totais.previsto += Number(item.quantidade_prevista) || 0;
+            totais.separado += Number(item.quantidade_separada) || 0;
+            totais.carregado += Number(item.quantidade_carregada) || 0;
+            if (Number(item.quantidade_carregada) > Number(item.quantidade_separada) + 0.0001) {
+                totais.divergencias++;
+            }
+            return totais;
+        }, { previsto: 0, separado: 0, carregado: 0, divergencias: 0 });
         let html = `
+            <section class="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3 sm:p-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h3 class="m-0 text-base font-extrabold text-slate-800">Dossiê do embarque</h3>
+                        <p class="m-0 text-xs text-slate-500">Previsto, separado, saldo carregado e evidências vinculadas às subidas.</p>
+                    </div>
+                    <button type="button" onclick="window.exportarDossieEmbarque()"
+                            class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100">
+                        <i class="fa-solid fa-download"></i> Exportar dossiê CSV
+                    </button>
+                </div>
+                <div class="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div class="rounded-lg bg-white p-2"><span class="block text-[10px] uppercase text-slate-500">Previsto</span><strong>${formatarQuantidade(totaisDossie.previsto)}</strong></div>
+                    <div class="rounded-lg bg-white p-2"><span class="block text-[10px] uppercase text-slate-500">Separado</span><strong>${formatarQuantidade(totaisDossie.separado)}</strong></div>
+                    <div class="rounded-lg bg-white p-2"><span class="block text-[10px] uppercase text-slate-500">Carregado atual</span><strong>${formatarQuantidade(totaisDossie.carregado)}</strong></div>
+                    <div class="rounded-lg bg-white p-2"><span class="block text-[10px] uppercase text-slate-500">Acima do separado</span><strong>${totaisDossie.divergencias}</strong></div>
+                </div>
+                <div class="mb-3 flex flex-wrap gap-2 text-xs">
+                    <button class="timeline-filter-btn active" data-dossie-filter="todos" onclick="window.filtrarDossie('todos')">Todos</button>
+                    <button class="timeline-filter-btn" data-dossie-filter="divergencia" onclick="window.filtrarDossie('divergencia')">Acima do separado</button>
+                    <button class="timeline-filter-btn" data-dossie-filter="parcial" onclick="window.filtrarDossie('parcial')">Parciais/pendentes</button>
+                    <button class="timeline-filter-btn" data-dossie-filter="sem-foto" onclick="window.filtrarDossie('sem-foto')">Sem foto ativa</button>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full min-w-[700px] text-left text-xs">
+                        <thead><tr class="border-b border-slate-200 text-slate-500">
+                            <th class="p-2">Item</th><th class="p-2">Previsto</th><th class="p-2">Separado</th>
+                            <th class="p-2">Carregado</th><th class="p-2">Saldo</th><th class="p-2">Situação</th>
+                        </tr></thead>
+                        <tbody id="dossieItens">${dossie.itens.map(item => {
+                            const previsto = Number(item.quantidade_prevista) || 0;
+                            const separado = Number(item.quantidade_separada) || 0;
+                            const carregado = Number(item.quantidade_carregada) || 0;
+                            const saldo = Number(item.saldo_pendente) || 0;
+                            const semFoto = item.sem_foto === true || item.sem_foto === 't';
+                            const tags = [];
+                            if (carregado > separado + 0.0001) tags.push('divergencia');
+                            if (carregado > 0.0001 && carregado < separado - 0.0001) tags.push('parcial');
+                            if (semFoto) tags.push('sem-foto');
+                            const situacao = tags.length ? tags.map(tag => ({
+                                divergencia: 'Acima do separado',
+                                parcial: 'Parcial/pendente',
+                                'sem-foto': 'Sem foto ativa'
+                            })[tag]).join(' · ') : 'Conferido';
+                            return `<tr class="dossie-item-row border-b border-slate-100" data-dossie-tags="${tags.join(' ')}">
+                                <td class="p-2"><strong>${escapeHtml(item.produto || 'Item')}</strong><br><span class="text-slate-400">#${escapeHtml(item.iditem)} · ${escapeHtml(item.referencia || '---')}</span></td>
+                                <td class="p-2">${formatarQuantidade(previsto)}</td>
+                                <td class="p-2">${formatarQuantidade(separado)}</td>
+                                <td class="p-2 font-bold">${formatarQuantidade(carregado)}</td>
+                                <td class="p-2">${formatarQuantidade(saldo)}</td>
+                                <td class="p-2">${escapeHtml(situacao)}</td>
+                            </tr>`;
+                        }).join('') || '<tr><td colspan="6" class="p-3 text-center text-slate-400">Nenhum item encontrado</td></tr>'}</tbody>
+                    </table>
+                </div>
+                <h4 class="mb-2 mt-4 text-sm font-extrabold text-slate-800">Subidas, pedidos e evidências</h4>
+                <div class="space-y-2">
+                    ${dossie.subidas.map(subida => {
+                        const fotos = Array.isArray(subida.fotos) && subida.fotos.length
+                            ? subida.fotos
+                            : (subida.foto ? [{ caminho_foto: subida.foto, data_hora: subida.data_hora, operador: subida.operador }] : []);
+                        const allocations = Array.isArray(subida.alocacoes) ? subida.alocacoes : [];
+                        const estado = Number(subida.quantidade_disponivel) <= 0.0001
+                            ? 'Estornada'
+                            : Number(subida.quantidade_estornada) > 0
+                                ? 'Estorno parcial'
+                                : 'Ativa';
+                        const allocationsHtml = allocations.length
+                            ? allocations.map(a => `Pedido #${escapeHtml(a.idpedido)} · item ${escapeHtml(a.iditempedido)}: ${formatarQuantidade(a.quantidade)} un`).join('<br>')
+                            : '<span class="text-amber-700">Subida legada: alocação histórica por pedido não disponível</span>';
+                        const fotosHtml = fotos.length
+                            ? fotos.map((imagem, index) => {
+                                const url = processarFotoUrl(imagem.caminho_foto);
+                                return `<button type="button" onclick="window.abrirFotoDossie(${Number(subida.id_subida)}, ${index})" title="Foto ${index + 1} · ${escapeHtml(imagem.operador || subida.operador)} · ${escapeHtml(imagem.data_hora || subida.data_hora || '')}" class="h-14 w-14 overflow-hidden rounded border border-slate-200"><img src="${escapeHtml(url)}" alt="Foto ${index + 1} da subida" class="h-full w-full object-cover"></button>`;
+                            }).join('')
+                            : '<div class="flex h-14 w-14 items-center justify-center rounded bg-amber-50 text-center text-[10px] font-bold text-amber-700">SEM<br>FOTO</div>';
+                        return `<article class="flex flex-wrap items-center gap-3 rounded-lg border border-slate-200 bg-white p-3 text-xs">
+                            <div class="flex flex-wrap gap-1">${fotosHtml}</div>
+                            <div class="min-w-[180px] flex-1">
+                                <strong>${escapeHtml(subida.produto)} · subida #${escapeHtml(subida.numero_subida)}</strong>
+                                <div>Original: ${formatarQuantidade(subida.quantidade_original)} · saldo: ${formatarQuantidade(subida.quantidade_disponivel)} · ${escapeHtml(estado)}</div>
+                                <div class="text-slate-500">${escapeHtml(subida.operador)} · ${escapeHtml(subida.data_hora || '')} · ${escapeHtml(subida.doca || 'sem doca')}</div>
+                                <div class="mt-1 text-slate-600">${allocationsHtml}</div>
+                            </div>
+                        </article>`;
+                    }).join('') || '<p class="text-xs text-slate-400">Sem registro individual de subida neste embarque.</p>'}
+                </div>
+                ${dossie.estornos.length ? `<h4 class="mb-2 mt-4 text-sm font-extrabold text-amber-800">Histórico de estornos</h4>
+                    <div class="space-y-2">${dossie.estornos.map(estorno => {
+                        const alocacoesEstornadas = Array.isArray(estorno.alocacoes_snapshot) ? estorno.alocacoes_snapshot : [];
+                        const alocacoesTexto = alocacoesEstornadas.length
+                            ? alocacoesEstornadas.map(a => `Pedido #${escapeHtml(a.idpedido)} · item ${escapeHtml(a.iditempedido)}: ${formatarQuantidade(a.quantidade)} un`).join('<br>')
+                            : 'Alocação por pedido indisponível para este registro legado.';
+                        return `<article class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs">
+                            <strong>${escapeHtml(estorno.tipo)} · ${escapeHtml(estorno.produto || `Item #${estorno.iditem}`)} · ${formatarQuantidade(estorno.quantidade_estornada)} un</strong>
+                            <div>${escapeHtml(estorno.operador)} · ${escapeHtml(estorno.criado_em || '')} · ${escapeHtml(estorno.motivo)}</div>
+                            <div class="mt-1">${alocacoesTexto}</div>
+                        </article>`;
+                    }).join('')}</div>` : ''}
+            </section>
             <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
                 <div style="padding: 8px 16px; background: #f8fafc; border-radius: 10px;">
                     <i class="fa-solid fa-box"></i> <strong>${itens.length}</strong> itens processados
@@ -283,11 +414,7 @@ async function verTimeline(id) {
         if (!itens.length) {
             html += '<p class="text-center text-muted py-4">Nenhum item registrado</p>';
         } else {
-            itens.sort((a, b) => {
-                const dateA = new Date(a.data_hora.split('/').reverse().join('/'));
-                const dateB = new Date(b.data_hora.split('/').reverse().join('/'));
-                return dateB - dateA;
-            });
+            itens.sort((a, b) => timestampAuditoria(b.data_hora) - timestampAuditoria(a.data_hora));
             
             itens.forEach(item => {
                 const bgColor = item.tipo === 'separacao' ? '#f59e0b' : '#10b981';
@@ -305,12 +432,12 @@ async function verTimeline(id) {
                     fotoMaster = SEM_FOTO_URL;
                 }
                 
-                const temFotoCarregamento = item.tipo === 'carregamento' && 
-                                            fotoCarregamento && 
-                                            fotoCarregamento !== fotoMaster;
+                const fotoCarregamentoInformada = Boolean(item.foto_carregamento)
+                    && !['.', '-', 'null', 'undefined'].includes(String(item.foto_carregamento).trim().toLowerCase());
+                const temFotoCarregamento = item.tipo === 'carregamento' && fotoCarregamentoInformada;
                 
-                const produtoEscapado = item.produto.replace(/'/g, "\\'").replace(/"/g, '&quot;');
                 const codBarras = item.cod_barras || item.ean || '---';
+                const fotoCatalogoIndex = window.timelineItens.indexOf(item);
                 
                 // 🔥 VERIFICAR SE TEM MÚLTIPLOS PEDIDOS (AGRUPADO)
                 const temMultiplosPedidos = item.pedidos && item.pedidos.length > 1;
@@ -340,15 +467,15 @@ async function verTimeline(id) {
                         <!-- Área de fotos -->
                         <div style="display: flex; gap: 8px; flex-shrink: 0;">
                             <!-- Foto Catálogo -->
-                            <div style="width: 55px; height: 55px; cursor: pointer;" onclick="window.abrirFotoZoom('${fotoMaster}', '${produtoEscapado} - Catálogo')">
-                                <img src="${fotoMaster}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
+                            <div style="width: 55px; height: 55px; cursor: pointer;" onclick="window.abrirFotoAuditoria(${fotoCatalogoIndex}, 'catalogo')">
+                                <img src="${escapeHtml(fotoMaster)}" alt="Foto de catálogo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
                                 <div style="font-size: 0.55rem; text-align: center; color: #64748b; margin-top: 1px;">Catálogo</div>
                             </div>
                             
                             <!-- Foto Carregamento (só se existir) -->
                             ${temFotoCarregamento ? `
-                            <div style="width: 55px; height: 55px; cursor: pointer; position: relative;" onclick="window.abrirFotoZoom('${fotoCarregamento}', '${produtoEscapado} - Carregamento')">
-                                <img src="${fotoCarregamento}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 2px solid #10b981; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
+                            <div style="width: 55px; height: 55px; cursor: pointer; position: relative;" onclick="window.abrirFotoAuditoria(${fotoCatalogoIndex}, 'carregamento')">
+                                <img src="${escapeHtml(fotoCarregamento)}" alt="Foto registrada na subida" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 2px solid #10b981; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
                                 <div style="font-size: 0.55rem; text-align: center; color: #10b981; margin-top: 1px; font-weight: 600;">
                                     <i class="fa-solid fa-camera"></i> Carga
                                 </div>
@@ -356,23 +483,27 @@ async function verTimeline(id) {
                                     <i class="fa-solid fa-check"></i>
                                 </span>
                             </div>
+                            ` : item.tipo === 'carregamento' ? `
+                            <div class="flex items-center justify-center text-center text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-1" style="width: 76px; min-height: 55px;">
+                                <span><i class="fa-solid fa-triangle-exclamation"></i><br>Sem foto</span>
+                            </div>
                             ` : ''}
                         </div>
                         
                         <!-- Informações do produto -->
                         <div style="flex: 1; min-width: 0;">
                             <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; line-height: 1.3; word-break: break-word;">
-                                ${item.produto}
+                                ${escapeHtml(item.produto)}
                             </div>
                             <div style="display: flex; flex-wrap: wrap; gap: 8px 15px; margin-top: 4px;">
                                 <span style="font-size: 0.7rem; color: #64748b;">
-                                    <i class="fa-solid fa-hashtag"></i> REF: ${item.referencia || '---'}
+                                    <i class="fa-solid fa-hashtag"></i> REF: ${escapeHtml(item.referencia || '---')}
                                 </span>
                                 <span style="font-size: 0.7rem; color: #64748b;">
-                                    <i class="fa-solid fa-barcode"></i> ID: ${item.iditem || '---'}
+                                    <i class="fa-solid fa-barcode"></i> ID: ${escapeHtml(item.iditem || '---')}
                                 </span>
                                 <span style="font-size: 0.7rem; color: #64748b;">
-                                    <i class="fa-solid fa-upc-scan"></i> EAN: ${codBarras}
+                                    <i class="fa-solid fa-upc-scan"></i> EAN: ${escapeHtml(codBarras)}
                                 </span>
                             </div>
                             
@@ -383,6 +514,11 @@ async function verTimeline(id) {
                                 <span class="badge ${badgeClass}" style="font-size: 0.7rem;">
                                     ${item.tipo === 'separacao' ? 'Separação' : 'Carregamento'}: ${qtdFormatada}
                                 </span>
+                                ${item.tipo === 'carregamento' && item.numero_subida ? `<span class="badge bg-primary" style="font-size: 0.7rem;">${escapeHtml(item.numero_subida)}ª subida</span>` : ''}
+                                ${item.tipo === 'carregamento' && item.id_subida ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Registro #${escapeHtml(item.id_subida)}</span>` : ''}
+                                ${item.tipo === 'carregamento' && item.doca ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">${escapeHtml(item.doca)}</span>` : ''}
+                                ${item.tipo === 'carregamento' && item.quantidade_acumulada != null ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Acumulado: ${formatarQuantidade(item.quantidade_acumulada)}</span>` : ''}
+                                ${item.tipo === 'carregamento' && item.quantidade_acumulada != null ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Acumulado: ${formatarQuantidade(item.quantidade_acumulada)}</span>` : ''}
                                 ${qtdTotalFormatada ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Total: ${qtdTotalFormatada}</span>` : ''}
                                 ${item.tipo === 'carregamento' && temFotoCarregamento ? '<span class="badge bg-success" style="font-size: 0.65rem;"><i class="fa-solid fa-camera"></i> Foto</span>' : ''}
                                 ${temMultiplosPedidos ? `<span class="badge bg-info" style="font-size: 0.65rem;"><i class="fa-solid fa-receipt"></i> ${totalPedidos} pedidos</span>` : ''}
@@ -392,12 +528,12 @@ async function verTimeline(id) {
                         <!-- Operador e data -->
                         <div style="text-align: right; min-width: 130px; flex-shrink: 0;">
                             <div style="font-weight: 600; color: #1e293b; font-size: 0.8rem;">
-                                <i class="fa-solid fa-user"></i> ${item.operador || 'Sistema'}
+                                <i class="fa-solid fa-user"></i> ${escapeHtml(item.operador || 'Sistema')}
                             </div>
                             <div style="font-size: 0.7rem; color: #64748b;">
-                                <i class="fa-regular fa-clock"></i> ${item.data_hora || '---'}
+                                <i class="fa-regular fa-clock"></i> ${escapeHtml(item.data_hora || '---')}
                             </div>
-                            <span class="badge bg-info" style="margin-top: 4px; font-size: 0.65rem;">${item.status_desc}</span>
+                            <span class="badge bg-info" style="margin-top: 4px; font-size: 0.65rem;">${escapeHtml(item.status_desc)}</span>
                         </div>
                     </div>
                 `;
@@ -414,9 +550,9 @@ async function verTimeline(id) {
                 eventosStatus.forEach(evento => {
                     html += `
                         <div style="display: flex; gap: 15px; padding: 6px 0; border-bottom: 1px dashed #cbd5e1; font-size: 0.8rem;">
-                            <span style="font-weight: 600;">${evento.status_desc}</span>
-                            <span style="color: #64748b;">${evento.hora}</span>
-                            <span style="margin-left: auto;">${evento.operador || 'Sistema'}</span>
+                            <span style="font-weight: 600;">${escapeHtml(evento.status_desc)}</span>
+                            <span style="color: #64748b;">${escapeHtml(evento.hora)}</span>
+                            <span style="margin-left: auto;">${escapeHtml(evento.operador || 'Sistema')}</span>
                         </div>
                     `;
                 });
@@ -427,7 +563,12 @@ async function verTimeline(id) {
         content.innerHTML = html;
     } catch (e) {
         console.error('Erro timeline:', e);
-        content.innerHTML = '<p class="text-center text-danger py-5"><i class="fa-solid fa-triangle-exclamation"></i> Erro ao carregar timeline</p>';
+        content.innerHTML = `
+            <div class="mx-auto max-w-2xl rounded-xl border border-amber-200 bg-amber-50 p-4 text-center text-amber-900">
+                <i class="fa-solid fa-triangle-exclamation"></i>
+                <strong class="ml-1">Não foi possível carregar o dossiê</strong>
+                <p class="mb-0 mt-2 text-sm">${escapeHtml(e.message || 'Falha inesperada ao consultar a auditoria.')}</p>
+            </div>`;
     }
 }
 function filtrarTimeline(tipo) {
@@ -456,11 +597,7 @@ function filtrarTimeline(tipo) {
     if (!itensFiltrados.length) {
         html = '<p class="text-center text-muted py-4">Nenhum item neste filtro</p>';
     } else {
-        itensFiltrados.sort((a, b) => {
-            const dateA = new Date(a.data_hora.split('/').reverse().join('/'));
-            const dateB = new Date(b.data_hora.split('/').reverse().join('/'));
-            return dateB - dateA;
-        });
+        itensFiltrados.sort((a, b) => timestampAuditoria(b.data_hora) - timestampAuditoria(a.data_hora));
         
         itensFiltrados.forEach(item => {
             const bgColor = item.tipo === 'separacao' ? '#f59e0b' : '#10b981';
@@ -477,9 +614,9 @@ function filtrarTimeline(tipo) {
                 fotoMaster = SEM_FOTO_URL;
             }
             
-            const temFotoCarregamento = item.tipo === 'carregamento' && 
-                                        fotoCarregamento && 
-                                        fotoCarregamento !== fotoMaster;
+            const fotoCarregamentoInformada = Boolean(item.foto_carregamento)
+                && !['.', '-', 'null', 'undefined'].includes(String(item.foto_carregamento).trim().toLowerCase());
+            const temFotoCarregamento = item.tipo === 'carregamento' && fotoCarregamentoInformada;
             
             const temMultiplosPedidos = item.pedidos && item.pedidos.length > 1;
             const totalPedidos = item.pedidos ? item.pedidos.length : 0;
@@ -487,7 +624,7 @@ function filtrarTimeline(tipo) {
             let detalhesPedidos = '';
             if (temMultiplosPedidos) {
                 const pedidosStr = item.pedidos.map(p => 
-                    `Pedido #${p.idpedido}: ${formatarQuantidade(p.qt_carregada)} un`
+                    `Pedido #${escapeHtml(p.idpedido)}: ${formatarQuantidade(p.qt_carregada)} un`
                 ).join(' | ');
                 detalhesPedidos = `
                     <div style="font-size:0.6rem; color:#64748b; margin-top:3px; background:#f1f5f9; padding:4px 8px; border-radius:4px;">
@@ -496,8 +633,8 @@ function filtrarTimeline(tipo) {
                 `;
             }
             
-            const produtoEscapado = item.produto.replace(/'/g, "\\'").replace(/"/g, '&quot;');
             const codBarras = item.cod_barras || item.ean || '---';
+            const fotoCatalogoIndex = itens.indexOf(item);
             
             html += `
                 <div class="timeline-item" data-tipo="${item.tipo}" style="display: flex; gap: 12px; padding: 12px; border: 1px solid #e2e8f0; border-radius: 12px; margin-bottom: 10px; background: white;">
@@ -505,13 +642,13 @@ function filtrarTimeline(tipo) {
                         <i class="fa-solid fa-${icon}"></i>
                     </div>
                     <div style="display: flex; gap: 8px; flex-shrink: 0;">
-                        <div style="width: 55px; height: 55px; cursor: pointer;" onclick="window.abrirFotoZoom('${fotoMaster}', '${produtoEscapado} - Catálogo')">
-                            <img src="${fotoMaster}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
+                        <div style="width: 55px; height: 55px; cursor: pointer;" onclick="window.abrirFotoAuditoria(${fotoCatalogoIndex}, 'catalogo')">
+                            <img src="${escapeHtml(fotoMaster)}" alt="Foto de catálogo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 1px solid #e2e8f0; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
                             <div style="font-size: 0.55rem; text-align: center; color: #64748b; margin-top: 1px;">Catálogo</div>
                         </div>
                         ${temFotoCarregamento ? `
-                        <div style="width: 55px; height: 55px; cursor: pointer; position: relative;" onclick="window.abrirFotoZoom('${fotoCarregamento}', '${produtoEscapado} - Carregamento')">
-                            <img src="${fotoCarregamento}" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 2px solid #10b981; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
+                        <div style="width: 55px; height: 55px; cursor: pointer; position: relative;" onclick="window.abrirFotoAuditoria(${fotoCatalogoIndex}, 'carregamento')">
+                            <img src="${escapeHtml(fotoCarregamento)}" alt="Foto registrada na subida" style="width: 100%; height: 100%; object-fit: contain; border-radius: 6px; border: 2px solid #10b981; background: #f8fafc;" onerror="this.src='${SEM_FOTO_URL}'">
                             <div style="font-size: 0.55rem; text-align: center; color: #10b981; margin-top: 1px; font-weight: 600;">
                                 <i class="fa-solid fa-camera"></i> Carga
                             </div>
@@ -519,27 +656,35 @@ function filtrarTimeline(tipo) {
                                 <i class="fa-solid fa-check"></i>
                             </span>
                         </div>
+                        ` : item.tipo === 'carregamento' ? `
+                        <div class="flex items-center justify-center text-center text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md p-1" style="width: 76px; min-height: 55px;">
+                            <span><i class="fa-solid fa-triangle-exclamation"></i><br>Sem foto</span>
+                        </div>
                         ` : ''}
                     </div>
                     <div style="flex: 1; min-width: 0;">
-                        <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; line-height: 1.3; word-break: break-word;">${item.produto}</div>
+                        <div style="font-weight: 700; color: #1e293b; font-size: 0.9rem; line-height: 1.3; word-break: break-word;">${escapeHtml(item.produto)}</div>
                         <div style="display: flex; flex-wrap: wrap; gap: 8px 15px; margin-top: 4px;">
-                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-hashtag"></i> REF: ${item.referencia || '---'}</span>
-                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-barcode"></i> ID: ${item.iditem || '---'}</span>
-                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-upc-scan"></i> EAN: ${codBarras}</span>
+                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-hashtag"></i> REF: ${escapeHtml(item.referencia || '---')}</span>
+                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-barcode"></i> ID: ${escapeHtml(item.iditem || '---')}</span>
+                            <span style="font-size: 0.7rem; color: #64748b;"><i class="fa-solid fa-upc-scan"></i> EAN: ${escapeHtml(codBarras)}</span>
                         </div>
                         ${detalhesPedidos}
                         <div style="margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;">
                             <span class="badge ${badgeClass}" style="font-size: 0.7rem;">${item.tipo === 'separacao' ? 'Separação' : 'Carregamento'}: ${qtdFormatada}</span>
+                            ${item.tipo === 'carregamento' && item.numero_subida ? `<span class="badge bg-primary" style="font-size: 0.7rem;">${escapeHtml(item.numero_subida)}ª subida</span>` : ''}
+                            ${item.tipo === 'carregamento' && item.id_subida ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Registro #${escapeHtml(item.id_subida)}</span>` : ''}
+                            ${item.tipo === 'carregamento' && item.doca ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">${escapeHtml(item.doca)}</span>` : ''}
+                            ${item.tipo === 'carregamento' && item.quantidade_acumulada != null ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Acumulado: ${formatarQuantidade(item.quantidade_acumulada)}</span>` : ''}
                             ${qtdTotalFormatada ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Total: ${qtdTotalFormatada}</span>` : ''}
                             ${item.tipo === 'carregamento' && temFotoCarregamento ? '<span class="badge bg-success" style="font-size: 0.65rem;"><i class="fa-solid fa-camera"></i> Foto</span>' : ''}
                             ${temMultiplosPedidos ? `<span class="badge bg-info" style="font-size: 0.65rem;"><i class="fa-solid fa-receipt"></i> ${totalPedidos} pedidos</span>` : ''}
                         </div>
                     </div>
                     <div style="text-align: right; min-width: 130px; flex-shrink: 0;">
-                        <div style="font-weight: 600; color: #1e293b; font-size: 0.8rem;"><i class="fa-solid fa-user"></i> ${item.operador || 'Sistema'}</div>
-                        <div style="font-size: 0.7rem; color: #64748b;"><i class="fa-regular fa-clock"></i> ${item.data_hora || '---'}</div>
-                        <span class="badge bg-info" style="margin-top: 4px; font-size: 0.65rem;">${item.status_desc}</span>
+                        <div style="font-weight: 600; color: #1e293b; font-size: 0.8rem;"><i class="fa-solid fa-user"></i> ${escapeHtml(item.operador || 'Sistema')}</div>
+                        <div style="font-size: 0.7rem; color: #64748b;"><i class="fa-regular fa-clock"></i> ${escapeHtml(item.data_hora || '---')}</div>
+                        <span class="badge bg-info" style="margin-top: 4px; font-size: 0.65rem;">${escapeHtml(item.status_desc)}</span>
                     </div>
                 </div>
             `;
@@ -614,20 +759,97 @@ function processarFotoUrl(foto) {
 }
 
 function abrirFotoZoom(fotoUrl, produto) {
-    document.getElementById('fotoZoomTitulo').textContent = produto || 'Produto';
-    document.getElementById('fotoZoomImagem').src = fotoUrl;
-    
     const tituloEl = document.getElementById('fotoZoomTitulo');
-    const isCarregamento = produto.includes('Carregamento');
-    
-    if (isCarregamento) {
-        tituloEl.innerHTML = `<i class="fa-solid fa-camera"></i> ${produto} <span class="badge bg-success ml-3">Foto Real</span>`;
-    } else {
-        tituloEl.innerHTML = `<i class="fa-solid fa-box"></i> ${produto} <span class="badge bg-info ml-3">Catálogo</span>`;
-    }
-    
-    abrirModalFoto(); // <- ALTERADO
+    tituloEl.textContent = produto || 'Produto';
+    document.getElementById('fotoZoomImagem').src = fotoUrl;
+    abrirModalFoto();
 }
+
+function abrirFotoAuditoria(index, tipoFoto) {
+    const item = window.timelineItens?.[index];
+    if (!item) return;
+
+    const foto = tipoFoto === 'carregamento'
+        ? item.foto_carregamento
+        : (item.foto_master || item.foto);
+    const url = processarFotoUrl(foto);
+    const etapa = tipoFoto === 'carregamento' ? 'Foto da subida' : 'Foto de catálogo';
+    abrirFotoZoom(url, `${item.produto || 'Produto'} - ${etapa}`);
+}
+
+function abrirFotoDossie(idSubida, index = 0) {
+    const subida = window.dossieAuditoriaAtual?.subidas?.find(item => Number(item.id_subida) === Number(idSubida));
+    if (!subida) return;
+    const fotos = Array.isArray(subida.fotos) && subida.fotos.length
+        ? subida.fotos
+        : (subida.foto ? [{ caminho_foto: subida.foto }] : []);
+    const foto = fotos[index]?.caminho_foto;
+    if (!foto) return;
+    abrirFotoZoom(processarFotoUrl(foto), `${subida.produto || 'Produto'} - Subida #${subida.numero_subida} · Foto ${index + 1}`);
+}
+
+function filtrarDossie(filtro) {
+    document.querySelectorAll('.dossie-item-row').forEach(row => {
+        const tags = (row.dataset.dossieTags || '').split(' ').filter(Boolean);
+        row.style.display = filtro === 'todos' || tags.includes(filtro) ? '' : 'none';
+    });
+    document.querySelectorAll('[data-dossie-filter]').forEach(button => {
+        button.classList.toggle('active', button.dataset.dossieFilter === filtro);
+    });
+}
+
+function exportarDossieEmbarque() {
+    const dossie = window.dossieAuditoriaAtual;
+    if (!dossie) return;
+
+    const linhas = [[
+        'tipo', 'embarque', 'item', 'subida', 'pedido', 'id_item_pedido',
+        'previsto', 'separado', 'carregado', 'quantidade_evento', 'operador',
+        'data_hora', 'status', 'motivo', 'foto'
+    ]];
+    const csvCell = value => {
+        let text = String(value ?? '');
+        if (/^[\t\r ]*[=+\-@]/.test(text)) text = `'${text}`;
+        return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    dossie.itens.forEach(item => linhas.push([
+        'ITEM', dossie.idembarque, item.produto, '', '',
+        item.iditem, item.quantidade_prevista, item.quantidade_separada,
+        item.quantidade_carregada, '', '', '', item.status_conferencia, '', ''
+    ]));
+    dossie.subidas.forEach(subida => {
+        const alocacoes = Array.isArray(subida.alocacoes) ? subida.alocacoes : [];
+        const vinculos = alocacoes.length ? alocacoes : [{}];
+        vinculos.forEach(alocacao => linhas.push([
+            'SUBIDA', dossie.idembarque, subida.produto, subida.numero_subida,
+            alocacao.idpedido || '', alocacao.iditempedido || '', '', '', '',
+            alocacao.quantidade ?? subida.quantidade_original, subida.operador,
+            subida.data_hora, Number(subida.quantidade_disponivel) > 0 ? 'ATIVA' : 'ESTORNADA',
+            alocacoes.length ? '' : 'Legado sem alocação histórica',
+            (Array.isArray(subida.fotos) ? subida.fotos.map(foto => foto.caminho_foto).join(' | ') : subida.foto) || 'SEM FOTO'
+        ]));
+    });
+    dossie.estornos.forEach(estorno => {
+        const alocacoes = Array.isArray(estorno.alocacoes_snapshot) ? estorno.alocacoes_snapshot : [];
+        const vinculos = alocacoes.length ? alocacoes : [{}];
+        vinculos.forEach(alocacao => linhas.push([
+            'ESTORNO', dossie.idembarque, estorno.produto, estorno.numero_subida_original || '',
+            alocacao.idpedido || '', alocacao.iditempedido || '', '', '', '',
+            alocacao.quantidade ?? estorno.quantidade_estornada, estorno.operador,
+            estorno.criado_em, estorno.tipo, estorno.motivo, estorno.caminho_foto_snapshot || ''
+        ]));
+    });
+
+    const csv = '\uFEFF' + linhas.map(row => row.map(csvCell).join(';')).join('\r\n');
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `dossie-embarque-${dossie.idembarque}.csv`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
     // ======================================================================
     // TABS E FILTROS
     // ======================================================================
@@ -664,6 +886,8 @@ function abrirFotoZoom(fotoUrl, produto) {
             const matchSearch = !search || 
                 String(item.idembarque).includes(search) ||
                 (item.rota || '').toLowerCase().includes(search) ||
+                (item.placa || '').toLowerCase().includes(search) ||
+                (item.motorista || '').toLowerCase().includes(search) ||
                 (item.operador_principal || '').toLowerCase().includes(search);
             
             const itemStatus = item.status_atual || item.status_logistico;
@@ -683,8 +907,8 @@ function abrirFotoZoom(fotoUrl, produto) {
             tbody.innerHTML = filtrados.map(item => `
                 <tr>
             <td data-label="Emb."><strong>#${item.idembarque}</strong></td>
-            <td data-label="Rota">${item.rota || 'Interno'}</td>
-            <td data-label="Operador">${item.operador_principal || '---'}</td>
+            <td data-label="Rota">${escapeHtml(item.rota || 'Interno')}</td>
+            <td data-label="Operador">${escapeHtml(item.operador_principal || '---')}</td>
             <td data-label="Início/Fim"><small>${formatarData(item.inicio_op)} / ${formatarData(item.fim_op)}</small></td>
             <td data-label="Bips"><span class="badge bg-primary">${item.total_bips || 0}</span></td>
             <td data-label="Status">${getStatusBadge(item.status_atual)}</td>
@@ -694,6 +918,22 @@ function abrirFotoZoom(fotoUrl, produto) {
                 </button>
             </td>
         </tr>
+            `).join('');
+        } else {
+            tbody.innerHTML = filtrados.map(item => `
+                <tr>
+                    <td data-label="Emb."><strong>#${escapeHtml(item.idembarque)}</strong></td>
+                    <td data-label="Rota">${escapeHtml(item.rota || 'Interno')}</td>
+                    <td data-label="Placa">${escapeHtml(item.placa || '---')}</td>
+                    <td data-label="Motorista">${escapeHtml(item.motorista || '---')}</td>
+                    <td data-label="Peso">${formatarPeso(item.totalpesobruto)} kg</td>
+                    <td data-label="Status">${getStatusBadge(item.status_logistico)}</td>
+                    <td data-label="Ação">
+                        <button class="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-700 hover:text-white hover:border-slate-700 transition-all" onclick="window.verTimeline(${Number(item.idembarque)})">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </td>
+                </tr>
             `).join('');
         }
     }
@@ -754,6 +994,10 @@ setInterval(() => {
     window.exportarRelatorio = exportarRelatorio;
     window.verTimeline = verTimeline;
     window.abrirFotoZoom = abrirFotoZoom; 
+    window.abrirFotoAuditoria = abrirFotoAuditoria;
+    window.abrirFotoDossie = abrirFotoDossie;
+    window.filtrarDossie = filtrarDossie;
+    window.exportarDossieEmbarque = exportarDossieEmbarque;
     window.filtrarTimeline = filtrarTimeline; 
     window.fecharModalTimeline = fecharModalTimeline;
 window.fecharModalFoto = fecharModalFoto;

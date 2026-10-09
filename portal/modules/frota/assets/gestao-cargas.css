@@ -1670,6 +1670,11 @@
 .cobli-marcador-icone.parado {
     background: #94a3b8;
 }
+.cobli-marcador-icone.atrasado {
+    background: #f59e0b;
+    border-color: #fef3c7;
+    animation: none;
+}
 @keyframes cobliPulseMarker {
     0%, 100% { box-shadow: 0 3px 10px rgba(0,0,0,.25), 0 0 0 0 rgba(16,185,129,.6); }
     70%      { box-shadow: 0 3px 10px rgba(0,0,0,.25), 0 0 0 10px rgba(16,185,129,0); }

@@ -52,6 +52,35 @@ consultar a posicao do proprio veiculo vinculado.
 8. Problemas do checkout são registrados em `frota_entrega_problema` para a
    Gestão de Cargas.
 
+## Auditoria de carregamento
+
+A aba Carregamento da Auditoria consulta `/v1/auditoria/carregamentos` pelo
+período selecionado e inclui embarques com registros de carga, mesmo depois de
+finalizados. O detalhe `/v1/auditoria/dossie/{idembarque}` compara quantidades
+previstas, separadas e atualmente carregadas, lista pedidos alocados por subida,
+responsável (`usuario.idusuario`), data/hora, doca, foto e estornos com motivo.
+O dossiê permite filtrar itens acima do separado, parciais/pendentes e sem
+evidência, além de exportar os dados em CSV.
+
+`docs/carregamento_auditoria_migration.sql` cria as alocações imutáveis entre
+subidas e itens de pedido, o registro append-only dos estornos e a ligação
+direta das fotos às subidas. A migração também impede atualização/exclusão das
+novas evidências. Ela deve ser revisada e aplicada primeiro em homologação,
+com backup e aprovação do responsável pelo PostgreSQL externo; não é executada
+automaticamente pela aplicação. O deploy da API/frontend depende dessa
+migração.
+
+Toda reversão exige motivo (3 a 500 caracteres), operador e timestamp. O
+carregamento operacional é reduzido na mesma transação em que o evento de
+estorno e seu snapshot de alocações são gravados. Subidas e fotos originais não
+são apagadas nem renumeradas; a migração também impede apagar subidas e alterar
+os seus dados originais. O upload da foto exige vínculo com a subida. A trilha
+de alocações exatas passa a valer para
+subidas registradas após a migração. Para subidas legadas sem alocação histórica,
+o relatório identifica que o pedido/item não pode ser afirmado retroativamente;
+estornos legados novos guardam apenas o saldo distribuído no momento do
+estorno. Estornos feitos antes desta migração não podem ser reconstruídos.
+
 ## Otimizacao de rotas
 
 O otimizador considera tempo rodoviario por caminhão usando a matriz Valhalla,
@@ -76,6 +105,9 @@ pendente permanece por motorista para nao descartar operacoes offline.
   `frota_entrega_foto`, `frota_historico_posicao`, `frota_notificacao`.
 - Acerto: `frota_acerto_embarque`, `frota_acerto_pedido`, `frota_acerto_item`,
   `frota_entrega_problema`, `frota_entrega_timeline`.
+- Auditoria de carregamento: `carregamento_subidas`,
+  `carregamento_subida_alocacoes`, `carregamento_estornos` e
+  `carregamento_fotos`.
 
 Os valores monetários e quantidades operacionais vêm de `pedido_item.valortotal`
 e `pedido_item.qt`, relacionados pelos IDs ERP em `frota_entrega.pedidos_ids`.

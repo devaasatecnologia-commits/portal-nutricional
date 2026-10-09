@@ -32,6 +32,7 @@
   let rotaVersion = null;
   let offlineQueue = [];
   let queueReady;
+  let queueWrite = Promise.resolve();
   let driverPosition = null;
   let truckPosition = null;
   let routeMap = null;
@@ -569,17 +570,21 @@
     }
   }
 
-  async function saveQueue(queue) {
-    try {
+  function saveQueue(updateQueue) {
+    const write = queueWrite.then(async () => {
       await queueReady;
+      const current = offlineQueue.slice();
+      const queue = updateQueue(current);
       await salvarFila(queue);
-    } catch (error) {
+      atualizarConflitoRota();
+      void navigator.serviceWorker?.ready.then((r) => r.sync?.register('frota-offline-sync')).catch(() => {});
+      return true;
+    }).catch((error) => {
       informarFalhaPersistenciaFila(error);
       return false;
-    }
-    atualizarConflitoRota();
-    void navigator.serviceWorker?.ready.then((r) => r.sync?.register('frota-offline-sync')).catch(() => {});
-    return true;
+    });
+    queueWrite = write.then(() => undefined, () => undefined);
+    return write;
   }
   queueReady = carregarFila();
   function operationId(id, action, body) { return `${motoristaId}:${id}:${action}:${body.data_hora}`; }
@@ -3984,11 +3989,9 @@
     // ... (resto do código da função permanece igual)
     // ── Offline: enfileira direto
     if (!online()) {
-      const queue = getQueue();
-      if (
-        !queue.some((item) => item.operation_id === request.operation_id)
-        && !(await saveQueue([...queue, request]))
-      ) {
+      if (!(await saveQueue((queue) => queue.some(
+        (item) => item.operation_id === request.operation_id
+      ) ? queue : [...queue, request]))) {
         if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
         return;
       }
@@ -4070,11 +4073,9 @@
 
     } catch {
       // ── Falha de rede/5xx: enfileira
-      const queue = getQueue();
-      if (
-        !queue.some((item) => item.operation_id === request.operation_id)
-        && !(await saveQueue([...queue, request]))
-      ) {
+      if (!(await saveQueue((queue) => queue.some(
+        (item) => item.operation_id === request.operation_id
+      ) ? queue : [...queue, request]))) {
         if (whatsappWindow && !whatsappWindow.closed) whatsappWindow.close();
         return;
       }
@@ -4125,8 +4126,10 @@
 
     // ── Modo offline: enfileira
     if (!online()) {
-      const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      return await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]);
+      return await saveQueue((queue) => [
+        ...queue.filter((item) => item.type !== 'reordenar'),
+        { ...request, type: 'reordenar', operation_id: operationIdValue }
+      ]);
     }
 
     // ── Modo online: envia
@@ -4140,8 +4143,10 @@
       });
     } catch (networkErr) {
       // Falha de rede: enfileira
-      const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      if (!(await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]))) {
+      if (!(await saveQueue((queue) => [
+        ...queue.filter((item) => item.type !== 'reordenar'),
+        { ...request, type: 'reordenar', operation_id: operationIdValue }
+      ]))) {
         return false;
       }
       throw networkErr;
@@ -4150,13 +4155,15 @@
     // ── 409 Conflict: gestor alterou a rota
     if (response.status === 409) {
       $('motorista-status').textContent = 'Conflito: o gestor alterou a rota. Atualize antes de salvar novamente.';
-      const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      if (!(await saveQueue([...queue, {
-        ...request,
-        type: 'reordenar',
-        operation_id: operationIdValue,
-        conflict: true
-      }]))) return false;
+      if (!(await saveQueue((queue) => [
+        ...queue.filter((item) => item.type !== 'reordenar'),
+        {
+          ...request,
+          type: 'reordenar',
+          operation_id: operationIdValue,
+          conflict: true
+        }
+      ]))) return false;
       atualizarConflitoRota();
       throw new Error('A rota foi alterada pelo gestor');
     }
@@ -4175,8 +4182,10 @@
 
     // ── 5xx ou outros: enfileira para retry
     if (!response.ok) {
-      const queue = getQueue().filter((item) => item.type !== 'reordenar');
-      if (!(await saveQueue([...queue, { ...request, type: 'reordenar', operation_id: operationIdValue }]))) {
+      if (!(await saveQueue((queue) => [
+        ...queue.filter((item) => item.type !== 'reordenar'),
+        { ...request, type: 'reordenar', operation_id: operationIdValue }
+      ]))) {
         return false;
       }
       throw new Error('Não foi possível salvar a ordem (HTTP ' + response.status + ')');
@@ -4461,11 +4470,14 @@
   async function sincronizarFila() {
     if (!online()) return;
     await queueReady;
+    await queueWrite;
 
+    const queueSnapshot = getQueue().slice();
+    const snapshotIds = new Set(queueSnapshot.map((item) => item.operation_id));
     const remaining = [];
     const falhas = [];
 
-    for (const request of [...getQueue()]) {
+    for (const request of queueSnapshot) {
       try {
         const response = await fetch(request.endpoint, {
           method: 'POST',
@@ -4540,12 +4552,12 @@
       }
     }
 
-    try {
-      await salvarFila(remaining);
-    } catch (error) {
-      informarFalhaPersistenciaFila(error);
-      return;
-    }
+    const persisted = await saveQueue((current) => {
+      const newlyQueued = current.filter((item) => !snapshotIds.has(item.operation_id));
+      const merged = [...newlyQueued, ...remaining];
+      return [...new Map(merged.map((item) => [item.operation_id, item])).values()];
+    });
+    if (!persisted) return;
     atualizarConflitoRota();
     await enviarFotoPendente();
 
@@ -4765,7 +4777,9 @@
 
     // ── Offline
     if (!online()) {
-      if (!(await saveQueue([...getQueue(), request]))) {
+      if (!(await saveQueue((queue) => queue.some(
+        (item) => item.operation_id === request.operation_id
+      ) ? queue : [...queue, request]))) {
         aplicarStatusLocal(id, 'reverter-pendente');
         $('checkout-modal').hidden = false;
         document.body.classList.add('driver-modal-open');
@@ -4848,11 +4862,9 @@
   }
   await carregarEntregas();
     } catch (err) {
-      const queue = getQueue();
-      if (
-        !queue.some((item) => item.operation_id === request.operation_id)
-        && !(await saveQueue([...queue, request]))
-      ) {
+      if (!(await saveQueue((queue) => queue.some(
+        (item) => item.operation_id === request.operation_id
+      ) ? queue : [...queue, request]))) {
         aplicarStatusLocal(id, 'reverter-pendente');
         $('checkout-modal').hidden = false;
         document.body.classList.add('driver-modal-open');
@@ -4900,12 +4912,9 @@
   $('btn-inverter-rota')?.addEventListener('click', inverterRota);
   $('route-conflict-refresh')?.addEventListener('click', async () => { await carregarEntregas(); $('route-conflict').hidden = true; });
   $('route-conflict-discard')?.addEventListener('click', async () => {
-    try {
-      await salvarFila(getQueue().filter((item) => !(item.type === 'reordenar' && item.conflict)));
-    } catch (error) {
-      informarFalhaPersistenciaFila(error);
-      return;
-    }
+    if (!(await saveQueue((queue) => queue.filter(
+      (item) => !(item.type === 'reordenar' && item.conflict)
+    )))) return;
     $('route-conflict').hidden = true;
     $('motorista-status').textContent = 'Ordenação local descartada; rota do gestor preservada.';
     await carregarEntregas();

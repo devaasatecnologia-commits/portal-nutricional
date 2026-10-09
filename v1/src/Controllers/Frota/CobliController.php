@@ -1353,6 +1353,7 @@ class CobliController
         $cache = $this->buscarUltimaPosicaoCache($veiculoId, 30);
 
         if ($cache !== null) {
+            $atualidade = $this->avaliarAtualidadePosicao($cache['capturado_em'] ?? null);
             return $this->json($response, [
                 'success' => true,
                 'fonte'   => 'cache',
@@ -1362,8 +1363,9 @@ class CobliController
                         'longitude'      => (float)$cache['longitude'],
                         'speed'          => $cache['velocidade'],
                         'ignition_on'    => $cache['ignicao_ligada'],
-                        'time'           => strtotime($cache['capturado_em']),
+                        'time'           => $cache['capturado_em'] ? strtotime($cache['capturado_em']) : null,
                     ],
+                    'atualidade' => $atualidade,
                 ]
             ]);
         }
@@ -1375,8 +1377,12 @@ class CobliController
 
         $dados = $resultado['data'] ?? [];
         $localizacao = $dados['last_location'] ?? $dados['lastLocation'] ?? null;
+        $coordenadasValidas = $this->coordenadasValidas($localizacao);
+        $timestampPosicao = is_array($localizacao) ? ($localizacao['time'] ?? null) : null;
+        $timestampEpoch = $this->timestampEpoch($timestampPosicao);
+        $atualidade = $this->avaliarAtualidadePosicao($timestampEpoch);
 
-        if ($localizacao && !empty($localizacao['latitude']) && !empty($localizacao['longitude'])) {
+        if ($coordenadasValidas && $timestampEpoch !== null) {
             try {
                 $stmtIns = $this->pdo->prepare("
                     INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
@@ -1388,7 +1394,7 @@ class CobliController
                     'lng' => $localizacao['longitude'],
                     'vel' => $localizacao['speed'] ?? null,
                     'ign' => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
-                    'capturado_em' => !empty($localizacao['time']) ? date('Y-m-d H:i:s', (int)$localizacao['time']) : date('Y-m-d H:i:s')
+                    'capturado_em' => date('Y-m-d H:i:s', $timestampEpoch)
                 ]);
             } catch (\Exception $e) {
                 error_log('Erro ao gravar posição Cobli: ' . $e->getMessage());
@@ -1401,7 +1407,9 @@ class CobliController
             'data' => [
                 'veiculo' => $dados['vehicle'] ?? null,
                 'motorista' => $dados['driver'] ?? null,
-                'localizacao' => $localizacao
+                'localizacao' => $coordenadasValidas ? $localizacao : null,
+                'atualidade' => $atualidade,
+                'status_localizacao' => !$coordenadasValidas ? 'sem_localizacao' : $atualidade['status']
             ]
         ]);
     }
@@ -1470,29 +1478,61 @@ class CobliController
         ");
         $vinculos = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
+        $stmtCache = $this->pdo->query("
+            SELECT DISTINCT ON (p.veiculo_id)
+                p.veiculo_id, p.latitude, p.longitude, p.velocidade,
+                p.ignicao_ligada, p.capturado_em, p.created_at
+            FROM frota_cobli_posicao p
+            JOIN frota_cobli_dispositivo d
+              ON d.veiculo_id = p.veiculo_id
+             AND d.ativo = TRUE
+            WHERE p.created_at >= NOW() - INTERVAL '30 seconds'
+            ORDER BY p.veiculo_id, p.created_at DESC, p.id DESC
+        ");
+        $cachePorVeiculo = [];
+        foreach ($stmtCache->fetchAll(\PDO::FETCH_ASSOC) as $cacheRow) {
+            $cachePorVeiculo[(int)$cacheRow['veiculo_id']] = $cacheRow;
+        }
+
         $veiculos   = [];
         $cacheHits  = 0;
         $cacheMiss  = 0;
+        $consultaEm = date('c');
+        $limiteAtualidadeSegundos = 300;
 
         foreach ($vinculos as $vinculo) {
             $veiculoId = (int)$vinculo['veiculo_id'];
+            $veiculo = [
+                'veiculo_id' => $veiculoId,
+                'placa' => $vinculo['placa'],
+                'modelo' => $vinculo['modelo'],
+                'latitude' => null,
+                'longitude' => null,
+                'velocidade' => null,
+                'ignicao_ligada' => null,
+                'atualizado_em' => null,
+                'fonte' => null,
+                'status_localizacao' => 'indisponivel',
+                'idade_segundos' => null
+            ];
 
-            $cache = $this->buscarUltimaPosicaoCache($veiculoId, 30);
+            $cache = $cachePorVeiculo[$veiculoId] ?? null;
 
             if ($cache !== null) {
                 $cacheHits++;
-                $veiculos[] = [
-                    'veiculo_id'     => $veiculoId,
-                    'placa'          => $vinculo['placa'],
-                    'modelo'         => $vinculo['modelo'],
-                    'motorista'      => $cache['motorista'] ?? null,
-                    'latitude'       => (float)$cache['latitude'],
-                    'longitude'      => (float)$cache['longitude'],
-                    'velocidade'     => $cache['velocidade'],
+                $atualidade = $this->avaliarAtualidadePosicao($cache['capturado_em'] ?? null);
+                $veiculo = array_merge($veiculo, [
+                    'motorista' => $cache['motorista'] ?? null,
+                    'latitude' => (float)$cache['latitude'],
+                    'longitude' => (float)$cache['longitude'],
+                    'velocidade' => $cache['velocidade'],
                     'ignicao_ligada' => $cache['ignicao_ligada'],
-                    'atualizado_em'  => $cache['capturado_em'],
-                    'fonte'          => 'cache',
-                ];
+                    'atualizado_em' => $cache['capturado_em'] ? date('c', strtotime($cache['capturado_em'])) : null,
+                    'fonte' => 'cache',
+                    'idade_segundos' => $atualidade['idade_segundos'],
+                    'status_localizacao' => $atualidade['status']
+                ]);
+                $veiculos[] = $veiculo;
                 continue;
             }
 
@@ -1500,62 +1540,152 @@ class CobliController
 
             $resultado = $this->cobli->buscarDispositivo($vinculo['cobli_device_id']);
             if (!$resultado['success']) {
+                $veiculo['codigo_erro'] = 'COBLI_INDISPONIVEL';
+                $veiculo['mensagem'] = 'Não foi possível consultar este dispositivo na Cobli.';
+                $veiculos[] = $veiculo;
                 continue;
             }
 
             $dados = $resultado['data'] ?? [];
             $localizacao = $dados['last_location'] ?? $dados['lastLocation'] ?? null;
 
-            if (!$localizacao || empty($localizacao['latitude']) || empty($localizacao['longitude'])) {
+            if (!$this->coordenadasValidas($localizacao)) {
+                $veiculo['status_localizacao'] = 'sem_localizacao';
+                $veiculo['mensagem'] = 'A Cobli não retornou uma posição válida para este veículo.';
+                $veiculos[] = $veiculo;
                 continue;
             }
 
-            $capturadoEm = !empty($localizacao['time'])
-                ? date('Y-m-d H:i:s', (int)$localizacao['time'])
+            $timestampPosicao = $localizacao['time'] ?? null;
+            $timestampEpoch = $this->timestampEpoch($timestampPosicao);
+            $timestampValido = $timestampEpoch !== null;
+            $capturadoEm = $timestampValido
+                ? date('Y-m-d H:i:s', $timestampEpoch)
                 : date('Y-m-d H:i:s');
+            $atualidade = $this->avaliarAtualidadePosicao($timestampEpoch);
 
-            try {
-                $stmtIns = $this->pdo->prepare("
-                    INSERT INTO frota_cobli_posicao
-                        (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
-                    VALUES
-                        (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
-                ");
-                $stmtIns->execute([
-                    'veiculo_id'   => $veiculoId,
-                    'lat'          => $localizacao['latitude'],
-                    'lng'          => $localizacao['longitude'],
-                    'vel'          => $localizacao['speed'] ?? null,
-                    'ign'          => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
-                    'capturado_em' => $capturadoEm,
-                ]);
-            } catch (\Exception $e) {
-                error_log('[Cobli-posicoes] Erro ao gravar posição: ' . $e->getMessage());
+            if ($timestampValido) {
+                try {
+                    $stmtIns = $this->pdo->prepare("
+                        INSERT INTO frota_cobli_posicao
+                            (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
+                        VALUES
+                            (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
+                    ");
+                    $stmtIns->execute([
+                        'veiculo_id' => $veiculoId,
+                        'lat' => $localizacao['latitude'],
+                        'lng' => $localizacao['longitude'],
+                        'vel' => $localizacao['speed'] ?? null,
+                        'ign' => $this->paraBooleanoPg($localizacao['ignition_on'] ?? null),
+                        'capturado_em' => $capturadoEm,
+                    ]);
+                } catch (\Exception $e) {
+                    error_log('[Cobli-posicoes] Erro ao gravar posição: ' . $e->getMessage());
+                    $veiculo['persistencia'] = 'falha';
+                }
             }
 
-            $veiculos[] = [
-                'veiculo_id'     => $veiculoId,
-                'placa'          => $vinculo['placa'],
-                'modelo'         => $vinculo['modelo'],
-                'motorista'      => $dados['driver']['name'] ?? null,
-                'latitude'       => (float)$localizacao['latitude'],
-                'longitude'      => (float)$localizacao['longitude'],
-                'velocidade'     => $localizacao['speed'] ?? null,
+            $veiculos[] = array_merge($veiculo, [
+                'motorista' => $dados['driver']['name'] ?? null,
+                'latitude' => (float)$localizacao['latitude'],
+                'longitude' => (float)$localizacao['longitude'],
+                'velocidade' => $localizacao['speed'] ?? null,
                 'ignicao_ligada' => $localizacao['ignition_on'] ?? null,
-                'atualizado_em'  => $capturadoEm,
-                'fonte'          => 'cobli',
-            ];
+                'atualizado_em' => $timestampValido ? date('c', $timestampEpoch) : null,
+                'fonte' => 'cobli',
+                'idade_segundos' => $atualidade['idade_segundos'],
+                'status_localizacao' => $atualidade['status']
+            ]);
         }
+
+        $comCoordenadas = array_filter($veiculos, static function (array $veiculo): bool {
+            return is_numeric($veiculo['latitude']) && is_numeric($veiculo['longitude']);
+        });
+        $frescas = count(array_filter($veiculos, static function (array $veiculo) use ($limiteAtualidadeSegundos): bool {
+            return $veiculo['status_localizacao'] === 'atual'
+                && $veiculo['idade_segundos'] !== null
+                && $veiculo['idade_segundos'] <= $limiteAtualidadeSegundos;
+        }));
+        $indisponiveis = count(array_filter($veiculos, static function (array $veiculo): bool {
+            return $veiculo['status_localizacao'] === 'indisponivel';
+        }));
+        $semHorario = count(array_filter($veiculos, static function (array $veiculo): bool {
+            return in_array($veiculo['status_localizacao'], ['sem_horario', 'relogio_futuro'], true);
+        }));
 
         return $this->json($response, [
             'success' => true,
             'data'    => $veiculos,
             'meta'    => [
-                'total'      => count($veiculos),
+                'total'      => count($comCoordenadas),
+                'vinculados' => count($vinculos),
+                'sem_localizacao' => count($vinculos) - count($comCoordenadas),
+                'indisponiveis' => $indisponiveis,
+                'sem_horario' => $semHorario,
+                'atualizacoes_ate_5_min' => $frescas,
+                'consulta_em' => $consultaEm,
+                'limite_atualidade_segundos' => $limiteAtualidadeSegundos,
                 'cache_hits' => $cacheHits,
                 'cache_miss' => $cacheMiss,
             ]
         ]);
+    }
+
+    private function coordenadasValidas($localizacao): bool
+    {
+        if (!is_array($localizacao)
+            || !isset($localizacao['latitude'], $localizacao['longitude'])
+            || !is_numeric($localizacao['latitude'])
+            || !is_numeric($localizacao['longitude'])
+        ) {
+            return false;
+        }
+
+        $latitude = (float)$localizacao['latitude'];
+        $longitude = (float)$localizacao['longitude'];
+        return $latitude >= -90 && $latitude <= 90
+            && $longitude >= -180 && $longitude <= 180;
+    }
+
+    private function avaliarAtualidadePosicao($timestamp): array
+    {
+        $epoch = $this->timestampEpoch($timestamp);
+
+        if ($epoch === null) {
+            return ['status' => 'sem_horario', 'idade_segundos' => null];
+        }
+
+        $idade = time() - $epoch;
+        if ($idade < -60) {
+            return ['status' => 'relogio_futuro', 'idade_segundos' => $idade];
+        }
+
+        $idade = max(0, $idade);
+        return [
+            'status' => $idade <= 300 ? 'atual' : 'atrasada',
+            'idade_segundos' => $idade
+        ];
+    }
+
+    private function timestampEpoch($timestamp): ?int
+    {
+        if (is_numeric($timestamp)) {
+            if ((float)$timestamp <= 0) {
+                return null;
+            }
+
+            return (int)floor((float)$timestamp > 1000000000000
+                ? (float)$timestamp / 1000
+                : (float)$timestamp);
+        }
+
+        if (is_string($timestamp) && trim($timestamp) !== '') {
+            $parsed = strtotime($timestamp);
+            return $parsed === false ? null : $parsed;
+        }
+
+        return null;
     }
 
     public function eventosRiscoMotorista(Request $request, Response $response, array $args): Response
@@ -1656,29 +1786,54 @@ class CobliController
         $eventType = $body['eventType'] ?? $body['event_type'] ?? null;
         $eventData = $body['eventData'] ?? $body['event_data'] ?? [];
 
-        if (!$eventType) {
+        if (!is_string($eventType) || trim($eventType) === '' || !is_array($eventData)) {
             return $this->json($response, ['success' => false, 'error' => 'Evento inválido'], 400);
         }
 
-        $placaLog = $eventData['licensePlate'] ?? $eventData['license_plate'] ?? 'n/a';
-        error_log('[Cobli-webhook] Evento recebido: ' . $eventType . ' | placa=' . $placaLog);
+        $eventType = strtolower((string)$eventType);
+        error_log('[Cobli-webhook] Evento recebido: ' . substr($eventType, 0, 80));
 
         try {
             $veiculoId = $this->resolverVeiculoPorPlaca($eventData['licensePlate'] ?? $eventData['license_plate'] ?? null);
 
-            if ($eventType === 'position' && $veiculoId && !empty($eventData['latitude']) && !empty($eventData['longitude'])) {
+            if ($eventType === 'position') {
+                if (!$veiculoId || !$this->coordenadasValidas($eventData)) {
+                    return $this->json($response, [
+                        'success' => true,
+                        'data' => ['processado' => false, 'motivo' => 'veiculo_ou_coordenadas_invalidas']
+                    ]);
+                }
+
+                $timestampOrigem = $eventData['timestamp']
+                    ?? $eventData['time']
+                    ?? $eventData['occurredAt']
+                    ?? $eventData['occurred_at']
+                    ?? $eventData['eventTime']
+                    ?? $eventData['event_time']
+                    ?? $eventData['date']
+                    ?? null;
+                $timestampEpoch = $this->timestampEpoch($timestampOrigem);
+                if ($timestampEpoch === null) {
+                    return $this->json($response, [
+                        'success' => true,
+                        'data' => ['processado' => false, 'motivo' => 'horario_de_origem_ausente_ou_invalido']
+                    ]);
+                }
+
                 $stmt = $this->pdo->prepare("
                     INSERT INTO frota_cobli_posicao (veiculo_id, latitude, longitude, velocidade, ignicao_ligada, capturado_em)
-                    VALUES (:veiculo_id, :lat, :lng, :vel, :ign, NOW())
+                    VALUES (:veiculo_id, :lat, :lng, :vel, :ign, :capturado_em)
                 ");
                 $stmt->execute([
                     'veiculo_id' => $veiculoId,
                     'lat' => $eventData['latitude'],
                     'lng' => $eventData['longitude'],
                     'vel' => $eventData['speed'] ?? null,
-                    'ign' => $this->paraBooleanoPg($eventData['ignitionOn'] ?? null)
+                    'ign' => $this->paraBooleanoPg($eventData['ignitionOn'] ?? null),
+                    'capturado_em' => date('Y-m-d H:i:s', $timestampEpoch)
                 ]);
-            } elseif (in_array($eventType, ['hard_break', 'fast_acceleration', 'speedy_turn', 'tailgating', 'distracted_driving', 'phone_usage', 'eyes_closed', 'smoking', 'yawn', 'sos', 'alert_driven_over_speed'])) {
+                return $this->json($response, ['success' => true, 'data' => ['processado' => true]]);
+            } elseif (in_array($eventType, ['hard_break', 'fast_acceleration', 'speedy_turn', 'tailgating', 'distracted_driving', 'phone_usage', 'eyes_closed', 'smoking', 'yawn', 'sos', 'alert_driven_over_speed'], true)) {
                 $stmt = $this->pdo->prepare("
                     INSERT INTO frota_cobli_evento_risco (motorista_id, veiculo_id, tipo_evento, latitude, longitude, ocorrido_em, dados_brutos)
                     VALUES (NULL, :veiculo_id, :tipo, :lat, :lng, NOW(), :dados)
@@ -1690,12 +1845,20 @@ class CobliController
                     'lng' => $eventData['longitude'] ?? null,
                     'dados' => json_encode($body, JSON_UNESCAPED_UNICODE)
                 ]);
+                return $this->json($response, ['success' => true, 'data' => ['processado' => true]]);
             }
 
-            return $this->json($response, ['success' => true]);
-        } catch (\Exception $e) {
+            return $this->json($response, [
+                'success' => true,
+                'data' => ['processado' => false, 'motivo' => 'tipo_de_evento_nao_suportado']
+            ]);
+        } catch (\Throwable $e) {
             error_log('[Cobli-webhook] Erro ao processar: ' . $e->getMessage());
-            return $this->json($response, ['success' => true, 'warning' => 'Evento recebido, mas houve erro ao processar']);
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Falha ao processar evento Cobli',
+                'code' => 'COBLI_WEBHOOK_PROCESSING_FAILED'
+            ], 500);
         }
     }
 
@@ -1723,7 +1886,7 @@ class CobliController
         $valida = hash_equals($esperada, $assinaturaRecebida);
 
         if (!$valida) {
-            error_log('[Cobli-webhook] Assinatura inválida. Recebida: ' . substr($assinaturaRecebida, 0, 16) . '...');
+            error_log('[Cobli-webhook] Assinatura inválida.');
         }
 
         return $valida;

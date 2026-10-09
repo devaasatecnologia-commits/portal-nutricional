@@ -50,7 +50,7 @@ class SeparacaoController
                 FROM embarque_pedido ep
                 LEFT JOIN embarque_status_log s ON s.idembarque = ep.idembarque
                 WHERE ep.pex_conferido = 'N' 
-                  AND ep.gerou_nf = 'S'
+                  AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
                   AND ep.idfilial IN (1,6)
                   AND ep.data >= (CURRENT_DATE - INTERVAL '30 days')
                 ORDER BY ep.idembarque DESC
@@ -179,7 +179,7 @@ class SeparacaoController
                 SELECT idembarque FROM embarque_pedido
                 WHERE idembarque = ?
                   AND pex_conferido = 'N'
-                  AND gerou_nf = 'S'
+                  AND (gerou_nf = 'S' OR idfilial = 6)
                   AND idfilial IN (1, 6)
                 FOR UPDATE
             ");
@@ -413,7 +413,7 @@ class SeparacaoController
                 SELECT idembarque FROM embarque_pedido
                 WHERE idembarque = ?
                   AND pex_conferido = 'N'
-                  AND gerou_nf = 'S'
+                  AND (gerou_nf = 'S' OR idfilial = 6)
                   AND idfilial IN (1, 6)
                 FOR UPDATE
             ");

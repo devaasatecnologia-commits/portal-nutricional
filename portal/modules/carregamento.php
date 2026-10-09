@@ -123,21 +123,27 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 </div>
 
-        <div class="sticky top-20 z-40 pb-4 scan-container">
-            <div class="relative group">
-                <input type="text" id="barcode-input" 
-                       class="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-14 text-lg font-bold focus:border-slate-700 focus:ring-4 focus:ring-slate-700/10 transition-all shadow-lg text-slate-800"
-                       placeholder="Bipe para carregar..." 
-                       inputmode="numeric" 
-                       autocomplete="off"
-                       readonly 
-                       onclick="this.removeAttribute('readonly'); this.focus();">
-                <i class="fa-solid fa-expand absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-700 transition-colors"></i>
-                <button onclick="toggleCamera()" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-700 hover:text-white transition-all flex items-center justify-center btn-cam">
-                    <i class="fa-solid fa-camera"></i>
-                </button>
-            </div>
+    <!-- SPACER pra não cobrir conteúdo -->
+<div id="scan-spacer" style="height: 96px;"></div>
+
+<!-- BARRA FIXA -->
+<div id="scan-bar" class="scan-bar-fixed">
+    <div class="scan-bar-inner">
+        <div class="relative group">
+            <input type="text" id="barcode-input"
+                   class="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-14 text-lg font-bold focus:border-slate-700 focus:ring-4 focus:ring-slate-700/10 transition-all shadow-lg text-slate-800"
+                   placeholder="Bipe para carregar..."
+                   inputmode="numeric"
+                   autocomplete="off"
+                   readonly
+                   onclick="this.removeAttribute('readonly'); this.focus();">
+            <i class="fa-solid fa-expand absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-700 transition-colors"></i>
+            <button onclick="toggleCamera()" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-700 hover:text-white transition-all flex items-center justify-center btn-cam">
+                <i class="fa-solid fa-camera"></i>
+            </button>
         </div>
+    </div>
+</div>
 
         <div id="container-finalizar" style="display:none;" class="mb-6">
             <button onclick="finalizarCargaOficial()" class="w-full bg-slate-700 text-white py-4 rounded-2xl font-bold shadow-xl hover:bg-slate-800 transition-all flex items-center justify-center gap-3 active:scale-95">

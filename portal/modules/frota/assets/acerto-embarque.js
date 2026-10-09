@@ -1024,6 +1024,8 @@ function renderizarDetalhesAcerto(dados) {
                 //     D) sem problema de devolução → nada
                 // ============================================================
                 const problemasArr = Array.isArray(entrega.problemas) ? entrega.problemas : [];
+                const problemasEmAberto = problemasArr.filter(p => p.status_problema === 'pendente').length;
+                const problemasEmAnalise = problemasArr.filter(p => p.status_problema === 'em_analise').length;
                 const problemasDevolucao = problemasArr.filter(p =>
                     String(p.tipo_problema || '').toLowerCase() === 'devolucao'
                 );
@@ -1265,17 +1267,32 @@ function renderizarDetalhesAcerto(dados) {
                         <div class="acerto-delivery-body p-4">
                             ${temProblemas ? `
                                 <div class="bg-orange-50 dark:bg-orange-900/20 rounded-lg p-3 mb-3 border border-orange-200 dark:border-orange-800">
-                                    <div class="flex items-center gap-2 mb-1">
+                                    <div class="flex flex-wrap items-center gap-2 mb-1">
                                         <i class="fa-solid fa-triangle-exclamation text-orange-500 text-xs"></i>
                                         <span class="text-xs font-semibold text-orange-600 dark:text-orange-400 uppercase tracking-wider">Problemas</span>
+                                        ${problemasEmAberto ? `<span class="acerto-problema-status acerto-problema-status-open">${problemasEmAberto} em aberto</span>` : ''}
+                                        ${problemasEmAnalise ? `<span class="acerto-problema-status acerto-problema-status-review">${problemasEmAnalise} em análise</span>` : ''}
                                     </div>
-                                    ${entrega.problemas.map(p => `
-                                        <div class="flex flex-wrap items-start gap-2 text-sm py-1.5 border-b border-orange-100 dark:border-orange-800 last:border-0">
-                                            <span class="font-medium text-orange-600 dark:text-orange-400 capitalize text-xs">${escapeHtml(p.tipo_problema)}:</span>
-                                            <span class="${textTitle} flex-1">${escapeHtml(p.descricao_problema || 'Sem descrição')}</span>
-                                            <span class="text-xs ${textSub} whitespace-nowrap">${formatDateTime(p.created_at)}</span>
-                                        </div>
-                                    `).join('')}
+                                    ${problemasArr.map(p => {
+                                        const statusMap = {
+                                            pendente: { label: 'Em aberto', className: 'acerto-problema-status-open' },
+                                            em_analise: { label: 'Em análise', className: 'acerto-problema-status-review' },
+                                            resolvido: { label: 'Resolvido', className: 'acerto-problema-status-resolved' },
+                                            cancelado: { label: 'Cancelado', className: 'acerto-problema-status-cancelled' }
+                                        };
+                                        const statusInfo = statusMap[p.status_problema] || {
+                                            label: p.status_problema || 'Status não informado',
+                                            className: 'acerto-problema-status-unknown'
+                                        };
+                                        return `
+                                            <div class="flex flex-wrap items-start gap-2 text-sm py-1.5 border-b border-orange-100 dark:border-orange-800 last:border-0">
+                                                <span class="font-medium text-orange-600 dark:text-orange-400 capitalize text-xs">${escapeHtml(p.tipo_problema)}:</span>
+                                                <span class="${textTitle} flex-1">${escapeHtml(p.descricao_problema || 'Sem descrição')}</span>
+                                                <span class="acerto-problema-status ${statusInfo.className}">${escapeHtml(statusInfo.label)}</span>
+                                                <span class="text-xs ${textSub} whitespace-nowrap">${formatDateTime(p.created_at)}</span>
+                                            </div>
+                                        `;
+                                    }).join('')}
                                 </div>
                             ` : ''}
 

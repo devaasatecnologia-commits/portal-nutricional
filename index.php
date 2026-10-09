@@ -54,16 +54,29 @@ if (
     $path = '/' . ltrim((string)$acaoRewritten, '/');
 }
 
-$routePath = $_GET['api_route'] ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
+// Ler api_route do $_GET OU diretamente da QUERY_STRING
+// (necessário para multipart/form-data, onde $_GET pode não estar populado)
+$apiRouteFromQueryString = null;
+if (!empty($_SERVER['QUERY_STRING'])) {
+    parse_str($_SERVER['QUERY_STRING'], $queryParams);
+    $apiRouteFromQueryString = $queryParams['api_route'] ?? null;
+}
+
+$routePath = $_GET['api_route'] 
+    ?? $apiRouteFromQueryString 
+    ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
 
 if (strpos($routePath, '/v2') === 0) {
     $routePath = '/v1' . substr($routePath, 3);
     $_SERVER['REQUEST_URI'] = $routePath;
 }
-if (isset($_GET['api_route']) && strpos($routePath, '/v1') !== 0) {
+// Considera api_route do $_GET OU da QUERY_STRING
+$temApiRoute = isset($_GET['api_route']) || $apiRouteFromQueryString !== null;
+
+if ($temApiRoute && strpos($routePath, '/v1') !== 0) {
     $routePath = '/v1' . (strpos($routePath, '/') === 0 ? '' : '/') . $routePath;
 }
-if (isset($_GET['api_route'])) {
+if ($temApiRoute) {
     $_SERVER['REQUEST_URI'] = $routePath;
 }
 

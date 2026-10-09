@@ -520,3 +520,22 @@ window.alterarOrdem = alterarOrdem;
 window.toggleCamera = toggleCamera;
 window.finalizarSeparacao = finalizarSeparacao;
 })();
+function focarBipe() {
+    const input = document.getElementById('barcode-input');
+    if (!input) return;
+    input.value = '';
+    input.setAttribute('readonly', 'true');
+    input.focus();
+}
+// Devolve o foco ao campo do bipe sempre que o último modal/toast fecha (coletor Bluetooth/acoplado)
+(function () {
+    let timer = null;
+    new MutationObserver((mutations) => {
+        const fechou = mutations.some(m => Array.from(m.removedNodes).some(n => n.classList && n.classList.contains('swal2-container')));
+        if (!fechou) return;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            if (!document.querySelector('.swal2-container')) focarBipe();
+        }, 80);
+    }).observe(document.body, { childList: true });
+})();

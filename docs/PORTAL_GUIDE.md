@@ -6,8 +6,18 @@ Use o router oficial para manter API e portal no mesmo gateway:
 
 ```powershell
 cd C:\xampp\htdocs\API
+composer install
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
+# Configure somente credenciais e banco de desenvolvimento autorizados.
 php -S localhost:8080 -t C:\xampp\htdocs\API C:\xampp\htdocs\API\router.php
 ```
+
+Habilite `gd` no PHP usado pelo Composer se o PhpSpreadsheet exigir. As
+variaveis sem valores reais estao em `.env.example`; para credenciais, consulte
+o [processo de acesso seguro](SECRETS_ACCESS.md). O bootstrap exige
+`CHAVE_SECRETA`, `API_TOKEN` e `CRON_TOKEN`; use valores de desenvolvimento
+distintos dos de producao. Configure tambem um `JWT_SECRET` forte para os
+handlers que o utilizam; nao sobrescreva um `.env` existente.
 
 URLs de verificacao:
 
@@ -104,6 +114,11 @@ Depois da insercao confirmada, o pedido de acerto e marcado como `criado_erp`
 para impedir duplicidade. Nunca habilite producao sem backup e teste de um
 cliente/item controlado.
 
+Antes de executar, confirme a implementacao vigente em
+`v1/src/Services/Frota/ERPPedidoService.php`, o valor efetivo de
+`ERP_PEDIDO_SANDBOX` no ambiente e a aprovacao do responsavel do ERP. Nao use
+dados de cliente real em desenvolvimento.
+
 ### Gestão de Cargas
 
 O painel monitora problemas, faltantes, devoluções, prioridades e status, além
@@ -128,3 +143,8 @@ e quantidades são calculados a partir de `pedido_item` do ERP.
 Arquivos temporarios, diagnosticos, credenciais, logs e backups nao devem ser
 versionados. Documentacao antiga deve ser consolidada em `docs/`, sem manter
 copias divergentes na raiz.
+
+O banco e externo ao repositorio; este guia nao e inventario autoritativo do
+schema. Confira migrations e estruturas no ambiente autorizado antes de aplicar
+SQL. O projeto nao possui atualmente suite propria de testes configurada na
+raiz; validacoes de sintaxe nao substituem teste funcional em homologacao.

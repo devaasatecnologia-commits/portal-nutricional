@@ -2,6 +2,8 @@
 
 vendor/
 .env
+.env.*
+!.env.example
 *.log
 .DS_Store
 Thumbs.db
@@ -17,7 +19,7 @@ uploads/
 *.tmp
 /.git/
 
-# Backups e temporários
+# Backups e temporarios
 *.bak_*
 *.bak
 *.apos_passo_*

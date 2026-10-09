@@ -4651,14 +4651,35 @@ async function carregarPosicoesAoVivo() {
         const payload = await response.json();
         if (!payload.success) throw new Error(payload.error || 'Erro ao buscar posições');
 
-        const veiculos = payload.data || [];
-        mapaAoVivoState.veiculos = veiculos;
+        const todosVeiculos = payload.data || [];
+        const veiculos = todosVeiculos.filter(v =>
+            v.latitude !== null && v.latitude !== undefined
+            && v.longitude !== null && v.longitude !== undefined
+            && Number.isFinite(Number(v.latitude))
+            && Number.isFinite(Number(v.longitude))
+            && Number(v.latitude) >= -90 && Number(v.latitude) <= 90
+            && Number(v.longitude) >= -180 && Number(v.longitude) <= 180
+        );
+        const meta = payload.meta || {};
+        const horarioConsulta = meta.consulta_em
+            ? new Date(meta.consulta_em).toLocaleTimeString('pt-BR')
+            : new Date().toLocaleTimeString('pt-BR');
+        const recentes = Number(meta.atualizacoes_ate_5_min || 0);
+        const atrasados = veiculos.filter(v => v.status_localizacao === 'atrasada').length;
+        const semLocalizacao = Number(meta.sem_localizacao || 0);
+        const semHorario = Number(meta.sem_horario || 0);
+        mapaAoVivoState.veiculos = todosVeiculos;
 
         // Sem veículos: mostra estado vazio
         if (!veiculos.length) {
-            if (vazioEl) vazioEl.style.display = 'block';
+            Object.values(mapaAoVivoState.marcadores).forEach(marcador => marcador.remove());
+            mapaAoVivoState.marcadores = {};
+            if (vazioEl) {
+                vazioEl.style.display = 'block';
+                vazioEl.textContent = `Nenhuma posição disponível. ${semLocalizacao} de ${meta.vinculados || todosVeiculos.length} veículos sem localização válida; ${meta.indisponiveis || 0} falhas de consulta.`;
+            }
             if (mapaEl) mapaEl.style.display = 'none';
-            if (atualizadoEl) atualizadoEl.textContent = '—';
+            if (atualizadoEl) atualizadoEl.textContent = `Consulta às ${horarioConsulta} — sem posições disponíveis; ${semHorario} sem horário confiável`;
             return;
         }
 
@@ -4684,26 +4705,43 @@ async function carregarPosicoesAoVivo() {
             const lngLat = [Number(v.longitude), Number(v.latitude)];
             bounds.extend(lngLat);
 
+            const idade = Number.isFinite(Number(v.idade_segundos))
+                ? Math.max(0, Number(v.idade_segundos))
+                : null;
+            const idadeTexto = idade === null
+                ? 'horário da posição desconhecido'
+                : idade < 60 ? `há ${idade} s` : `há ${Math.floor(idade / 60)} min`;
+            const statusTexto = v.status_localizacao === 'atual'
+                ? 'Recente'
+                : v.status_localizacao === 'atrasada'
+                    ? 'Atrasada'
+                    : v.status_localizacao === 'relogio_futuro'
+                        ? 'Horário inconsistente'
+                        : 'Sem horário confiável';
             const emMovimento = (Number(v.velocidade) || 0) > 0;
+            const classeIcone = `cobli-marcador-icone ${emMovimento ? 'movimento' : 'parado'} ${v.status_localizacao === 'atual' ? '' : 'atrasado'}`;
             const popupHtml = `
                 <strong>${escapeHtml(v.placa || 'Veículo')}${v.modelo ? ' — ' + escapeHtml(v.modelo) : ''}</strong><br>
                 ${v.motorista ? 'Motorista: ' + escapeHtml(v.motorista) + '<br>' : ''}
-                Velocidade: ${v.velocidade ?? '—'} km/h<br>
-                Ignição: ${v.ignicao_ligada ? 'Ligada' : 'Desligada'}<br>
+                Velocidade: ${escapeHtml(v.velocidade ?? '—')} km/h<br>
+                Ignição: ${v.ignicao_ligada === true || v.ignicao_ligada === 't' || v.ignicao_ligada === 1 ? 'Ligada' : 'Desligada'}<br>
                 <span style="font-size:0.72rem; color:#64748b;">
-                    Atualizado: ${v.atualizado_em ? formatarDataHora(v.atualizado_em) : '—'}
+                    ${statusTexto} — posição ${idadeTexto}<br>
+                    Horário Cobli: ${v.atualizado_em ? formatarDataHora(v.atualizado_em) : 'não informado'}; origem: ${escapeHtml(v.fonte || 'Cobli')}
                 </span>
             `;
 
             if (mapaAoVivoState.marcadores[id]) {
                 mapaAoVivoState.marcadores[id].setLngLat(lngLat);
                 mapaAoVivoState.marcadores[id].getPopup().setHTML(popupHtml);
+                const icone = mapaAoVivoState.marcadores[id].getElement().querySelector('.cobli-marcador-icone');
+                if (icone) icone.className = classeIcone;
             } else {
                 const el = document.createElement('div');
                 el.className = 'cobli-marcador';
                 el.innerHTML = `
                     <div class="cobli-marcador-placa">${escapeHtml(v.placa || '-')}</div>
-                    <div class="cobli-marcador-icone ${emMovimento ? 'movimento' : 'parado'}">
+                    <div class="${classeIcone}">
                         <i class="fa-solid fa-truck"></i>
                     </div>
                 `;
@@ -4726,7 +4764,7 @@ async function carregarPosicoesAoVivo() {
         }
 
         if (atualizadoEl) {
-            atualizadoEl.textContent = 'Atualizado às ' + new Date().toLocaleTimeString('pt-BR');
+            atualizadoEl.textContent = `Consulta às ${horarioConsulta} — ${recentes} recentes (até 5 min), ${atrasados} atrasadas, ${semHorario} sem horário confiável, ${semLocalizacao} sem localização (${meta.indisponiveis || 0} falhas Cobli)`;
         }
     } catch (error) {
         console.error('Erro ao carregar posições ao vivo:', error);
