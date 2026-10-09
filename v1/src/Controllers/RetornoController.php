@@ -13,7 +13,8 @@ class RetornoController
     private $destinos = [
         10117 => ['nome' => 'CONTAINER', 'cor' => '#10b981'],
         16595 => ['nome' => 'MATÉRIA-PRIMA', 'cor' => '#3b82f6'],
-        16596 => ['nome' => 'REVENDA', 'cor' => '#f59e0b']
+        16596 => ['nome' => 'REVENDA', 'cor' => '#f59e0b'],
+        16688 => ['nome' => 'TROCAS FORNECEDOR', 'cor' => '#8b5cf6']
     ];
     
     public function __construct()
@@ -43,45 +44,22 @@ class RetornoController
     /**
      * Obtém ou cria o pedido ativo para um estoque
      */
-    private function getOrCreatePedidoAtivo($idcliforemp, $idusuario)
+    private function getPedidoAberto($idcliforemp)
     {
-        // Busca pedido em aberto (status = 1)
+        // Pedido de estoque aberto criado no ERP (nunca criamos pedido por aqui)
         $stmt = $this->pdo->prepare("
             SELECT idpedido, numero, data, observacao, valortotalpedido
-            FROM pedido 
-            WHERE idcliforemp = ? AND status = 1
+            FROM pedido
+            WHERE idcliforemp = ? AND status = 1 AND idempresa = 1 AND idfilial = 1
             ORDER BY idpedido DESC
             LIMIT 1
         ");
         $stmt->execute([$idcliforemp]);
         $pedido = $stmt->fetch();
-        
-        if ($pedido) {
-            return $pedido;
+        if (!$pedido) {
+            $nome = $this->destinos[$idcliforemp]['nome'] ?? $idcliforemp;
+            throw new \DomainException("Não há pedido aberto para o destino {$nome}. Crie o pedido no ERP antes de destinar.");
         }
-        
-        // Cria novo pedido usando sequence gi_pedido
-        $stmt = $this->pdo->query("SELECT nextval('gi_pedido') as proximo");
-        $proximo = $stmt->fetch();
-        $numeroPedido = $proximo['proximo'];
-        
-        $nomeDestino = $this->destinos[$idcliforemp]['nome'];
-        
-        $stmt = $this->pdo->prepare("
-            INSERT INTO pedido (
-                idcliforemp, numero, data, status, situacao, observacao, 
-                idusuario, datahora, idempresa, idfilial,
-                valortotalpedido, valortotalitens, valortotalcalculado,
-                pesobruto, pesoliquido, quantidadetotal
-            ) VALUES (?, ?, CURRENT_DATE, 1, 1, ?, ?, NOW(), 1, 1, 0, 0, 0, 0, 0, 0)
-            RETURNING idpedido, numero
-        ");
-        $stmt->execute([$idcliforemp, $numeroPedido, "[ESTOQUE] Lote - " . $nomeDestino, $idusuario]);
-        $pedido = $stmt->fetch();
-        
-        // Cria parcela inicial zerada
-        $this->atualizarParcelas($pedido['idpedido'], 0);
-        
         return $pedido;
     }
     
@@ -322,6 +300,38 @@ private function getDadosItemCompleto($iditem, $quantidade)
     return $dados;
 }
 
+    /**
+     * Aplica a nova quantidade a UMA linha do pedido (filtro por linha + pedido + item).
+     * qt = 0 remove a linha do pedido (o histórico fica em retorno_carga); senão atualiza
+     * quantidade, saldos, reserva, pesos e impostos.
+     */
+    private function aplicarQuantidadePedidoItem(int $iditempedido, int $idpedido, int $iditem, float $qt): void
+    {
+        if ($qt <= 0) {
+            $stmt = $this->pdo->prepare("DELETE FROM pedido_item WHERE iditempedido = ? AND idpedido = ? AND iditem = ? AND ativo = 'S'");
+            $stmt->execute([$iditempedido, $idpedido, $iditem]);
+            return;
+        }
+        $d = $this->getDadosItemCompleto($iditem, $qt);
+        $stmt = $this->pdo->prepare("
+            UPDATE pedido_item SET
+                qt = :qt, qtsaldo = :qt, quant_original = :qt, quant_reserva = :qt,
+                qtsaldoconvertido = :qt, qtsaldogerouop = :qt,
+                qtpesoliquido = :pl, qtpesobruto = :pb, pesoliquidooriginal = :pl, pesobrutooriginal = :pb,
+                valortotal = :vt, valortotalcomdesconto = :vt, valor_total_com_campanha = :vt,
+                valortotal_comst = :vt, quantmoedatotal = :vt, valorbaseicms = :vt, valoricms = :vi,
+                valorbasepis = :bp, valorpis = :vp, valorbasecofins = :bc, valorcofins = :vc,
+                valorbasecbsibs = :bb, valorcbs = :vcbs, valoribsuf = :vibs, valoribs = :vibs, valorcbsibs = :vcb
+            WHERE iditempedido = :id AND idpedido = :ped AND iditem = :item AND ativo = 'S'
+        ");
+        $stmt->execute([
+            ':qt' => $qt, ':pl' => $d['qtpesoliquido'], ':pb' => $d['qtpesobruto'], ':vt' => $d['valortotal'],
+            ':vi' => $d['valoricms'], ':bp' => $d['valorbasepis'], ':vp' => $d['valorpis'],
+            ':bc' => $d['valorbasecofins'], ':vc' => $d['valorcofins'], ':bb' => $d['valorbasecbsibs'],
+            ':vcbs' => $d['valorcbs'], ':vibs' => $d['valoribsuf'], ':vcb' => $d['valorcbsibs'],
+            ':id' => $iditempedido, ':ped' => $idpedido, ':item' => $iditem,
+        ]);
+    }
 /**
  * Insere um item no pedido IGUAL AO INSERT MANUAL QUE FUNCIONOU
  * Esta função replica exatamente o SELECT da sua consulta de teste
@@ -374,156 +384,41 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
     $quantmoedaunitario = round($valorUnitario, 2);
     $quantmoedatotal = round($qt * $valorUnitario, 2);
     
-    // ================================================================
-    // INSERT COMPLETO - IGUAL AO TESTE MANUAL (TODOS OS CAMPOS)
-    // ================================================================
-    $sql = "
-        INSERT INTO pedido_item (
-            idpedido, iditempedido, idcodempresa, idfilial, iditem,
-            idclassfiscal, idsituacaotributaria,
-            qt, qtsaldo, qtfaturado, qtpesoliquido, qtpesobruto,
-            valor, valoripi, valortotal, valortotalcomdesconto,
-            valorcustoreposicao, valordesconto, valoriss, valorcomissao,
-            valorpauta, idunidade, perc_desconto, perc_ipi, perc_icms,
-            perc_reducaobasecalculo, perc_iss, perc_comissao,
-            codigolido, valoricms, origemcomissao,
-            idsolicitacaocompra, perc_dif_aliquota, valortotal_dif_aliquota,
-            perc_margem, perc_comissao_supervisor, valor_comissao_supervisor,
-            perc_acrescimo, valor_acrescimo, perc_margem_cm, perc_margem_cg,
-            valorcustogerencial, complemento,
-            percmargemsubsttrib, valorprecominimo, idunidade_impressao,
-            quant_impressao, fator_conversao, valorunitarioimpressao,
-            valorsugerido, idof, status, perc_campanha, valor_campanha,
-            valor_total_com_campanha, reserva_estoque, tipo_conversao,
-            valor_ipi_cadimposto, valor_pis_cadimposto, valor_cofins_cadimposto,
-            quant_na_caixa, idoflote, valorbase_substtribimp, quant_original,
-            data_previsao_entrega, idtabelapreco, naofaturar, iddeposito,
-            quant_venda_minima, quant_reserva, valorbase_st, valor_st,
-            perc_icmsuf_st, valorunit_comst, valortotal_comst, editou_qt_logistica,
-            idsittrib_origem, idsituacaotrib_cliente, perc_reducaoicms_interno,
-            perc_price, valor_price, iditemsolicitacao,
-            idsittrib_ipi, idsittrib_pis, idsittrib_cofins, icms_diferido,
-            perc_mva_ajustado, perc_desconto_original, perc_desconto_condpagto,
-            valor_desconto_price, valor_price_sem_ipi, idcondicao_promocao,
-            valorcondicao_promocao, permite_desconto, promocao, valorpromocao,
-            idpolitica, percdescontopolitica, percacrescimopolitica,
-            valorprecovendapolitica, valorprecovendadia, percdescontopadrao,
-            percmvabeneficio, percicmsbeneficio, valorbaseicms, valorfrete,
-            valoroutrasdespesas, valorbaseipi, valorbaseiss,
-            valorbasepis, valorpis, percpis, valorbasecofins, valorcofins,
-            perccofins, valorbaseisentoicms, valorseguro, quantdevolvidoef,
-            valortac, valoracrescimofinanceiro,
-            ativo, datahora, origemproduto, foto_item_auto,
-            quantmoedaunitario, quantmoedatotal, idpedidocompranf_e,
-            iditempedidocompranf_e, idordembeneficiamento, quantmoedadesconto,
-            valorbaseicmsufdestino, percfcp, percicmsufdestino, percpartilhaicms,
-            valorfcp, valoricmsufdestino, valoricmsuforigem, idenquadramentoipi,
-            qt_embarque, md5, valorcustoobsoleto, valorcomissaotelevendas,
-            perccomissaotelevendas, perccomissaopenalizacao, nrarttmp,
-            percdescontotabelapreco, valorunconvertida, corpromocao, percdificms,
-            valordificms, iddepositoentrada, nrart, percreducaopis, percreducaocofins,
-            qtsaldoconvertido, qtfaturadoconvertido, basepissuframa, valorpissuframa,
-            basecofinssuframa, valorcofinssuframa, valoricmssuframa, baseicmssuframa,
-            percicmssuframa, valorbaseicmssuframa, baseipisuframa, valoripisuframa,
-            pesobrutooriginal, pesoliquidooriginal, idimpostovenda,
-            diasgarantiafabricante, datagarantiafabricante, iditempedidogarantia,
-            iditemgarantia, percgarantia, diasgarantiaestendida, datagarantiaestendida,
-            pesoliquidoembarque, pesobrutoembarque, iditemcarrinho,
-            percdescontopoliticavalorunit, percacrescimopoliticavalorunit,
-            valorcustomedio, qtsaldogerouop, percicmsdesonerado,
-            valorbaseicmsdesonerado, valoricmsdesonerado, valordescontope,
-            pex_conf_embarque, pex_qt_recebida, pex_saldo_embarque,
-            pex_conf_embarque_carregamento, pex_qt_recebida_carregamento,
-            pex_saldo_embarque_carregamento, idtributo, idsituacao, idclasstrib,
-            perccbs, percibsmun, percibsuf, percreducaocbs, percreducaoibsuf,
-            percreducaoibsmun, percefetibsmun, percefetibsuf, percefetcbs,
-            negritopromocao, nrregistro, nrreceita, idcidasc, uncidasc,
-            conversaoforcar, kit, tipoitemgarantia, manutencaodata, manutencaoqtd,
-            cstcbsibs, classtribcbsibs, valorbasecbsibs, valorcbs, valoribsuf,
-            valoribsmun, valoribs, valorcbsibs, percdiferimentocbs,
-            percdiferimentoibsuf, percdiferimentoibsmun, valordiferimentocbs,
-            valordiferimentoibsmun, valordiferimentoibsuf
-        ) VALUES (
-            ?, ?, 1, 1, ?,
-            ?, ?,
-            ?, 0, 0, ?, ?,
-            ?, 0, ?, ?,
-            ?, 0, 0, 0,
-            ?, 1, 0, ?, ?,
-            0, 0, 0,
-            ?, ?,
-            0,
-            0, 0, 0,
-            ?, 0, 0,
-            0, 0, 100, ?,
-            ?, ?,
-            0, ?, 1,
-            ?, ?, ?,
-            ?, 0, 1, 0, 0,
-            ?, 'S', 1,
-            0, 0, 0,
-            ?, 0, 0, ?,
-            CURRENT_DATE, 0, 'S', 1,
-            0, ?, 0, 0,
-            ?, ?, 0, 'N',
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0, 0,
-            'N', 0, 0, 0,
-            0, 0, 0, 0,
-            'S', 'N', 0,
-            0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0,
-            'S', NOW(), 0, NULL,
-            ?, ?,
-            '.', '0', '.',
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0
-        )
-    ";
-    
-    $stmt = $this->pdo->prepare($sql);
-    $stmt->execute([
-        $idpedido, $iditempedido, $iditem,
-        $idclassfiscal, $idsituacaotributaria,
-        $qt, $qtpesoliquido, $qtpesobruto,
-        $valorUnitario, $valortotal, $valortotalcomdesconto,
-        $valorcustocontabil,
-        $valorUnitario,
-        $percIpi, $percIcms,
-        $referencia, $valoricms,
-        $percmargem, $percmargem,
-        $custogerencial, $complemento,
-        $valorbasepis, $valorpis,
-        $valorbasecofins, $valorcofins,
-        $valorbasecbsibs, $valorcbs,
-        $valoribsuf, $valorcbsibs,
-        $quantmoedaunitario, $quantmoedatotal
-    ]);
-    
-    return $iditempedido;
+    // Só as colunas que a regra do ERP preenche; as demais usam o DEFAULT da tabela
+    $cols = [
+        'idpedido' => $idpedido, 'iditempedido' => $iditempedido, 'idcodempresa' => 1, 'idfilial' => 1,
+        'iditem' => $iditem, 'idclassfiscal' => $idclassfiscal, 'idsituacaotributaria' => $idsituacaotributaria,
+        'qt' => $qt, 'qtsaldo' => $qt, 'qtfaturado' => 0, 'qtpesoliquido' => $qtpesoliquido, 'qtpesobruto' => $qtpesobruto,
+        'valor' => $valorUnitario, 'valortotal' => $valortotal, 'valortotalcomdesconto' => $valortotalcomdesconto,
+        'valorcustoreposicao' => $valorcustocontabil, 'valorpauta' => $valorUnitario,
+        'idunidade' => (int)($dadosItem['idunidade'] ?? 1), 'idunidade_impressao' => (int)($dadosItem['idunidade'] ?? 1),
+        'perc_ipi' => $percIpi, 'perc_icms' => $percIcms, 'valoricms' => $valoricms,
+        'valorbaseicms' => $valortotal, 'perc_icmsuf_st' => $percIcms, 'percicmsufdestino' => $percIcms,
+        'codigolido' => $referencia, 'complemento' => $complemento,
+        'perc_margem' => $percmargem, 'perc_margem_cg' => $percmargem, 'perc_margem_cm' => 100,
+        'valorcustogerencial' => $custogerencial,
+        'valorprecominimo' => $valorUnitario, 'quant_impressao' => 1, 'fator_conversao' => $fatorConversao ?: 1,
+        'valorunitarioimpressao' => $valorUnitario, 'valorsugerido' => $valorUnitario, 'valorprecovendadia' => $valorUnitario,
+        'valor_total_com_campanha' => $valortotal, 'valorunit_comst' => $valorUnitario, 'valortotal_comst' => $valortotal,
+        'tipo_conversao' => 1, 'quant_original' => $qt, 'quant_reserva' => $qt, 'qtsaldoconvertido' => $qt, 'qtsaldogerouop' => $qt,
+        'reserva_estoque' => 'S', 'iddeposito' => 1,
+        'pesobrutooriginal' => $qtpesobruto, 'pesoliquidooriginal' => $qtpesoliquido,
+        'idimpostovenda' => (int)($dadosItem['idimposto'] ?? 0),
+        'idsittrib_ipi' => (int)($dadosItem['idsittrib_ipi'] ?? 0),
+        'idsittrib_pis' => (int)($dadosItem['idsittrib_pis'] ?? 0), 'idsittrib_cofins' => (int)($dadosItem['idsittrib_cofins'] ?? 0),
+        'valorbasepis' => $valorbasepis, 'valorpis' => $valorpis, 'percpis' => $percCredPis,
+        'valorbasecofins' => $valorbasecofins, 'valorcofins' => $valorcofins, 'perccofins' => $percCredCofins,
+        'idtributo' => (int)($dadosItem['idtributo'] ?? 1), 'perccbs' => $perccbs, 'percibsuf' => $percibsuf,
+        'valorbasecbsibs' => $valorbasecbsibs, 'valorcbs' => $valorcbs, 'valoribsuf' => $valoribsuf,
+        'valoribs' => $valoribsuf, 'valorcbsibs' => $valorcbsibs,
+        'quantmoedaunitario' => $quantmoedaunitario, 'quantmoedatotal' => $quantmoedatotal,
+        'ativo' => 'S',
+    ];
+    $nomes = implode(', ', array_keys($cols));
+    $marcas = implode(', ', array_fill(0, count($cols), '?')) . ', NOW()';
+    $stmt = $this->pdo->prepare("INSERT INTO pedido_item ($nomes, datahora) VALUES ($marcas)");
+    $stmt->execute(array_values($cols));
+        return $iditempedido;
 }
     // ==========================================================================
     // MÓDULO 1: RETORNO ITEM (Bipagem rápida)
@@ -538,7 +433,8 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         $tipos = [
             ['id' => 10117, 'nome' => 'CONTAINER', 'descricao' => 'Estoque provisório - Container', 'cor' => '#10b981'],
             ['id' => 16595, 'nome' => 'MATÉRIA-PRIMA', 'descricao' => 'Estoque provisório - Matéria-prima', 'cor' => '#3b82f6'],
-            ['id' => 16596, 'nome' => 'REVENDA', 'descricao' => 'Estoque provisório - Revenda', 'cor' => '#f59e0b']
+            ['id' => 16596, 'nome' => 'REVENDA', 'descricao' => 'Estoque provisório - Revenda', 'cor' => '#f59e0b'],
+            ['id' => 16688, 'nome' => 'TROCAS FORNECEDOR', 'descricao' => 'Estoque provisório - Trocas fornecedor', 'cor' => '#8b5cf6']
         ];
         
         $payload = json_encode($tipos);
@@ -546,6 +442,188 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         return $response->withHeader('Content-Type', 'application/json');
     }
     
+    /** Garante que o pedido pertence a um dos clientes de estoque do retorno */
+    private function pedidoEhEstoqueRetorno(int $idpedido): bool
+    {
+        $stmt = $this->pdo->prepare("SELECT idcliforemp FROM pedido WHERE idpedido = ?");
+        $stmt->execute([$idpedido]);
+        $c = $stmt->fetchColumn();
+        return $c !== false && isset($this->destinos[(int)$c]);
+    }
+
+    /**
+     * GET /v1/retorno-embarque/destinos
+     * Pedidos ABERTOS (status = 1) dos clientes de destino do retorno
+     */
+    public function getDestinosAbertos(Request $request, Response $response): Response
+    {
+        $ids = array_keys($this->destinos);
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $stmt = $this->pdo->prepare("
+            SELECT p.idpedido, p.idcliforemp, c.fantasia, p.observacao, p.data,
+                   (SELECT COUNT(*) FROM pedido_item i WHERE i.idpedido = p.idpedido AND i.ativo = 'S') AS itens
+            FROM pedido p
+            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
+            WHERE p.status = 1 AND p.idcliforemp IN ($in)
+            ORDER BY p.idcliforemp, p.idpedido DESC
+        ");
+        $stmt->execute($ids);
+        $lista = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $d = $this->destinos[(int)$r['idcliforemp']];
+            $lista[] = [
+                'idpedido' => (int)$r['idpedido'],
+                'idcliforemp' => (int)$r['idcliforemp'],
+                'nome' => $d['nome'],
+                'cor' => $d['cor'],
+                'fantasia' => trim((string)$r['fantasia']),
+                'observacao' => $r['observacao'],
+                'data' => $r['data'],
+                'itens' => (int)$r['itens'],
+            ];
+        }
+        $response->getBody()->write(json_encode(['success' => true, 'data' => $lista]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /v1/retorno-embarque/{idembarque}
+     * Comparativo por item: carregado (+ extras de subida) x devolvido no acerto x já destinado
+     */
+    public function getComparativoEmbarque(Request $request, Response $response, array $args): Response
+    {
+        $idembarque = (int)($args['idembarque'] ?? 0);
+        if ($idembarque <= 0) {
+            $response->getBody()->write(json_encode(['success' => false, 'error' => 'Embarque inválido']));
+            return $response->withStatus(422)->withHeader('Content-Type', 'application/json');
+        }
+
+        $todos = ($request->getQueryParams()['todos'] ?? '') === '1';
+        $existe = fn($t) => (bool)$this->pdo->query("SELECT to_regclass('public.$t')")->fetchColumn();
+
+        $stmt = $this->pdo->prepare("
+            SELECT c.iditem, SUM(c.qt_carregada) AS carregado
+            FROM pedido_item_carregamento c WHERE c.idembarque = ? GROUP BY c.iditem
+        ");
+        $stmt->execute([$idembarque]);
+        $itens = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $itens[(int)$r['iditem']] = ['carregado' => (float)$r['carregado'], 'extra' => 0.0, 'devolvido_acerto' => 0.0, 'destinado' => 0.0];
+        }
+
+        if ($existe('carregamento_subida_extras')) {
+            $stmt = $this->pdo->prepare("SELECT iditem, SUM(quantidade) AS q FROM carregamento_subida_extras WHERE idembarque = ? GROUP BY iditem");
+            $stmt->execute([$idembarque]);
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+                $id = (int)$r['iditem'];
+                $itens[$id] = $itens[$id] ?? ['carregado' => 0.0, 'extra' => 0.0, 'devolvido_acerto' => 0.0, 'destinado' => 0.0];
+                $itens[$id]['extra'] = (float)$r['q'];
+            }
+        }
+
+        $stmt = $this->pdo->prepare("
+            SELECT ai.item_erp_id AS iditem, SUM(ai.quantidade_devolvida) AS q
+            FROM frota_acerto_item ai
+            JOIN frota_acerto_pedido ap ON ap.id = ai.acerto_pedido_id
+            WHERE ap.embarque_id = ? GROUP BY ai.item_erp_id
+        ");
+        $stmt->execute([$idembarque]);
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $id = (int)$r['iditem'];
+            $itens[$id] = $itens[$id] ?? ['carregado' => 0.0, 'extra' => 0.0, 'devolvido_acerto' => 0.0, 'destinado' => 0.0];
+            $itens[$id]['devolvido_acerto'] = (float)$r['q'];
+        }
+
+        if ($existe('retorno_carga') && $this->pdo->query("SELECT 1 FROM information_schema.columns WHERE table_name = 'retorno_carga' AND column_name = 'idembarque'")->fetchColumn()) {
+            $stmt = $this->pdo->prepare("
+                SELECT iditem, SUM(quant) AS q FROM retorno_carga
+                WHERE tipo_movimentacao = 'ENTRADA' AND idembarque = ? GROUP BY iditem
+            ");
+            $stmt->execute([$idembarque]);
+        } else {
+            $stmt = $this->pdo->prepare("
+                SELECT iditem, SUM(quant) AS q FROM retorno_carga
+                WHERE tipo_movimentacao = 'ENTRADA' AND observacao LIKE ? GROUP BY iditem
+            ");
+            $stmt->execute(['DESTINAR DO EMBARQUE #' . $idembarque . '%']);
+        }
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $id = (int)$r['iditem'];
+            $itens[$id] = $itens[$id] ?? ['carregado' => 0.0, 'extra' => 0.0, 'devolvido_acerto' => 0.0, 'destinado' => 0.0];
+            $itens[$id]['destinado'] = (float)$r['q'];
+        }
+
+        $lista = [];
+        if ($itens) {
+            $in = implode(',', array_fill(0, count($itens), '?'));
+            $stmt = $this->pdo->prepare("SELECT iditem, descricao, referencia, path_foto_master FROM item WHERE iditem IN ($in)");
+            $stmt->execute(array_keys($itens));
+            $desc = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) $desc[(int)$r['iditem']] = $r;
+            foreach ($itens as $id => $v) {
+                // Esperado de volta: o que o acerto apontou ou o extra de subida (o que for maior, sem duplicar)
+                $esperado = max($v['devolvido_acerto'], $v['extra']);
+                if (!$todos && $esperado <= 0) continue;
+                $pendente = max(0, $esperado - $v['destinado']);
+                $lista[] = [
+                    'esperado' => $esperado,
+                    'iditem' => $id,
+                    'descricao' => $desc[$id]['descricao'] ?? "Item $id",
+                    'referencia' => $desc[$id]['referencia'] ?? null,
+                    'foto' => $desc[$id]['path_foto_master'] ?? null,
+                    'carregado' => $v['carregado'],
+                    'extra_subida' => $v['extra'],
+                    'devolvido_acerto' => $v['devolvido_acerto'],
+                    'destinado' => $v['destinado'],
+                    'pendente_destinar' => $pendente,
+                ];
+            }
+            usort($lista, fn($a, $b) => [$b['pendente_destinar'], $a['descricao']] <=> [$a['pendente_destinar'], $b['descricao']]);
+        }
+
+        $response->getBody()->write(json_encode(['success' => true, 'idembarque' => $idembarque, 'todos' => $todos, 'total_itens_embarque' => count($itens), 'itens' => $lista]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * Localiza o item por: qualquer código de barras, referência (1..3, ignorando zeros
+     * à esquerda) ou ID. Itens ativos têm prioridade, mas inativos também retornam
+     * (mercadoria devolvida pode ser de item já inativado).
+     */
+    private function localizarProduto(string $busca): ?array
+    {
+        $busca = trim($busca);
+        $semZeros = ltrim($busca, '0');
+        $base = "
+            SELECT i.iditem, i.descricao, i.referencia, i.pesobruto, i.pesoliquido,
+                   ef.valorprecovenda, i.path_foto_master,
+                   COALESCE(
+                       (SELECT cb.idbarra FROM codigo_barra cb WHERE cb.iditem = i.iditem AND cb.principal = 'S' LIMIT 1),
+                       (SELECT cb.idbarra FROM codigo_barra cb WHERE cb.iditem = i.iditem LIMIT 1),
+                       'S/COD'
+                   ) AS cod_barras
+            FROM item i
+            LEFT JOIN estoque_filial ef ON ef.iditem = i.iditem AND ef.idfilial = 1
+        ";
+        $tentativas = [
+            ["WHERE EXISTS (SELECT 1 FROM codigo_barra x WHERE x.iditem = i.iditem AND x.idbarra = ?)", [$busca]],
+            ["WHERE UPPER(TRIM(i.referencia)) = UPPER(?)", [$busca]],
+        ];
+        if (ctype_digit($busca) && strlen($busca) <= 9) {
+            $tentativas[] = ["WHERE i.iditem = ?", [(int)$busca]];
+        }
+        if ($semZeros !== '') {
+            $tentativas[] = ["WHERE LTRIM(TRIM(i.referencia), '0') = ?", [$semZeros]];
+        }
+        $tentativas[] = ["WHERE UPPER(TRIM(i.referencia1)) = UPPER(?) OR UPPER(TRIM(i.referencia2)) = UPPER(?) OR UPPER(TRIM(i.referencia3)) = UPPER(?)", [$busca, $busca, $busca]];
+        foreach ($tentativas as [$where, $params]) {
+            $stmt = $this->pdo->prepare($base . $where . " ORDER BY (i.inativo = 'N') DESC, i.iditem LIMIT 1");
+            $stmt->execute($params);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row) return $row;
+        }
+        return null;
+    }
     /**
      * POST /v1/retorno/buscar-produto
      * Busca produto por código de barras
@@ -561,44 +639,14 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         }
         
         try {
-            $produto = null;
-            
-            // Busca por ID
-            if (is_numeric($busca)) {
-                $stmt = $this->pdo->prepare("
-                    SELECT i.iditem, i.descricao, i.referencia, i.pesobruto, i.pesoliquido, 
-                           ef.valorprecovenda, i.path_foto_master,
-                           COALESCE(cb.idbarra, 'S/COD') as cod_barras
-                    FROM item i
-                    LEFT JOIN estoque_filial ef ON ef.iditem = i.iditem AND ef.idfilial = 1
-                    LEFT JOIN codigo_barra cb ON cb.iditem = i.iditem AND cb.principal = 'S'
-                    WHERE i.iditem = ? AND i.inativo = 'N'
-                ");
-                $stmt->execute([$busca]);
-                $produto = $stmt->fetch();
-            }
-            
-            // Busca por código de barras
-            if (!$produto) {
-                $stmt = $this->pdo->prepare("
-                    SELECT i.iditem, i.descricao, i.referencia, i.pesobruto, i.pesoliquido, 
-                           ef.valorprecovenda, i.path_foto_master, cb.idbarra as cod_barras
-                    FROM item i
-                    LEFT JOIN estoque_filial ef ON ef.iditem = i.iditem AND ef.idfilial = 1
-                    JOIN codigo_barra cb ON cb.iditem = i.iditem AND cb.principal = 'S'
-                    WHERE cb.idbarra = ? AND i.inativo = 'N'
-                    LIMIT 1
-                ");
-                $stmt->execute([$busca]);
-                $produto = $stmt->fetch();
-            }
-            
+            $produto = $this->localizarProduto($busca);
             if (!$produto) {
                 $response->getBody()->write(json_encode(['error' => 'Produto não encontrado']));
                 return $response->withStatus(404);
             }
             
             $produto['foto_url'] = $this->processarImagem($produto['path_foto_master'] ?? null);
+            $produto['foto'] = $produto['path_foto_master'] ?? null;
             unset($produto['path_foto_master']);
             
             $payload = json_encode($produto);
@@ -668,12 +716,28 @@ public function movimentar(Request $request, Response $response): Response
     $validade = $input['validade'] ?? null;
     $motivo = $input['motivo'] ?? 'OUTROS';
     $observacao = $input['observacao'] ?? null;
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? ($input['idusuario'] ?? 0));
     $cod_barras = $input['cod_barras'] ?? null;
+    $idembarque = (int)($input['idembarque'] ?? 0);
     
     if ($idcliforemp_destino <= 0 || $iditem <= 0) {
         $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
         return $response->withStatus(400);
+    }
+    
+    if (!isset($this->destinos[$idcliforemp_destino])) {
+        $response->getBody()->write(json_encode(['error' => 'Destino não permitido']));
+        return $response->withStatus(422);
+    }
+    
+    if (!in_array($tipo, ['ENTRADA', 'SAIDA', 'AJUSTE'], true)) {
+        $response->getBody()->write(json_encode(['error' => 'Tipo de movimentação inválido']));
+        return $response->withStatus(422);
+    }
+    
+    if ($tipo === 'AJUSTE' && ($nova_quantidade === null || $nova_quantidade < 0)) {
+        $response->getBody()->write(json_encode(['error' => 'Nova quantidade inválida']));
+        return $response->withStatus(422);
     }
     
     if ($tipo != 'AJUSTE' && $quantidade <= 0) {
@@ -685,7 +749,7 @@ public function movimentar(Request $request, Response $response): Response
         $this->pdo->beginTransaction();
         
         // Obtém ou cria o pedido ativo para o destino
-        $pedido = $this->getOrCreatePedidoAtivo($idcliforemp_destino, $idusuario);
+        $pedido = $this->getPedidoAberto($idcliforemp_destino);
         $idpedido = $pedido['idpedido'];
         
         // Busca produto no pedido
@@ -693,6 +757,7 @@ public function movimentar(Request $request, Response $response): Response
             SELECT iditempedido, qt, qtpesoliquido, qtpesobruto, valor, valortotal
             FROM pedido_item 
             WHERE idpedido = ? AND iditem = ? AND ativo = 'S'
+            FOR UPDATE
         ");
         $stmt->execute([$idpedido, $iditem]);
         $produtoPedido = $stmt->fetch();
@@ -763,42 +828,7 @@ public function movimentar(Request $request, Response $response): Response
             $novoValorIbsuf = round($novaBaseCbsibs * $percibsuf / 100, 2);
             $novoValorCbsibs = $novoValorCbs + $novoValorIbsuf;
             
-            $stmt = $this->pdo->prepare("
-                UPDATE pedido_item 
-                SET 
-                    qt = ?,
-                    qtpesoliquido = ?,
-                    qtpesobruto = ?,
-                    valortotal = ?,
-                    valortotalcomdesconto = ?,
-                    valoricms = ?,
-                    valorbasepis = ?,
-                    valorpis = ?,
-                    valorbasecofins = ?,
-                    valorcofins = ?,
-                    valorbasecbsibs = ?,
-                    valorcbs = ?,
-                    valoribsuf = ?,
-                    valorcbsibs = ?
-                WHERE iditempedido = ?
-            ");
-            $stmt->execute([
-                $quantidade_depois,
-                $novoPesoLiquido,
-                $novoPesoBruto,
-                $novoValorTotal,
-                $novoValorTotal,
-                $novoValorIcms,
-                $novaBasePis,
-                $novoValorPis,
-                $novaBaseCofins,
-                $novoValorCofins,
-                $novaBaseCbsibs,
-                $novoValorCbs,
-                $novoValorIbsuf,
-                $novoValorCbsibs,
-                $produtoPedido['iditempedido']
-            ]);
+            $this->aplicarQuantidadePedidoItem((int)$produtoPedido['iditempedido'], (int)$idpedido, $iditem, (float)$quantidade_depois);
             
         } else {
             // ============================================================
@@ -810,23 +840,30 @@ public function movimentar(Request $request, Response $response): Response
         // ================================================================
         // REGISTRA NO RETORNO_CARGA
         // ================================================================
+        $temColunaEmbarque = $idembarque > 0 && (bool)$this->pdo->query(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'retorno_carga' AND column_name = 'idembarque'"
+        )->fetchColumn();
         $sqlMov = "
             INSERT INTO retorno_carga (
                 idpedido, iditem, idcliforemp_destino, tipo_movimentacao,
                 quant, quantidade_antes, quantidade_depois,
                 peso_real, lote, validade, motivo, observacao,
-                idusuario, nome_item, cod_barras, data_hora, data_hora_registro
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+                idusuario, nome_item, cod_barras, data_hora, data_hora_registro"
+                . ($temColunaEmbarque ? ", idembarque" : "") . "
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()"
+                . ($temColunaEmbarque ? ", ?" : "") . ")
             RETURNING id
         ";
         
-        $stmt = $this->pdo->prepare($sqlMov);
-        $stmt->execute([
+        $params = [
             $idpedido, $iditem, $idcliforemp_destino, $direcao,
             $quantidade_para_registro, $quantidade_atual, $quantidade_depois,
             $peso_real, $lote, $validade, $motivo, $observacao,
             $idusuario, $descricaoItem, $cod_barras
-        ]);
+        ];
+        if ($temColunaEmbarque) $params[] = $idembarque;
+        $stmt = $this->pdo->prepare($sqlMov);
+        $stmt->execute($params);
         $idMovimentacao = $stmt->fetch()['id'];
         
         // ================================================================
@@ -853,7 +890,7 @@ public function movimentar(Request $request, Response $response): Response
         }
         error_log('[RetornoController] Erro em movimentar: ' . $e->getMessage());
         $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
-        return $response->withStatus(500);
+        return $response->withStatus($e instanceof \DomainException ? 409 : 500);
     }
 }
     
@@ -884,8 +921,21 @@ public function movimentar(Request $request, Response $response): Response
             return $response->withStatus(400);
         }
         
-        $ext = pathinfo($foto->getClientFilename(), PATHINFO_EXTENSION);
-        $nomeArquivo = sprintf('movimentacao_%d_%s.%s', $idMovimentacao, date('Ymd_His'), $ext);
+        if ($foto->getError() !== UPLOAD_ERR_OK || $foto->getSize() > 10 * 1024 * 1024) {
+            $response->getBody()->write(json_encode(['error' => 'Arquivo inválido ou maior que 10MB']));
+            return $response->withStatus(400);
+        }
+        
+        // Extensão derivada do conteúdo real, nunca do nome enviado
+        $tmp = $foto->getStream()->getMetadata('uri');
+        $mimeReal = $tmp ? (new \finfo(FILEINFO_MIME_TYPE))->file($tmp) : null;
+        $extPorMime = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp'];
+        if (!isset($extPorMime[$mimeReal])) {
+            $response->getBody()->write(json_encode(['error' => 'Conteúdo do arquivo não é uma imagem válida']));
+            return $response->withStatus(400);
+        }
+        $ext = $extPorMime[$mimeReal];
+        $nomeArquivo = sprintf('movimentacao_%d_%s_%s.%s', $idMovimentacao, date('Ymd_His'), bin2hex(random_bytes(4)), $ext);
         $caminhoRelativo = 'uploads/retorno/' . $nomeArquivo;
         $caminhoAbsoluto = __DIR__ . '/../../../uploads/retorno/' . $nomeArquivo;
         
@@ -949,6 +999,7 @@ public function movimentar(Request $request, Response $response): Response
                         WHEN rc.idcliforemp_destino = 10117 THEN 'CONTAINER'
                         WHEN rc.idcliforemp_destino = 16595 THEN 'MATÉRIA-PRIMA'
                         WHEN rc.idcliforemp_destino = 16596 THEN 'REVENDA'
+                        WHEN rc.idcliforemp_destino = 16688 THEN 'TROCAS FORNECEDOR'
                         ELSE 'ESTOQUE'
                     END as destino_nome
                 FROM retorno_carga rc
@@ -999,7 +1050,7 @@ public function movimentar(Request $request, Response $response): Response
         }
         
         try {
-            $pedido = $this->getOrCreatePedidoAtivo($idcliforemp, $idusuario);
+            $pedido = $this->getPedidoAberto($idcliforemp);
             
             // Busca produtos
             $stmt = $this->pdo->prepare("
@@ -1057,6 +1108,9 @@ public function movimentar(Request $request, Response $response): Response
             $response->getBody()->write($payload);
             return $response->withHeader('Content-Type', 'application/json');
             
+        } catch (\DomainException $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage(), 'codigo' => 'SEM_PEDIDO_ABERTO']));
+            return $response->withStatus(409)->withHeader('Content-Type', 'application/json');
         } catch (\Exception $e) {
             error_log('[RetornoController] Erro em getEstoqueAtivo: ' . $e->getMessage());
             $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
@@ -1166,11 +1220,16 @@ public function ajustarProduto(Request $request, Response $response): Response
     $validade = $input['validade'] ?? null;
     $motivo = $input['motivo'] ?? 'AJUSTE_INVENTARIO';
     $observacao = $input['observacao'] ?? null;
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? ($input['idusuario'] ?? 0));
     
     if ($idpedido <= 0 || $iditem <= 0 || $nova_quantidade <= 0) {
         $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
         return $response->withStatus(400);
+    }
+    
+    if (!$this->pedidoEhEstoqueRetorno($idpedido)) {
+        $response->getBody()->write(json_encode(['error' => 'Pedido não pertence ao estoque de retorno']));
+        return $response->withStatus(422);
     }
     
     try {
@@ -1181,6 +1240,7 @@ public function ajustarProduto(Request $request, Response $response): Response
             SELECT iditempedido, qt, qtpesoliquido, valor 
             FROM pedido_item 
             WHERE idpedido = ? AND iditem = ? AND ativo = 'S'
+            FOR UPDATE
         ");
         $stmt->execute([$idpedido, $iditem]);
         $produtoPedido = $stmt->fetch();
@@ -1205,21 +1265,7 @@ public function ajustarProduto(Request $request, Response $response): Response
         $itemInfo = $stmt->fetch();
         
         // Atualiza quantidade
-        $stmt = $this->pdo->prepare("
-            UPDATE pedido_item 
-            SET qt = ?, 
-                valortotal = qt * ?,
-                qtpesoliquido = qt * ?,
-                qtpesobruto = qt * ?
-            WHERE iditempedido = ?
-        ");
-        $stmt->execute([
-            $nova_quantidade, 
-            $itemInfo['valor'],
-            $itemInfo['pesoliquido'],
-            $itemInfo['pesobruto'],
-            $produtoPedido['iditempedido']
-        ]);
+        $this->aplicarQuantidadePedidoItem((int)$produtoPedido['iditempedido'], (int)$idpedido, $iditem, (float)$nova_quantidade);
         
         // Registra o ajuste no retorno_carga
         $sqlMov = "
@@ -1277,7 +1323,7 @@ public function moverProduto(Request $request, Response $response): Response
     $idcliforemp_destino = (int)($input['idcliforemp_destino'] ?? 0);
     $iditem = (int)($input['iditem'] ?? 0);
     $quantidade = (float)($input['quantidade'] ?? 0);
-    $idusuario = (int)($input['idusuario'] ?? 0);
+    $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? ($input['idusuario'] ?? 0));
     $motivo = $input['motivo'] ?? 'TRANSFERENCIA';
     $observacao = $input['observacao'] ?? null;
     
@@ -1286,11 +1332,16 @@ public function moverProduto(Request $request, Response $response): Response
         return $response->withStatus(400);
     }
     
+    if (!isset($this->destinos[$idcliforemp_destino]) || !$this->pedidoEhEstoqueRetorno($idpedido_origem)) {
+        $response->getBody()->write(json_encode(['error' => 'Origem ou destino não permitido']));
+        return $response->withStatus(422);
+    }
+    
     try {
         $this->pdo->beginTransaction();
         
         // Busca o pedido de destino
-        $pedidoDestino = $this->getOrCreatePedidoAtivo($idcliforemp_destino, $idusuario);
+        $pedidoDestino = $this->getPedidoAberto($idcliforemp_destino);
         $idpedido_destino = $pedidoDestino['idpedido'];
         
         // Busca informações do produto no pedido de origem
@@ -1298,6 +1349,7 @@ public function moverProduto(Request $request, Response $response): Response
             SELECT iditempedido, qt, valor, qtpesoliquido, qtpesobruto
             FROM pedido_item 
             WHERE idpedido = ? AND iditem = ? AND ativo = 'S'
+            FOR UPDATE
         ");
         $stmt->execute([$idpedido_origem, $iditem]);
         $produtoOrigem = $stmt->fetch();
@@ -1323,18 +1375,7 @@ public function moverProduto(Request $request, Response $response): Response
         
         // 1. Remove do estoque de origem
         $novaQuantOrigem = $produtoOrigem['qt'] - $quantidade;
-        $stmt = $this->pdo->prepare("
-            UPDATE pedido_item 
-            SET qt = ?,
-                valortotal = qt * ?,
-                qtpesoliquido = qt * ?,
-                qtpesobruto = qt * ?
-            WHERE iditempedido = ?
-        ");
-        $stmt->execute([
-            $novaQuantOrigem, $itemInfo['valor'], $itemInfo['pesoliquido'], $itemInfo['pesobruto'],
-            $produtoOrigem['iditempedido']
-        ]);
+        $this->aplicarQuantidadePedidoItem((int)$produtoOrigem['iditempedido'], (int)$idpedido_origem, $iditem, (float)$novaQuantOrigem);
         
         // Registra saída no retorno_carga
         $stmt = $this->pdo->prepare("
@@ -1360,70 +1401,10 @@ public function moverProduto(Request $request, Response $response): Response
         
         if ($produtoDestino) {
             $novaQuantDestino = $produtoDestino['qt'] + $quantidade;
-            $stmt = $this->pdo->prepare("
-                UPDATE pedido_item 
-                SET qt = ?,
-                    valortotal = qt * ?,
-                    qtpesoliquido = qt * ?,
-                    qtpesobruto = qt * ?
-                WHERE iditempedido = ?
-            ");
-            $stmt->execute([
-                $novaQuantDestino, $itemInfo['valor'], $itemInfo['pesoliquido'], $itemInfo['pesobruto'],
-                $produtoDestino['iditempedido']
-            ]);
+            $this->aplicarQuantidadePedidoItem((int)$produtoDestino['iditempedido'], (int)$idpedido_destino, $iditem, (float)$novaQuantDestino);
         } else {
-            $iditempedido = $this->getNextIdItemPedido($idpedido_destino);
             $dadosItem = $this->getDadosItemCompleto($iditem, $quantidade);
-            
-            $stmt = $this->pdo->prepare("
-                INSERT INTO pedido_item (
-                    idpedido, iditempedido, idcodempresa, idfilial, iditem,
-                    idclassfiscal, idsituacaotributaria,
-                    qt, qtsaldo, qtfaturado, qtpesoliquido, qtpesobruto,
-                    valor, valoripi, valortotal, valortotalcomdesconto,
-                    valorcustoreposicao, valordesconto, valoriss, valorcomissao,
-                    valorpauta, idunidade, perc_desconto, perc_ipi, perc_icms,
-                    perc_reducaobasecalculo, perc_iss, perc_comissao,
-                    codigolido, valoricms, origemcomissao,
-                    perc_margem, perc_margem_cm, perc_margem_cg,
-                    valorcustogerencial, complemento,
-                    valorbasepis, valorpis, valorbasecofins, valorcofins,
-                    valorbasecbsibs, valorcbs, valoribsuf, valorcbsibs,
-                    ativo, datahora
-                ) VALUES (
-                    ?, ?, 1, 1, ?,
-                    ?, ?,
-                    ?, 0, 0, ?, ?,
-                    ?, 0, ?, ?,
-                    ?, 0, 0, 0,
-                    ?, 1, 0, ?, ?,
-                    0, 0, 0,
-                    ?, ?,
-                    0,
-                    ?, 100, ?,
-                    ?, ?,
-                    ?, ?, ?, ?,
-                    ?, ?, ?, ?,
-                    'S', NOW()
-                )
-            ");
-            $stmt->execute([
-                $idpedido_destino, $iditempedido, $dadosItem['iditem'],
-                $dadosItem['idclassfiscal'], $dadosItem['idsituacaotributaria'],
-                $dadosItem['qt'], $dadosItem['qtpesoliquido'], $dadosItem['qtpesobruto'],
-                $dadosItem['valorprecovenda'], $dadosItem['valortotal'], $dadosItem['valortotal'],
-                $dadosItem['valorcustocontabil'],
-                $dadosItem['valorprecovenda'],
-                $dadosItem['perc_ipi'], $dadosItem['perc_icms'],
-                $dadosItem['referencia'], $dadosItem['valoricms'],
-                $dadosItem['percmargem'], $dadosItem['percmargem'],
-                $dadosItem['custogerencial'], $dadosItem['complemento'],
-                $dadosItem['valorbasepis'], $dadosItem['valorpis'],
-                $dadosItem['valorbasecofins'], $dadosItem['valorcofins'],
-                $dadosItem['valorbasecbsibs'], $dadosItem['valorcbs'],
-                $dadosItem['valoribsuf'], $dadosItem['valorcbsibs']
-            ]);
+            $this->inserirItemCompleto($idpedido_destino, $iditem, $quantidade, $dadosItem);
         }
         
         // Registra entrada no retorno_carga
@@ -1461,7 +1442,7 @@ public function moverProduto(Request $request, Response $response): Response
         }
         error_log('[RetornoController] Erro em moverProduto: ' . $e->getMessage());
         $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
-        return $response->withStatus(500);
+        return $response->withStatus($e instanceof \DomainException ? 409 : 500);
     }
 }
     
@@ -1486,6 +1467,7 @@ public function moverProduto(Request $request, Response $response): Response
                            WHEN p.idcliforemp = 10117 THEN 'CONTAINER'
                            WHEN p.idcliforemp = 16595 THEN 'MATÉRIA-PRIMA'
                            WHEN p.idcliforemp = 16596 THEN 'REVENDA'
+                           WHEN p.idcliforemp = 16688 THEN 'TROCAS FORNECEDOR'
                        END as estoque_nome
                 FROM pedido p
                 WHERE p.idpedido = ?

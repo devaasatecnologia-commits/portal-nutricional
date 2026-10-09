@@ -96,10 +96,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <input type="text" id="barcode-input" 
                        class="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-14 text-lg font-bold focus:border-emerald-600 focus:ring-4 focus:ring-emerald-600/10 transition-all shadow-lg text-slate-800"
                        placeholder="Bipe o código de barras ou digite o código do item..."
-                       inputmode="numeric" 
-                       autocomplete="off"
-                       readonly 
-                       onclick="this.removeAttribute('readonly'); this.focus();">
+                       inputmode="none" 
+                       autocomplete="off">
                 <i class="fa-solid fa-barcode absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-emerald-600 transition-colors"></i>
                 <button onclick="toggleCamera()" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-700 hover:text-white transition-all flex items-center justify-center">
                     <i class="fa-solid fa-camera"></i>

@@ -152,7 +152,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                     id="btnTabRanking" onclick="window.switchTab('ranking')">
                 <i class="fa-solid fa-trophy mr-1.5"></i> RANKING
             </button>
-        </div>
+            <button class="tab-btn px-4 lg:px-6 py-2.5 lg:py-3 rounded-t-xl font-bold text-xs lg:text-sm transition-all text-slate-500 whitespace-nowrap" 
+                    id="btnTabUsuarios" onclick="window.switchTab('usuarios')">
+                <i class="fa-solid fa-user-clock mr-1.5"></i> USUÁRIOS
+            </button>        </div>
     </div>
 
     <!-- Painel Separação -->
@@ -256,6 +259,38 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- Painel Usuários -->
+    <div class="tab-panel" id="panelUsuarios" style="display:none;">
+        <div class="mb-3">
+            <h3 class="text-base lg:text-lg font-bold text-slate-800">
+                <i class="fa-solid fa-user-clock text-slate-500 mr-2"></i> Atividade por Usuário
+            </h3>
+            <p class="text-xs lg:text-sm text-slate-400">Separação, carregamento, estornos e inatividade no período selecionado</p>
+            <p id="avisoInatividadeIndisponivel" class="hidden mt-2 text-xs bg-amber-50 text-amber-700 border border-amber-200 rounded-lg px-3 py-2">
+                O registro de inatividade ainda não está ativo no banco; os motivos não aparecem aqui até a migration ser aplicada.
+            </p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
+            <div class="overflow-x-auto">
+               <table class="w-full ranking-table table-to-cards">
+                    <thead class="bg-gradient-to-r from-slate-700 to-slate-800">
+                        <tr>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Usuário</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Separação</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Subidas</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Estornos</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Inatividade</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Última Ativ.</th>
+                            <th class="px-3 lg:px-4 py-2.5 lg:py-3 text-left text-[10px] lg:text-xs font-bold text-white uppercase">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbodyUsuarios">
+                        <tr><td colspan="7" class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Carregando...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
     <!-- Footer Conquistas -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-4">
         <div class="bg-white p-3 lg:p-4 rounded-2xl border-l-4 lg:border-l-8 border-amber-400 shadow-sm">
@@ -278,6 +313,27 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- Modal Atividade do Usuário -->
+    <div id="modalUsuario" class="fixed inset-0 z-50 hidden overflow-y-auto">
+        <div class="flex items-end sm:items-center justify-center min-h-screen p-2 sm:p-4">
+            <div class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm" onclick="window.fecharModalUsuario()"></div>
+            <div class="relative bg-white rounded-2xl sm:rounded-3xl w-full max-w-4xl max-h-[95vh] sm:max-h-[90vh] overflow-hidden shadow-2xl">
+                <div class="bg-slate-700 px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
+                    <h3 class="text-base sm:text-lg font-bold text-white">
+                        <i class="fa-solid fa-user-clock mr-2"></i>
+                        Atividade - <span id="modalUsuarioNome">---</span>
+                    </h3>
+                    <button onclick="window.fecharModalUsuario()" class="text-white/70 hover:text-white transition-colors p-1">
+                        <i class="fa-solid fa-times text-lg sm:text-xl"></i>
+                    </button>
+                </div>
+                <div class="p-3 sm:p-6 overflow-y-auto max-h-[calc(95vh-60px)] sm:max-h-[calc(90vh-80px)]">
+                    <div id="usuarioFiltros" class="flex flex-wrap gap-1.5 mb-3"></div>
+                    <div id="usuarioEventos"></div>
+                </div>
+            </div>
+        </div>
+    </div>
     <!-- Modal Timeline -->
     <div id="modalTimeline" class="fixed inset-0 z-50 hidden overflow-y-auto">
         <div class="flex items-end sm:items-center justify-center min-h-screen p-2 sm:p-4">

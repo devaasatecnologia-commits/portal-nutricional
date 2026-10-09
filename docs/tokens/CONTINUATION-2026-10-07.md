@@ -330,6 +330,51 @@ credenciais, monitoramento, configuracao Valhalla/Cobli ou estado de deploy.
 
 ## Publicacao
 
+### Atualizacao 2026-10-09 (tarde): sessao, inatividade e avisos remotos
+
+- Carregamento: avisos de separacao remota (`detectarAlteracaoRemota`) usavam
+  `Swal.fire`, que substitui o modal aberto (ex.: quantidade/foto da subida).
+  Agora usam `avisoRemoto()` (toast proprio, nao bloqueante) e a sincronizacao
+  recheca `isProcessing`/`Swal.isVisible()` depois do `await`, adiando a
+  aplicacao para a proxima rodada de 5 s.
+- Token JWT: 2 h -> 4 h em `AuthController` (login e `logoutAll`).
+- Inatividade: `portal/assets/js/inatividade.js`, carregado por
+  `estrutura/header.php`. Apos 20 min sem eventos de uso, overlay proprio
+  (nao Swal) exige motivo (min. 5 caracteres); estado em localStorage e
+  sincronizado entre abas; login limpa o estado. Exclui `login.php` e
+  `motorista-offline` (motorista em rota). Motivo enviado a
+  `POST /v1/auth/inatividade` (`AuthController::registrarInatividade`), que grava
+  em `portal_inatividade` se existir (migration
+  `docs/portal_inatividade_migration.sql`, a aplicar manualmente) ou em
+  `error_log` ate la. `focarBipe()` nao age enquanto o overlay existe.
+- Testado no navegador local: bloqueio, validacao, liberacao e HTTP 200 do
+  endpoint. Nao testado: expiracao real do token, varias abas, coletor no celular.
+- Observacao: o token continua sem renovacao automatica; ao expirar (4 h) o
+  usuario volta ao login.
+
 Nao publicar por FTP sem confirmar o commit e as dependencias do ambiente.
 Enviar somente os arquivos efetivamente commitados que correspondam ao deploy;
 nao enviar `.env`, artefatos, arquivos temporarios, dumps nem alteracoes alheias.
+
+### Auditoria de atividade por usuário (2026-10-09, tarde)
+- Nova aba **USUÁRIOS** em `portal/modules/auditoria.php` / `auditoria.js`: totais por usuário (separação, subidas, estornos, inatividade, última atividade) + modal com timeline filtrável (Separação, Carregamento, Estorno, Inatividade, Acesso).
+- API: `GET /v1/auditoria/usuarios` e `GET /v1/auditoria/usuarios/{idusuario}` (`AuditoriaController`, período `inicio`/`fim`, máx. 500 eventos, módulo `auditoria`).
+- Motivo de inatividade: `POST /v1/auth/inatividade` grava `modulo` (derivado da tela) em `portal_inatividade`.
+- **Pendente (usuário):** aplicar `docs/portal_inatividade_migration.sql`. Até lá a aba mostra aviso e os motivos ficam só no `error_log`.
+- Próximo: estender a outros módulos (depósito etc.) enviando a atividade para a mesma trilha; avaliar renovação automática do token.
+## Atualização: contador de inatividade, item a mais, bipe global e Retorno por embarque
+- inatividade.js: aviso regressivo nos últimos 60 s. Token JWT = 4 h.
+- Item a mais na subida: migration `docs/carregamento_subida_extras_migration.sql` (APLICAR); `CarregamentoController::uploadFoto`, `getSubidas`; exibido na Auditoria (badge/linha "a mais").
+- Bipe global: `portal/assets/js/bipe-foco.js` (header.php) mantém `#barcode-input` focado; Desembarque/Retorno sem `readonly`.
+- Retorno por embarque: `GET /v1/retorno-embarque/destinos` e `/v1/retorno-embarque/{id}` (RetornoController + api.php). Painel em retorno.php/retorno.js: carregado (+extras) x devolvido no acerto x destinado x pendente; botão DESTINAR usa `v1/retorno/movimentar` com observação `EMB #id`. Destino 16688 (TROCAS FORNECEDOR) adicionado. Pedidos abertos hoje: 10117→155045, 16595→152056, 16596→152057, 16688→155024.
+- PENDENTE/ATENÇÃO: as rotas `/v1/retorno/*` existem só em produção (não estão no api.php local); validar o painel em produção. Comparativo só mostra "devolvido" após acerto com `quantidade_devolvida`.
+
+## Revisão do módulo Retorno (2026-10-09)
+- Segurança RetornoController: upload valida mime real e gera extensão/nome aleatório (antes usava extensão do cliente); destino/origem restritos a 10117/16595/16596/16688; idusuario vem do JWT; FOR UPDATE nas linhas de pedido_item; validação de tipo/AJUSTE.
+- `docs/retorno_carga_embarque_migration.sql` (APLICAR): coluna `retorno_carga.idembarque`; comparativo usa a coluna (fallback: observação `EMB #id`).
+- Próximos: inatividade 10 min + códigos de ineficiência (aguardando lista), Desembarque x Depósito (endereçamento -> Separação), módulo Manutenção de frota (Cobli).
+
+## Retorno - correção do bipe (causa raiz)
+- config.js define apiFetch(endpoint, options); retorno.js usava (acao, metodo, body) -> POST virava GET (405). retorno.js agora tem apiFetch local (mesmo padrão de desembarque.js).
+- Rotas locais /retorno/* e /auditoria-estoque/* adicionadas em v1/routes/api.php (em produção podem já existir noutro arquivo: não sobrescrever às cegas).
+- Testado na tela real: bipe 402/4003/EAN/ref 03144/inexistente, foto, lista do embarque 9304 (37 itens), seleção de item.

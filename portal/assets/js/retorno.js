@@ -14,7 +14,39 @@ let destinoCor = null;
 let tipoMovimentacao = 'ENTRADA';
 let produtoExisteNoPedido = false;
 let dadosProdutoPedido = null;
+let isProcessing = false;
+let scanner = null;
 
+// O config.js define apiFetch(endpoint, options); aqui o padrão é (acao, metodo, body)
+const apiFetch = async function (acao, metodo = 'GET', body = null) {
+    const endpoint = String(acao).replace(/^\/+/, '').replace(/^v1\//, '');
+    const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
+    const options = { method: metodo, headers: {} };
+    const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+    if (token) options.headers.Authorization = 'Bearer ' + token;
+
+    let url = apiRoot + '/' + endpoint;
+    if (body instanceof FormData) {
+        options.body = body;
+    } else if (body && metodo === 'GET') {
+        url += (url.includes('?') ? '&' : '?') + new URLSearchParams(body).toString();
+    } else if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+    }
+
+    const response = await fetch(url, options);
+    if (response.status === 401) {
+        window.location.href = '/portal/login.php';
+        throw new Error('Sessão expirada');
+    }
+    const text = await response.text();
+    try {
+        return text ? JSON.parse(text) : {};
+    } catch (e) {
+        return { error: response.ok ? 'Resposta inválida do servidor' : `Erro ${response.status}` };
+    }
+};
 
 // ==========================================================================
 // FUNÇÕES AUXILIARES
@@ -49,23 +81,21 @@ function formatarQuantidade(qt) {
 }
 
 function getImageUrl(foto) {
-    if (!foto) return 'https://placehold.co/100x100?text=S/F';
-    if (foto.startsWith('http://') || foto.startsWith('https://')) return foto;
-    
-    let imgPath = foto;
-    if (imgPath.includes('Fotos para o Site\\')) {
-        imgPath = imgPath.split('Fotos para o Site\\')[1];
-    }
-    imgPath = imgPath.replace(/\\/g, '/');
-    
-    if (imgPath) {
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' + encodeURIComponent(imgPath).replace(/%2F/g, '/');
-    }
-    return 'https://placehold.co/100x100?text=S/F';
+    const sem = 'https://placehold.co/100x100?text=S/F';
+    if (!foto) return sem;
+    const n = String(foto).trim().replace(/\\/g, '/');
+    if (!n || ['.', '-', 'null', 'undefined'].includes(n.toLowerCase())) return sem;
+    if (/^https?:\/\//i.test(n)) return n.replace(/ /g, '%20');
+    const marker = 'fotos para o site/';
+    const idx = n.toLowerCase().indexOf(marker);
+    const rel = idx >= 0 ? n.substring(idx + marker.length) : n.replace(/^\/+/, '').replace(/^fotos\//i, '');
+    if (!rel) return sem;
+    return 'https://acesso.nutricionalbr.com:2053/fotos/' + rel.split('/').map(encodeURIComponent).join('/');
 }
 
 function limparTudo() {
     produtoAtual = null;
+    embarqueContexto = null;
     destinoSelecionado = null;
     produtoExisteNoPedido = false;
     dadosProdutoPedido = null;
@@ -174,8 +204,9 @@ async function carregarMovimentacoesHoje() {
 // ==========================================================================
 // PROCESSAR LEITURA DO CÓDIGO DE BARRAS
 // ==========================================================================
-async function processarLeitura(codigo) {
+async function processarLeitura(codigo, doEmbarque = false) {
     if (!codigo || isProcessing) return;
+    if (!doEmbarque) embarqueContexto = null;
     isProcessing = true;
     
     Swal.fire({
@@ -210,7 +241,7 @@ async function processarLeitura(codigo) {
         const pesoEl = document.getElementById('produtoPeso');
         if (pesoEl) pesoEl.innerText = formatarPeso(produto.pesoliquido);
         
-        const fotoUrl = getImageUrl(produto.foto_url);
+        const fotoUrl = getImageUrl(produto.foto || produto.foto_url);
         const fotoEl = document.getElementById('produtoFoto');
         if (fotoEl) {
             fotoEl.src = fotoUrl;
@@ -257,12 +288,11 @@ async function selecionarDestino(id, nome, cor) {
         card.style.backgroundColor = 'white';
     });
     
-    const cards = document.querySelectorAll('.destino-card');
-    const index = id === 10117 ? 0 : (id === 16595 ? 1 : 2);
-    if (cards[index]) {
-        cards[index].classList.add('active');
-        cards[index].style.borderColor = cor;
-        cards[index].style.backgroundColor = `${cor}10`;
+    const card = document.querySelector(`.destino-card[data-destino="${id}"]`);
+    if (card) {
+        card.classList.add('active');
+        card.style.borderColor = cor;
+        card.style.backgroundColor = `${cor}10`;
     }
     
     Swal.fire({
@@ -276,6 +306,12 @@ async function selecionarDestino(id, nome, cor) {
     try {
         const response = await apiFetch(`v1/auditoria-estoque/estoque-ativo/${id}?idusuario=${getUserId()}`);
         Swal.close();
+        
+        if (response && response.error) {
+            document.getElementById('areaOperacao').style.display = 'none';
+            Swal.fire({ icon: 'warning', title: 'Sem pedido aberto', text: response.error, confirmButtonText: 'OK' });
+            return;
+        }
         
         if (response && response.pedido) {
             const existeResponse = await apiFetch(`v1/retorno/produto-existe/${response.pedido.idpedido}/${produtoAtual.iditem}`);
@@ -324,8 +360,16 @@ async function selecionarDestino(id, nome, cor) {
         }
         
         document.getElementById('areaOperacao').style.display = 'block';
+        // Vindo do embarque: só ENTRADA (destinar). No bipe avulso: todas as operações
+        const botoesOp = document.getElementById('botoesOperacao');
+        if (botoesOp) botoesOp.style.display = embarqueContexto ? 'none' : '';
+        const tituloOp = document.getElementById('tituloOperacao');
+        if (tituloOp) tituloOp.innerText = embarqueContexto ? `DESTINAR DO EMBARQUE #${embarqueContexto.id}` : 'ESCOLHA A OPERAÇÃO';
+        if (embarqueContexto) { tipoMovimentacao = 'ENTRADA'; setTipoMovimentacao('ENTRADA'); }
         const quantInput = document.getElementById('quantMov');
-        if (quantInput) quantInput.focus();
+        if (quantInput) {
+            quantInput.focus();
+        }
         
     } catch (e) {
         Swal.close();
@@ -447,8 +491,9 @@ async function confirmarMovimentacao() {
             lote: lote || null,
             validade: validade || null,
             motivo: motivo,
-            observacao: observacao || null,
+            observacao: embarqueContexto ? `DESTINAR DO EMBARQUE #${embarqueContexto.id}${observacao ? ' - ' + observacao : ''}` : (observacao || null),
             idusuario: parseInt(getUserId()),
+            idembarque: embarqueContexto ? embarqueContexto.id : null,
             cod_barras: produtoAtual.cod_barras || null
         };
         
@@ -472,8 +517,10 @@ async function confirmarMovimentacao() {
             Swal.close();
             showToast(result.message || 'Movimentação realizada com sucesso!', 'success');
             
+            const embRecarregar = embarqueContexto ? embarqueContexto.id : null;
             limparTudo();
             await carregarMovimentacoesHoje();
+            if (embRecarregar) await buscarEmbarqueRetorno(embRecarregar);
             
             const input = document.getElementById('barcode-input');
             if (input) input.focus();
@@ -556,6 +603,85 @@ function toggleCamera() {
         });
     }
 }
+
+// ==========================================================================
+// RETORNO POR EMBARQUE
+// ==========================================================================
+let embarqueContexto = null;
+
+if (typeof window.getUserId !== 'function') {
+    window.getUserId = function () {
+        const el = document.getElementById('user_id');
+        return (el && el.value) ? el.value : '0';
+    };
+}
+
+function escHtmlRet(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+let embarqueMostrarTodos = false;
+function alternarTodosEmbarque(id) {
+    embarqueMostrarTodos = !embarqueMostrarTodos;
+    buscarEmbarqueRetorno(id);
+}
+
+async function buscarEmbarqueRetorno(idForcado) {
+    const id = parseInt(idForcado || document.getElementById('embarqueBusca').value, 10);
+    const box = document.getElementById('embarqueResultado');
+    if (!id) { showToast('Informe o número do embarque', 'warning'); return; }
+    box.classList.remove('hidden');
+    box.innerHTML = '<div class="text-center text-slate-400 py-4">Carregando...</div>';
+    try {
+        const r = await apiFetch(`v1/retorno-embarque/${id}${embarqueMostrarTodos ? ((window.API_URL || '').includes('?') ? '&todos=1' : '?todos=1') : ''}`);
+        if (!r || !r.success) throw new Error((r && r.error) || 'Falha');
+        const n = formatarQuantidade;
+        const toggle = `<button onclick="alternarTodosEmbarque(${id})" class="text-xs font-bold text-blue-600 underline">${embarqueMostrarTodos ? 'Mostrar só extras/devoluções' : `Ver todos os ${r.total_itens_embarque} itens do embarque`}</button>`;
+        if (!r.itens.length) {
+            box.innerHTML = `<div class="text-center text-slate-500 py-4">Nenhum item extra ou devolvido no acerto deste embarque.<div class="mt-2">${toggle}</div></div>`;
+            return;
+        }
+        box.innerHTML = `
+            <div class="flex items-center justify-between mb-2">
+                <div class="text-xs font-bold text-slate-500">EMBARQUE #${id} - ${r.itens.length} ${embarqueMostrarTodos ? 'itens' : 'item(ns) extra/devolvido(s)'}</div>${toggle}
+            </div>
+            <div class="space-y-2 max-h-[55vh] overflow-y-auto pr-1">${r.itens.map(i => `
+                <div class="border rounded-xl p-3 ${i.pendente_destinar > 0 ? 'border-amber-300 bg-amber-50' : 'border-slate-200'}">
+                    <div class="flex items-center gap-3">
+                        <img src="${getImageUrl(i.foto)}" class="w-14 h-14 object-contain rounded-lg bg-slate-50 border" loading="lazy" onerror="this.onerror=null;this.src='https://placehold.co/100x100?text=S/F'">
+                        <div class="font-bold text-sm text-slate-800">${escHtmlRet(i.descricao)} <span class="text-slate-400 font-normal">${escHtmlRet(i.referencia || '')}</span></div>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 text-center text-xs mt-2">
+                        <div><div class="text-slate-400">Carregado</div><div class="font-black">${n(i.carregado)}${i.extra_subida > 0 ? `<span class="text-violet-600"> (+${n(i.extra_subida)})</span>` : ''}</div></div>
+                        <div><div class="text-slate-400">Devolvido (acerto)</div><div class="font-black">${n(i.devolvido_acerto)}</div></div>
+                        <div><div class="text-slate-400">Destinado</div><div class="font-black text-green-600">${n(i.destinado)}</div></div>
+                        <div><div class="text-slate-400">Pendente</div><div class="font-black text-amber-600">${n(i.pendente_destinar)}</div></div>
+                    </div>
+                    <button onclick="destinarDoEmbarque(${id}, ${i.iditem}, ${i.pendente_destinar})"
+                        class="mt-2 w-full py-2 rounded-lg text-xs font-bold ${i.pendente_destinar > 0 ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-600'}">
+                        <i class="fa-solid fa-arrow-right-arrow-left"></i> DESTINAR
+                    </button>
+                </div>`).join('')}
+            </div>`;
+    } catch (e) {
+        box.innerHTML = '<div class="text-center text-red-500 py-4">Erro ao buscar embarque.</div>';
+    }
+}
+
+async function destinarDoEmbarque(idembarque, iditem, pendente) {
+    embarqueContexto = { id: idembarque, iditem, pendente: pendente || 0 };
+    ['quantMov', 'pesoRealMov', 'loteMov', 'validadeMov', 'observacaoMov', 'fotoMov'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+    });
+    await processarLeitura(String(iditem), true);
+    const alvo = document.getElementById('produtoEncontrado');
+    if (alvo && alvo.style.display !== 'none') alvo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+window.buscarEmbarqueRetorno = buscarEmbarqueRetorno;
+window.destinarDoEmbarque = destinarDoEmbarque;
+window.alternarTodosEmbarque = alternarTodosEmbarque;
 
 // ==========================================================================
 // INICIALIZAÇÃO

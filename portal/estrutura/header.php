@@ -29,6 +29,8 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script src="<?= asset('/portal/assets/js/config.js') ?>"></script>
+    <script defer src="<?= asset('/portal/assets/js/inatividade.js') ?>"></script>
+    <script defer src="<?= asset('/portal/assets/js/bipe-foco.js') ?>"></script>
     <script>
         (function() {
             const token = localStorage.getItem('authToken');

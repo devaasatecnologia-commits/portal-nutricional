@@ -64,10 +64,8 @@ require_once __DIR__ . '/../estrutura/header.php';
             <input type="text" id="barcode-input" 
                    class="w-full bg-white border-2 border-slate-200 rounded-2xl py-4 pl-12 pr-14 text-lg font-bold focus:border-slate-700 focus:ring-4 focus:ring-slate-700/10 transition-all shadow-lg text-slate-800"
                    placeholder="Bipe o código de barras do produto..." 
-                   inputmode="numeric" 
-                   autocomplete="off"
-                   readonly 
-                   onclick="this.removeAttribute('readonly'); this.focus();">
+                   inputmode="none" 
+                   autocomplete="off">
             <i class="fa-solid fa-expand absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 group-focus-within:text-slate-700 transition-colors"></i>
             <button onclick="toggleCamera()" class="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 bg-slate-100 text-slate-600 rounded-xl hover:bg-slate-700 hover:text-white transition-all flex items-center justify-center btn-cam">
                 <i class="fa-solid fa-camera"></i>
@@ -76,6 +74,25 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <div id="reader" style="display:none;" class="rounded-2xl overflow-hidden border-4 border-slate-700 mb-4 shadow-2xl bg-black"></div>
+
+    <!-- RETORNO POR EMBARQUE: carregado x acerto x destinado -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
+        <div class="bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-3 flex items-center gap-2 text-white">
+            <i class="fa-solid fa-truck-ramp-box"></i>
+            <span class="font-bold text-sm">RETORNO POR EMBARQUE</span>
+        </div>
+        <div class="p-4">
+            <div class="flex gap-2">
+                <input type="number" id="embarqueBusca" inputmode="numeric" placeholder="Nº do embarque"
+                       class="flex-1 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold"
+                       onkeydown="if(event.key==='Enter'){buscarEmbarqueRetorno();}">
+                <button onclick="buscarEmbarqueRetorno()" class="px-5 bg-slate-800 text-white rounded-xl font-bold">
+                    <i class="fa-solid fa-magnifying-glass"></i> BUSCAR
+                </button>
+            </div>
+            <div id="embarqueResultado" class="mt-4 hidden"></div>
+        </div>
+    </div>
 
     <!-- ====================================================================== -->
     <!-- PRODUTO ENCONTRADO -->
@@ -116,7 +133,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
             <div class="p-5">
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
                     <div onclick="selecionarDestino(10117, 'CONTAINER', '#10b981')" 
                          class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-green-500 transition-all shadow-sm" data-destino="10117">
                         <div class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center mx-auto mb-2">
@@ -141,6 +158,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <div class="font-bold text-slate-800">REVENDA</div>
                         <div class="text-xs text-slate-400">Produtos aptos revenda</div>
                     </div>
+                    <div onclick="selecionarDestino(16688, 'TROCAS FORNECEDOR', '#8b5cf6')" 
+                         class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-violet-500 transition-all shadow-sm" data-destino="16688">
+                        <div class="w-12 h-12 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+                            <i class="fa-solid fa-right-left text-xl"></i>
+                        </div>
+                        <div class="font-bold text-slate-800">TROCAS FORNECEDOR</div>
+                        <div class="text-xs text-slate-400">Devolução ao fornecedor</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -153,12 +178,12 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-3">
             <div class="flex items-center gap-2 text-white">
                 <i class="fa-solid fa-arrows-spin"></i>
-                <span class="font-bold text-sm">ESCOLHA A OPERAÇÃO</span>
+                <span id="tituloOperacao" class="font-bold text-sm">ESCOLHA A OPERAÇÃO</span>
             </div>
         </div>
         <div class="p-5">
             <!-- Botões de operação -->
-            <div class="flex gap-3 mb-6">
+            <div id="botoesOperacao" class="flex gap-3 mb-6">
                 <button id="btnEntrada" onclick="setTipoMovimentacao('ENTRADA')" 
                         class="flex-1 py-3 rounded-xl font-bold text-sm bg-green-500 text-white transition-all">
                     <i class="fa-solid fa-arrow-right-to-bracket"></i> ENTRADA

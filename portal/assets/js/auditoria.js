@@ -367,6 +367,7 @@ async function verTimeline(id) {
                                 <strong>${escapeHtml(subida.produto)} · subida #${escapeHtml(subida.numero_subida)}</strong>
                                 <div>Original: ${formatarQuantidade(subida.quantidade_original)} · saldo: ${formatarQuantidade(subida.quantidade_disponivel)} · ${escapeHtml(estado)}</div>
                                 <div class="text-slate-500">${escapeHtml(subida.operador)} · ${escapeHtml(subida.data_hora || '')} · ${escapeHtml(subida.doca || 'sem doca')}</div>
+                                ${Number(subida.extra_quantidade) > 0 ? `<div class="mt-1 rounded bg-violet-50 px-2 py-1 font-bold text-violet-700"><i class="fa-solid fa-plus"></i> ${formatarQuantidade(subida.extra_quantidade)} un a mais na subida — ${escapeHtml(subida.extra_motivo || 'sem motivo')}</div>` : ''}
                                 <div class="mt-1 text-slate-600">${allocationsHtml}</div>
                             </div>
                         </article>`;
@@ -521,8 +522,10 @@ async function verTimeline(id) {
                                 ${item.tipo === 'carregamento' && item.quantidade_acumulada != null ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Acumulado: ${formatarQuantidade(item.quantidade_acumulada)}</span>` : ''}
                                 ${qtdTotalFormatada ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Total: ${qtdTotalFormatada}</span>` : ''}
                                 ${item.tipo === 'carregamento' && temFotoCarregamento ? '<span class="badge bg-success" style="font-size: 0.65rem;"><i class="fa-solid fa-camera"></i> Foto</span>' : ''}
+                            ${item.tipo === 'carregamento' && Number(item.extra_quantidade) > 0 ? `<span class="badge" style="font-size: 0.65rem; background:#7c3aed; color:#fff;" title="${escapeHtml(item.extra_motivo || '')}"><i class="fa-solid fa-plus"></i> ${formatarQuantidade(item.extra_quantidade)} a mais</span>` : ''}
                                 ${temMultiplosPedidos ? `<span class="badge bg-info" style="font-size: 0.65rem;"><i class="fa-solid fa-receipt"></i> ${totalPedidos} pedidos</span>` : ''}
                             </div>
+                            ${item.tipo === 'carregamento' && Number(item.extra_quantidade) > 0 ? `<div style="margin-top:6px; padding:6px 8px; background:#f5f3ff; border-left:3px solid #7c3aed; border-radius:6px; font-size:0.75rem; color:#5b21b6;"><b>Item a mais:</b> ${escapeHtml(item.extra_motivo || 'sem motivo informado')}</div>` : ''}
                         </div>
                         
                         <!-- Operador e data -->
@@ -678,8 +681,10 @@ function filtrarTimeline(tipo) {
                             ${item.tipo === 'carregamento' && item.quantidade_acumulada != null ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Acumulado: ${formatarQuantidade(item.quantidade_acumulada)}</span>` : ''}
                             ${qtdTotalFormatada ? `<span class="badge bg-light text-dark" style="font-size: 0.7rem;">Total: ${qtdTotalFormatada}</span>` : ''}
                             ${item.tipo === 'carregamento' && temFotoCarregamento ? '<span class="badge bg-success" style="font-size: 0.65rem;"><i class="fa-solid fa-camera"></i> Foto</span>' : ''}
+                            ${item.tipo === 'carregamento' && Number(item.extra_quantidade) > 0 ? `<span class="badge" style="font-size: 0.65rem; background:#7c3aed; color:#fff;" title="${escapeHtml(item.extra_motivo || '')}"><i class="fa-solid fa-plus"></i> ${formatarQuantidade(item.extra_quantidade)} a mais</span>` : ''}
                             ${temMultiplosPedidos ? `<span class="badge bg-info" style="font-size: 0.65rem;"><i class="fa-solid fa-receipt"></i> ${totalPedidos} pedidos</span>` : ''}
                         </div>
+                        ${item.tipo === 'carregamento' && Number(item.extra_quantidade) > 0 ? `<div style="margin-top:6px; padding:6px 8px; background:#f5f3ff; border-left:3px solid #7c3aed; border-radius:6px; font-size:0.75rem; color:#5b21b6;"><b>Item a mais:</b> ${escapeHtml(item.extra_motivo || 'sem motivo informado')}</div>` : ''}
                     </div>
                     <div style="text-align: right; min-width: 130px; flex-shrink: 0;">
                         <div style="font-weight: 600; color: #1e293b; font-size: 0.8rem;"><i class="fa-solid fa-user"></i> ${escapeHtml(item.operador || 'Sistema')}</div>
@@ -851,6 +856,129 @@ function exportarDossieEmbarque() {
 }
 
     // ======================================================================
+    // ATIVIDADE POR USUÁRIO (toda a logística)
+    // ======================================================================
+    let usuariosAuditoria = [];
+    let eventosUsuario = [];
+
+    const TIPOS_EVENTO = {
+        SEPARACAO: { rotulo: 'Separação', icone: 'fa-box', cor: 'text-sky-600 bg-sky-50' },
+        SUBIDA: { rotulo: 'Carregamento', icone: 'fa-truck-ramp-box', cor: 'text-emerald-600 bg-emerald-50' },
+        ESTORNO: { rotulo: 'Estorno', icone: 'fa-rotate-left', cor: 'text-rose-600 bg-rose-50' },
+        INATIVIDADE: { rotulo: 'Inatividade', icone: 'fa-hourglass-half', cor: 'text-amber-600 bg-amber-50' },
+        LOGIN: { rotulo: 'Acesso', icone: 'fa-right-to-bracket', cor: 'text-slate-600 bg-slate-100' }
+    };
+
+    function formatarDataHora(valor) {
+        if (!valor) return '---';
+        const d = new Date(String(valor).replace(' ', 'T'));
+        return Number.isNaN(d.getTime()) ? escapeHtml(valor) : d.toLocaleString('pt-BR');
+    }
+
+    async function carregarUsuarios() {
+        const inicio = document.getElementById('dataInicio')?.value || '';
+        const fim = document.getElementById('dataFim')?.value || '';
+        const tbody = document.getElementById('tbodyUsuarios');
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</td></tr>';
+
+        try {
+            const resp = await apiCall('/usuarios', { inicio, fim });
+            usuariosAuditoria = resp.usuarios || [];
+            document.getElementById('avisoInatividadeIndisponivel')
+                .classList.toggle('hidden', resp.inatividade_disponivel !== false);
+
+            if (!usuariosAuditoria.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="text-center py-5 text-slate-400">Nenhuma atividade no período</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = usuariosAuditoria.map(u => `
+                <tr>
+                    <td data-label="Usuário"><strong>${escapeHtml(u.username)}</strong></td>
+                    <td data-label="Separação">${Number(u.separacoes)} bips <small class="text-slate-400">(${formatarPeso(u.qt_separada)} un.)</small></td>
+                    <td data-label="Subidas">${Number(u.subidas)} <small class="text-slate-400">(${formatarPeso(u.qt_carregada)} un.)</small></td>
+                    <td data-label="Estornos">${Number(u.estornos) > 0 ? `<span class="text-rose-600 font-bold">${Number(u.estornos)}</span>` : '0'}</td>
+                    <td data-label="Inatividade">${Number(u.inatividades) > 0 ? `<span class="text-amber-600 font-bold">${Number(u.inatividades)}x</span> <small class="text-slate-400">(${Number(u.minutos_inativo)} min)</small>` : '---'}</td>
+                    <td data-label="Última Ativ."><small>${formatarDataHora(u.ultima_atividade)}</small></td>
+                    <td data-label="Ação">
+                        <button class="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-700 hover:text-white transition-all" onclick="window.verAtividadeUsuario(${Number(u.idusuario)})">
+                            <i class="fa-solid fa-eye"></i>
+                        </button>
+                    </td>
+                </tr>`).join('');
+        } catch (e) {
+            console.error('Erro usuários:', e);
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-5 text-danger">Erro ao carregar: ${escapeHtml(e.message)}</td></tr>`;
+        }
+    }
+
+    async function verAtividadeUsuario(idusuario) {
+        const inicio = document.getElementById('dataInicio')?.value || '';
+        const fim = document.getElementById('dataFim')?.value || '';
+        const modal = document.getElementById('modalUsuario');
+        const conteudo = document.getElementById('usuarioEventos');
+        const u = usuariosAuditoria.find(x => Number(x.idusuario) === Number(idusuario));
+
+        document.getElementById('modalUsuarioNome').textContent = u?.username || `#${idusuario}`;
+        document.getElementById('usuarioFiltros').innerHTML = '';
+        conteudo.innerHTML = '<div class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin"></i> Carregando...</div>';
+        modal.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+
+        try {
+            const resp = await apiCall(`/usuarios/${Number(idusuario)}`, { inicio, fim });
+            eventosUsuario = resp.eventos || [];
+            renderEventosUsuario('TODOS', resp.limite);
+        } catch (e) {
+            conteudo.innerHTML = `<div class="text-center py-8 text-rose-600">${escapeHtml(e.message)}</div>`;
+        }
+    }
+
+    function renderEventosUsuario(filtro, limite) {
+        const contagem = { TODOS: eventosUsuario.length };
+        eventosUsuario.forEach(ev => { contagem[ev.tipo] = (contagem[ev.tipo] || 0) + 1; });
+
+        document.getElementById('usuarioFiltros').innerHTML = ['TODOS', ...Object.keys(TIPOS_EVENTO)]
+            .filter(t => t === 'TODOS' || contagem[t])
+            .map(t => `<button class="px-3 py-1 rounded-full text-xs font-bold border ${t === filtro ? 'bg-slate-700 text-white border-slate-700' : 'bg-white text-slate-600 border-slate-200'}" onclick="window.filtrarEventosUsuario('${t}')">${t === 'TODOS' ? 'Todos' : TIPOS_EVENTO[t].rotulo} (${contagem[t] || 0})</button>`)
+            .join('');
+
+        const lista = eventosUsuario.filter(ev => filtro === 'TODOS' || ev.tipo === filtro);
+        const conteudo = document.getElementById('usuarioEventos');
+        if (!lista.length) {
+            conteudo.innerHTML = '<div class="text-center py-8 text-slate-400">Nenhum evento no período</div>';
+            return;
+        }
+
+        conteudo.innerHTML = lista.map(ev => {
+            const t = TIPOS_EVENTO[ev.tipo] || { rotulo: ev.tipo, icone: 'fa-circle', cor: 'text-slate-600 bg-slate-100' };
+            const partes = [];
+            if (ev.idembarque) partes.push(`Emb. #${Number(ev.idembarque)}`);
+            if (ev.iditem) partes.push(`Item ${Number(ev.iditem)}`);
+            if (ev.qtd !== null && ev.qtd !== undefined) partes.push(`${Number(ev.qtd)} un.`);
+            if (ev.tipo === 'INATIVIDADE') {
+                partes.push(`${Number(ev.minutos || 0)} min parado`);
+                if (ev.modulo) partes.push(`tela: ${escapeHtml(ev.modulo)}`);
+            }
+            const detalhe = ev.detalhe ? `<div class="text-sm text-slate-700 mt-0.5 break-words">${ev.tipo === 'INATIVIDADE' ? '“' + escapeHtml(ev.detalhe) + '”' : escapeHtml(ev.detalhe)}</div>` : '';
+            return `
+                <div class="flex gap-3 py-2 border-b border-slate-100">
+                    <div class="w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${t.cor}"><i class="fa-solid ${t.icone} text-xs"></i></div>
+                    <div class="min-w-0">
+                        <div class="text-xs text-slate-400">${formatarDataHora(ev.ts)} · <b class="text-slate-600">${t.rotulo}</b></div>
+                        <div class="text-sm font-semibold text-slate-800">${partes.join(' · ')}</div>
+                        ${detalhe}
+                    </div>
+                </div>`;
+        }).join('') + (eventosUsuario.length >= (limite || 500)
+            ? `<div class="text-center text-xs text-amber-600 pt-3">Exibindo os ${limite || 500} eventos mais recentes; reduza o período para ver os demais.</div>` : '');
+    }
+
+    function fecharModalUsuario() {
+        document.getElementById('modalUsuario').classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+    // ======================================================================
     // TABS E FILTROS
     // ======================================================================
 
@@ -858,13 +986,16 @@ function exportarDossieEmbarque() {
         document.getElementById('panelSeparacao').style.display = tab === 'separacao' ? 'block' : 'none';
         document.getElementById('panelCarregamento').style.display = tab === 'carregamento' ? 'block' : 'none';
         document.getElementById('panelRanking').style.display = tab === 'ranking' ? 'block' : 'none';
+        document.getElementById('panelUsuarios').style.display = tab === 'usuarios' ? 'block' : 'none';
         
         document.getElementById('btnTabSeparacao').classList.toggle('active', tab === 'separacao');
         document.getElementById('btnTabCarregamento').classList.toggle('active', tab === 'carregamento');
         document.getElementById('btnTabRanking').classList.toggle('active', tab === 'ranking');
+        document.getElementById('btnTabUsuarios').classList.toggle('active', tab === 'usuarios');
         
         if (tab === 'carregamento' && !dadosCarregamento.length) carregarCarregamento();
         if (tab === 'ranking') carregarRanking();
+        if (tab === 'usuarios') carregarUsuarios();
     }
 
     function filtrarDados() {
@@ -873,6 +1004,7 @@ function exportarDossieEmbarque() {
         
         if (document.getElementById('panelCarregamento').style.display === 'block') carregarCarregamento();
         if (document.getElementById('panelRanking').style.display === 'block') carregarRanking();
+        if (document.getElementById('panelUsuarios').style.display === 'block') carregarUsuarios();
     }
 
     function filtrarTabela(tipo) {
@@ -989,6 +1121,9 @@ setInterval(() => {
     // EXPORTAÇÃO GLOBAL
     // ======================================================================
     window.switchTab = switchTab;
+    window.verAtividadeUsuario = verAtividadeUsuario;
+    window.filtrarEventosUsuario = (tipo) => renderEventosUsuario(tipo);
+    window.fecharModalUsuario = fecharModalUsuario;
     window.filtrarDados = filtrarDados;
     window.filtrarTabela = filtrarTabela;
     window.exportarRelatorio = exportarRelatorio;

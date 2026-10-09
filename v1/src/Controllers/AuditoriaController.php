@@ -240,6 +240,17 @@ class AuditoriaController {
                 ]);
                 $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+                $temExtras = $this->tabelaExiste('carregamento_subida_extras');
+                $extraCols = $temExtras
+                    ? ", COALESCE(ex.quantidade, 0)::float AS extra_quantidade, ex.motivo AS extra_motivo"
+                    : ", 0::float AS extra_quantidade, NULL::text AS extra_motivo";
+                $extraJoin = $temExtras
+                    ? "LEFT JOIN LATERAL (
+                        SELECT SUM(x.quantidade) AS quantidade, string_agg(x.motivo, ' | ' ORDER BY x.id) AS motivo
+                        FROM carregamento_subida_extras x
+                        WHERE x.id_subida = cs.id
+                    ) ex ON TRUE"
+                    : "";
                 $stmt = $this->pdo->prepare("
                     SELECT
                         cs.id AS id_subida,
@@ -260,6 +271,7 @@ class AuditoriaController {
                         CASE WHEN alocacoes.dados IS NULL THEN FALSE ELSE TRUE END AS alocacao_exata,
                         COALESCE(alocacoes.dados, '[]'::jsonb) AS alocacoes,
                         COALESCE(fotos.dados, '[]'::jsonb) AS fotos
+                        {$extraCols}
                     FROM carregamento_subidas cs
                     JOIN item i ON i.iditem = cs.iditem
                     LEFT JOIN usuario u ON u.idusuario = cs.idusuario
@@ -296,6 +308,7 @@ class AuditoriaController {
                         LEFT JOIN usuario uf ON uf.idusuario = cf.idusuario
                         WHERE cf.id_subida = cs.id
                     ) fotos ON TRUE
+                    {$extraJoin}
                     WHERE cs.idembarque = ?
                     ORDER BY cs.data_hora, cs.numero_subida, cs.id
                 ");
@@ -475,6 +488,155 @@ class AuditoriaController {
         }
     }
     
+    private function periodoAuditoria(array $params): array {
+        $ini = $params['inicio'] ?? date('Y-m-d', strtotime('-7 days'));
+        $fim = $params['fim'] ?? date('Y-m-d');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$ini) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$fim)) {
+            throw new \InvalidArgumentException('Período inválido.');
+        }
+        if ($ini > $fim) {
+            [$ini, $fim] = [$fim, $ini];
+        }
+        return [$ini, $fim];
+    }
+
+    private function tabelaExiste(string $tabela): bool {
+        $stmt = $this->pdo->prepare("SELECT to_regclass(:t) IS NOT NULL");
+        $stmt->execute([':t' => 'public.' . $tabela]);
+        return (bool)$stmt->fetchColumn();
+    }
+
+    private function jsonAuditoria($response, $payload, int $status = 200) {
+        $response->getBody()->write(json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /v1/auditoria/usuarios
+     * Atividade por usuário em toda a logística (separação, carregamento,
+     * estornos e inatividade) no período.
+     */
+    public function getAtividadeUsuarios($request, $response) {
+        try {
+            [$ini, $fim] = $this->periodoAuditoria($request->getQueryParams());
+            $temInatividade = $this->tabelaExiste('portal_inatividade');
+
+            $eventos = "
+                SELECT id_separador AS uid, 'SEPARACAO' AS tipo, data_separacao AS ts, qt_separada AS qtd, 0 AS min_inativo
+                FROM pedido_item_logistica
+                WHERE id_separador IS NOT NULL AND qt_separada > 0
+                  AND data_separacao >= :ini::date AND data_separacao < (:fim::date + 1)
+                UNION ALL
+                SELECT idusuario, 'SUBIDA', data_hora, qt_subida, 0
+                FROM carregamento_subidas
+                WHERE data_hora >= :ini::date AND data_hora < (:fim::date + 1)
+                UNION ALL
+                SELECT idusuario, 'ESTORNO', criado_em::timestamp, quantidade_estornada, 0
+                FROM carregamento_estornos
+                WHERE criado_em >= :ini::date AND criado_em < (:fim::date + 1)";
+            if ($temInatividade) {
+                $eventos .= "
+                UNION ALL
+                SELECT idusuario, 'INATIVIDADE', criado_em::timestamp, 0, minutos_inativo
+                FROM portal_inatividade
+                WHERE criado_em >= :ini::date AND criado_em < (:fim::date + 1)";
+            }
+
+            $sql = "WITH ev AS ($eventos)
+                SELECT u.idusuario, u.username,
+                       COUNT(*) FILTER (WHERE ev.tipo = 'SEPARACAO') AS separacoes,
+                       COALESCE(SUM(ev.qtd) FILTER (WHERE ev.tipo = 'SEPARACAO'), 0)::float AS qt_separada,
+                       COUNT(*) FILTER (WHERE ev.tipo = 'SUBIDA') AS subidas,
+                       COALESCE(SUM(ev.qtd) FILTER (WHERE ev.tipo = 'SUBIDA'), 0)::float AS qt_carregada,
+                       COUNT(*) FILTER (WHERE ev.tipo = 'ESTORNO') AS estornos,
+                       COUNT(*) FILTER (WHERE ev.tipo = 'INATIVIDADE') AS inatividades,
+                       COALESCE(SUM(ev.min_inativo), 0)::int AS minutos_inativo,
+                       MAX(ev.ts) AS ultima_atividade
+                FROM ev
+                JOIN usuario u ON u.idusuario = ev.uid
+                GROUP BY u.idusuario, u.username
+                ORDER BY (COUNT(*) FILTER (WHERE ev.tipo IN ('SEPARACAO','SUBIDA'))) DESC, u.username
+                LIMIT 200";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':ini' => $ini, ':fim' => $fim]);
+            return $this->jsonAuditoria($response, [
+                'inicio' => $ini,
+                'fim' => $fim,
+                'inatividade_disponivel' => $temInatividade,
+                'usuarios' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonAuditoria($response, ['error' => $e->getMessage()], 422);
+        } catch (Exception $e) {
+            error_log('[Auditoria] Falha em atividade de usuários: ' . $e->getMessage());
+            return $this->jsonAuditoria($response, ['error' => 'Não foi possível carregar a atividade dos usuários.'], 500);
+        }
+    }
+
+    /**
+     * GET /v1/auditoria/usuarios/{idusuario}
+     * Linha do tempo de um usuário: separação, subidas, estornos, inatividade e acessos.
+     */
+    public function getAtividadeUsuarioDetalhe($request, $response, $args) {
+        try {
+            [$ini, $fim] = $this->periodoAuditoria($request->getQueryParams());
+            $uid = (int)($args['idusuario'] ?? 0);
+            if ($uid <= 0) {
+                return $this->jsonAuditoria($response, ['error' => 'Usuário inválido.'], 422);
+            }
+
+            $stmtU = $this->pdo->prepare("SELECT idusuario, username FROM usuario WHERE idusuario = :u");
+            $stmtU->execute([':u' => $uid]);
+            $usuario = $stmtU->fetch(PDO::FETCH_ASSOC);
+            if (!$usuario) {
+                return $this->jsonAuditoria($response, ['error' => 'Usuário não encontrado.'], 404);
+            }
+
+            $janela = fn(string $col) => "$col >= :ini::date AND $col < (:fim::date + 1)";
+            $partes = [
+                "SELECT 'SEPARACAO' AS tipo, data_separacao AS ts, idembarque, iditem, qt_separada::float AS qtd,
+                        NULL::text AS detalhe, NULL::text AS modulo, NULL::int AS minutos
+                 FROM pedido_item_logistica
+                 WHERE id_separador = :uid AND qt_separada > 0 AND " . $janela('data_separacao'),
+                "SELECT 'SUBIDA', data_hora, idembarque, iditem, qt_subida::float,
+                        'Subida ' || numero_subida || ' - doca ' || COALESCE(doca, '-'), NULL, NULL
+                 FROM carregamento_subidas
+                 WHERE idusuario = :uid AND " . $janela('data_hora'),
+                "SELECT 'ESTORNO', criado_em::timestamp, idembarque, iditem, quantidade_estornada::float,
+                        tipo || ': ' || motivo, NULL, NULL
+                 FROM carregamento_estornos
+                 WHERE idusuario = :uid AND " . $janela('criado_em'),
+                "SELECT 'LOGIN', created_at, NULL, NULL, NULL,
+                        COALESCE(ip_origem, ''), NULL, NULL
+                 FROM portal_acessos
+                 WHERE idusuario = :uid AND " . $janela('created_at'),
+            ];
+            if ($this->tabelaExiste('portal_inatividade')) {
+                $partes[] = "SELECT 'INATIVIDADE', criado_em::timestamp, NULL, NULL, NULL,
+                                    motivo, modulo, minutos_inativo
+                             FROM portal_inatividade
+                             WHERE idusuario = :uid AND " . $janela('criado_em');
+            }
+
+            $sql = "SELECT * FROM (" . implode(' UNION ALL ', $partes) . ") t ORDER BY ts DESC LIMIT 500";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':uid' => $uid, ':ini' => $ini, ':fim' => $fim]);
+
+            return $this->jsonAuditoria($response, [
+                'usuario' => $usuario,
+                'inicio' => $ini,
+                'fim' => $fim,
+                'limite' => 500,
+                'eventos' => $stmt->fetchAll(PDO::FETCH_ASSOC),
+            ]);
+        } catch (\InvalidArgumentException $e) {
+            return $this->jsonAuditoria($response, ['error' => $e->getMessage()], 422);
+        } catch (Exception $e) {
+            error_log('[Auditoria] Falha em detalhe de usuário: ' . $e->getMessage());
+            return $this->jsonAuditoria($response, ['error' => 'Não foi possível carregar a atividade do usuário.'], 500);
+        }
+    }
     /**
      * GET /v1/auditoria/timeline/{idembarque}
      * Retorna timeline completa do embarque
@@ -632,6 +794,10 @@ public function getItensEmbarque($request, $response, $args) {
         }
         
         if ($tipo == 'carregamento' || $tipo == 'todos') {
+            $extraDet = $this->tabelaExiste('carregamento_subida_extras')
+                ? "COALESCE((SELECT SUM(x.quantidade) FROM carregamento_subida_extras x WHERE x.id_subida = cs.id), 0)::float as extra_quantidade,
+                        (SELECT string_agg(x.motivo, ' | ' ORDER BY x.id) FROM carregamento_subida_extras x WHERE x.id_subida = cs.id) as extra_motivo,"
+                : "0::float as extra_quantidade, NULL::text as extra_motivo,";
             $sqlCar = "SELECT 
                         'carregamento' as tipo,
                         i.iditem,
@@ -654,6 +820,7 @@ public function getItensEmbarque($request, $response, $args) {
                         cs.numero_subida,
                         cs.qt_acumulada as quantidade_acumulada,
                         COALESCE(cs.doca, c.doca) as doca,
+                        {$extraDet}
                         c.idpedido,
                         c.iditempedido
                     FROM pedido_item_carregamento c

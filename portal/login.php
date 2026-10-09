@@ -129,6 +129,8 @@
             
             // Armazena token e dados com segurança
             localStorage.setItem('authToken', data.token);
+            localStorage.removeItem('portal_bloqueio_inatividade');
+            localStorage.setItem('portal_ultima_atividade', String(Date.now()));
             localStorage.setItem('userData', JSON.stringify(data.user));
             
             // Sucesso: Redireciona para o portal

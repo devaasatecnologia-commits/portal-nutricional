@@ -1298,22 +1298,34 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
 
         // ✅ TRAVA 6: Fotos obrigatórias (ignora registros dispensados por histórico)
         $stmtFotos = $this->pdo->prepare("
-            SELECT COUNT(*) 
+            SELECT pedido_item_carregamento.iditem,
+                   COALESCE((SELECT i.descricao FROM item i WHERE i.iditem = pedido_item_carregamento.iditem), 'Item') AS descricao,
+                   SUM(qt_carregada) AS qt
             FROM pedido_item_carregamento
             WHERE idembarque = ?
               AND qt_carregada > 0.0001
               AND (path_foto_conferencia IS NULL OR path_foto_conferencia = '')
               AND COALESCE(foto_dispensada, FALSE) = FALSE
+              AND NOT EXISTS (
+                  SELECT 1 FROM carregamento_subida_alocacoes a
+                  JOIN carregamento_subidas s ON s.id = a.id_subida
+                  WHERE a.id_carregamento = pedido_item_carregamento.id
+                    AND s.path_foto IS NOT NULL AND s.path_foto <> ''
+              )
+            GROUP BY pedido_item_carregamento.iditem
+            ORDER BY 2
         ");
         $stmtFotos->execute([$idembarque]);
-        $fotosPendentes = (int)$stmtFotos->fetchColumn();
+        $listaSemFoto = $stmtFotos->fetchAll(\PDO::FETCH_ASSOC);
+        $fotosPendentes = count($listaSemFoto);
 
         if ($fotosPendentes > 0) {
             $this->pdo->rollBack();
             return $this->json($response, [
-                'error' => "Existem {$fotosPendentes} carregamento(s) sem foto",
+                'error' => "Existem {$fotosPendentes} item(ns) carregado(s) sem foto",
                 'codigo' => 'FOTOS_PENDENTES',
-                'fotos_pendentes' => $fotosPendentes
+                'fotos_pendentes' => $fotosPendentes,
+                'itens_sem_foto' => $listaSemFoto
             ], 409);
         }
 
@@ -1452,6 +1464,15 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
             return $this->json($response, ['error' => 'A foto deve ter no máximo 15 MB'], 413);
         }
 
+        // Item a mais na subida (ex.: unidade rasgada carregada como reserva)
+        $extraQtd = (float)str_replace(',', '.', (string)($params['extra_quantidade'] ?? 0));
+        $extraMotivo = trim((string)preg_replace('/\s+/', ' ', (string)($params['extra_motivo'] ?? '')));
+        $temExtra = $extraQtd > 0;
+        if ($temExtra && mb_strlen($extraMotivo) < 5) {
+            return $this->json($response, ['error' => 'Informe o motivo do item a mais (mínimo 5 caracteres).'], 422);
+        }
+        $extraMotivo = mb_substr($extraMotivo, 0, 300);
+
         // Validar MIME
         $stream = $foto->getStream();
         $conteudo = $stream->getContents();
@@ -1548,6 +1569,23 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                 ], 409);
             }
 
+            if ($temExtra) {
+                if (!$this->pdo->query("SELECT to_regclass('public.carregamento_subida_extras')")->fetchColumn()) {
+                    $this->pdo->rollBack();
+                    return $this->json($response, [
+                        'error' => 'Registro de item a mais indisponível: migration carregamento_subida_extras pendente.',
+                        'codigo' => 'EXTRA_INDISPONIVEL'
+                    ], 503);
+                }
+                if ($extraQtd > (float)$subidaFoto['qt_subida']) {
+                    $this->pdo->rollBack();
+                    return $this->json($response, [
+                        'error' => 'O item a mais não pode superar a quantidade da subida.',
+                        'codigo' => 'EXTRA_EXCEDE'
+                    ], 422);
+                }
+            }
+
             $foto->moveTo($caminhoAbsoluto);
 
             // Atualiza path principal
@@ -1556,6 +1594,17 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                 SET path_foto_conferencia = ?
                 WHERE id = ? AND idembarque = ? AND iditem = ?
             ")->execute([$caminhoRelativo, $idCarregamento, $idembarque, $iditem]);
+
+            // A subida pode ter sido distribuída em várias linhas (vários pedidos): a foto vale para todas
+            $this->pdo->prepare("
+                UPDATE pedido_item_carregamento c
+                SET path_foto_conferencia = ?
+                FROM carregamento_subida_alocacoes a
+                WHERE a.id_subida = ?
+                  AND a.id_carregamento = c.id
+                  AND c.idembarque = ? AND c.iditem = ?
+                  AND (c.path_foto_conferencia IS NULL OR c.path_foto_conferencia = '')
+            ")->execute([$caminhoRelativo, $idSubida, $idembarque, $iditem]);
 
             // Histórico geral
             $this->pdo->prepare("
@@ -1578,6 +1627,14 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                 WHERE id = ? AND idembarque = ? AND iditem = ?
             ")->execute([$caminhoRelativo, $idSubida, $idembarque, $iditem]);
 
+            if ($temExtra) {
+                $this->pdo->prepare("
+                    INSERT INTO carregamento_subida_extras
+                        (id_subida, id_carregamento, idembarque, iditem, quantidade, motivo, idusuario)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                ")->execute([$idSubida, $idCarregamento, $idembarque, $iditem, $extraQtd, $extraMotivo, $idusuario]);
+            }
+
             $this->pdo->commit();
 
             return $this->json($response, [
@@ -1586,7 +1643,8 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
                 'caminho' => $caminhoRelativo,
                 'id_carregamento' => $idCarregamento,
                 'id_subida' => $idSubida ?: null,
-                'nome_arquivo' => $nomeArquivo
+                'nome_arquivo' => $nomeArquivo,
+                'extra_registrado' => $temExtra
             ]);
 
         } catch (\Throwable $e) {
@@ -1611,10 +1669,16 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
         }
 
         try {
+            $temExtras = (bool)$this->pdo->query("SELECT to_regclass('public.carregamento_subida_extras')")->fetchColumn();
+            $colunasExtra = $temExtras
+                ? "COALESCE((SELECT SUM(x.quantidade) FROM carregamento_subida_extras x WHERE x.id_subida = cs.id), 0)::float AS extra_quantidade,
+                    (SELECT string_agg(x.motivo, ' | ' ORDER BY x.id) FROM carregamento_subida_extras x WHERE x.id_subida = cs.id) AS extra_motivo,"
+                : "0::float AS extra_quantidade, NULL::text AS extra_motivo,";
             $stmt = $this->pdo->prepare("
                 SELECT 
                     cs.*,
                     u.username AS nome_usuario,
+                    {$colunasExtra}
                     COALESCE(estornos.quantidade_estornada, 0)::float AS quantidade_estornada,
                     GREATEST(0, cs.qt_subida - COALESCE(estornos.quantidade_estornada, 0))::float AS quantidade_disponivel,
                     CASE

@@ -14,6 +14,7 @@ const state = {
 
 let docaSelecionada = null;
 let fotoInputElement = null;
+let extraPendente = null; // { quantidade, motivo } enviado junto com a foto da subida
 let scanner = null;
 let isProcessing = false;
 
@@ -166,6 +167,7 @@ function getAuthToken() {
 // FOCO AUTOMÁTICO NO BIPE (após cada operação)
 // ==========================================================================
 function focarBipe() {
+    if (document.getElementById('inatividade-overlay')) return;
     const input = document.getElementById('barcode-input');
     if (!input) return;
 
@@ -173,7 +175,7 @@ function focarBipe() {
     input.value = '';
 
     // Garante modo "bipe pronto" (readonly evita teclado fantasma no mobile)
-    input.setAttribute('readonly', 'true');
+    input.removeAttribute('readonly'); input.setAttribute('inputmode', 'none');
 
     // Foca e coloca cursor no fim
     input.focus();
@@ -242,6 +244,43 @@ async function comprimirImagemRapida(file) {
     });
 }
 
+function escapeHtmlCarga(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// Pergunta quantidade e motivo de um item carregado a mais na subida (ex.: unidade rasgada).
+async function pedirItemAMais(numeroSubida, qtdSubida, atual) {
+    const r = await Swal.fire({
+        title: `➕ Item a mais - ${numeroSubida}ª subida`,
+        position: 'top',
+        html: `<div style="text-align:left; font-size:0.85rem; color:#475569;">
+            Use quando foi carregada uma unidade extra para cobrir uma avariada. Ela voltará no retorno da carga.
+            <label style="display:block; font-weight:700; margin-top:10px;">Quantidade a mais</label>
+            <input id="extra-qtd" class="swal2-input" style="margin:4px 0; width:100%;" inputmode="decimal" value="${atual ? atual.quantidade : 1}">
+            <label style="display:block; font-weight:700; margin-top:8px;">Motivo</label>
+            <textarea id="extra-motivo" class="swal2-textarea" style="margin:4px 0; width:100%;" maxlength="300" placeholder="Ex.: último item do palete rasgou no caminhão">${atual ? escapeHtmlCarga(atual.motivo) : ''}</textarea>
+        </div>`,
+        showCancelButton: true,
+        showDenyButton: !!atual,
+        denyButtonText: 'Remover',
+        confirmButtonText: 'Salvar',
+        cancelButtonText: 'Voltar',
+        confirmButtonColor: '#7c3aed',
+        focusConfirm: false,
+        didOpen: () => document.getElementById('extra-motivo').focus(),
+        preConfirm: () => {
+            const qtd = parseFloat(String(document.getElementById('extra-qtd').value).replace(',', '.'));
+            const motivo = document.getElementById('extra-motivo').value.trim().replace(/\s+/g, ' ');
+            if (isNaN(qtd) || qtd <= 0) { Swal.showValidationMessage('Informe a quantidade a mais'); return false; }
+            if (qtd > qtdSubida) { Swal.showValidationMessage('Não pode superar a quantidade da subida (' + qtdSubida + ')'); return false; }
+            if (motivo.length < 5) { Swal.showValidationMessage('Descreva o motivo (mínimo 5 caracteres)'); return false; }
+            return { quantidade: qtd, motivo };
+        }
+    });
+    if (r.isDenied) return null;
+    return r.isConfirmed ? r.value : atual;
+}
+
 // ==========================================================================
 // UPLOAD DE FOTO
 // ==========================================================================
@@ -265,6 +304,10 @@ async function uploadFotoRapida(file, iditem, nomeItem, idCarregamento, idSubida
     formData.append('doca', docaSelecionada);
     formData.append('id_carregamento', idCarregamento);
     if (idSubida) formData.append('id_subida', idSubida);
+    if (extraPendente) {
+        formData.append('extra_quantidade', extraPendente.quantidade);
+        formData.append('extra_motivo', extraPendente.motivo);
+    }
 
     try {
         const token = getAuthToken();
@@ -936,7 +979,10 @@ async function processarLeitura(codigo) {
                 const numeroSubida = r.numero_subida || 1;
                 const qtAcumulada = r.quantidade_acumulada || res.value;
 
-                await Swal.fire({
+                extraPendente = null;
+                let respFoto;
+                do {
+                respFoto = await Swal.fire({
                     title: `📸 Foto da ${numeroSubida}ª subida`,
                     html: `<div style="text-align:center;">
                         <div style="font-weight:800; font-size:1rem; color:#1e293b;">${item.descricao || item.nome_item}</div>
@@ -948,16 +994,27 @@ async function processarLeitura(codigo) {
                         <div style="background:#fef3c7; padding:6px; border-radius:6px; margin-top:8px; font-size:0.75rem;">
                             ⚠️ Foto obrigatória para cada subida
                         </div>
+                        ${extraPendente ? `<div style="background:#f5f3ff; border-left:3px solid #7c3aed; padding:6px 8px; border-radius:6px; margin-top:8px; font-size:0.78rem; color:#5b21b6; text-align:left;">
+                            ➕ <b>${extraPendente.quantidade} a mais</b> nesta subida<br>${escapeHtmlCarga(extraPendente.motivo)}
+                        </div>` : ''}
                     </div>`,
                     icon: 'info',
                     confirmButtonText: '📸 Tirar foto agora',
                     confirmButtonColor: '#274036',
                     showCancelButton: false,
+                    showDenyButton: true,
+                    denyButtonText: extraPendente ? '✏️ Alterar item a mais' : '➕ Adicionar item a mais na subida',
+                    denyButtonColor: '#7c3aed',
                     allowOutsideClick: false,
                     position: 'top'
                 });
+                if (respFoto.isDenied) {
+                    extraPendente = await pedirItemAMais(numeroSubida, res.value, extraPendente);
+                }
+                } while (respFoto.isDenied);
 
                 const fotoOk = await capturarFoto(item.cod_item, idCarregamento, idSubida);
+                extraPendente = null;
 
                 if (!fotoOk) {
                     try {
@@ -1106,10 +1163,25 @@ async function finalizarCargaOficial() {
                     location.reload();
                     return; // reload mata a página — não precisa destravar nem focar
                 } else {
+                    if (r.codigo === 'FOTOS_PENDENTES' && Array.isArray(r.itens_sem_foto)) {
+                        const e = new Error(r.error);
+                        e.itensSemFoto = r.itens_sem_foto;
+                        throw e;
+                    }
                     throw new Error(r.error);
                 }
             } catch (e) {
-                await Swal.fire({ title: 'Erro', text: e.message, icon: 'error' });
+                if (e.itensSemFoto) {
+                    const linhas = e.itensSemFoto.map(i => `<li style="margin:4px 0;"><b>${escapeHtmlCarga(i.descricao)}</b> (cód. ${i.iditem}) - ${Number(i.qt)} un</li>`).join('');
+                    await Swal.fire({
+                        title: 'Itens sem foto',
+                        html: `<div style="text-align:left;font-size:0.85rem;">Estorne a subida desses itens e carregue novamente registrando a foto:<ul style="margin-top:8px;padding-left:18px;">${linhas}</ul></div>`,
+                        icon: 'warning',
+                        position: 'top'
+                    });
+                } else {
+                    await Swal.fire({ title: 'Erro', text: e.message, icon: 'error' });
+                }
             }
         }
     } finally {
@@ -1150,6 +1222,8 @@ setInterval(async () => {
     if (!state.embarque || isProcessing || (typeof Swal !== 'undefined' && Swal.isVisible())) return;
     try {
         const resposta = await apiFetch(`v1/carregamento/itens/${state.embarque}`, 'GET', { ordem: state.ordem, v: Date.now() });
+        // O usuário pode ter aberto um modal enquanto a resposta chegava; aplica na próxima rodada
+        if (isProcessing || (typeof Swal !== 'undefined' && Swal.isVisible())) return;
         if (Array.isArray(resposta) && JSON.stringify(resposta) !== JSON.stringify(state.itens)) {
             if (state.itens.length > 0) detectarAlteracaoRemota(state.itens, resposta);
             state.itens = resposta;
@@ -1157,6 +1231,23 @@ setInterval(async () => {
         }
     } catch (e) {}
 }, 5000);
+
+// Aviso não bloqueante: não usa o Swal para nunca substituir um modal em andamento
+function avisoRemoto(titulo, html, tipo, ms) {
+    let box = document.getElementById('aviso-remoto-box');
+    if (!box) {
+        box = document.createElement('div');
+        box.id = 'aviso-remoto-box';
+        box.style.cssText = 'position:fixed;top:70px;right:12px;z-index:2000;display:flex;flex-direction:column;gap:8px;max-width:340px;pointer-events:none;';
+        document.body.appendChild(box);
+    }
+    const cor = tipo === 'success' ? '#10b981' : '#f59e0b';
+    const el = document.createElement('div');
+    el.style.cssText = `background:#fff;border-left:5px solid ${cor};border-radius:10px;padding:10px 14px;box-shadow:0 8px 24px rgba(0,0,0,.18);font-size:.85rem;color:#1e293b;`;
+    el.innerHTML = `<div style="font-weight:800;margin-bottom:2px;">${titulo}</div><div>${html}</div>`;
+    box.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+}
 
 function detectarAlteracaoRemota(antigos, novos) {
     novos.forEach(itemNovo => {
@@ -1171,14 +1262,10 @@ function detectarAlteracaoRemota(antigos, novos) {
         // Separação liberou MAIS quantidade
         if (dispNovo > dispAntigo + 0.0001) {
             try { new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3').play(); } catch (e) {}
-            Swal.fire({
-                title: '📦 Mais itens liberados!',
-                html: `<b>${itemNovo.descricao || itemNovo.nome_item}</b><br>
-                       Disponível agora: <b style="color:#10b981">${Number(dispNovo.toFixed(3))}</b>`,
-                icon: 'success',
-                toast: true, position: 'top-end',
-                timer: 5000, showConfirmButton: false
-            });
+            avisoRemoto('📦 Mais itens liberados!',
+                `<b>${itemNovo.descricao || itemNovo.nome_item}</b><br>
+                 Disponível agora: <b style="color:#10b981">${Number(dispNovo.toFixed(3))}</b>`,
+                'success', 5000);
         }
 
         // Estorno remoto (separador estornou)
@@ -1186,24 +1273,16 @@ function detectarAlteracaoRemota(antigos, novos) {
         const sepNova = parseFloat(itemNovo.ja_separado) || 0;
         if (sepNova < sepAntiga - 0.0001) {
             try { new Audio('https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3').play(); } catch (e) {}
-            Swal.fire({
-                title: '⚠️ Item alterado!',
-                html: `O item <b>${itemNovo.descricao || itemNovo.nome_item}</b> teve separação reduzida.<br>Verifique o caminhão!`,
-                icon: 'warning',
-                toast: true, position: 'top-end',
-                timer: 6000, showConfirmButton: false
-            });
+            avisoRemoto('⚠️ Item alterado!',
+                `O item <b>${itemNovo.descricao || itemNovo.nome_item}</b> teve separação reduzida.<br>Verifique o caminhão!`,
+                'warning', 6000);
         }
 
         // Item bloqueado remotamente
         if (statusAntigo !== 'BLOQUEADO' && statusNovo === 'BLOQUEADO') {
-            Swal.fire({
-                title: '🔒 Item bloqueado!',
-                html: `<b>${itemNovo.descricao || itemNovo.nome_item}</b> voltou a aguardar separação.`,
-                icon: 'warning',
-                toast: true, position: 'top-end',
-                timer: 6000, showConfirmButton: false
-            });
+            avisoRemoto('🔒 Item bloqueado!',
+                `<b>${itemNovo.descricao || itemNovo.nome_item}</b> voltou a aguardar separação.`,
+                'warning', 6000);
         }
     });
 }
@@ -1282,6 +1361,7 @@ async function verHistoricoSubidas(iditem) {
                     <div style="font-size:0.7rem; color:#94a3b8; margin-top:4px;">
                         ${data} · ${s.doca || 'sem doca'} · ${s.nome_usuario || 'usuário'}
                     </div>
+                    ${Number(s.extra_quantidade) > 0 ? `<div style="font-size:0.75rem;color:#5b21b6;background:#f5f3ff;border-left:3px solid #7c3aed;border-radius:6px;padding:5px 8px;margin-top:6px;">➕ <b>${Number(s.extra_quantidade)} a mais</b> · ${escapeHtml(s.extra_motivo || '')}</div>` : ''}
                     ${s.ultimo_motivo ? `<div style="font-size:0.72rem;color:#92400e;margin-top:5px;">Motivo do último estorno: ${escapeHtml(s.ultimo_motivo)}</div>` : ''}
                     ${qtDisponivel > 0.0001 ? `<button type="button"
                             class="btn-estornar-subida"

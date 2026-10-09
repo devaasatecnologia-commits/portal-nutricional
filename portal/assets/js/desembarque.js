@@ -159,7 +159,7 @@ async function selecionarOC(id, fornecedor) {
         
         const input = document.getElementById('barcode-input');
         if (input) {
-            input.setAttribute('readonly', 'true');
+            input.removeAttribute('readonly');
             setTimeout(() => input.focus(), 500);
         }
     } catch (e) {
@@ -597,7 +597,7 @@ document.addEventListener('click', (e) => {
     if (!['BUTTON', 'SELECT', 'INPUT'].includes(e.target.tagName) && !document.querySelector('.swal2-container')) {
         const input = document.getElementById('barcode-input');
         if (input && ocAtual) {
-            input.setAttribute('readonly', 'true');
+            input.removeAttribute('readonly');
             input.focus();
         }
     }

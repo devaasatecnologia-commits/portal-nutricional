@@ -50,6 +50,11 @@ const apiFetch = async function(acao, metodo = 'GET', body = null) {
         data = { error: text || 'Resposta inválida do servidor' };
     }
 
+    if (response.status === 401) {
+        window.location.href = '/portal/login.php?expired=1';
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+
     if (!response.ok) throw new Error(data.error || `Erro ${response.status}`);
     return data;
 };
@@ -194,11 +199,12 @@ async function carregarLista() {
 
         const input = document.getElementById('barcode-input');
         if (input) {
-            input.setAttribute('readonly', 'true');
+            input.removeAttribute('readonly'); input.setAttribute('inputmode', 'none');
             input.focus();
         }
     } catch (e) {
-        Swal.fire({ title: 'Erro', text: 'Falha ao sincronizar lista.', icon: 'error', position: 'top' });
+        isProcessing = false;
+        Swal.fire({ title: 'Erro', text: 'Falha ao sincronizar lista: ' + (e.message || 'sem conexão com o servidor'), icon: 'error', position: 'top' });
     }
 }
 
@@ -491,7 +497,7 @@ document.addEventListener('click', (e) => {
     const input = document.getElementById('barcode-input');
     if (!['BUTTON', 'SELECT', 'INPUT'].includes(e.target.tagName) && !document.querySelector('.swal2-container')) {
         if (input) {
-            input.setAttribute('readonly', 'true');
+            input.removeAttribute('readonly'); input.setAttribute('inputmode', 'none');
             input.focus();
         }
     }
@@ -521,10 +527,11 @@ window.toggleCamera = toggleCamera;
 window.finalizarSeparacao = finalizarSeparacao;
 })();
 function focarBipe() {
+    if (document.getElementById('inatividade-overlay')) return;
     const input = document.getElementById('barcode-input');
     if (!input) return;
     input.value = '';
-    input.setAttribute('readonly', 'true');
+    input.removeAttribute('readonly'); input.setAttribute('inputmode', 'none');
     input.focus();
 }
 // Devolve o foco ao campo do bipe sempre que o último modal/toast fecha (coletor Bluetooth/acoplado)

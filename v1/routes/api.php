@@ -118,8 +118,33 @@ $app->group('/v1', function ($group) {
         // AUTENTICAÇÃO E PERFIL
         // ======================================================================
         $protected->post('/auth/logout', [new AuthController(), 'logout']);
+        $protected->post('/auth/inatividade', [new AuthController(), 'registrarInatividade']);
         $protected->post('/auth/alterar-senha', [new AuthController(), 'alterarSenha']);
         $protected->get('/perfil/dados', [new AuthController(), 'getDadosPerfil']);
+
+        // Retorno de carga por embarque (comparativo + destinos abertos)
+        $protected->get('/retorno-embarque/destinos', [new \Nutricional\Controllers\RetornoController(), 'getDestinosAbertos']);
+        $protected->get('/retorno-embarque/{idembarque}', [new \Nutricional\Controllers\RetornoController(), 'getComparativoEmbarque']);
+
+        // Retorno de item (bipe, movimentação, fotos) e estoque provisório
+        $protected->group('/retorno', function ($g) {
+            $ctl = new \Nutricional\Controllers\RetornoController();
+            $g->get('/tipos', [$ctl, 'getTiposDestino']);
+            $g->post('/buscar-produto', [$ctl, 'buscarProduto']);
+            $g->get('/produto-existe/{idpedido}/{iditem}', [$ctl, 'produtoExisteNoPedido']);
+            $g->post('/movimentar', [$ctl, 'movimentar']);
+            $g->post('/upload-foto', [$ctl, 'uploadFoto']);
+            $g->get('/movimentacoes-hoje', [$ctl, 'getMovimentacoesHoje']);
+        });
+        $protected->group('/auditoria-estoque', function ($g) {
+            $ctl = new \Nutricional\Controllers\RetornoController();
+            $g->get('/estoque-ativo/{idcliforemp}', [$ctl, 'getEstoqueAtivo']);
+            $g->get('/movimentacoes-produto/{idpedido}/{iditem}', [$ctl, 'getMovimentacoesProduto']);
+            $g->get('/movimentacoes-pedido/{idpedido}', [$ctl, 'getMovimentacoesPedido']);
+            $g->post('/ajustar-produto', [$ctl, 'ajustarProduto']);
+            $g->post('/mover-produto', [$ctl, 'moverProduto']);
+            $g->get('/relatorio/{idcliforemp}', [$ctl, 'getRelatorioEstoque']);
+        });
 
   // ======================================================================
         // 🚛 FROTA - GESTÃO DE EMBARQUES, ENTREGAS E RASTREAMENTO
@@ -623,6 +648,8 @@ $protected->group('/auditoria', function ($group) {
     $group->get('/resumo', [$controller, 'getResumo']);
     $group->get('/carregamentos', [$controller, 'getCarregamentos']);
     $group->get('/ranking', [$controller, 'getRankingOperadores']);
+    $group->get('/usuarios', [$controller, 'getAtividadeUsuarios']);
+    $group->get('/usuarios/{idusuario}', [$controller, 'getAtividadeUsuarioDetalhe']);
     $group->get('/timeline/{idembarque}', [$controller, 'getTimeline']);
     $group->get('/dossie/{idembarque}', [$controller, 'getDossieEmbarque']);
     $group->get('/embarque/{idembarque}', [$controller, 'getDetalhesEmbarque']);

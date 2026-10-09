@@ -84,7 +84,7 @@ class AuthController
                 'permissoes' => $permissoes,
                 'motorista_id' => $motoristaId,
                 'iat' => time(),
-                'exp' => time() + (2 * 3600)
+                'exp' => time() + (4 * 3600)
             ];
 
             $token = JWT::encode($payload, $this->jwtSecret, 'HS256');
@@ -303,7 +303,7 @@ class AuthController
                     VALUES (:hash, :uid, :jti, TO_TIMESTAMP(:exp), 'logout_all', :ip, :ua)
                 ");
                 
-                $expiresAt = time() + (2 * 3600);
+                $expiresAt = time() + (4 * 3600);
                 $stmt->execute([
                     'hash' => hash('sha256', 'bulk_' . $uid . '_' . time()),
                     'uid' => $uid,
@@ -523,6 +523,70 @@ class AuthController
         }
     }
 
+    /**
+     * POST /v1/auth/inatividade
+     * Registra o motivo informado ao retomar a sessao apos inatividade.
+     */
+    public function registrarInatividade(Request $request, Response $response): Response
+    {
+        $user = $request->getAttribute('user') ?? [];
+        $body = $request->getParsedBody();
+        if (!is_array($body)) {
+            $body = json_decode((string)$request->getBody(), true) ?: [];
+        }
+
+        $motivo = trim((string)($body['motivo'] ?? ''));
+        $motivo = preg_replace('/\s+/u', ' ', $motivo);
+        if (mb_strlen($motivo) < 5) {
+            return $this->jsonError($response, 'Informe o motivo da inatividade (mínimo 5 caracteres).', 422);
+        }
+        $motivo = mb_substr($motivo, 0, 300);
+
+        $codigo = trim((string)($body['codigo_parada'] ?? ''));
+        if ($codigo !== '' && !preg_match('/^[1-6]\.(?:[1-9]|10)$/', $codigo)) {
+            return $this->jsonError($response, 'Código de parada inválido.', 422);
+        }
+        if ($codigo === '6.10' && !preg_match('/:\s*\S{5,}/u', $motivo)) {
+            return $this->jsonError($response, 'O código 6.10 exige justificativa.', 422);
+        }
+
+        $minutos = max(0, min(1440, (int)($body['minutos_inativo'] ?? 0)));
+        $pagina = mb_substr((string)($body['pagina'] ?? ''), 0, 200);
+        $modulo = preg_match('~/([a-z0-9_-]+)(?:\.php)?/?$~i', (string)parse_url($pagina, PHP_URL_PATH), $mm) ? strtolower($mm[1]) : 'portal';
+
+        try {
+            $stmtCheck = $this->pdo->query(
+                "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'portal_inatividade')"
+            );
+            if ($stmtCheck->fetchColumn()) {
+                $temCodigo = (bool)$this->pdo->query(
+                    "SELECT 1 FROM information_schema.columns WHERE table_name = 'portal_inatividade' AND column_name = 'codigo_parada'"
+                )->fetchColumn();
+                $stmt = $this->pdo->prepare(
+                    "INSERT INTO portal_inatividade (idusuario, username, motivo, minutos_inativo, modulo, pagina, ip_origem, user_agent"
+                    . ($temCodigo ? ", codigo_parada" : "") . ")
+                     VALUES (:uid, :username, :motivo, :min, :modulo, :pagina, :ip, :ua" . ($temCodigo ? ", :cod" : "") . ")"
+                );
+                $stmt->execute([
+                    'uid' => (int)($user['idusuario'] ?? 0),
+                    'username' => mb_substr((string)($user['username'] ?? ''), 0, 100),
+                    'motivo' => $motivo,
+                    'min' => $minutos,
+                    'modulo' => $modulo,
+                    'pagina' => $pagina,
+                    'ip' => mb_substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
+                    'ua' => mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+                ] + ($temCodigo ? ['cod' => $codigo !== '' ? $codigo : null] : []));
+            } else {
+                error_log('[Inatividade] tabela portal_inatividade ausente; usuario=' . ($user['idusuario'] ?? 0) . ' motivo=' . $motivo);
+            }
+        } catch (\Throwable $e) {
+            error_log('[Inatividade] Falha ao registrar: ' . $e->getMessage());
+        }
+
+        $response->getBody()->write(json_encode(['success' => true]));
+        return $response->withHeader('Content-Type', 'application/json');
+    }
     /**
      * Resposta de erro JSON
      */
