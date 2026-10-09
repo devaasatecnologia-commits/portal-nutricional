@@ -304,6 +304,29 @@ credenciais, monitoramento, configuracao Valhalla/Cobli ou estado de deploy.
   mudanca operacional foi realizado. A nova migration precisa ser aplicada ao
   banco antes de repetir o carregamento; validar com embarque de homologacao
   antes de considerar o fluxo fim a fim.
+- Em 2026-10-09 o usuario aplicou a migration (restricao composta) e a subida
+  voltou a funcionar. O erro generico "Nao foi possivel registrar a subida do
+  item." (`FALHA_REGISTRO_CARREGAMENTO`) ocorreu enquanto a restricao antiga
+  ainda existia; o log PHP (`[Carregamento] Falha ao confirmar item`) confirmou
+  a mesma causa.
+- Filial 6: `CarregamentoController` (listagem, `confirmarItem`, finalizacao) e
+  `SeparacaoController` (listagem e duas travas) usam
+  `(gerou_nf = 'S' OR idfilial = 6)`; a filial 1 continua exigindo NF. Nao
+  alterado: `Frota/ImportadorController.php` (linha ~1909), que mantem o filtro
+  original. Validado apenas com `php -l`; sem teste com embarque real da filial 6.
+- Coletor de codigo de barras: `separacao.js` ganhou `focarBipe()` e ambos os
+  scripts (`separacao.js`, `carregamento.js`) devolvem o foco a
+  `#barcode-input` quando o ultimo `.swal2-container` e removido (MutationObserver
+  com atraso de 80 ms). O campo segue `readonly` para nao abrir o teclado do
+  celular. Validado com `node --check`; falta teste no celular com o coletor.
+- Commit `bf21456` reune este trabalho. Ficaram fora, por serem sensiveis ou
+  nao revisados: `phpinfo.php`, `docs/SECRETS_ACCESS.md`, `.env.example` e os
+  tres `GUIA_ENTREGA_CEO_PROGRAMADOR.*`. Sem push.
+- Pendencias de continuidade: testar filial 6 e foco do coletor em homologacao;
+  retomar Valhalla (aguardando dados do servidor Linux/Docker); monitoramento
+  externo, rate limit por motorista, consultas Cobli paralelas, rascunhos/fotos
+  offline em IndexedDB, testes de integracao, retencao de posicoes Cobli e o
+  "Nenhum modulo encontrado" no Portal.
 
 ## Publicacao
 
