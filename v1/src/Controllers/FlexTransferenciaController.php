@@ -17,10 +17,6 @@ use PDO;
 class FlexTransferenciaController
 {
     private const FILIAIS_ADMIN = [1, 6];
-    private const FLEX_URL_PADRAO = [
-        1 => 'http://mercosf1.nutricionalbr.com:8081/saldo_flex',
-        6 => 'http://mercosf1.nutricionalbr.com:8086/saldo_flex',
-    ];
 
     private $pdo;
 
@@ -93,69 +89,10 @@ class FlexTransferenciaController
         return $out;
     }
 
-    private function flexUrl(int $filial): string
+    private function flex(int $filial): \Nutricional\Services\MercosFlexService
     {
-        $env = getenv('FLEX_API_URL_F' . $filial) ?: ($_ENV['FLEX_API_URL_F' . $filial] ?? '');
-        if ($env !== '') {
-            return $env;
-        }
-        return self::FLEX_URL_PADRAO[$filial] ?? self::FLEX_URL_PADRAO[6];
+        return new \Nutricional\Services\MercosFlexService($filial);
     }
-
-    /** @return array{0:int,1:string} status HTTP e corpo */
-    private function http(string $method, string $url, ?array $body = null): array
-    {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_CONNECTTIMEOUT => 8,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_CUSTOMREQUEST => $method,
-        ]);
-        if ($body !== null) {
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-        }
-        $resp = curl_exec($ch);
-        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $err = curl_error($ch);
-        curl_close($ch);
-
-        if ($resp === false) {
-            throw new \RuntimeException('API de saldo Flex indisponivel: ' . $err);
-        }
-        return [$status, (string)$resp];
-    }
-
-    /** @return array<int,array> saldos indexados por cliforemp_id */
-    private function saldos(int $filial): array
-    {
-        [$status, $body] = $this->http('GET', $this->flexUrl($filial));
-        $data = json_decode($body, true);
-        if ($status >= 400 || !is_array($data)) {
-            throw new \RuntimeException('Resposta invalida da API de saldo Flex (HTTP ' . $status . ')');
-        }
-        $map = [];
-        foreach ($data as $item) {
-            if (isset($item['cliforemp_id'])) {
-                $map[(int)$item['cliforemp_id']] = $item;
-            }
-        }
-        return $map;
-    }
-
-    private function movimentar(int $filial, int $colaborador, float $valor, string $obs): void
-    {
-        [$status, $body] = $this->http('POST', $this->flexUrl($filial), [
-            'colaborador_id' => $colaborador,
-            'valor_movimentado' => $valor,
-            'observacao' => $obs,
-        ]);
-        if ($status >= 400) {
-            throw new \RuntimeException('API de saldo Flex recusou a movimentacao (HTTP ' . $status . '): ' . mb_substr($body, 0, 200));
-        }
-    }
-
     private function permitido(array $usuario, int $filial, int $id): ?array
     {
         foreach ($this->representantes($usuario, $filial) as $r) {
@@ -199,7 +136,7 @@ class FlexTransferenciaController
             if ($rep === null) {
                 return $this->erro($response, 'Representante nao liberado para o seu usuario.', 403);
             }
-            $item = $this->saldos($filial)[$id] ?? null;
+            $item = $this->flex($filial)->saldos()[$id] ?? null;
             if ($item === null) {
                 return $this->erro($response, 'Representante sem saldo Flex na API.', 404);
             }
@@ -276,7 +213,8 @@ class FlexTransferenciaController
         $debitado = false;
 
         try {
-            $saldos = $this->saldos($filial);
+            $flex = $this->flex($filial);
+            $saldos = $flex->saldos(true);
             $sDe = $saldos[$de] ?? null;
             $sPara = $saldos[$para] ?? null;
             if ($sDe === null || $sPara === null) {
@@ -291,11 +229,16 @@ class FlexTransferenciaController
                 throw new \DomainException('O representante ' . $repDe['nome'] . ' nao possui saldo suficiente para transferir.');
             }
 
-            $this->movimentar($filial, $de, -$valor, $motivo);
+            $flex->movimentar($de, -$valor, $motivo);
             $debitado = true;
-            $this->movimentar($filial, $para, $valor, $motivo);
+            $flex->movimentar($para, $valor, $motivo);
 
-            $novos = $this->saldos($filial);
+            $novos = [];
+            try {
+                $novos = $flex->saldos(true);
+            } catch (\Throwable $e) {
+                // transferencia ja aplicada: usa saldos calculados
+            }
             $log['saldo_novo_de'] = isset($novos[$de]) ? (float)$novos[$de]['saldo_atual'] : round($log['saldo_ant_de'] - $valor, 2);
             $log['saldo_novo_para'] = isset($novos[$para]) ? (float)$novos[$para]['saldo_atual'] : round($log['saldo_ant_para'] + $valor, 2);
             $log['ok'] = true;
@@ -324,7 +267,7 @@ class FlexTransferenciaController
             if ($debitado) {
                 // o debito passou e o credito falhou: devolve para quem enviou
                 try {
-                    $this->movimentar($filial, $de, $valor, 'ESTORNO: ' . $motivo);
+                    $flex->movimentar($de, $valor, 'ESTORNO: ' . $motivo);
                     $log['msg'] .= ' (débito estornado automaticamente)';
                 } catch (\Throwable $e2) {
                     $log['msg'] .= ' (ATENCAO: debito de ' . $repDe['nome'] . ' NAO foi estornado - conferir manualmente)';
