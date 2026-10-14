@@ -949,6 +949,20 @@ $protected->group('/verbas-flex', function ($group) {
     $group->get('/api-historico', [$controller, 'apiHistorico']);
 })->add(new ModulePermissionMiddleware('verbas-flex'));
 
+$protected->group('/transf-compras', function ($group) {
+    $c = new \Nutricional\Controllers\TransferenciaCompraController();
+    $group->group('/matriz-filial', function ($g) use ($c) {
+        $g->get('', [$c, 'matrizFilial']);
+        $g->get('/pendentes', [$c, 'embarquesPendentes']);
+        $g->get('/guia-config', [$c, 'guiaConfig']);
+        $g->post('/guia-config', [$c, 'guiaSalvar']);
+    })->add(new ModulePermissionMiddleware('transferencia-matriz-filial'));
+    $group->group('/filial-matriz', function ($g) use ($c) {
+        $g->get('', [$c, 'filialMatriz']);
+        $g->get('/pendentes', [$c, 'ordensPendentes']);
+    })->add(new ModulePermissionMiddleware('transferencia-filial-matriz'));
+});
+
         // ======================================================================
         // DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)
         // ======================================================================
