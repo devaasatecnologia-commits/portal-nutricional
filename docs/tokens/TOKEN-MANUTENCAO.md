@@ -88,6 +88,18 @@ Ao receber um modulo e um erro:
 | Motorista sem navegacao | `abrirNavegacao` sem latitude/longitude cai para busca por endereco | Conferir coordenadas da entrega |
 | PWA mostra versao velha | Service worker em cache | Subir `CACHE_VERSION`/nome do cache no `service-worker.js` |
 | `php -S` falha ao instalar PhpSpreadsheet | Extensao `gd` desabilitada | Habilitar `gd` no `php.ini` |
+| Pedido de Amostra: "Sandbox, nada gravado" | `ERP_PEDIDO_SANDBOX` ausente/true no `.env` | Definir `ERP_PEDIDO_SANDBOX=false` no servidor |
+| Pedido de Amostra: 403 filial/transacao | `usuario.dash_filiais` vazio (so admin passa) ou codigo fora da view `transacao_pedido` | Ajustar filiais do usuario no admin |
+| Modulo Pedido de Amostra nao aparece | Slug `pedido-amostra` nao registrado | Rodar `docs/pedido_amostra_modulo_migration.sql` e liberar ao usuario |
+
+## Modulo Pedido de Amostra
+
+- Rotas `/v1/amostras/{contexto,itens,clientes,pedidos}` (GET) e `POST /v1/amostras/pedidos`, slug `pedido-amostra`.
+- Codigo: `AmostraPedidoController`, `portal/modules/pedido-amostra.php`, `portal/assets/js/pedido-amostra.js`.
+- Itens/saldo: view `amostra_brindes_com_saldo` (idimposto 4 se transacao 8, senao 6; filial 6 ou 1; `saldo_estoque <> 0`); quantidade limitada a `quantidade_estoque`.
+- Transacoes: somente as da view `transacao_pedido`. Filiais: `usuario.dash_filiais` (vazio = sem acesso, exceto admin = 1 e 6).
+- Cria via `ERPPedidoService` (palmtop_pedido), com `nomecliente=PORTAL[nextval('pedido_portal')]`, observacao livre e sem a checagem de saldo por lote.
+- Lista dos ultimos pedidos: query `pedido`/`pedido_item` (transacoes 8 e 10, cliente tipo 5, status 1 e 5) mais pendentes de importacao em `palmtop_pedido`.
 
 ## Deploy (resumo)
 

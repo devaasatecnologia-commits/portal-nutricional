@@ -134,7 +134,7 @@ class ERPPedidoService
 
                 // Verificar saldo
                 $saldo = $this->verificarSaldoItem($item['iditem'], $dados['idfilial'] ?? 1);
-                if (!$this->sandboxMode && $quantidade > $saldo) {
+                if (!$this->sandboxMode && empty($dados['ignorar_saldo_lote']) && $quantidade > $saldo) {
                     return $this->respostaErro(
                         "Saldo insuficiente para item {$item['iditem']}. " .
                         "Disponível: {$saldo}, Solicitado: {$quantidade}"
@@ -183,14 +183,16 @@ class ERPPedidoService
                 'idserie' => $transacao['idserie'] ?? '.',
                 'idvendrepre' => (int)($cliente['idvendedor'] ?? 0),
                 'uf_destino' => $cliente['uf'] ?? 'SC',
-                'nomecliente' => $nomeCliente,
+                'nomecliente' => $dados['nomecliente'] ?? $nomeCliente,
                 'usuario' => $dados['usuario'] ?? 'SISTEMA',
                 'dataenvio' => date('Y-m-d'),
                 'data' => date('Y-m-d'),
                 'dataentrega' => date('Y-m-d', strtotime('+30 days')),
                 'datahorapda' => date('Y-m-d H:i:s'),
                 'datahora' => date('Y-m-d H:i:s'),
-                'observacao' => $this->montarObservacao($dados),
+                'observacao' => !empty($dados['observacao_livre'])
+                    ? substr((string)($dados['observacao'] ?? ''), 0, 1000)
+                    : $this->montarObservacao($dados),
                 'valortotalitens' => $valorTotalItens,
                 'valortotalpedido' => $valorTotalItens,
                 'pesobruto' => $pesoBrutoTotal,

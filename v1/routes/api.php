@@ -912,6 +912,15 @@ $protected->group('/estoque-previsao', function ($group) {
     $group->post('/exportar', [$controller, 'exportar']);
 })->add(new ModulePermissionMiddleware('estoque-previsao'));
 
+$protected->group('/amostras', function ($group) {
+    $controller = new \Nutricional\Controllers\AmostraPedidoController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/itens', [$controller, 'itens']);
+    $group->get('/clientes', [$controller, 'clientes']);
+    $group->get('/pedidos', [$controller, 'pedidos']);
+    $group->post('/pedidos', [$controller, 'criar']);
+})->add(new ModulePermissionMiddleware('pedido-amostra'));
+
         // ======================================================================
         // DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)
         // ======================================================================
