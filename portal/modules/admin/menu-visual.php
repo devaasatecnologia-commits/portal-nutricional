@@ -28,6 +28,7 @@ require_once __DIR__ . '/components/sidebar.php';
 
 <script>
 let dados = { setores: [], modulos: [] };
+const abertos = new Set();
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const hex = (v, pad) => /^#[0-9a-fA-F]{6}$/.test(v || '') ? v : pad;
@@ -71,24 +72,52 @@ function previa(id) {
     el.innerHTML = `<i class="fa-solid ${esc(normIcone(document.getElementById('icone-' + id).value))}"></i>`;
 }
 
+function alternar(chave) {
+    if (abertos.has(chave)) abertos.delete(chave); else abertos.add(chave);
+    const corpo = document.getElementById('corpo-' + chave);
+    const seta = document.getElementById('seta-' + chave);
+    const aberto = abertos.has(chave);
+    corpo.classList.toggle('hidden', !aberto);
+    seta.style.transform = aberto ? 'rotate(180deg)' : '';
+}
+
+function cabecalho(chave, titulo, qtd, icone, cor, aviso) {
+    const aberto = abertos.has(chave);
+    return `<button type="button" onclick="alternar('${chave}')"
+        class="w-full flex items-center gap-3 text-left p-1">
+        <span class="w-9 h-9 rounded-xl flex items-center justify-center text-white shadow" style="background:${cor}">
+            <i class="fa-solid ${esc(icone)}"></i></span>
+        <span class="flex-1 font-extrabold text-slate-700 ${aviso ? 'text-amber-700' : ''}">${esc(titulo)}</span>
+        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">${qtd} módulo(s)</span>
+        <i id="seta-${chave}" class="fa-solid fa-chevron-down text-slate-400 transition-transform"
+           style="${aberto ? 'transform:rotate(180deg)' : ''}"></i>
+    </button>`;
+}
+
 function desenhar() {
     const box = document.getElementById('conteudo');
     const nomesSetores = new Set(dados.setores.map(s => s.nome));
     let html = '';
     dados.setores.forEach(s => {
         const mods = dados.modulos.filter(m => m.setor === s.nome);
-        html += `<section class="bg-slate-50 rounded-3xl p-4 border border-slate-100">
-            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Setor</p>
-            ${linha('setor', s)}
-            <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-4 mb-2">Módulos (${mods.length})</p>
-            <div class="space-y-2">${mods.map(m => linha('modulo', m)).join('') || '<p class="text-xs text-slate-400">Nenhum módulo</p>'}</div>
+        const chave = 's' + s.id;
+        const from = hex(s.cor_from, '#375a4b');
+        const cor = `linear-gradient(135deg,${from},${hex(s.cor_to, from)})`;
+        html += `<section class="bg-slate-50 rounded-3xl p-3 border border-slate-100">
+            ${cabecalho(chave, s.nome, mods.length, normIcone(s.icone), cor, false)}
+            <div id="corpo-${chave}" class="${abertos.has(chave) ? '' : 'hidden'} mt-3 px-1 pb-1">
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">Setor</p>
+                ${linha('setor', s)}
+                <p class="text-[10px] font-bold uppercase tracking-widest text-slate-400 mt-4 mb-2">Módulos (${mods.length})</p>
+                <div class="space-y-2">${mods.map(m => linha('modulo', m)).join('') || '<p class="text-xs text-slate-400">Nenhum módulo</p>'}</div>
+            </div>
         </section>`;
     });
     const orfaos = dados.modulos.filter(m => !nomesSetores.has(m.setor));
     if (orfaos.length) {
-        html += `<section class="bg-amber-50 rounded-3xl p-4 border border-amber-100">
-            <p class="text-xs font-bold text-amber-700 mb-2">Módulos em setores não cadastrados em sistema_setores</p>
-            <div class="space-y-2">${orfaos.map(m => linha('modulo', m)).join('')}</div></section>`;
+        html += `<section class="bg-amber-50 rounded-3xl p-3 border border-amber-100">
+            ${cabecalho('orfaos', 'Setores não cadastrados em sistema_setores', orfaos.length, 'fa-triangle-exclamation', '#d97706', true)}
+            <div id="corpo-orfaos" class="${abertos.has('orfaos') ? '' : 'hidden'} mt-3 px-1 pb-1 space-y-2">${orfaos.map(m => linha('modulo', m)).join('')}</div></section>`;
     }
     box.innerHTML = html;
 }
