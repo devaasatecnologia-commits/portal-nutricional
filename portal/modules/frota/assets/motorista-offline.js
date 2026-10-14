@@ -5797,7 +5797,7 @@
 
   /** Monta a mensagem pronta de WhatsApp para uma entrega. */
   function montarMensagemWhatsApp(entrega) {
-    const nomeCliente = (entrega.cliente_nome || '').split(' ')[0] || 'cliente';
+    const nomeCliente = (entrega.cliente_nome || '').trim() || 'cliente';
     const nomeMotorista = (perfilDados?.fantasia
                         || window.MOTORISTA_NOME_SESSAO
                         || 'o motorista').split(' ')[0];
