@@ -76,7 +76,7 @@ require_once __DIR__ . '/estrutura/header.php';
     <a :href="`#setor-${setor.nome}`" @click.prevent="scrollToSetor(setor.nome); sidebarOpen = false"
        class="sidebar-link-premium flex items-center gap-3 px-4 py-2.5 text-sm font-medium transition-all"
        :class="setorAtivo === setor.nome ? 'bg-white/10 text-white shadow-sm' : 'text-slate-300 hover:bg-white/5'">
-        <i :class="`fas ${setor.icone} w-5 text-center`"></i>
+        <i :class="`fa-solid ${setor.tema.icon} w-5 text-center`"></i>
         <span x-text="setor.nome"></span>
         <span class="ml-auto text-[10px]" :class="setorAtivo === setor.nome ? 'text-white/60' : 'text-slate-500'" 
               x-text="setor.modulos.length"></span>
@@ -237,7 +237,7 @@ require_once __DIR__ . '/estrutura/header.php';
         <button @click="scrollToSetor(setor.nome)" 
         class="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap border"
         :class="setorAtivo === setor.nome ? 'bg-[#375a4b] text-white shadow-lg shadow-[#375a4b]/20 border-[#375a4b]' : 'bg-white text-slate-500 hover:bg-slate-100 border-slate-200'">
-        <i :class="`fas ${setor.icone} text-[10px]`"></i>
+        <i :class="`fa-solid ${setor.tema.icon} text-[10px]`"></i>
         <span x-text="setor.nome"></span>
     </button>
 </template>
@@ -247,8 +247,8 @@ require_once __DIR__ . '/estrutura/header.php';
         <!-- Cabeçalho do setor COM BOTÃO CLICÁVEL -->
         <div class="flex items-center gap-3 mb-5 cursor-pointer group" 
              @click="toggleSetor(setor.nome)">
-            <div :class="`w-10 h-10 ${setor.corBg} ${setor.corTexto} rounded-xl flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform`">
-                <i :class="`fas ${setor.icone} text-base`"></i>
+            <div class="pm-sector-icon" :style="`background:linear-gradient(135deg,${setor.tema.from},${setor.tema.to})`">
+                <i :class="`fa-solid ${setor.tema.icon}`"></i>
             </div>
             <div class="flex-1">
                 <div class="flex items-center gap-2">
@@ -268,23 +268,21 @@ require_once __DIR__ . '/estrutura/header.php';
              x-transition.opacity.duration.300ms
              class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             <template x-for="(mod, index) in setor.modulos" :key="mod.id">
-                <a :href="mod.url" :style="`animation-delay: ${index * 50}ms`"
-                   class="stat-card-premium animate-fadeInUp group relative flex flex-col h-full overflow-hidden bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition-all border border-slate-100">
+                <a :href="mod.url" :style="`animation-delay: ${index * 50}ms; --pm-from:${setor.tema.from}; --pm-to:${setor.tema.to}`"
+                   class="pm-card animate-fadeInUp group">
                     <div class="flex items-start justify-between mb-4">
-                        <div :class="`w-12 h-12 ${mod.bgColor || mod.cor_bg || 'bg-slate-50'} ${mod.iconColor || mod.cor_text || 'text-slate-600'} rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300 shadow-sm`">
-                            <i :class="`fas ${mod.icon} text-lg`"></i>
-                        </div>
+                        <div class="pm-tile"><i :class="`fa-solid ${iconeModulo(mod.icon)}`"></i></div>
                         <template x-if="mod.id === 'admin'">
                             <span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold">ADMIN</span>
                         </template>
                     </div>
                     <div class="flex-1">
-                        <h4 class="font-bold text-slate-800 text-sm mb-1.5" x-text="mod.nome"></h4>
+                        <h4 class="font-extrabold text-slate-800 text-sm mb-1.5" x-text="mod.nome"></h4>
                         <p class="text-xs text-slate-400 leading-relaxed line-clamp-2" x-text="mod.desc || mod.descricao"></p>
                     </div>
-                    <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        <span class="text-[10px] font-bold uppercase tracking-wider text-slate-300 group-hover:text-[#375a4b] transition-colors">Acessar</span>
-                        <i class="fa-solid fa-arrow-right text-[10px] text-slate-300 group-hover:text-[#375a4b] group-hover:translate-x-1 transition-all"></i>
+                    <div class="pm-go">
+                        <span>Acessar</span>
+                        <i class="fa-solid fa-arrow-right"></i>
                     </div>
                 </a>
             </template>
@@ -294,7 +292,7 @@ require_once __DIR__ . '/estrutura/header.php';
         <div x-show="setor.recolhido" 
              x-transition.opacity.duration.200ms
              class="text-center py-4 text-slate-400 text-sm italic border border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
-            <i class="fa-solid fa-folder-closed mr-2"></i>
+            <i class="fa-solid fa-chevron-down mr-2"></i>
             Setor recolhido - clique para expandir
         </div>
     </div>
@@ -455,6 +453,36 @@ function portalDashboard() {
               this.initScrollSpy(); 
         },
 
+        temaSetor(nome) {
+            const temas = {
+                comercial:     { icon: 'fa-handshake',          from: '#059669', to: '#34d399' },
+                vendas:        { icon: 'fa-chart-line',         from: '#2563eb', to: '#60a5fa' },
+                financeiro:    { icon: 'fa-wallet',             from: '#0f766e', to: '#2dd4bf' },
+                logistica:     { icon: 'fa-truck-fast',         from: '#ea580c', to: '#fb923c' },
+                frota:         { icon: 'fa-truck',              from: '#c2410c', to: '#fdba74' },
+                estoque:       { icon: 'fa-boxes-stacked',      from: '#b45309', to: '#fbbf24' },
+                deposito:      { icon: 'fa-warehouse',          from: '#a16207', to: '#facc15' },
+                expedicao:     { icon: 'fa-dolly',              from: '#d97706', to: '#fcd34d' },
+                producao:      { icon: 'fa-industry',           from: '#475569', to: '#94a3b8' },
+                marketing:     { icon: 'fa-bullhorn',           from: '#7c3aed', to: '#a78bfa' },
+                rh:            { icon: 'fa-people-group',       from: '#db2777', to: '#f472b6' },
+                compras:       { icon: 'fa-cart-shopping',      from: '#0891b2', to: '#22d3ee' },
+                fiscal:        { icon: 'fa-file-invoice-dollar', from: '#4f46e5', to: '#818cf8' },
+                qualidade:     { icon: 'fa-shield-halved',      from: '#16a34a', to: '#4ade80' },
+                ti:            { icon: 'fa-microchip',          from: '#334155', to: '#64748b' },
+                administracao: { icon: 'fa-user-shield',        from: '#1e293b', to: '#475569' },
+                geral:         { icon: 'fa-layer-group',        from: '#375a4b', to: '#5f8f7a' }
+            };
+            const chave = String(nome || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+            const achou = Object.keys(temas).find(k => chave === k || chave.includes(k));
+            return temas[achou] || temas.geral;
+        },
+
+        iconeModulo(icon) {
+            const i = String(icon || '').split(/\s+/).find(c => c.startsWith('fa-') && !['fa-solid', 'fa-regular', 'fa-brands', 'fa-fw'].includes(c));
+            return i || 'fa-cube';
+        },
+
         async carregarModulosSetores(permissoes) {
             try {
                 const resp = await fetch(`${API_URL}/sistema/modulos-setores`);
@@ -500,6 +528,7 @@ function portalDashboard() {
                 this.setores = Object.keys(modulosPorSetor)
                     .map(nome => ({
                         ...(setoresMap[nome] || { nome, icone: 'fa-folder', corBg: 'bg-slate-100', corTexto: 'text-slate-600' }),
+                        tema: this.temaSetor(nome),
                         modulos: modulosPorSetor[nome],
                         recolhido: false
                     }))
