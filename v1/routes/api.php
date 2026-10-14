@@ -939,6 +939,14 @@ $protected->group('/flex', function ($group) {
     $group->post('/transferir', [$controller, 'transferir']);
 })->add(new ModulePermissionMiddleware('transferencia-flex'));
 
+$protected->group('/verbas-flex', function ($group) {
+    $controller = new \Nutricional\Controllers\VerbasFlexController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/resumo', [$controller, 'resumo']);
+    $group->get('/debitos', [$controller, 'debitos']);
+    $group->get('/creditos', [$controller, 'creditos']);
+})->add(new ModulePermissionMiddleware('verbas-flex'));
+
         // ======================================================================
         // DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)
         // ======================================================================
