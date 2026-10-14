@@ -54,6 +54,11 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             <span>Permissões</span>
         </a>
         
+        <a href="menu-visual.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'menu-visual.php' ? 'active' : '' ?>">
+            <i class="fa-solid fa-palette w-5 text-center text-white/50"></i>
+            <span>Aparência do Menu</span>
+        </a>
+
         <div class="px-4 mt-6 mb-3">
             <span class="text-[10px] font-bold uppercase tracking-widest text-white/40">API & Integrações</span>
         </div>

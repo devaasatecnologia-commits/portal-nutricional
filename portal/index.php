@@ -268,7 +268,7 @@ require_once __DIR__ . '/estrutura/header.php';
              x-transition.opacity.duration.300ms
              class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
             <template x-for="(mod, index) in setor.modulos" :key="mod.id">
-                <a :href="mod.url" :style="`animation-delay: ${index * 50}ms; --pm-from:${setor.tema.from}; --pm-to:${setor.tema.to}`"
+                <a :href="mod.url" :style="`animation-delay: ${index * 50}ms; --pm-from:${mod.from || setor.tema.from}; --pm-to:${mod.to || setor.tema.to}`"
                    class="pm-card animate-fadeInUp group">
                     <div class="flex items-start justify-between mb-4">
                         <div class="pm-tile"><i :class="`fa-solid ${iconeModulo(mod.icon)}`"></i></div>
@@ -498,7 +498,8 @@ function portalDashboard() {
                         nome: s.nome,
                         icone: s.icone,
                         corBg: s.corbg || s.corBg,
-                        corTexto: s.cortexto || s.corTexto
+                        corTexto: s.cortexto || s.corTexto,
+                        corFrom: s.corFrom, corTo: s.corTo
                     };
                 });
                 
@@ -518,6 +519,8 @@ function portalDashboard() {
                         bgColor: mod.corbg || mod.corBg || 'bg-slate-50',
                         iconColor: mod.cortexto || mod.corTexto || 'text-slate-600',
                         url: mod.url,
+                        from: mod.corFrom || null,
+                        to: mod.corTo || mod.corFrom || null,
                         setor: sn
                     });
                 });
@@ -526,12 +529,14 @@ function portalDashboard() {
                 const ordemSetores = setoresData.map(s => s.nome);
                 
                 this.setores = Object.keys(modulosPorSetor)
-                    .map(nome => ({
-                        ...(setoresMap[nome] || { nome, icone: 'fa-folder', corBg: 'bg-slate-100', corTexto: 'text-slate-600' }),
-                        tema: this.temaSetor(nome),
-                        modulos: modulosPorSetor[nome],
-                        recolhido: false
-                    }))
+                    .map(nome => {
+                        const s = setoresMap[nome] || { nome, icone: 'fa-folder', corBg: 'bg-slate-100', corTexto: 'text-slate-600' };
+                        const tema = { ...this.temaSetor(nome) };
+                        // personalização feita no Admin > Aparência do Menu tem prioridade
+                        if (s.corFrom) { tema.from = s.corFrom; tema.to = s.corTo || s.corFrom; }
+                        if (s.icone && s.icone !== 'fa-folder') tema.icon = this.iconeModulo(s.icone);
+                        return { ...s, tema, modulos: modulosPorSetor[nome], recolhido: false };
+                    })
                     .sort((a, b) => ordemSetores.indexOf(a.nome) - ordemSetores.indexOf(b.nome));
                 
                 this.setoresVisiveis = [...this.setores];

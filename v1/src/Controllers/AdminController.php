@@ -17,6 +17,121 @@ class AdminController
     // MÓDULOS
     // ======================================================================
 
+    // ======================================================================
+    // APARÊNCIA DO MENU (nome, ícone e cores de setores e módulos)
+    // ======================================================================
+
+    private function exigirAdmin(Request $request, Response $response): ?Response
+    {
+        $user = $request->getAttribute('user');
+        $user = is_object($user) ? (array)$user : (array)$user;
+        if (empty($user['is_admin']) && !in_array('admin', (array)($user['permissoes'] ?? []), true)) {
+            return $this->jsonResponse($response, ['error' => 'Acesso restrito a administradores'], 403);
+        }
+        return null;
+    }
+
+    private function garantirColunasVisuais(): void
+    {
+        foreach (['sistema_setores', 'sistema_modulos'] as $tabela) {
+            try {
+                $this->pdo->exec("ALTER TABLE $tabela ADD COLUMN IF NOT EXISTS cor_from VARCHAR(9), ADD COLUMN IF NOT EXISTS cor_to VARCHAR(9)");
+            } catch (\Throwable $e) {
+                // sem permissão de DDL: rodar docs/menu_visual_migration.sql com o dono do banco
+            }
+        }
+    }
+
+    private function corHex($v): ?string
+    {
+        $v = trim((string)$v);
+        return preg_match('/^#[0-9a-fA-F]{6}$/', $v) ? strtolower($v) : null;
+    }
+
+    private function iconeFa($v): string
+    {
+        $v = trim((string)$v);
+        return preg_match('/^fa-[a-z0-9-]{1,40}$/', $v) ? $v : 'fa-cube';
+    }
+
+    /** GET /v1/admin/menu-visual */
+    public function getMenuVisual(Request $request, Response $response): Response
+    {
+        if ($r = $this->exigirAdmin($request, $response)) return $r;
+        try {
+            $this->garantirColunasVisuais();
+            $setores = $this->pdo->query("SELECT * FROM sistema_setores ORDER BY ordem, nome")->fetchAll(\PDO::FETCH_ASSOC);
+            $modulos = $this->pdo->query("SELECT * FROM sistema_modulos ORDER BY setor, ordem, nome")->fetchAll(\PDO::FETCH_ASSOC);
+            return $this->jsonResponse($response, ['setores' => $setores, 'modulos' => $modulos]);
+        } catch (\Throwable $e) {
+            return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /** POST /v1/admin/menu-visual/setor/{id} */
+    public function salvarVisualSetor(Request $request, Response $response, array $args): Response
+    {
+        if ($r = $this->exigirAdmin($request, $response)) return $r;
+        try {
+            $this->garantirColunasVisuais();
+            $in = json_decode($request->getBody()->getContents(), true) ?? [];
+            $id = (int)$args['id'];
+            $nome = trim((string)($in['nome'] ?? ''));
+            if ($nome === '') return $this->jsonResponse($response, ['error' => 'Nome obrigatório'], 422);
+
+            $this->pdo->beginTransaction();
+            $antigo = $this->pdo->prepare("SELECT nome FROM sistema_setores WHERE id = :id");
+            $antigo->execute(['id' => $id]);
+            $nomeAntigo = $antigo->fetchColumn();
+            if ($nomeAntigo === false) {
+                $this->pdo->rollBack();
+                return $this->jsonResponse($response, ['error' => 'Setor não encontrado'], 404);
+            }
+
+            $this->pdo->prepare("UPDATE sistema_setores SET nome = :nome, icone = :icone, descricao = :descricao,
+                    cor_from = :f, cor_to = :t, ordem = :ordem WHERE id = :id")->execute([
+                'nome' => $nome, 'icone' => $this->iconeFa($in['icone'] ?? ''),
+                'descricao' => trim((string)($in['descricao'] ?? '')),
+                'f' => $this->corHex($in['cor_from'] ?? ''), 't' => $this->corHex($in['cor_to'] ?? ''),
+                'ordem' => (int)($in['ordem'] ?? 0), 'id' => $id,
+            ]);
+            // módulos referenciam o setor pelo nome
+            if ($nomeAntigo !== $nome) {
+                $this->pdo->prepare("UPDATE sistema_modulos SET setor = :novo WHERE setor = :antigo")
+                    ->execute(['novo' => $nome, 'antigo' => $nomeAntigo]);
+            }
+            $this->pdo->commit();
+            return $this->jsonResponse($response, ['success' => true]);
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /** POST /v1/admin/menu-visual/modulo/{id} */
+    public function salvarVisualModulo(Request $request, Response $response, array $args): Response
+    {
+        if ($r = $this->exigirAdmin($request, $response)) return $r;
+        try {
+            $this->garantirColunasVisuais();
+            $in = json_decode($request->getBody()->getContents(), true) ?? [];
+            $nome = trim((string)($in['nome'] ?? ''));
+            if ($nome === '') return $this->jsonResponse($response, ['error' => 'Nome obrigatório'], 422);
+
+            $st = $this->pdo->prepare("UPDATE sistema_modulos SET nome = :nome, descricao = :descricao, icon = :icon,
+                    cor_from = :f, cor_to = :t, ordem = :ordem, updated_at = NOW() WHERE id = :id");
+            $st->execute([
+                'nome' => $nome, 'descricao' => trim((string)($in['descricao'] ?? '')),
+                'icon' => $this->iconeFa($in['icon'] ?? ''),
+                'f' => $this->corHex($in['cor_from'] ?? ''), 't' => $this->corHex($in['cor_to'] ?? ''),
+                'ordem' => (int)($in['ordem'] ?? 0), 'id' => (int)$args['id'],
+            ]);
+            return $this->jsonResponse($response, ['success' => true]);
+        } catch (\Throwable $e) {
+            return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * GET /v1/admin/modulos
      * Lista todos os módulos cadastrados no sistema

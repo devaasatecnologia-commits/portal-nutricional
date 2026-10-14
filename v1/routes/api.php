@@ -80,8 +80,18 @@ $app->get('/ping', function ($request, $response) {
 // Módulos e setores (público para carregar menu antes do login)
 $app->get('/v1/sistema/modulos-setores', function ($request, $response) {
     $pdo = \getPDO();
-    $setores = $pdo->query("SELECT id, nome, slug, icone, cor_bg as corBg, cor_texto as corTexto, descricao FROM sistema_setores WHERE ativo = true ORDER BY ordem")->fetchAll(PDO::FETCH_ASSOC);
-    $modulos = $pdo->query("SELECT id, slug, nome, descricao as desc, icon, cor_bg as corBg, cor_text as corTexto, url, setor FROM sistema_modulos WHERE ativo = true ORDER BY ordem")->fetchAll(PDO::FETCH_ASSOC);
+    // SELECT * para tolerar a ausência das colunas opcionais cor_from/cor_to
+    $setores = array_map(fn($r) => [
+        'id' => $r['id'], 'nome' => $r['nome'], 'slug' => $r['slug'], 'icone' => $r['icone'],
+        'corBg' => $r['cor_bg'], 'corTexto' => $r['cor_texto'], 'descricao' => $r['descricao'],
+        'corFrom' => $r['cor_from'] ?? null, 'corTo' => $r['cor_to'] ?? null,
+    ], $pdo->query("SELECT * FROM sistema_setores WHERE ativo = true ORDER BY ordem")->fetchAll(PDO::FETCH_ASSOC));
+    $modulos = array_map(fn($r) => [
+        'id' => $r['id'], 'slug' => $r['slug'], 'nome' => $r['nome'], 'desc' => $r['descricao'],
+        'icon' => $r['icon'], 'corBg' => $r['cor_bg'], 'corTexto' => $r['cor_text'],
+        'url' => $r['url'], 'setor' => $r['setor'],
+        'corFrom' => $r['cor_from'] ?? null, 'corTo' => $r['cor_to'] ?? null,
+    ], $pdo->query("SELECT * FROM sistema_modulos WHERE ativo = true ORDER BY ordem")->fetchAll(PDO::FETCH_ASSOC));
 
     $response->getBody()->write(json_encode(['setores' => $setores, 'modulos' => $modulos]));
     return $response->withHeader('Content-Type', 'application/json');
@@ -1029,6 +1039,9 @@ $protected->group('/admin', function ($group) {
     $controller = new AdminController();
     $group->get('/modulos', [$controller, 'getModulos']);
     $group->post('/modulos', [$controller, 'salvarModulo']);
+    $group->get('/menu-visual', [$controller, 'getMenuVisual']);
+    $group->post('/menu-visual/setor/{id}', [$controller, 'salvarVisualSetor']);
+    $group->post('/menu-visual/modulo/{id}', [$controller, 'salvarVisualModulo']);
     $group->get('/usuarios', [$controller, 'getUsuarios']);
     $group->get('/usuarios/lista-completa', [$controller, 'getListaCompletaUsuarios']);
     $group->get('/usuarios/{id}/permissoes', [$controller, 'getPermissoesUsuario']);
