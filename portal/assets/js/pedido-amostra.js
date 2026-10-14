@@ -30,7 +30,7 @@ const dataBR = (d) => { const m = String(d || '').match(/^(\d{4})-(\d{2})-(\d{2}
 const swalBase = { confirmButtonColor: '#059669', cancelButtonColor: '#64748b', customClass: { popup: 'rounded-3xl' } };
 const aviso = (icon, title, text) => Swal.fire({ ...swalBase, icon, title, text, confirmButtonText: 'OK' });
 
-const estado = { cliente: null, qtd: {}, pedidos: [], timerCliente: null, timerItem: null };
+const estado = { cliente: null, qtd: {}, pedidos: [], filtro: 'todos', timerCliente: null, timerItem: null };
 
 window.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -47,6 +47,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     $('selTransacao').addEventListener('change', carregarItens);
     $('btnRecarregar').addEventListener('click', carregarItens);
     $('btnAtualizarPedidos').addEventListener('click', carregarPedidos);
+    document.querySelectorAll('#filtroPedidos .pa-chip').forEach((b) => b.addEventListener('click', () => {
+        estado.filtro = b.dataset.f;
+        document.querySelectorAll('#filtroPedidos .pa-chip').forEach((c) => c.classList.toggle('on', c === b));
+        renderPedidos();
+    }));
     $('buscaItem').addEventListener('input', () => { clearTimeout(estado.timerItem); estado.timerItem = setTimeout(carregarItens, 350); });
     $('buscaCliente').addEventListener('input', () => { clearTimeout(estado.timerCliente); estado.timerCliente = setTimeout(buscarClientes, 350); });
     $('observacao').addEventListener('input', () => { $('contObs').textContent = $('observacao').value.length; });
@@ -196,25 +201,37 @@ async function enviar() {
     }
 }
 
-async function carregarPedidos() {
+const statusTag = (p) => p.cancelado
+    ? '<span class="text-red-600 font-bold">cancelado</span>'
+    : (p.pendente ? '<span class="text-amber-600 font-bold">aguardando ERP</span>' : '<span class="text-emerald-600 font-bold">no ERP</span>');
+
+function renderPedidos() {
     const box = $('listaPedidos');
+    const f = estado.filtro;
+    const lista = estado.pedidos
+        .map((p, i) => ({ p, i }))
+        .filter(({ p }) => f === 'todos' || (f === 'cancelados' ? p.cancelado : !p.cancelado));
+    box.innerHTML = lista.map(({ p, i }) => `
+        <div class="pa-ped ${p.cancelado ? 'cancel' : ''}">
+            <div class="flex-1 min-w-0">
+                <div class="font-bold text-sm truncate">${esc(p.fantasia)}</div>
+                <div class="text-xs text-slate-500">#${esc(p.idpedido)} · ${dataBR(p.data)} · ${statusTag(p)}</div>
+            </div>
+            <button type="button" class="pa-eye" data-i="${i}" title="Ver pedido"><i class="fa-solid fa-eye"></i></button>
+        </div>`).join('') || '<div class="p-6 text-center text-slate-400 text-sm">Sem pedidos</div>';
+    box.querySelectorAll('.pa-eye').forEach((b) => b.addEventListener('click', () => verPedido(estado.pedidos[b.dataset.i])));
+}
+
+async function carregarPedidos() {
     try {
         const resp = await apiFetch('amostras/pedidos');
         estado.pedidos = [
             ...resp.pendentes.map((p) => ({ ...p, pendente: true })),
             ...resp.pedidos.map((p) => ({ ...p, pendente: false })),
         ];
-        box.innerHTML = estado.pedidos.map((p, i) => `
-            <div class="pa-ped">
-                <div class="flex-1 min-w-0">
-                    <div class="font-bold text-sm truncate">${esc(p.fantasia)}</div>
-                    <div class="text-xs text-slate-500">#${esc(p.idpedido)} · ${dataBR(p.data)}${p.pendente ? ' · <span class="text-amber-600 font-bold">aguardando ERP</span>' : ''}</div>
-                </div>
-                <button type="button" class="pa-eye" data-i="${i}" title="Ver pedido"><i class="fa-solid fa-eye"></i></button>
-            </div>`).join('') || '<div class="p-6 text-center text-slate-400 text-sm">Sem pedidos</div>';
-        box.querySelectorAll('.pa-eye').forEach((b) => b.addEventListener('click', () => verPedido(estado.pedidos[b.dataset.i])));
+        renderPedidos();
     } catch (e) {
-        box.innerHTML = `<div class="p-4 text-red-600 text-sm">${esc(e.message)}</div>`;
+        $('listaPedidos').innerHTML = `<div class="p-4 text-red-600 text-sm">${esc(e.message)}</div>`;
     }
 }
 
@@ -226,7 +243,8 @@ function verPedido(p) {
         title: `Pedido #${esc(p.idpedido)}`,
         html: `<div class="text-left text-sm">
             <div class="mb-2"><span class="text-xs text-slate-500">Cliente</span><br><b>${esc(p.fantasia)}</b></div>
-            <div class="mb-2"><span class="text-xs text-slate-500">Data</span><br><b>${dataBR(p.data)}</b>${p.pendente ? ' <span class="text-amber-600 text-xs font-bold">(aguardando ERP)</span>' : ''}</div>
+            <div class="mb-2"><span class="text-xs text-slate-500">Data</span><br><b>${dataBR(p.data)}</b></div>
+            <div class="mb-2"><span class="text-xs text-slate-500">Situação</span><br>${statusTag(p)}</div>
             <div class="mb-2"><span class="text-xs text-slate-500">Itens</span><ul class="list-none p-0 m-0">${itens}</ul></div>
             <div><span class="text-xs text-slate-500">Observação</span><br>${esc(p.observacao) || '<i>—</i>'}</div>
         </div>`,

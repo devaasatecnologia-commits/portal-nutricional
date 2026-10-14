@@ -25,6 +25,9 @@ $extraCss = '
   .pa-btn:disabled{opacity:.6}
   .pa-ped{border:1px solid #f1f5f9;border-radius:1.1rem;padding:.9rem;display:flex;gap:.75rem;align-items:center}
   .pa-eye{width:2.6rem;height:2.6rem;border-radius:.9rem;background:#ecfdf5;color:#059669;flex:none}
+  .pa-chip{padding:.4rem .9rem;border-radius:999px;background:#f1f5f9;color:#475569}
+  .pa-chip.on{background:#059669;color:#fff}
+  .pa-ped.cancel{background:#fef2f2;border-color:#fecaca}
   @media(min-width:1024px){.pa-bar{position:static;border:0;background:none;backdrop-filter:none;padding:0}.pa-btn{width:auto}}
 </style>
 ';
@@ -78,9 +81,14 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <div class="pa-card p-4 mt-4">
-        <div class="flex items-center justify-between mb-3">
+        <div class="flex items-center justify-between mb-2">
             <b>Últimos pedidos</b>
             <button id="btnAtualizarPedidos" class="text-sm text-emerald-700 font-bold"><i class="fa-solid fa-rotate"></i> Atualizar</button>
+        </div>
+        <div id="filtroPedidos" class="flex gap-2 mb-3 text-xs font-bold">
+            <button type="button" data-f="todos" class="pa-chip on">Todos</button>
+            <button type="button" data-f="ativos" class="pa-chip">Ativos</button>
+            <button type="button" data-f="cancelados" class="pa-chip">Cancelados</button>
         </div>
         <div id="listaPedidos" class="space-y-2"></div>
     </div>
