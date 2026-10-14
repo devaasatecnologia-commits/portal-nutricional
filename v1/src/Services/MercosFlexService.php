@@ -102,6 +102,46 @@ class MercosFlexService
         throw $ultimo;
     }
 
+    /**
+     * Teste de disponibilidade: um unico GET, sem retry, para medir a API como ela esta.
+     * Nunca lanca excecao.
+     *
+     * @return array{ok:bool,http:int,ms:int,erro:?string,saldos:array<int,array>}
+     */
+    public function sonda(): array
+    {
+        $ini = microtime(true);
+        $http = 0;
+        $erro = null;
+        $saldos = [];
+        try {
+            [$http, $corpo] = $this->chamar('GET');
+            $dados = json_decode($corpo, true);
+            if ($http >= 400) {
+                $erro = 'HTTP ' . $http;
+            } elseif (!is_array($dados)) {
+                $erro = 'Resposta invalida (nao e JSON de lista)';
+            } else {
+                foreach ($dados as $item) {
+                    if (isset($item['cliforemp_id'], $item['saldo_atual'])) {
+                        $saldos[(int)$item['cliforemp_id']] = $item;
+                    }
+                }
+                $this->cache = $saldos;
+            }
+        } catch (MercosIndisponivelException $e) {
+            $erro = $e->getMessage();
+        }
+
+        return [
+            'ok' => $erro === null,
+            'http' => $http,
+            'ms' => (int)round((microtime(true) - $ini) * 1000),
+            'erro' => $erro,
+            'saldos' => $saldos,
+        ];
+    }
+
     public function saldoDe(int $id, bool $forcar = false): ?float
     {
         $item = $this->saldos($forcar)[$id] ?? null;

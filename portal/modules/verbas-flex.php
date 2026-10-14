@@ -62,6 +62,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         <button type="button" data-aba="painel" class="vf-tab on"><i class="fa-solid fa-chart-pie mr-1"></i> Painel</button>
         <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-arrow-trend-down mr-1"></i> Débitos</button>
         <button type="button" data-aba="creditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar mr-1"></i> Créditos</button>
+        <button type="button" data-aba="api" class="vf-tab"><i class="fa-solid fa-heart-pulse mr-1"></i> API Mercos</button>
         <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left mr-1"></i> Transferências</a>
     </div>
 
@@ -96,6 +97,34 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <button id="xlsC" class="text-sm text-violet-700 font-bold"><i class="fa-solid fa-file-excel"></i> Baixar Excel</button>
             </div>
             <div id="listaC" class="space-y-2"></div>
+        </div>
+    </section>
+    <section id="aba-api" class="hidden">
+        <div class="vf-card p-4 mb-3">
+            <div class="flex items-center gap-3">
+                <div id="apiIco" class="vf-ico bg-slate-100 text-slate-400"><i class="fa-solid fa-circle-question"></i></div>
+                <div class="flex-1 min-w-0">
+                    <div id="apiTit" class="font-extrabold text-slate-800">Status da API</div>
+                    <div id="apiSub" class="text-xs text-slate-400">Toque em “Testar agora”.</div>
+                </div>
+                <button id="btnTestar" class="rounded-2xl bg-violet-600 text-white font-bold px-4 py-2.5 text-sm"><i class="fa-solid fa-bolt"></i> Testar agora</button>
+            </div>
+            <div id="apiGestores" class="mt-4 space-y-2"></div>
+        </div>
+        <div class="vf-card p-4">
+            <div class="flex items-center justify-between mb-3">
+                <b>Disponibilidade</b>
+                <div class="flex gap-2" id="apiPeriodo">
+                    <button type="button" data-h="24" class="vf-chip on">24 h</button>
+                    <button type="button" data-h="72" class="vf-chip">3 dias</button>
+                    <button type="button" data-h="168" class="vf-chip">7 dias</button>
+                </div>
+            </div>
+            <div class="grid grid-cols-3 gap-2 mb-3 text-center" id="apiKpis"></div>
+            <div id="apiBarras" class="flex gap-px h-8 mb-1"></div>
+            <div class="flex justify-between text-[10px] text-slate-400 mb-4"><span id="apiDe"></span><span>agora</span></div>
+            <b class="block mb-2 text-sm">Quedas no período</b>
+            <div id="apiQuedas" class="space-y-2"></div>
         </div>
     </section>
 </div>

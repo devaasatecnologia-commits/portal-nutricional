@@ -134,9 +134,77 @@ async function carregarCreditos() {
     }
 }
 
+const dataHora = (iso8601) => { const d = new Date(iso8601); return isNaN(d) ? '-' : d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); };
+const duracao = (seg) => {
+    if (seg == null) return '-';
+    if (seg < 60) return `${seg} s`;
+    if (seg < 3600) return `${Math.round(seg / 60)} min`;
+    return `${Math.floor(seg / 3600)} h ${Math.round((seg % 3600) / 60)} min`;
+};
+
+async function testarApi() {
+    const btn = $('btnTestar');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Testando…';
+    try {
+        const r = await apiFetch('verbas-flex/api-status', 'GET', { filial: $('selFilial').value });
+        $('apiIco').className = 'vf-ico ' + (r.ok ? 'bg-emerald-100 text-emerald-600' : 'bg-red-100 text-red-600');
+        $('apiIco').innerHTML = `<i class="fa-solid ${r.ok ? 'fa-circle-check' : 'fa-triangle-exclamation'}"></i>`;
+        $('apiTit').textContent = r.ok ? 'No ar' : 'Fora do ar';
+        $('apiSub').textContent = r.ok
+            ? `HTTP ${r.http} em ${r.ms} ms · testado às ${new Date(r.testado_em).toLocaleTimeString('pt-BR')}`
+            : `${r.erro || 'Sem resposta'} · ${r.ms} ms`;
+        $('apiGestores').innerHTML = r.gestores.map((g) => `
+            <div class="vf-row" style="cursor:default">
+                <div class="vf-ico ${g.abaixo_minimo ? 'bg-amber-100 text-amber-600' : 'bg-violet-100 text-violet-600'}"><i class="fa-solid fa-user-tie"></i></div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-slate-800 text-sm truncate">${esc(g.nome)}</div>
+                    <div class="text-xs text-slate-400">Mínimo ${brl(g.valor_minimo)} · automação ${g.ativo ? 'ativa' : 'desligada'}${Number(g.falhas_seguidas) > 0 ? ` · ${g.falhas_seguidas} falha(s) seguidas` : ''}</div>
+                </div>
+                <div class="text-right"><div class="font-extrabold ${g.abaixo_minimo ? 'text-amber-600' : 'text-emerald-600'}">${g.saldo === null ? '—' : brl(g.saldo)}</div><div class="text-[10px] text-slate-400">saldo atual</div></div>
+            </div>`).join('');
+    } catch (e) {
+        $('apiTit').textContent = 'Erro ao testar';
+        $('apiSub').textContent = e.message;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-bolt"></i> Testar agora';
+    }
+    carregarHistoricoApi();
+}
+
+async function carregarHistoricoApi() {
+    try {
+        const horas = document.querySelector('#apiPeriodo .vf-chip.on')?.dataset.h || 24;
+        const r = await apiFetch('verbas-flex/api-historico', 'GET', { filial: $('selFilial').value, horas });
+        const cor = r.disponibilidade === null ? 'text-slate-400' : r.disponibilidade >= 99 ? 'text-emerald-600' : r.disponibilidade >= 95 ? 'text-amber-600' : 'text-red-600';
+        $('apiKpis').innerHTML = `
+            <div class="rounded-2xl bg-slate-50 p-2"><div class="text-[10px] font-bold text-slate-400 uppercase">No ar</div><div class="font-extrabold ${cor}">${r.disponibilidade === null ? '—' : r.disponibilidade.toFixed(2).replace('.', ',') + '%'}</div></div>
+            <div class="rounded-2xl bg-slate-50 p-2"><div class="text-[10px] font-bold text-slate-400 uppercase">Tempo médio</div><div class="font-extrabold text-slate-700">${r.tempo_medio_ms === null ? '—' : r.tempo_medio_ms + ' ms'}</div></div>
+            <div class="rounded-2xl bg-slate-50 p-2"><div class="text-[10px] font-bold text-slate-400 uppercase">Falhas</div><div class="font-extrabold text-slate-700">${r.falhas} / ${r.checagens}</div></div>`;
+        const cores = { ok: '#34d399', falha: '#f87171', sem_dados: '#e2e8f0' };
+        $('apiBarras').innerHTML = r.baldes.length
+            ? r.baldes.map((b) => `<span title="${dataHora(b.de)}" style="flex:1;border-radius:3px;background:${cores[b.estado]}"></span>`).join('')
+            : '<div class="text-xs text-slate-400">Ainda sem testes registrados. O cron grava um teste por minuto.</div>';
+        $('apiDe').textContent = r.baldes.length ? dataHora(r.baldes[0].de) : '';
+        $('apiQuedas').innerHTML = r.quedas.length ? r.quedas.map((q) => `
+            <div class="vf-row" style="cursor:default">
+                <div class="vf-ico bg-red-100 text-red-600"><i class="fa-solid fa-plug-circle-xmark"></i></div>
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-sm text-slate-800">${dataHora(q.inicio)} ${q.fim ? '→ ' + dataHora(q.fim) : '<span class="text-red-600">(em andamento)</span>'}</div>
+                    <div class="text-xs text-slate-400 truncate">${esc(q.erro || 'Sem detalhe')} · ${q.falhas} teste(s)</div>
+                </div>
+                <div class="font-extrabold text-red-600 text-sm">${duracao(q.duracao_seg)}</div>
+            </div>`).join('') : '<div class="text-sm text-slate-400">Nenhuma queda registrada no período.</div>';
+    } catch (e) {
+        $('apiQuedas').innerHTML = `<div class="text-red-500 text-sm">${esc(e.message)}</div>`;
+    }
+}
+
 function carregarAba() {
     if (estado.aba === 'painel') carregarPainel();
     else if (estado.aba === 'debitos') carregarDebitos();
+    else if (estado.aba === 'api') testarApi();
     else carregarCreditos();
 }
 
@@ -211,8 +279,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     document.querySelectorAll('#abas [data-aba]').forEach((b) => b.addEventListener('click', () => {
         estado.aba = b.dataset.aba;
         document.querySelectorAll('#abas [data-aba]').forEach((x) => x.classList.toggle('on', x === b));
-        ['painel', 'debitos', 'creditos'].forEach((a) => $('aba-' + a).classList.toggle('hidden', a !== estado.aba));
+        ['painel', 'debitos', 'creditos', 'api'].forEach((a) => $('aba-' + a).classList.toggle('hidden', a !== estado.aba));
         carregarAba();
+    }));
+    $('btnTestar').addEventListener('click', testarApi);
+    document.querySelectorAll('#apiPeriodo .vf-chip').forEach((b) => b.addEventListener('click', () => {
+        document.querySelectorAll('#apiPeriodo .vf-chip').forEach((x) => x.classList.toggle('on', x === b));
+        carregarHistoricoApi();
     }));
     $('btnAplicar').addEventListener('click', () => {
         document.querySelectorAll('#atalhos .vf-chip').forEach((c) => c.classList.remove('on'));

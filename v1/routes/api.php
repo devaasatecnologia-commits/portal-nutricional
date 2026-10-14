@@ -945,6 +945,8 @@ $protected->group('/verbas-flex', function ($group) {
     $group->get('/resumo', [$controller, 'resumo']);
     $group->get('/debitos', [$controller, 'debitos']);
     $group->get('/creditos', [$controller, 'creditos']);
+    $group->get('/api-status', [$controller, 'apiStatus']);
+    $group->get('/api-historico', [$controller, 'apiHistorico']);
 })->add(new ModulePermissionMiddleware('verbas-flex'));
 
         // ======================================================================

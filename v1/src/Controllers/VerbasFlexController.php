@@ -220,6 +220,69 @@ class VerbasFlexController
         }
     }
 
+    private function filialLiberada(Request $request): int
+    {
+        $usuario = $this->usuario($request);
+        $filial = (int)($request->getQueryParams()['filial'] ?? 0);
+        if (!in_array($filial, $usuario['filiais'], true)) {
+            throw new \DomainException('Filial nao liberada para o seu usuario.');
+        }
+        return $filial;
+    }
+
+    /** GET /v1/verbas-flex/api-status?filial= : testa a API Mercos agora, registra no historico e traz os saldos dos gestores */
+    public function apiStatus(Request $request, Response $response): Response
+    {
+        try {
+            $filial = $this->filialLiberada($request);
+            $r = (new \Nutricional\Services\FlexApiMonitor($this->pdo))->testar($filial, 'manual');
+
+            $gestores = [];
+            try {
+                $stmt = $this->pdo->prepare('SELECT gestor_id, nome, valor_minimo, ativo, ultima_verificacao, falhas_seguidas, ultimo_erro FROM flex_minimo_config WHERE filial = ? ORDER BY nome');
+                $stmt->execute([$filial]);
+                foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $g) {
+                    $saldo = $r['saldos'][(int)$g['gestor_id']]['saldo_atual'] ?? null;
+                    $g['saldo'] = $saldo === null ? null : (float)$saldo;
+                    $g['abaixo_minimo'] = $g['saldo'] !== null && $g['saldo'] < (float)$g['valor_minimo'];
+                    $gestores[] = $g;
+                }
+            } catch (\Throwable $e) {
+                error_log('[verbas-flex] gestores do monitor: ' . $e->getMessage());
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'filial' => $filial,
+                'ok' => $r['ok'],
+                'http' => $r['http'],
+                'ms' => $r['ms'],
+                'erro' => $r['erro'],
+                'testado_em' => date('c'),
+                'gestores' => $gestores,
+            ]);
+        } catch (\DomainException $e) {
+            return $this->erro($response, $e->getMessage(), 403);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao testar a API: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /v1/verbas-flex/api-historico?filial=&horas=24 */
+    public function apiHistorico(Request $request, Response $response): Response
+    {
+        try {
+            $filial = $this->filialLiberada($request);
+            $horas = max(1, min(168, (int)($request->getQueryParams()['horas'] ?? 24)));
+            $h = (new \Nutricional\Services\FlexApiMonitor($this->pdo))->historico($filial, $horas);
+            return $this->json($response, ['success' => true, 'filial' => $filial] + $h);
+        } catch (\DomainException $e) {
+            return $this->erro($response, $e->getMessage(), 403);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao carregar historico: ' . $e->getMessage(), 500);
+        }
+    }
+
     /** GET /v1/verbas-flex/resumo : cards, comparativo com periodo anterior, serie mensal e ranking */
     public function resumo(Request $request, Response $response): Response
     {
