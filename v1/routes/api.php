@@ -931,6 +931,14 @@ $protected->group('/amostras', function ($group) {
     $group->post('/pedidos', [$controller, 'criar']);
 })->add(new ModulePermissionMiddleware('pedido-amostra'));
 
+$protected->group('/flex', function ($group) {
+    $controller = new \Nutricional\Controllers\FlexTransferenciaController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/saldo', [$controller, 'saldo']);
+    $group->get('/movimentacoes', [$controller, 'movimentacoes']);
+    $group->post('/transferir', [$controller, 'transferir']);
+})->add(new ModulePermissionMiddleware('transferencia-flex'));
+
         // ======================================================================
         // DESEMBARQUE (CONFERÊNCIA DE RECEBIMENTO)
         // ======================================================================
