@@ -65,14 +65,19 @@ require_once __DIR__ . '/../estrutura/header.php';
 
     <div class="fx-card p-4 mt-4">
         <div class="flex items-center justify-between mb-3">
-            <b>Últimas movimentações</b>
+            <div><b>Movimentações</b> <span id="modoMov" class="text-xs text-slate-400 font-bold ml-1">Últimas 10</span></div>
             <button id="btnExcel" class="text-sm text-violet-700 font-bold"><i class="fa-solid fa-file-excel"></i> Baixar Excel</button>
         </div>
-        <div class="grid grid-cols-2 gap-2 mb-3">
-            <label><span class="fx-label">De</span><input id="dtIni" type="date" class="fx-input"></label>
-            <label><span class="fx-label">Até</span><input id="dtFim" type="date" class="fx-input"></label>
+        <div class="grid grid-cols-2 gap-2 mb-2">
+            <label><span class="fx-label">Quem enviou (DE)</span><select id="fDe" class="fx-input"></select></label>
+            <label><span class="fx-label">Quem recebeu (PARA)</span><select id="fPara" class="fx-input"></select></label>
+            <label><span class="fx-label">Data inicial</span><input id="dtIni" type="date" class="fx-input"></label>
+            <label><span class="fx-label">Data final</span><input id="dtFim" type="date" class="fx-input"></label>
         </div>
-        <button id="btnFiltrar" class="w-full mb-3 py-2.5 rounded-2xl bg-violet-50 text-violet-700 font-bold"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
+        <div class="grid grid-cols-2 gap-2 mb-3">
+            <button id="btnFiltrar" class="py-2.5 rounded-2xl bg-violet-600 text-white font-bold"><i class="fa-solid fa-magnifying-glass"></i> Filtrar</button>
+            <button id="btnLimpar" class="py-2.5 rounded-2xl bg-slate-100 text-slate-600 font-bold"><i class="fa-solid fa-eraser"></i> Limpar</button>
+        </div>
         <div id="listaMov" class="space-y-2"></div>
     </div>
 </div>

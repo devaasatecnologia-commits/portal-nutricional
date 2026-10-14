@@ -286,7 +286,10 @@ class FlexTransferenciaController
         return $this->erro($response, $log['msg'], $status);
     }
 
-    /** GET /v1/flex/movimentacoes?filial=1&inicio=YYYY-MM-DD&fim=YYYY-MM-DD */
+    /**
+     * GET /v1/flex/movimentacoes?filial=1[&de=ID][&para=ID][&inicio=YYYY-MM-DD][&fim=YYYY-MM-DD][&limite=10]
+     * Sem filtros: ultimas transferencias (limite padrao 10). Com filtros: ate 2000 registros.
+     */
     public function movimentacoes(Request $request, Response $response): Response
     {
         try {
@@ -298,15 +301,34 @@ class FlexTransferenciaController
             }
 
             $ok = static fn (string $d): bool => (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
-            $inicio = $ok((string)($q['inicio'] ?? '')) ? $q['inicio'] : date('Y-m-d', strtotime('-30 days'));
-            $fim = $ok((string)($q['fim'] ?? '')) ? $q['fim'] : date('Y-m-d');
+            $inicio = $ok((string)($q['inicio'] ?? '')) ? $q['inicio'] : null;
+            $fim = $ok((string)($q['fim'] ?? '')) ? $q['fim'] : null;
+            $de = (int)($q['de'] ?? 0);
+            $para = (int)($q['para'] ?? 0);
+            $limite = max(1, min(2000, (int)($q['limite'] ?? 10)));
 
             $sql = 'SELECT data_transferencia, nome_de, nome_para, valor, valor_saldo_anterior_de, valor_novo_saldo_de,
                            valor_saldo_anterior_para, valor_novo_saldo_para, motivo, usuario, sucesso, mensagem
                     FROM transferencias_flex_mercos_log
-                    WHERE filial = :filial
-                      AND data_transferencia >= :inicio::date AND data_transferencia < (:fim::date + 1)';
-            $params = ['filial' => $filial, 'inicio' => $inicio, 'fim' => $fim];
+                    WHERE filial = :filial';
+            $params = ['filial' => $filial];
+
+            if ($inicio !== null) {
+                $sql .= ' AND data_transferencia >= :inicio::date';
+                $params['inicio'] = $inicio;
+            }
+            if ($fim !== null) {
+                $sql .= ' AND data_transferencia < (:fim::date + 1)';
+                $params['fim'] = $fim;
+            }
+            if ($de > 0) {
+                $sql .= ' AND colaborador_de = :de';
+                $params['de'] = $de;
+            }
+            if ($para > 0) {
+                $sql .= ' AND colaborador_para = :para';
+                $params['para'] = $para;
+            }
 
             if ($usuario['gestores'] !== []) {
                 $ids = array_map(static fn (array $r): int => $r['id'], $this->representantes($usuario, $filial));
@@ -314,7 +336,7 @@ class FlexTransferenciaController
                 $sql .= " AND (usuario = :usuario OR colaborador_de IN ($lista) OR colaborador_para IN ($lista))";
                 $params['usuario'] = $usuario['username'];
             }
-            $sql .= ' ORDER BY data_transferencia DESC LIMIT 500';
+            $sql .= ' ORDER BY data_transferencia DESC LIMIT ' . $limite;
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);

@@ -176,11 +176,21 @@ function renderMovs() {
         </div>`).join('');
 }
 
+const paramsFiltro = () => {
+    const p = { filial: Number($('selFilial').value) };
+    if ($('fDe').value) p.de = $('fDe').value;
+    if ($('fPara').value) p.para = $('fPara').value;
+    if ($('dtIni').value) p.inicio = $('dtIni').value;
+    if ($('dtFim').value) p.fim = $('dtFim').value;
+    return p;
+};
+const temFiltro = () => ['fDe', 'fPara', 'dtIni', 'dtFim'].some((id) => $(id).value);
+
 async function carregarMovs() {
+    const filtrado = temFiltro();
+    $('modoMov').textContent = filtrado ? 'Filtrado' : 'Últimas 10';
     try {
-        const r = await apiFetch('flex/movimentacoes', 'GET', {
-            filial: Number($('selFilial').value), inicio: $('dtIni').value, fim: $('dtFim').value,
-        });
+        const r = await apiFetch('flex/movimentacoes', 'GET', { ...paramsFiltro(), limite: filtrado ? 500 : 10 });
         estado.movs = r.movimentacoes;
         renderMovs();
     } catch (e) {
@@ -188,12 +198,36 @@ async function carregarMovs() {
     }
 }
 
-function baixarExcel() {
-    if (!estado.movs.length) return aviso('info', 'Sem dados', 'Não há movimentações para exportar.');
+function limparFiltros() {
+    ['fDe', 'fPara', 'dtIni', 'dtFim'].forEach((id) => { $(id).value = ''; });
+    carregarMovs();
+}
+
+function opcoesFiltro() {
+    const base = '<option value="">Todos</option>' + repsDaFilial()
+        .map((r) => `<option value="${r.id}">${esc(r.nome)}</option>`).join('');
+    $('fDe').innerHTML = base;
+    $('fPara').innerHTML = base;
+}
+
+async function baixarExcel() {
+    let lista;
+    try {
+        // o download traz tudo do filtro (ou os últimos 30 dias no modo geral), não só as 10 exibidas
+        const p = { ...paramsFiltro(), limite: 2000 };
+        if (!temFiltro()) {
+            const d = new Date(Date.now() - 30 * 86400000);
+            p.inicio = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+        }
+        lista = (await apiFetch('flex/movimentacoes', 'GET', p)).movimentacoes;
+    } catch (e) {
+        return aviso('error', 'Erro ao exportar', e.message);
+    }
+    if (!lista.length) return aviso('info', 'Sem dados', 'Não há movimentações para exportar.');
     const cab = ['Data', 'De', 'Para', 'Valor', 'Saldo anterior DE', 'Novo saldo DE', 'Saldo anterior PARA', 'Novo saldo PARA', 'Motivo', 'Usuário', 'Situação'];
     const cel = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
     const num = (v) => Number(v ?? 0).toFixed(2).replace('.', ',');
-    const linhas = estado.movs.map((m) => [
+    const linhas = lista.map((m) => [
         dataHora(m.data_transferencia), m.nome_de, m.nome_para, num(m.valor), num(m.valor_saldo_anterior_de), num(m.valor_novo_saldo_de),
         num(m.valor_saldo_anterior_para), num(m.valor_novo_saldo_para), m.motivo, m.usuario,
         (m.sucesso === false || m.sucesso === 'f') ? 'Falhou' : 'OK',
@@ -201,36 +235,32 @@ function baixarExcel() {
     const blob = new Blob(['\ufeff' + [cab.map(cel).join(';'), ...linhas].join('\r\n')], { type: 'text/csv;charset=utf-8' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `transferencias_flex_${$('dtIni').value}_${$('dtFim').value}.csv`;
+    a.download = `transferencias_flex_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(a.href);
 }
 
 window.addEventListener('DOMContentLoaded', async () => {
-    const hoje = new Date();
-    const ini = new Date(hoje.getTime() - 30 * 86400000);
-    const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    $('dtIni').value = iso(ini);
-    $('dtFim').value = iso(hoje);
-
     try {
         const ctx = await apiFetch('flex/contexto');
         estado.reps = ctx.representantes;
         $('selFilial').innerHTML = ctx.filiais.map((f) => `<option value="${f.idfilial}">${esc(f.idfilial)} - ${esc(f.razao)}</option>`).join('');
         if (!ctx.filiais.length) aviso('warning', 'Sem filial', 'Seu usuário não possui filial liberada para este módulo.');
         $('selDe').innerHTML = opcoesReps();
+        opcoesFiltro();
     } catch (e) {
         aviso('error', 'Erro ao carregar', e.message);
         return;
     }
 
-    $('selFilial').addEventListener('change', () => { $('selDe').innerHTML = opcoesReps(); resetar(1); carregarMovs(); });
+    $('selFilial').addEventListener('change', () => { $('selDe').innerHTML = opcoesReps(); opcoesFiltro(); limparFiltros(); resetar(1); });
     $('selDe').addEventListener('change', aoEscolherDe);
     $('selPara').addEventListener('change', aoEscolherPara);
     $('valor').addEventListener('input', () => { $('valor').value = valorNumerico() ? brl(valorNumerico()) : ''; validar(); });
     $('motivo').addEventListener('input', validar);
     $('btnTransferir').addEventListener('click', transferir);
     $('btnFiltrar').addEventListener('click', carregarMovs);
+    $('btnLimpar').addEventListener('click', limparFiltros);
     $('btnExcel').addEventListener('click', baixarExcel);
 
     carregarMovs();
