@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
   'use strict';
   const app = document.querySelector('.motorista-app');
   if (!app) return;
@@ -4634,6 +4634,17 @@
     else if (acao === 'logout') fazerLogout();
   });
 
+  // Captura antes dos demais tratadores (card, mapa) para o clique no contato nunca ser engolido.
+  document.addEventListener('click', (event) => {
+    const contactBtn = event.target.closest('[data-contact]');
+    if (!contactBtn || contactBtn.disabled) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const id = Number(contactBtn.dataset.id);
+    if (contactBtn.dataset.contact === 'whatsapp') abrirWhatsAppCliente(id);
+    else if (contactBtn.dataset.contact === 'ligar') ligarParaCliente(id);
+  }, true);
+
   document.addEventListener('click', (event) => {
     const mapAction = event.target.closest('[data-map-action]');
     if (mapAction) {
@@ -4644,15 +4655,6 @@
     const driverCard = event.target.closest('[data-driver-id]');
     if (driverCard) {
       selecionarMotorista(driverCard.dataset.driverId);
-      return;
-    }
-
-     // ── Botões de contato (WhatsApp / Ligar) — Pacote 3
-    const contactBtn = event.target.closest('[data-contact]');
-    if (contactBtn) {
-      const id = Number(contactBtn.dataset.id);
-      if (contactBtn.dataset.contact === 'whatsapp') abrirWhatsAppCliente(id);
-      else if (contactBtn.dataset.contact === 'ligar') ligarParaCliente(id);
       return;
     }
 
@@ -5857,7 +5859,8 @@
 
     const mensagem = montarMensagemWhatsApp(entrega);
     const url = `https://wa.me/${tel}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
+    // Navegação direta: popups com noopener costumam ser bloqueados em PWA/celular e o app do WhatsApp não abre.
+    window.location.href = url;
   }
 
   /** Abre o discador do celular. Se não tiver telefone, avisa. */
@@ -5893,18 +5896,14 @@
         <button type="button"
                 class="contact-btn is-whatsapp"
                 data-contact="whatsapp"
-                data-id="${entrega.id}"
-                onclick="event.stopPropagation()"
-                aria-label="Enviar WhatsApp ao cliente"
+                data-id="${entrega.id}"                aria-label="Enviar WhatsApp ao cliente"
                 ${!temTelefone ? 'disabled title="Sem telefone cadastrado"' : 'title="Enviar WhatsApp ao cliente"'}>
           <i class="fa-brands fa-whatsapp"></i> WhatsApp
         </button>
         <button type="button"
                 class="contact-btn is-call"
                 data-contact="ligar"
-                data-id="${entrega.id}"
-                onclick="event.stopPropagation()"
-                aria-label="Ligar para o cliente"
+                data-id="${entrega.id}"                aria-label="Ligar para o cliente"
                 ${!temTelefone ? 'disabled title="Sem telefone cadastrado"' : 'title="Ligar para o cliente"'}>
           <i class="fa-solid fa-phone"></i> Ligar
         </button>
