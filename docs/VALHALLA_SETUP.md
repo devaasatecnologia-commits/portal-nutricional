@@ -1,8 +1,13 @@
-# Valhalla self-hosted
+# Valhalla self-hosted (opcional, ainda nao implantado)
 
-O otimizador de embarques usa Valhalla para comparar tempos rodoviarios no
+> **Status:** o Valhalla ainda nao esta implantado. Com `VALHALLA_URL` vazio a
+> API usa estimativa em linha reta (Haversine) e o motorista navega pelo Waze ou
+> Google Maps. Preencha `VALHALLA_URL` apenas quando houver uma instancia real
+> validada.
+
+O otimizador de embarques pode usar Valhalla para comparar tempos rodoviarios no
 perfil de caminhao. O motorista continua usando a sequencia ja salva quando
-estiver offline; a operacao de otimizar exige que a API alcance o Valhalla.
+estiver offline.
 
 ## Configuração da API
 
@@ -33,9 +38,10 @@ Quando o servico de rota tambem responde, a tela substitui a linha esquematica
 pela geometria viaria da sequencia otimizada e mostra as metricas do percurso.
 
 Se o Valhalla estiver indisponivel ou nao encontrar caminho para todos os
-trechos, a API responde com erro e preserva a ordem atual do embarque. Nao se
-deve substituir esse comportamento por uma ordenacao em linha reta, pois ela
-nao atende ao criterio de tempo rodoviario selecionado.
+trechos, a API usa a estimativa em linha reta (Haversine), preserva o contrato
+da resposta e inclui o aviso em `data.avisos` com `provedor = haversine`. Sem
+`VALHALLA_URL` o comportamento e o mesmo, sem aviso. O criterio de tempo
+rodoviario so vale quando `provedor = valhalla`.
 
 ## Instalação recomendada
 
@@ -68,8 +74,8 @@ e limites de recurso do servidor conforme testes com rotas representativas.
 
 - O backend nunca expõe a URL interna ao motorista.
 - O app usa os dados da rota já cacheados quando estiver offline.
-- Se Valhalla estiver indisponível, a otimizacao retorna `503`; a ordem e as
-  entregas atuais permanecem funcionais, mas nao se confirma uma otimizacao.
+- Se Valhalla estiver indisponível, a otimizacao cai na estimativa em linha reta
+  e informa o aviso; as entregas atuais permanecem funcionais.
 - A chave GraphHopper não é necessária para esta solução.
 
 Antes de producao, validar rotas com os tipos de caminhao reais e restricoes

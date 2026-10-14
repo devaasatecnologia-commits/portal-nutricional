@@ -5233,7 +5233,7 @@ async function abrirModalEmbarqueSwal(emb) {
 
     const acoesHtml = isEditavel ? `
         <div class="swal-embarque-acoes">
-            <button type="button" class="swal-acao-btn" onclick="otimizarRotaEmbarque()" title="Minimizar tempo rodoviário para caminhão, com saída e retorno ao CD">
+            <button type="button" class="swal-acao-btn" onclick="otimizarRotaEmbarque()" title="Minimizar a distância/tempo da rota, com saída e retorno ao CD">
                 <i class="fa-solid fa-wand-magic-sparkles"></i> Otimizar
             </button>
             <button type="button" class="swal-acao-btn" onclick="inverterRotaEmbarque()" title="Inverter ordem">
@@ -5621,22 +5621,26 @@ async function otimizarRotaEmbarque() {
             : [];
         if (geometria.length > 1) atualizarLinhaRotaEmbarque(geometria);
 
+        const viaValhalla = resultado.data?.provedor === 'valhalla';
+        const fonte = viaValhalla ? 'estimada pelo Valhalla' : 'estimada em linha reta (sem Valhalla)';
         const elDist = document.querySelector('.swal-embarque-distancia');
         const elTempo = document.querySelector('.swal-embarque-tempo');
         if (elDist) {
             elDist.textContent = `${km.toFixed(1)} km`;
-            elDist.title = 'Distância rodoviária estimada pelo Valhalla, ida e volta ao CD';
+            elDist.title = `Distância ${fonte}, ida e volta ao CD`;
         }
         if (elTempo) {
             elTempo.textContent = `${Math.round(minutos)} min`;
-            elTempo.title = 'Tempo rodoviário estimado pelo Valhalla no perfil caminhão, ida e volta ao CD';
+            elTempo.title = `Tempo ${fonte}, ida e volta ao CD`;
         }
 
         const avisos = Array.isArray(resultado.data?.avisos)
             ? resultado.data.avisos.map(aviso => typeof aviso === 'string' ? aviso : aviso?.message).filter(Boolean)
             : [];
-        const mensagem = `Rota otimizada por tempo rodoviário de caminhão, ida e volta ao CD: ${km.toFixed(1)} km e ${Math.round(minutos)} min.`
-            + (avisos.length ? ` Aviso do Valhalla: ${avisos.join('; ')}` : '');
+        const mensagem = (viaValhalla
+            ? `Rota otimizada por tempo rodoviário de caminhão, ida e volta ao CD: ${km.toFixed(1)} km e ${Math.round(minutos)} min.`
+            : `Rota otimizada por distância estimada, ida e volta ao CD: ${km.toFixed(1)} km e ${Math.round(minutos)} min. Use Waze ou Google Maps para navegar.`)
+            + (avisos.length ? ` Aviso: ${avisos.join('; ')}` : '');
         mostrarNotificacao(escapeHtml(mensagem), avisos.length ? 'warning' : 'success');
     } catch (error) {
         mostrarNotificacao(escapeHtml(error.message || 'Não foi possível otimizar a rota.'), 'error');

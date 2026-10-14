@@ -134,7 +134,8 @@ class OtimizadorRotasService
                     }
                 }
             }
-            
+            unset($entrega);
+
             // Se ainda houver entregas sem coordenadas, retorna erro
             if (!empty($semCoordenadas)) {
                 return [
@@ -155,9 +156,16 @@ class OtimizadorRotasService
                 ];
             }
 
-            $resultadoMatriz = $this->routingService->timeDistanceMatrix($pontos);
-            if (!$resultadoMatriz['success']) {
-                return $resultadoMatriz;
+            $configurado = $this->routingService->isConfigured();
+            $resultadoMatriz = $configurado
+                ? $this->routingService->timeDistanceMatrix($pontos)
+                : ['success' => false];
+            $usandoValhalla = $resultadoMatriz['success'];
+            if (!$usandoValhalla) {
+                $resultadoMatriz = $this->matrizHaversine($pontos);
+                if ($configurado) {
+                    $resultadoMatriz['warnings'] = ['Valhalla indisponível; usada estimativa em linha reta.'];
+                }
             }
 
             $ordemIndices = $this->encontrarOrdemInicial($resultadoMatriz['matrix'], count($entregas));
@@ -176,6 +184,8 @@ class OtimizadorRotasService
                     'error' => 'Não foi possível calcular a rota completa de ida e volta ao CD.'
                 ];
             }
+            $metricas['provedor'] = $resultadoMatriz['provider'];
+            $metricas['perfil'] = $resultadoMatriz['profile'];
 
             $rotaOtimizada = array_map(
                 static fn (int $indice): array => $entregas[$indice - 1],
@@ -195,10 +205,14 @@ class OtimizadorRotasService
                     'longitude' => self::ORIGEM_LONGITUDE
                 ]]
             );
-            $resultadoGeometria = $this->routingService->route($pontosGeometria);
             $avisos = $resultadoMatriz['warnings'] ?? [];
-            if (!$resultadoGeometria['success'] || empty($resultadoGeometria['shape'])) {
-                $avisos[] = $resultadoGeometria['error'] ?? 'A geometria rodoviária não foi retornada.';
+            if ($usandoValhalla) {
+                $resultadoGeometria = $this->routingService->route($pontosGeometria);
+                if (!$resultadoGeometria['success'] || empty($resultadoGeometria['shape'])) {
+                    $avisos[] = $resultadoGeometria['error'] ?? 'A geometria rodoviária não foi retornada.';
+                }
+            } else {
+                $resultadoGeometria = ['success' => true, 'shape' => $pontosGeometria];
             }
             
             // Atualizar a ordem das entregas no banco
@@ -230,7 +244,7 @@ class OtimizadorRotasService
                     'nova_ordem' => array_column($rotaOtimizada, 'id'),
                     'provedor' => $resultadoMatriz['provider'],
                     'perfil' => $resultadoMatriz['profile'],
-                    'criterio' => 'menor_tempo_rodoviario',
+                    'criterio' => $usandoValhalla ? 'menor_tempo_rodoviario' : 'menor_distancia_estimada',
                     'inclui_retorno_ao_cd' => true,
                     'avisos' => $avisos
                 ],
@@ -338,9 +352,52 @@ class OtimizadorRotasService
             'tempo_estimado_min' => round($tempoTotal / 60, 1),
             'tempo_estimado_horas' => round($tempoTotal / 3600, 1),
             'media_km_entrega' => round($distanciaTotal / max(1, count($ordem)), 2),
-            'tempo_total_segundos' => $tempoTotal,
-            'provedor' => 'valhalla',
-            'perfil' => 'truck'
+            'tempo_total_segundos' => $tempoTotal
         ];
+    }
+
+    /**
+     * Fallback sem Valhalla: distância em linha reta (Haversine) com fator rodoviário
+     * e velocidade média estimada. A navegação do motorista segue pelo Waze/Google Maps.
+     */
+    private function matrizHaversine(array $pontos): array
+    {
+        $fatorRodoviario = 1.3;
+        $velocidadeMediaKmH = 40.0;
+        $total = count($pontos);
+        $matriz = [];
+
+        for ($i = 0; $i < $total; $i++) {
+            for ($j = 0; $j < $total; $j++) {
+                $km = $i === $j ? 0.0 : $this->calcularDistancia(
+                    (float)$pontos[$i]['latitude'],
+                    (float)$pontos[$i]['longitude'],
+                    (float)$pontos[$j]['latitude'],
+                    (float)$pontos[$j]['longitude']
+                ) * $fatorRodoviario;
+                $matriz[$i][$j] = [
+                    'time_seconds' => $km / $velocidadeMediaKmH * 3600,
+                    'distance_km' => $km
+                ];
+            }
+        }
+
+        return [
+            'success' => true,
+            'provider' => 'haversine',
+            'profile' => 'estimativa',
+            'matrix' => $matriz,
+            'warnings' => []
+        ];
+    }
+
+    private function calcularDistancia(float $lat1, float $lng1, float $lat2, float $lng2): float
+    {
+        $raioTerraKm = 6371.0;
+        $dLat = deg2rad($lat2 - $lat1);
+        $dLng = deg2rad($lng2 - $lng1);
+        $a = sin($dLat / 2) ** 2 + cos(deg2rad($lat1)) * cos(deg2rad($lat2)) * sin($dLng / 2) ** 2;
+
+        return $raioTerraKm * 2 * atan2(sqrt($a), sqrt(1 - $a));
     }
 }

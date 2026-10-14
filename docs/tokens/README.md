@@ -6,7 +6,9 @@ substituem o codigo, os guias atuais nem a confirmacao dos responsaveis.
 
 ## Fonte atual
 
-- [Handoff atual (2026-10-07)](CONTINUATION-2026-10-07.md)
+- [Handoff atual (2026-10-14)](CONTINUATION-2026-10-14.md)
+- [Token de manutencao (diagnostico de erros por IA)](TOKEN-MANUTENCAO.md)
+- [Handoff anterior (2026-10-07)](CONTINUATION-2026-10-07.md)
 - [Arquitetura](../ARCHITECTURE.md)
 - [Configuracao Valhalla](../VALHALLA_SETUP.md)
 

@@ -83,13 +83,21 @@ estorno. Estornos feitos antes desta migração não podem ser reconstruídos.
 
 ## Otimizacao de rotas
 
-O otimizador considera tempo rodoviario por caminhão usando a matriz Valhalla,
-com melhoria da ordem por vizinho mais proximo e 2-opt. A rota inicia e termina
-no centro de distribuicao; a resposta inclui distancia e duracao estimadas e a
-geometria quando disponivel. Falha ou indisponibilidade do Valhalla deve ser
-informada ao usuario; nao substitua silenciosamente o custo rodoviario por
-distancia em linha reta. Consulte [VALHALLA_SETUP.md](VALHALLA_SETUP.md) para
-configuracao e validacao local.
+O otimizador usa vizinho mais proximo e 2-opt, partindo e retornando ao centro
+de distribuicao. Ha dois modos, escolhidos pela variavel `VALHALLA_URL`:
+
+- **Sem `VALHALLA_URL` (modo atual de producao):** estimativa em linha reta
+  (Haversine) com fator rodoviario 1,3 e velocidade media de 40 km/h. A resposta
+  traz `provedor = haversine` e `criterio = menor_distancia_estimada`; a tela
+  informa que o valor e estimado. A navegacao do motorista continua pelos links
+  do Waze e Google Maps no app offline (`abrirNavegacao`).
+- **Com `VALHALLA_URL`:** matriz de tempo rodoviario por caminhao. Se o Valhalla
+  estiver indisponivel, o otimizador cai na estimativa e devolve um aviso
+  explicito em `data.avisos`; a falha nunca e silenciosa.
+
+A geocodificacao de entregas sem coordenadas usa o Google Maps
+(`GOOGLE_MAPS_API_KEY`). Consulte [VALHALLA_SETUP.md](VALHALLA_SETUP.md) para
+ativar o Valhalla futuramente.
 
 O service worker nao armazena paginas de login/redirecionamento no cache. A
 pagina autenticada do motorista e removida do cache ao sair da conta; a fila

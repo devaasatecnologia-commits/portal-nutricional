@@ -13,13 +13,22 @@ class ValhallaRoutingService
 
     public function __construct()
     {
-        $this->baseUrl = rtrim($_ENV['VALHALLA_URL'] ?? 'http://localhost:8002', '/');
+        $this->baseUrl = rtrim(trim((string)($_ENV['VALHALLA_URL'] ?? '')), '/');
         $this->timeout = (int)($_ENV['VALHALLA_TIMEOUT'] ?? 12);
         $this->client = new Client(['timeout' => $this->timeout]);
     }
 
+    public function isConfigured(): bool
+    {
+        return $this->baseUrl !== '';
+    }
+
     public function route(array $points, array $vehicle = []): array
     {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'code' => 'not_configured', 'error' => 'Valhalla não configurado'];
+        }
+
         if (count($points) < 2) {
             return ['success' => false, 'error' => 'A rota precisa de pelo menos dois pontos'];
         }
@@ -69,6 +78,10 @@ class ValhallaRoutingService
 
     public function timeDistanceMatrix(array $points, array $vehicle = []): array
     {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'code' => 'not_configured', 'error' => 'Valhalla não configurado'];
+        }
+
         if (count($points) < 2) {
             return ['success' => false, 'error' => 'A matriz precisa de pelo menos dois pontos'];
         }
