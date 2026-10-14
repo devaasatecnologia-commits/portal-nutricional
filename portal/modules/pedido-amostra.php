@@ -22,6 +22,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <div id="avisoSandbox" class="hidden mb-4 p-3 rounded-xl bg-amber-50 text-amber-700 text-sm font-semibold"></div>
+    <pre id="sqlSandbox" class="hidden mb-4 p-3 rounded-xl bg-gray-900 text-green-300 text-xs overflow-auto max-h-96 whitespace-pre-wrap"></pre>
 
     <div class="bg-white rounded-3xl p-5 shadow-sm mb-6">
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">

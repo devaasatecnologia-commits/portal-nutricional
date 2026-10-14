@@ -352,14 +352,18 @@ class AmostraPedidoController
                 $usuario['idusuario'], $idfilial, $idtransacao, $idcliente, count($itens), !empty($resultado['sandbox']) ? 'S' : 'N'));
 
             $sandbox = !empty($resultado['sandbox']);
-            return $this->json($response, [
+            $out = [
                 'success' => true,
                 'sandbox' => $sandbox,
                 'message' => $sandbox
                     ? 'MODO SANDBOX: pedido validado, nada foi gravado no ERP.'
                     : 'Pedido ' . ($resultado['data']['idpedidopda'] ?? '') . ' criado com sucesso!',
                 'idpedido' => $resultado['data']['idpedidopda'] ?? null,
-            ], 201);
+            ];
+            if ($sandbox) {
+                $out['sql'] = $resultado['sql'] ?? null;
+            }
+            return $this->json($response, $out, 201);
         } catch (\Throwable $e) {
             error_log('[Amostras] criar: ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'error' => 'Erro ao processar o pedido'], 500);

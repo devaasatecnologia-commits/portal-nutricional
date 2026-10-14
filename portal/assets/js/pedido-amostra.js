@@ -119,6 +119,12 @@ async function enviar() {
         const aviso = $('avisoSandbox');
         aviso.textContent = resp.sandbox ? resp.message : '';
         aviso.classList.toggle('hidden', !resp.sandbox);
+        const pre = $('sqlSandbox');
+        pre.textContent = resp.sandbox && resp.sql
+            ? ['-- palmtop_pedido', resp.sql.pedido, '-- palmtop_pedido_item', ...[].concat(resp.sql.itens || []), '-- totais', resp.sql.update]
+                .map((s) => String(s).replace(/\n\s+/g, '\n  ').trim()).join('\n\n')
+            : '';
+        pre.classList.toggle('hidden', !pre.textContent);
         if (!resp.sandbox) alert(resp.message);
         $('observacao').value = '';
         estado.cliente = null;
