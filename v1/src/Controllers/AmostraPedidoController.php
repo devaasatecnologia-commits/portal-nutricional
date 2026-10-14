@@ -40,14 +40,15 @@ class AmostraPedidoController
         $idusuario = (int)($user['idusuario'] ?? 0);
         $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $user['permissoes'] ?? [], true);
 
-        $stmt = $this->pdo->prepare('SELECT username, dash_filiais FROM usuario WHERE idusuario = :id');
+        $stmt = $this->pdo->prepare('SELECT username, dash_filiais, dash_gestores FROM usuario WHERE idusuario = :id');
         $stmt->execute(['id' => $idusuario]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
-        $filiais = array_values(array_unique(array_filter(
-            array_map('intval', explode(',', (string)($row['dash_filiais'] ?? ''))),
+        $ints = static fn (string $csv): array => array_values(array_unique(array_filter(
+            array_map('intval', explode(',', $csv)),
             static fn (int $f): bool => $f > 0
         )));
+        $filiais = $ints((string)($row['dash_filiais'] ?? ''));
         if ($filiais === [] && $isAdmin) {
             $filiais = self::FILIAIS_ADMIN;
         }
@@ -56,7 +57,20 @@ class AmostraPedidoController
             'idusuario' => $idusuario,
             'username' => (string)($row['username'] ?? ($user['username'] ?? '')),
             'filiais' => $filiais,
+            // vazio = sem restricao de gestor (mesmo criterio dos demais modulos)
+            'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
         ];
+    }
+
+    /** Cliente tipo 5 e, se o usuario tem gestores, com pedidos de algum deles. */
+    private function clienteWhere(array $gestores, string $alias = 'c'): string
+    {
+        $sql = "EXISTS (SELECT 1 FROM cliente tc WHERE tc.idcliforemp = $alias.idcliforemp AND tc.idtipocliente = 5)";
+        if ($gestores !== []) {
+            $sql .= " AND EXISTS (SELECT 1 FROM pedido pg WHERE pg.idcliforemp = $alias.idcliforemp AND pg.idsupervisor IN ("
+                . implode(',', $gestores) . '))';
+        }
+        return $sql;
     }
 
     private function transacoes(): array
@@ -168,13 +182,15 @@ class AmostraPedidoController
         }
 
         try {
+            $usuario = $this->usuario($request);
             $stmt = $this->pdo->prepare("
                 SELECT c.idcliforemp, c.fantasia, c.razao
                 FROM cliforemp c
-                WHERE c.idcliforemp::text = :exato
-                   OR c.cpf = :exato
+                WHERE (c.idcliforemp::text = :exato
+                   OR c.cnpj = :exato
                    OR c.fantasia ILIKE :parcial
-                   OR c.razao ILIKE :parcial
+                   OR c.razao ILIKE :parcial)
+                  AND " . $this->clienteWhere($usuario['gestores']) . "
                 ORDER BY (c.idcliforemp::text = :exato) DESC, c.fantasia
                 LIMIT 20");
             $stmt->execute(['exato' => $q, 'parcial' => '%' . $q . '%']);
@@ -215,6 +231,7 @@ class AmostraPedidoController
                   AND cliente.idtipocliente = 5
                   AND pedido.status IN (1, 5)
                   AND pedido.idfilial IN ($filiais)
+                  AND " . $this->clienteWhere($usuario['gestores'], 'cli') . "
                 GROUP BY pedido.data, pedido.idpedido, cli.fantasia, pedido.observacao
                 ORDER BY pedido.idpedido DESC
                 LIMIT 100
@@ -280,6 +297,12 @@ class AmostraPedidoController
             }
             if (!in_array($idtransacao, array_column($this->transacoes(), 'codigo'), true)) {
                 return $this->json($response, ['success' => false, 'error' => 'Transação não permitida'], 403);
+            }
+
+            $clienteOk = $this->pdo->prepare('SELECT 1 FROM cliforemp c WHERE c.idcliforemp = :id AND ' . $this->clienteWhere($usuario['gestores']));
+            $clienteOk->execute(['id' => $idcliente]);
+            if (!$clienteOk->fetchColumn()) {
+                return $this->json($response, ['success' => false, 'error' => 'Cliente não permitido para o seu usuário'], 403);
             }
 
             $disponiveis = [];

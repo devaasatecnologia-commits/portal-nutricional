@@ -99,6 +99,7 @@ Ao receber um modulo e um erro:
 - Itens/saldo: view `amostra_brindes_com_saldo` (idimposto 4 se transacao 8, senao 6; filial 6 ou 1; `saldo_estoque <> 0`); quantidade limitada a `quantidade_estoque`.
 - Transacoes: somente as da view `transacao_pedido`. Filiais: `usuario.dash_filiais` (vazio = sem acesso, exceto admin = 1 e 6).
 - Cria via `ERPPedidoService` (palmtop_pedido), com `nomecliente=PORTAL[nextval('pedido_portal')]`, observacao livre e sem a checagem de saldo por lote.
+- Clientes: somente `cliente.idtipocliente = 5`; se o usuario tem `dash_gestores`, so clientes com pedidos (`pedido.idsupervisor`) desses gestores. Admin e gestores vazios = sem restricao de gestor. A mesma regra vale na busca, na criacao e na lista.
 - Lista dos ultimos pedidos: query `pedido`/`pedido_item` (transacoes 8 e 10, cliente tipo 5, status 1 e 5) mais pendentes de importacao em `palmtop_pedido`.
 
 ## Deploy (resumo)
