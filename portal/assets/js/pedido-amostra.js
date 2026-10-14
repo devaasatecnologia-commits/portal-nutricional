@@ -201,18 +201,22 @@ async function enviar() {
     }
 }
 
-const statusTag = (p) => p.cancelado
-    ? '<span class="text-red-600 font-bold">cancelado</span>'
-    : (p.pendente ? '<span class="text-amber-600 font-bold">aguardando ERP</span>' : '<span class="text-emerald-600 font-bold">no ERP</span>');
+const statusTag = (p) => {
+    if (p.pendente) return '<span class="text-amber-600 font-bold">aguardando ERP</span>';
+    return Number(p.status_pedido) === 5
+        ? '<span class="text-blue-600 font-bold">faturado</span>'
+        : '<span class="text-emerald-600 font-bold">aberto</span>';
+};
 
 function renderPedidos() {
     const box = $('listaPedidos');
     const f = estado.filtro;
     const lista = estado.pedidos
         .map((p, i) => ({ p, i }))
-        .filter(({ p }) => f === 'todos' || (f === 'cancelados' ? p.cancelado : !p.cancelado));
+        .filter(({ p }) => f === 'todos'
+            || (f === 'faturados' ? Number(p.status_pedido) === 5 : Number(p.status_pedido) !== 5));
     box.innerHTML = lista.map(({ p, i }) => `
-        <div class="pa-ped ${p.cancelado ? 'cancel' : ''}">
+        <div class="pa-ped">
             <div class="flex-1 min-w-0">
                 <div class="font-bold text-sm truncate">${esc(p.fantasia)}</div>
                 <div class="text-xs text-slate-500">#${esc(p.idpedido)} · ${dataBR(p.data)} · ${statusTag(p)}</div>

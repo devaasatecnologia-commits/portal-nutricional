@@ -27,7 +27,6 @@ $extraCss = '
   .pa-eye{width:2.6rem;height:2.6rem;border-radius:.9rem;background:#ecfdf5;color:#059669;flex:none}
   .pa-chip{padding:.4rem .9rem;border-radius:999px;background:#f1f5f9;color:#475569}
   .pa-chip.on{background:#059669;color:#fff}
-  .pa-ped.cancel{background:#fef2f2;border-color:#fecaca}
   @media(min-width:1024px){.pa-bar{position:static;border:0;background:none;backdrop-filter:none;padding:0}.pa-btn{width:auto}}
 </style>
 ';
@@ -87,8 +86,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
         <div id="filtroPedidos" class="flex gap-2 mb-3 text-xs font-bold">
             <button type="button" data-f="todos" class="pa-chip on">Todos</button>
-            <button type="button" data-f="ativos" class="pa-chip">Ativos</button>
-            <button type="button" data-f="cancelados" class="pa-chip">Cancelados</button>
+            <button type="button" data-f="ativos" class="pa-chip">Abertos</button>
+            <button type="button" data-f="faturados" class="pa-chip">Faturados</button>
         </div>
         <div id="listaPedidos" class="space-y-2"></div>
     </div>

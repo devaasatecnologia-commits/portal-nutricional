@@ -221,7 +221,7 @@ class AmostraPedidoController
                        cli.fantasia,
                        STRING_AGG(CONCAT(CAST(pedido_item.qt AS INTEGER), ' - ', item.descricao), CHR(10)) AS itens,
                        pedido.observacao,
-                       pp.status AS status_palmtop
+                       pedido.status AS status_pedido
                 FROM pedido_item
                 JOIN pedido ON pedido.idpedido = pedido_item.idpedido
                 LEFT JOIN palmtop_pedido pp ON pp.idpedidopda = pedido.idpedidopda
@@ -233,43 +233,32 @@ class AmostraPedidoController
                   AND pedido.idtransacao IN ($transacoes)
                   AND cliente.idtipocliente = 5
                   AND pedido.status IN (1, 5)
+                  AND COALESCE(pp.status, 0) <> " . self::PALMTOP_STATUS_CANCELADO . "
                   AND pedido.idfilial IN ($filiais)
                   AND " . $this->clienteWhere($usuario['gestores'], 'cli') . "
-                GROUP BY pedido.data, pedido.idpedido, cli.fantasia, pedido.observacao, pp.status
+                GROUP BY pedido.data, pedido.idpedido, cli.fantasia, pedido.observacao, pedido.status
                 ORDER BY pedido.idpedido DESC
                 LIMIT 100
             ")->fetchAll(PDO::FETCH_ASSOC);
 
-            // Pedidos criados pelo portal que o ERP ainda não importou (inclui cancelados no palmtop)
+            // Criados pelo portal e ainda não importados pelo ERP (cancelados no palmtop ficam de fora)
             $pendentes = $this->pdo->query("
                 SELECT pp.data, pp.idpedidopda AS idpedido, pp.nomecliente AS fantasia,
                        STRING_AGG(CONCAT(CAST(ppi.qt AS INTEGER), ' - ', ppi.descricao), CHR(10)) AS itens,
-                       pp.observacao,
-                       pp.status AS status_palmtop
+                       pp.observacao
                 FROM palmtop_pedido pp
                 JOIN palmtop_pedido_item ppi ON ppi.idpedidopda = pp.idpedidopda
                 WHERE pp.importado = 'N'
+                  AND pp.status <> " . self::PALMTOP_STATUS_CANCELADO . "
                   AND pp.idtransacao IN ($transacoes)
                   AND pp.idfilial IN ($filiais)
                   AND pp.data >= CURRENT_DATE - INTERVAL '7 days'
-                GROUP BY pp.data, pp.idpedidopda, pp.nomecliente, pp.observacao, pp.status
+                GROUP BY pp.data, pp.idpedidopda, pp.nomecliente, pp.observacao
                 ORDER BY pp.idpedidopda DESC
                 LIMIT 50
             ")->fetchAll(PDO::FETCH_ASSOC);
 
-            $marcar = static function (array $rows): array {
-                foreach ($rows as &$r) {
-                    $r['cancelado'] = (int)($r['status_palmtop'] ?? 0) === self::PALMTOP_STATUS_CANCELADO;
-                }
-                unset($r);
-                return $rows;
-            };
-
-            return $this->json($response, [
-                'success' => true,
-                'pedidos' => $marcar($pedidos),
-                'pendentes' => $marcar($pendentes),
-            ]);
+            return $this->json($response, ['success' => true, 'pedidos' => $pedidos, 'pendentes' => $pendentes]);
         } catch (\Throwable $e) {
             error_log('[Amostras] pedidos: ' . $e->getMessage());
             return $this->json($response, ['success' => false, 'error' => 'Erro ao listar pedidos'], 500);
