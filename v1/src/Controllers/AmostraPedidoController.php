@@ -286,6 +286,9 @@ class AmostraPedidoController
         if ($idfilial <= 0 || $idtransacao <= 0 || $idcliente <= 0 || $quantidades === []) {
             return $this->json($response, ['success' => false, 'error' => 'Sem dados para enviar, favor revisar.'], 422);
         }
+        if ($observacao === '') {
+            return $this->json($response, ['success' => false, 'error' => 'A observação é obrigatória.'], 422);
+        }
         if (mb_strlen($observacao) > 500) {
             return $this->json($response, ['success' => false, 'error' => 'Observação deve ter até 500 caracteres'], 422);
         }
