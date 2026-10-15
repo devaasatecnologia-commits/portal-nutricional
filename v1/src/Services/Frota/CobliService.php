@@ -16,7 +16,7 @@ class CobliService
     public function __construct($pdo)
     {
         $this->pdo = $pdo;
-        $this->apiKey = $this->getConfig('cobli_api_key', $_ENV['COBLI_API_KEY'] ?? '');
+        $this->apiKey = \Nutricional\Services\SecretVault::get('COBLI_API_KEY') ?: $this->getConfig('cobli_api_key', '');
     }
 
     public function isConfigurado(): bool

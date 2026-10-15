@@ -5,6 +5,17 @@ use PHPMailer\PHPMailer\PHPMailer;
 
 class CronRotinasController
 {
+    /** Rotinas implementadas: comando => [nome, descricao]. Base do seletor de "Novo Job" no Admin. */
+    public const ROTINAS = [
+        'representantes'     => ['Representantes', 'Envia relatorio de alteracoes em pedidos'],
+        'gestores'           => ['Gestores', 'Envia relatorio de inadimplencia'],
+        'historico_kpi'      => ['Historico KPI', 'Processa historico financeiro'],
+        'notas_nutrire'      => ['Notas Nutrire', 'Envia notas para API Nutrire'],
+        'flex_minimo_gestor' => ['Flex Minimo Gestor', 'Gera Flex para gestores'],
+        'bonificacoes_flex'  => ['Bonificacoes Flex', 'Processa bonificacoes'],
+        'refresh_cubo_vendas' => ['Atualizar Cubo de Vendas', 'Executa refresh_cubo_vendas() no banco'],
+    ];
+
     private $pdo;
 
     public function __construct()
@@ -20,6 +31,14 @@ class CronRotinasController
         $params = $parametros;
 
         switch ($comando) {
+            case 'refresh_cubo_vendas':
+                try {
+                    $msg = $this->pdo->query("SELECT refresh_cubo_vendas()")->fetchColumn();
+                    return ['success' => true, 'message' => is_string($msg) && $msg !== '' ? $msg : 'Cubo de vendas atualizado'];
+                } catch (\Throwable $e) {
+                    return ['success' => false, 'message' => 'Falha ao atualizar cubo: ' . $e->getMessage()];
+                }
+
             case 'representantes':
                 return $this->executarRepresentantes($usuario, $ip);
 
@@ -536,7 +555,7 @@ class CronRotinasController
             $mail->Host = $_ENV['MAIL_HOST'] ?? 'mail.nutricionalbr.com';
             $mail->SMTPAuth = true;
             $mail->Username = $_ENV['MAIL_USER'] ?? 'nao-responder@nutricionalbr.com';
-            $mail->Password = $_ENV['MAIL_PASS'] ?? '';
+            $mail->Password = \Nutricional\Services\SecretVault::get('MAIL_PASS');
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = (int)($_ENV['MAIL_PORT'] ?? 465);
             $mail->CharSet = 'UTF-8';

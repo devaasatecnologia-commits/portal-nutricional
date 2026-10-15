@@ -9,7 +9,7 @@ class GeocodingService
     
     public function __construct($apiKey = null)
     {
-        $this->apiKey = $apiKey ?? $_ENV['GOOGLE_MAPS_API_KEY'] ?? '';
+        $this->apiKey = $apiKey ?? \Nutricional\Services\SecretVault::get('GOOGLE_MAPS_API_KEY');
     }
     
     /**

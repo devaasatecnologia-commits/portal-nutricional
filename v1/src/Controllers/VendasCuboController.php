@@ -1,1341 +1,1189 @@
 <?php
 namespace Nutricional\Controllers;
 
+use Nutricional\Utils\UserScope;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
+/**
+ * Cubo de Vendas.
+ *
+ * Regras de negócio (única fonte para dados, totais, ranking, série, exportação e detalhes):
+ *  - NF faturada: nfs.status = 2 e nfs.idtransacao = 1 (data = dataemissao).
+ *    Valor = valor_total_com_ipi_st + frete + seguro + outras despesas do item.
+ *  - Pedido em carteira: pedido.status IN (1 aberto, 4 faturado parcial) e idtransacao IN (1, 17)
+ *    (data = pedido.data). Considera apenas o SALDO AINDA NÃO FATURADO (qt - qtfaturado),
+ *    pois o que já foi faturado entra via NF (evita dupla contagem em pedidos parcialmente faturados).
+ *  - Peso: peso LÍQUIDO (kg) = pesoliquido x quantidade, tanto em pedidos (item) quanto em NFs (nfs_item).
+ *  - Comissão: apenas NFs (valor_comissao); pedidos não têm comissão apurada.
+ *  - Escopo (filiais/gestores do usuário) sempre aplicado por interseção com o filtro pedido.
+ */
 class VendasCuboController
 {
     private $pdo;
-    
+
+    private const MSG_ERRO_INTERNO = 'Erro interno ao processar a solicitação.';
+
+    private const MSG_NAO_INFORMADO = '(Não informado)';
+
+    /** Métricas oficiais: chave => [label, formato, definição, aliases aceitos] */
+    private const METRICAS = [
+        'valor_total' => ['label' => 'Valor (R$)', 'format' => 'currency', 'alias' => ['valor_bruto', 'valor']],
+        'quantidade_total' => ['label' => 'Quantidade', 'format' => 'number', 'alias' => ['quantidade']],
+        'peso_total' => ['label' => 'Peso líquido (kg)', 'format' => 'decimal', 'alias' => ['peso']],
+        'comissao_total' => ['label' => 'Comissão (R$)', 'format' => 'currency', 'alias' => ['comissao']],
+        'qtd_documentos' => ['label' => 'Nº Documentos', 'format' => 'number', 'alias' => []],
+        'ticket_medio' => ['label' => 'Ticket médio (R$)', 'format' => 'currency', 'alias' => []],
+    ];
+
+    /** Dimensões: id/label são colunas da CTE "base" */
+    private const DIMENSOES = [
+        'data_documento' => ['label' => 'Data', 'type' => 'date', 'icon' => 'fa-calendar', 'id' => 'data_documento', 'txt' => "TO_CHAR(data_documento, 'YYYY-MM-DD')", 'kind' => 'date'],
+        'tipo_documento' => ['label' => 'Tipo (Pedido/NF)', 'type' => 'string', 'icon' => 'fa-file-invoice', 'id' => 'tipo_documento', 'txt' => 'tipo_documento', 'kind' => 'string'],
+        'status_descricao' => ['label' => 'Status', 'type' => 'string', 'icon' => 'fa-circle-info', 'id' => 'status_descricao', 'txt' => 'status_descricao', 'kind' => 'string'],
+        'cliente' => ['label' => 'Cliente', 'type' => 'string', 'icon' => 'fa-user', 'id' => 'idcliente', 'txt' => 'cliente', 'kind' => 'int'],
+        'representante' => ['label' => 'Representante', 'type' => 'string', 'icon' => 'fa-user-tie', 'id' => 'idrepresentante', 'txt' => 'representante', 'kind' => 'int'],
+        'supervisor' => ['label' => 'Supervisor', 'type' => 'string', 'icon' => 'fa-user-check', 'id' => 'idsupervisor', 'txt' => 'supervisor', 'kind' => 'int'],
+        'regiao' => ['label' => 'Região', 'type' => 'string', 'icon' => 'fa-map-marker-alt', 'id' => 'idregiao', 'txt' => 'regiao', 'kind' => 'int'],
+        'estado' => ['label' => 'UF', 'type' => 'string', 'icon' => 'fa-map', 'id' => 'uf', 'txt' => 'uf', 'kind' => 'string'],
+        'cidade' => ['label' => 'Cidade', 'type' => 'string', 'icon' => 'fa-city', 'id' => 'idcidade', 'txt' => 'cidade', 'kind' => 'int'],
+        'grupo' => ['label' => 'Grupo', 'type' => 'string', 'icon' => 'fa-tag', 'id' => 'idgrupo', 'txt' => 'grupo', 'kind' => 'int'],
+        'subgrupo' => ['label' => 'Subgrupo', 'type' => 'string', 'icon' => 'fa-tags', 'id' => 'idsubgrupo', 'txt' => 'subgrupo', 'kind' => 'int'],
+        'tipo_produto' => ['label' => 'Tipo Produto', 'type' => 'string', 'icon' => 'fa-box', 'id' => 'idtipoproduto', 'txt' => 'tipo_produto', 'kind' => 'int'],
+        'marca' => ['label' => 'Marca', 'type' => 'string', 'icon' => 'fa-trademark', 'id' => 'idmarca', 'txt' => 'marca', 'kind' => 'int'],
+        'produto' => ['label' => 'Produto', 'type' => 'string', 'icon' => 'fa-boxes', 'id' => 'iditem', 'txt' => 'produto', 'kind' => 'int'],
+        'filial' => ['label' => 'Filial', 'type' => 'string', 'icon' => 'fa-store', 'id' => 'idfilial', 'txt' => 'filial', 'kind' => 'int'],
+        'tipo_de_pedido' => ['label' => 'Tipo de Pedido', 'type' => 'string', 'icon' => 'fa-file-lines', 'id' => 'idtipopedido', 'txt' => 'tipo_pedido', 'kind' => 'int'],
+    ];
+
+    private const DIM_ALIAS = [
+        'data_nf' => 'data_documento',
+        'vendedor' => 'representante',
+        'gestor' => 'supervisor',
+    ];
+
+    /** Filtros avançados (campo => dimensão usada para listar opções) */
+    private const CAMPOS_FILTRO = [
+        'cliente', 'representante', 'supervisor', 'regiao', 'estado', 'cidade', 'grupo',
+        'subgrupo', 'tipo_produto', 'marca', 'produto', 'filial', 'tipo_de_pedido',
+    ];
+
     public function __construct()
     {
         $this->pdo = \getPDO();
     }
-    
+
+    // ======================================================================
+    // CONFIG / LISTAS BÁSICAS
+    // ======================================================================
+
     /**
      * GET /v1/vendas/cubo/config
      */
     public function getConfig(Request $request, Response $response): Response
     {
-        $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
-        
-        $dimensions = [
-            'data_documento' => ['label' => 'Data', 'type' => 'date', 'icon' => 'fa-calendar'],
-            'tipo_documento' => ['label' => 'Tipo (Pedido/NF)', 'type' => 'string', 'icon' => 'fa-file-invoice'],
-            'status_descricao' => ['label' => 'Status', 'type' => 'string', 'icon' => 'fa-circle-info'],
-            'cliente' => ['label' => 'Cliente', 'type' => 'string', 'icon' => 'fa-user'],
-            'representante' => ['label' => 'Representante', 'type' => 'string', 'icon' => 'fa-user-tie'],
-            'supervisor' => ['label' => 'Supervisor', 'type' => 'string', 'icon' => 'fa-user-check'],
-            'regiao' => ['label' => 'Região', 'type' => 'string', 'icon' => 'fa-map-marker-alt'],
-            'estado' => ['label' => 'UF', 'type' => 'string', 'icon' => 'fa-map'],
-            'cidade' => ['label' => 'Cidade', 'type' => 'string', 'icon' => 'fa-city'],
-            'grupo' => ['label' => 'Grupo', 'type' => 'string', 'icon' => 'fa-tag'],
-            'subgrupo' => ['label' => 'Subgrupo', 'type' => 'string', 'icon' => 'fa-tags'],
-            'tipo_produto' => ['label' => 'Tipo Produto', 'type' => 'string', 'icon' => 'fa-box'],
-            'marca' => ['label' => 'Marca', 'type' => 'string', 'icon' => 'fa-trademark'],
-            'produto' => ['label' => 'Produto', 'type' => 'string', 'icon' => 'fa-boxes'],
-            'filial' => ['label' => 'Filial', 'type' => 'string', 'icon' => 'fa-store']
-        ];
-        
-        $metrics = [
-            'valor_total' => ['label' => 'Valor (R$)', 'format' => 'currency'],
-            'quantidade_total' => ['label' => 'Quantidade', 'format' => 'number'],
-            'peso_total' => ['label' => 'Peso (kg)', 'format' => 'decimal'],
-            'comissao_total' => ['label' => 'Comissão (R$)', 'format' => 'currency'],
-            'qtd_documentos' => ['label' => 'Nº Documentos', 'format' => 'number']
-        ];
-        
-        // Busca permissões do usuário
-        $permissoes = $this->getUserPermissions($uid);
-        $filiaisPermitidas = $this->getFiliaisPermitidas($permissoes['filiais']);
-        
-        return $this->jsonResponse($response, [
-            'dimensions' => $dimensions,
-            'metrics' => $metrics,
-            'permissoes' => $permissoes,
-            'filiais_permitidas' => $filiaisPermitidas,
-            'default_filters' => [
-                'data_inicio' => date('Y-m-01'),
-                'data_fim' => date('Y-m-t')
-            ],
-            'max_periodo_dias' => 365
-        ]);
+        try {
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $dimensions = [];
+            foreach (self::DIMENSOES as $k => $d) {
+                $dimensions[$k] = ['label' => $d['label'], 'type' => $d['type'], 'icon' => $d['icon']];
+            }
+            $metrics = [];
+            foreach (self::METRICAS as $k => $m) {
+                $metrics[$k] = ['label' => $m['label'], 'format' => $m['format']];
+            }
+
+            return $this->jsonResponse($response, [
+                'dimensions' => $dimensions,
+                'metrics' => $metrics,
+                'permissoes' => [
+                    'filiais' => $scope->filialRestrita() ? $scope->filiais : [],
+                    'gestores' => $scope->gestorRestrito() ? $scope->gestores : [],
+                    'is_admin' => $scope->isAdmin,
+                ],
+                'filiais_permitidas' => $this->listarFiliais($scope),
+                'default_filters' => [
+                    'data_inicio' => date('Y-m-01'),
+                    'data_fim' => date('Y-m-t'),
+                ],
+                'max_periodo_dias' => 365,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getConfig');
+        }
     }
-    
+
     /**
      * POST /v1/vendas/cubo/filiais
      */
     public function getFiliais(Request $request, Response $response): Response
     {
         try {
-            $user = $request->getAttribute('user');
-            $uid = $user['uid'] ?? 0;
-            $permissoes = $this->getUserPermissions($uid);
-            $filiais = $this->getFiliaisPermitidas($permissoes['filiais']);
-            
-            return $this->jsonResponse($response, ['filiais' => $filiais]);
-        } catch (\Exception $e) {
-            error_log('Erro getFiliais: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['filiais' => []]);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            return $this->jsonResponse($response, ['filiais' => $this->listarFiliais($scope)]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getFiliais', ['filiais' => []]);
         }
     }
-    
-   /**
- * POST /v1/vendas/cubo/supervisores-por-filial
- */
-   public function getSupervisoresPorFilial(Request $request, Response $response): Response
-   {
-    try {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $idfilial = intval($input['idfilial'] ?? 0);
-        
-        if ($idfilial <= 0) {
-            return $this->jsonResponse($response, ['supervisores' => []]);
-        }
-        
-        $sql = "
-        SELECT DISTINCT 
-        idgestor as id,
-        gestor as nome
-        FROM vw_gestor_repre
-        WHERE idfilial = :idfilial
-        AND inativo = 'N'
-        ORDER BY nome
-        ";
-        
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['idfilial' => $idfilial]);
-        $supervisores = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        error_log("Supervisores filial $idfilial: " . count($supervisores));
-        
-        return $this->jsonResponse($response, ['supervisores' => $supervisores]);
-    } catch (\Exception $e) {
-        error_log('Erro getSupervisoresPorFilial: ' . $e->getMessage());
-        return $this->jsonResponse($response, ['supervisores' => []]);
-    }
-}
 
-/**
- * POST /v1/vendas/cubo/representantes-por-supervisor
- */
-public function getRepresentantesPorSupervisor(Request $request, Response $response): Response
-{
-    try {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $idsupervisor = intval($input['idsupervisor'] ?? 0);
-        $idfilial = intval($input['idfilial'] ?? 0);
-        $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
-        $permissoes = $this->getUserPermissions($uid);
-
-        error_log("=== getRepresentantesPorSupervisor ===");
-        error_log("uid: $uid, idsupervisor: $idsupervisor, idfilial: $idfilial");
-
-        // ✅ Se não tem gestor selecionado, filtra pelos gestores liberados
-        $whereGestor = "";
-        $params = ['idfilial' => $idfilial];
-        
-        if ($idsupervisor > 0) {
-            $whereGestor = " AND idgestor = :idsupervisor";
-            $params['idsupervisor'] = $idsupervisor;
-        } elseif (!empty($permissoes['gestores']) && !$permissoes['is_admin']) {
-            $inG = implode(',', array_map('intval', $permissoes['gestores']));
-            $whereGestor = " AND idgestor IN ($inG)";
-        }
-
-        $sql = "
-        SELECT DISTINCT 
-        idrepresentante as id,
-        representante as nome
-        FROM vw_gestor_repre
-        WHERE idfilial = :idfilial
-        $whereGestor
-        AND inativo = 'N'
-        ORDER BY nome
-        LIMIT 200
-        ";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        
-        $representantes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        error_log("Representantes encontrados: " . count($representantes));
-        foreach ($representantes as $r) {
-            error_log("  - {$r['id']}: {$r['nome']}");
-        }
-
-        return $this->jsonResponse($response, ['representantes' => $representantes]);
-        
-    } catch (\Exception $e) {
-        error_log('❌ ERRO getRepresentantesPorSupervisor: ' . $e->getMessage());
-        return $this->jsonResponse($response, ['representantes' => [], 'error' => $e->getMessage()]);
-    }
-}
     /**
-     * POST /v1/vendas/cubo/clientes-por-representante
+     * POST /v1/vendas/cubo/gestores - apenas gestores liberados ao usuário
+     */
+    public function getGestores(Request $request, Response $response): Response
+    {
+        try {
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $gestores = $scope->resolverGestores(null);
+
+            $sql = "SELECT DISTINCT idgestor AS id, gestor AS nome FROM vw_gestor_repre WHERE inativo = 'N'";
+            if (!empty($gestores)) {
+                $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
+            }
+            $sql .= ' ORDER BY nome';
+
+            $stmt = $this->pdo->query($sql);
+            return $this->jsonResponse($response, ['gestores' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getGestores', ['gestores' => []]);
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/supervisores-por-filial  {idfilial}
+     * idfilial = 0 => todos os gestores do escopo do usuário.
+     */
+    public function getSupervisoresPorFilial(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+
+            $filiais = $scope->resolverFiliais($idfilial > 0 ? $idfilial : null);
+            $gestores = $scope->resolverGestores(null);
+
+            $sql = "SELECT DISTINCT idgestor AS id, gestor AS nome FROM vw_gestor_repre WHERE inativo = 'N'";
+            if (!empty($filiais)) {
+                $sql .= ' AND idfilial IN (' . $this->inList($filiais) . ')';
+            }
+            if (!empty($gestores)) {
+                $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
+            }
+            $sql .= ' ORDER BY nome';
+
+            $stmt = $this->pdo->query($sql);
+            return $this->jsonResponse($response, ['supervisores' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getSupervisoresPorFilial', ['supervisores' => []]);
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/representantes-por-supervisor  {idsupervisor, idfilial}
+     * idfilial = 0 => sem filtro de filial (apenas o escopo do usuário).
+     */
+    public function getRepresentantesPorSupervisor(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $idsupervisor = (int)($input['idsupervisor'] ?? 0);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+
+            $filiais = $scope->resolverFiliais($idfilial > 0 ? $idfilial : null);
+            $gestores = $scope->resolverGestores($idsupervisor > 0 ? $idsupervisor : null);
+
+            $sql = "SELECT DISTINCT idrepresentante AS id, representante AS nome FROM vw_gestor_repre WHERE inativo = 'N'";
+            if (!empty($filiais)) {
+                $sql .= ' AND idfilial IN (' . $this->inList($filiais) . ')';
+            }
+            if (!empty($gestores)) {
+                $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
+            }
+            $sql .= ' ORDER BY nome LIMIT 1000';
+
+            $stmt = $this->pdo->query($sql);
+            return $this->jsonResponse($response, ['representantes' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getRepresentantesPorSupervisor', ['representantes' => []]);
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/clientes-por-representante  {idrepresentante, idsupervisor, idfilial}
+     * Clientes com pedido em carteira ou NF faturada nos últimos 12 meses (ou no período informado).
      */
     public function getClientesPorRepresentante(Request $request, Response $response): Response
     {
         try {
-            $input = json_decode($request->getBody()->getContents(), true) ?? [];
-            $idrepresentante = intval($input['idrepresentante'] ?? 0);
-            $idsupervisor = intval($input['idsupervisor'] ?? 0);
-            $idfilial = intval($input['idfilial'] ?? 0);
-            
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $idrepresentante = (int)($input['idrepresentante'] ?? 0);
+            $idsupervisor = (int)($input['idsupervisor'] ?? 0);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+
+            $filiais = $scope->resolverFiliais($idfilial > 0 ? $idfilial : null);
+            $gestores = $scope->resolverGestores($idsupervisor > 0 ? $idsupervisor : null);
+            [$di, $df] = $this->periodoLookup($input);
+
+            $params = ['di' => $di, 'df' => $df];
+            $wP = '';
+            $wN = '';
+            if (!empty($filiais)) {
+                $wP .= ' AND p.idfilial IN (' . $this->inList($filiais) . ')';
+                $wN .= ' AND n.idfilial IN (' . $this->inList($filiais) . ')';
+            }
+            if (!empty($gestores)) {
+                $wP .= ' AND p.idsupervisor IN (' . $this->inList($gestores) . ')';
+                $wN .= ' AND n.idsupervisor IN (' . $this->inList($gestores) . ')';
+            }
+            if ($idrepresentante > 0) {
+                $wP .= ' AND p.idvendrepre = :rep';
+                $wN .= ' AND n.idvendrepre = :rep';
+                $params['rep'] = $idrepresentante;
+            }
+
             $sql = "
-            SELECT DISTINCT 
-            p.idcliforemp as id,
-            c.fantasia as nome
-            FROM pedido p
-            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-            WHERE p.idfilial = :idfilial
+                SELECT id, nome FROM (
+                    SELECT p.idcliforemp AS id, c.fantasia AS nome
+                    FROM pedido p
+                    JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
+                    WHERE p.status IN (1,4) AND p.idtransacao IN (1,17)
+                      AND p.data BETWEEN :di AND :df $wP
+                    UNION
+                    SELECT n.idcliforemp AS id, c.fantasia AS nome
+                    FROM nfs n
+                    JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+                    WHERE n.status = 2 AND n.idtransacao = 1
+                      AND n.dataemissao BETWEEN :di AND :df $wN
+                ) x
+                ORDER BY nome
+                LIMIT 500
             ";
-            
-            $params = ['idfilial' => $idfilial];
-            
-            if ($idrepresentante > 0) {
-                $sql .= " AND p.idvendrepre = :idrepresentante";
-                $params['idrepresentante'] = $idrepresentante;
-            }
-            if ($idsupervisor > 0) {
-                $sql .= " AND p.idsupervisor = :idsupervisor";
-                $params['idsupervisor'] = $idsupervisor;
-            }
-            
-            $sql .= " UNION
-            SELECT DISTINCT 
-            n.idcliforemp as id,
-            c.fantasia as nome
-            FROM nfs n
-            JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-            WHERE n.idfilial = :idfilial
-            ";
-            
-            if ($idrepresentante > 0) {
-                $sql .= " AND n.idvendrepre = :idrepresentante";
-            }
-            if ($idsupervisor > 0) {
-                $sql .= " AND n.idsupervisor = :idsupervisor";
-            }
-            
-            $sql .= " ORDER BY nome LIMIT 200";
-            
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute($params);
-            $clientes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            return $this->jsonResponse($response, ['clientes' => $clientes]);
-        } catch (\Exception $e) {
-            error_log('Erro getClientesPorRepresentante: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['clientes' => []]);
+            return $this->jsonResponse($response, ['clientes' => $stmt->fetchAll(\PDO::FETCH_ASSOC)]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getClientesPorRepresentante', ['clientes' => []]);
         }
     }
-    
- /**
-     * POST /v1/vendas/cubo/data - CORRIGIDO
-     */
- public function getData(Request $request, Response $response): Response
- {
-    try {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
-
-        $rowDimension = $input['row_dimension'] ?? 'data_documento';
-        $metrics = $input['metrics'] ?? ['valor_total'];
-        $filters = $input['filters'] ?? [];
-        $limit = (int)($input['limit'] ?? 500);
-
-        $dataInicio = $filters['data_inicio'] ?? date('Y-m-01');
-        $dataFim = $filters['data_fim'] ?? date('Y-m-t');
-
-        $d1 = new \DateTime($dataInicio);
-        $d2 = new \DateTime($dataFim);
-        $diferenca = $d1->diff($d2)->days;
-        $warning = null;
-
-        if ($diferenca > 365) {
-            $dataFim = (clone $d1)->modify('+365 days')->format('Y-m-d');
-            $warning = 'Período limitado a 365 dias para manter performance';
-        }
-
-        $permissoes = $this->getUserPermissions($uid);
-
-// força filtrar apenas pelos gestores liberados
-        $whereGestorPedido = "";
-        $whereGestorNF = "";
-        $whereGestorTotalPedido = "";
-        $whereGestorTotalNF = "";
-        $whereGestorTime = "";
-
-        if (!empty($filters['supervisor'])) {
-    // Usuário selecionou um gestor específico no filtro
-            $whereGestorPedido = " AND p.idsupervisor = :supervisor";
-            $whereGestorNF = " AND n.idsupervisor = :supervisor";
-            $whereGestorTotalPedido = " AND p.idsupervisor = :supervisor";
-            $whereGestorTotalNF = " AND n.idsupervisor = :supervisor";
-        } elseif (!empty($permissoes['gestores']) && !$permissoes['is_admin']) {
-    // Usuário NÃO selecionou gestor, mas tem restrições → filtra pelos liberados
-            $inG = implode(',', array_map('intval', $permissoes['gestores']));
-            $whereGestorPedido = " AND p.idsupervisor IN ($inG)";
-            $whereGestorNF = " AND n.idsupervisor IN ($inG)";
-            $whereGestorTotalPedido = " AND p.idsupervisor IN ($inG)";
-            $whereGestorTotalNF = " AND n.idsupervisor IN ($inG)";
-        }
-
-
-
-
-        $rowDimMap = [
-            'data_documento' => 'data_documento', 'data_nf' => 'data_documento',
-            'cliente' => 'cliente', 'representante' => 'representante',
-            'vendedor' => 'representante', 'supervisor' => 'supervisor',
-            'regiao' => 'regiao', 'estado' => 'estado', 'cidade' => 'cidade',
-            'grupo' => 'grupo', 'subgrupo' => 'subgrupo',
-            'tipo_produto' => 'tipo_produto', 'marca' => 'marca',
-            'produto' => 'produto', 'filial' => 'filial',
-            'tipo_documento' => 'tipo_documento', 'status_descricao' => 'status_descricao'
-        ];
-        $dbRowDimension = $rowDimMap[$rowDimension] ?? 'data_documento';
-
-        $metricSelect = [];
-        foreach ($metrics as $metric) {
-            switch ($metric) {
-                case 'valor_total': case 'valor_bruto':
-                $metricSelect[] = "SUM(COALESCE(valor_total, 0)) AS valor_total";
-                break;
-                case 'quantidade_total': case 'quantidade':
-                $metricSelect[] = "SUM(COALESCE(quantidade_total, 0)) AS quantidade_total";
-                break;
-                case 'peso_total': case 'peso':
-                $metricSelect[] = "SUM(COALESCE(peso_total, 0)) AS peso_total";
-                break;
-                case 'comissao_total': case 'comissao':
-                $metricSelect[] = "SUM(COALESCE(comissao_total, 0)) AS comissao_total";
-                break;
-                default:
-                $metricSelect[] = "SUM(COALESCE(valor_total, 0)) AS valor_total";
-            }
-        }
-
-        $sql = "
-        SELECT 
-        {$dbRowDimension} AS dimensao,
-        " . implode(", ", $metricSelect) . "
-        FROM (
-        -- PEDIDOS
-        SELECT 
-        p.data as data_documento,
-        c.fantasia as cliente,
-        vend.fantasia as representante,
-        sup.razao as supervisor,
-        f.nome as filial,
-        SUM(pi.qt * pi.valor) as valor_total,
-        SUM(pi.qt) as quantidade_total,
-        SUM(pi.qt * i.pesobruto) as peso_total,
-        0 as comissao_total,
-        'PEDIDO' as tipo_documento,
-        CASE p.status WHEN 1 THEN 'ABERTO' WHEN 4 THEN 'FATURADO PARCIAL' ELSE 'OUTROS' END as status_descricao
-        FROM pedido p
-        JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-        JOIN item i ON i.iditem = pi.iditem
-        JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-        JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
-        LEFT JOIN cliforemp sup ON sup.idcliforemp = p.idsupervisor
-        JOIN filial f ON f.idfilial = p.idfilial
-        WHERE p.status IN (1,4)
-        AND p.idtransacao IN (1,17)
-        AND p.data BETWEEN :data_inicio AND :data_fim
-        $whereGestorPedido
-        ";
-
-        if (!empty($filters['filial'])) {
-            $sql .= " AND p.idfilial = :filial";
-        }
-        if (!empty($filters['supervisor'])) {
-            $sql .= " AND p.idsupervisor = :supervisor";
-        }
-        if (!empty($filters['representante'])) {
-            $sql .= " AND p.idvendrepre = :representante";
-        }
-        if (!empty($filters['cliente'])) {
-            $sql .= " AND c.fantasia = :cliente";
-        }
-
-        $sql .= "
-        GROUP BY p.data, p.status, c.fantasia, vend.fantasia, sup.razao, f.nome
-
-        UNION ALL
-
-        -- NOTAS FISCAIS
-        SELECT 
-        n.dataemissao as data_documento,
-        c.fantasia as cliente,
-        vend.fantasia as representante,
-        sup.razao as supervisor,
-        f.nome as filial,
-        SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total,
-        SUM(ni.qt) as quantidade_total,
-        SUM(ni.pesoliquido * ni.qt) as peso_total,
-        SUM(COALESCE(ni.valor_comissao,0)) as comissao_total,
-        'NF' as tipo_documento,
-        'FATURADO' as status_descricao
-        FROM nfs n
-        JOIN nfs_item ni ON ni.idnfs = n.idnfs
-        JOIN item i ON i.iditem = ni.iditem
-        JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-        JOIN cliforemp vend ON vend.idcliforemp = n.idvendrepre
-        LEFT JOIN cliforemp sup ON sup.idcliforemp = n.idsupervisor
-        JOIN filial f ON f.idfilial = n.idfilial
-        WHERE n.status = 2
-        AND n.idtransacao = 1
-        AND n.dataemissao BETWEEN :data_inicio AND :data_fim
-        $whereGestorNF
-        ";
-
-        if (!empty($filters['filial'])) {
-            $sql .= " AND n.idfilial = :filial";
-        }
-        if (!empty($filters['supervisor'])) {
-            $sql .= " AND n.idsupervisor = :supervisor";
-        }
-        if (!empty($filters['representante'])) {
-            $sql .= " AND n.idvendrepre = :representante";
-        }
-        if (!empty($filters['cliente'])) {
-            $sql .= " AND c.fantasia = :cliente";
-        }
-
-        $sql .= "
-        GROUP BY n.dataemissao, c.fantasia, vend.fantasia, sup.razao, f.nome
-        ) AS dados_unificados
-        GROUP BY {$dbRowDimension}
-        ORDER BY {$dbRowDimension} DESC
-        LIMIT {$limit}
-        ";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->bindValue(':data_inicio', $dataInicio);
-        $stmt->bindValue(':data_fim', $dataFim);
-
-        if (!empty($filters['filial'])) {
-            $stmt->bindValue(':filial', $filters['filial']);
-        }
-        if (!empty($filters['supervisor'])) {
-            $stmt->bindValue(':supervisor', (int)$filters['supervisor'], \PDO::PARAM_INT);
-        }
-        if (!empty($filters['representante'])) {
-            $stmt->bindValue(':representante', $filters['representante']);
-        }
-        if (!empty($filters['cliente'])) {
-            $stmt->bindValue(':cliente', $filters['cliente']);
-        }
-
-        $stmt->execute();
-        $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            // Totais
-        $totalSql = "
-        SELECT 
-        SUM(COALESCE(valor_total, 0)) as valor_total,
-        SUM(COALESCE(quantidade_total, 0)) as quantidade_total,
-        SUM(COALESCE(peso_total, 0)) as peso_total,
-        SUM(COALESCE(comissao_total, 0)) as comissao_total
-        FROM (
-        SELECT 
-        SUM(pi.qt * pi.valor) as valor_total,
-        SUM(pi.qt) as quantidade_total,
-        SUM(pi.qt * i.pesobruto) as peso_total,
-        0 as comissao_total
-        FROM pedido p
-        JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-        JOIN item i ON i.iditem = pi.iditem
-        WHERE p.status IN (1,4)
-        AND p.idtransacao IN (1,17)
-        AND p.data BETWEEN :data_inicio AND :data_fim
-        $whereGestorTotalPedido
-        ";
-
-        if (!empty($filters['filial'])) {
-            $totalSql .= " AND p.idfilial = :filial";
-        }
-        if (!empty($filters['supervisor'])) {
-            $totalSql .= " AND p.idsupervisor = :supervisor";
-        }
-        if (!empty($filters['representante'])) {
-            $totalSql .= " AND p.idvendrepre = :representante";
-        }
-
-        $totalSql .= "
-        UNION ALL
-        SELECT 
-        SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total,
-        SUM(ni.qt) as quantidade_total,
-        SUM(ni.pesoliquido * ni.qt) as peso_total,
-        SUM(COALESCE(ni.valor_comissao,0)) as comissao_total
-        FROM nfs n
-        JOIN nfs_item ni ON ni.idnfs = n.idnfs
-        JOIN item i ON i.iditem = ni.iditem
-        WHERE n.status = 2
-        AND n.idtransacao = 1
-        AND n.dataemissao BETWEEN :data_inicio AND :data_fim
-        $whereGestorTotalNF
-        ";
-
-        if (!empty($filters['filial'])) {
-            $totalSql .= " AND n.idfilial = :filial";
-        }
-        if (!empty($filters['supervisor'])) {
-            $totalSql .= " AND n.idsupervisor = :supervisor";
-        }
-        if (!empty($filters['representante'])) {
-            $totalSql .= " AND n.idvendrepre = :representante";
-        }
-
-        $totalSql .= "
-        ) AS totais
-        ";
-
-        $totalStmt = $this->pdo->prepare($totalSql);
-        $totalStmt->bindValue(':data_inicio', $dataInicio);
-        $totalStmt->bindValue(':data_fim', $dataFim);
-        if (!empty($filters['filial'])) {
-            $totalStmt->bindValue(':filial', $filters['filial']);
-        }
-        if (!empty($filters['supervisor'])) {
-            $totalStmt->bindValue(':supervisor', (int)$filters['supervisor'], \PDO::PARAM_INT);
-        }
-        if (!empty($filters['representante'])) {
-            $totalStmt->bindValue(':representante', $filters['representante']);
-        }
-        $totalStmt->execute();
-        $totals = $totalStmt->fetch(\PDO::FETCH_ASSOC);
-
-            // Time series
-        $timeSql = "
-        WITH meses AS (
-        SELECT generate_series(DATE_TRUNC('month', :data_inicio::date), DATE_TRUNC('month', :data_fim::date), '1 month'::interval) as mes
-        ),
-        vendas_mes AS (
-        SELECT DATE_TRUNC('month', p.data) as mes, SUM(pi.qt * pi.valor) as valor
-        FROM pedido p
-        JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-        WHERE p.status IN (1,4) AND p.idtransacao IN (1,17) AND p.data BETWEEN :data_inicio AND :data_fim
-        ";
-
-        if (!empty($filters['filial'])) {
-            $timeSql .= " AND p.idfilial = :filial";
-        }
-
-        $timeSql .= "
-        GROUP BY DATE_TRUNC('month', p.data)
-        UNION ALL
-        SELECT DATE_TRUNC('month', n.dataemissao) as mes, SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor
-        FROM nfs n
-        JOIN nfs_item ni ON ni.idnfs = n.idnfs
-        WHERE n.status = 2 AND n.idtransacao = 1 AND n.dataemissao BETWEEN :data_inicio AND :data_fim
-        ";
-
-        if (!empty($filters['filial'])) {
-            $timeSql .= " AND n.idfilial = :filial";
-        }
-
-        $timeSql .= "
-        GROUP BY DATE_TRUNC('month', n.dataemissao)
-        )
-        SELECT TO_CHAR(meses.mes, 'YYYY-MM') as periodo, COALESCE(SUM(vendas_mes.valor), 0) as valor
-        FROM meses LEFT JOIN vendas_mes ON vendas_mes.mes = meses.mes
-        GROUP BY meses.mes ORDER BY meses.mes
-        ";
-
-        $timeStmt = $this->pdo->prepare($timeSql);
-        $timeStmt->bindValue(':data_inicio', $dataInicio);
-        $timeStmt->bindValue(':data_fim', $dataFim);
-        if (!empty($filters['filial'])) {
-            $timeStmt->bindValue(':filial', $filters['filial']);
-        }
-        $timeStmt->execute();
-        $timeData = $timeStmt->fetchAll(\PDO::FETCH_ASSOC);
-
-        $totalsFormatted = [
-            'valor_bruto' => floatval($totals['valor_total'] ?? 0),
-            'quantidade' => floatval($totals['quantidade_total'] ?? 0),
-            'peso' => floatval($totals['peso_total'] ?? 0),
-            'comissao' => floatval($totals['comissao_total'] ?? 0)
-        ];
-
-        return $this->jsonResponse($response, [
-            'success' => true,
-            'data' => $data,
-            'totals' => $totalsFormatted,
-            'time_series' => ['labels' => array_column($timeData, 'periodo'), 'values' => array_column($timeData, 'valor')],
-            'row_dimension_label' => $rowDimension,
-            'warning' => $warning
-        ]);
-    } catch (\Exception $e) {
-        error_log('Erro getData: ' . $e->getMessage());
-        return $this->jsonResponse($response, ['success' => false, 'error' => $e->getMessage()], 500);
-    }
-}
-
- /**
- * POST /v1/vendas/cubo/ranking - CORRIGIDO COM HIERARQUIA
- */
- public function getRanking(Request $request, Response $response): Response
- {
-    try {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $dimension = $input['dimension'] ?? 'cliente';
-        $limit = (int)($input['limit'] ?? 10);
-        $filters = $input['filters'] ?? [];
-        
-        // ✅ Obtém permissões do usuário
-        $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
-        $permissoes = $this->getUserPermissions($uid);
-
-        $dataInicio = $filters['data_inicio'] ?? date('Y-m-01');
-        $dataFim = $filters['data_fim'] ?? date('Y-m-t');
-
-        $dimMap = [
-            'cliente' => 'cliente', 
-            'representante' => 'representante',
-            'vendedor' => 'representante', 
-            'supervisor' => 'supervisor',
-            'produto' => 'produto', 
-            'marca' => 'marca', 
-            'regiao' => 'regiao'
-        ];
-        $dbDimension = $dimMap[$dimension] ?? 'cliente';
-
-        // ✅ Monta filtro de gestores (hierarquia)
-        $whereGestorPedido = "";
-        $whereGestorNF = "";
-        
-        if (!empty($filters['supervisor'])) {
-            // Usuário selecionou um gestor específico
-            $whereGestorPedido = " AND p.idsupervisor = :supervisor";
-            $whereGestorNF = " AND n.idsupervisor = :supervisor";
-        } elseif (!empty($permissoes['gestores']) && !$permissoes['is_admin']) {
-            // Usuário NÃO selecionou gestor, mas tem restrições → filtra pelos liberados
-            $inG = implode(',', array_map('intval', $permissoes['gestores']));
-            $whereGestorPedido = " AND p.idsupervisor IN ($inG)";
-            $whereGestorNF = " AND n.idsupervisor IN ($inG)";
-        }
-        // Se for admin sem restrições, where fica vazio (vê tudo)
-
-        $sql = "
-        SELECT {$dbDimension} as nome, SUM(valor_total) as valor
-        FROM (
-                -- PEDIDOS
-                SELECT 
-                c.fantasia as cliente,
-                vend.fantasia as representante,
-                sup.razao as supervisor,
-                i.descricao as produto,
-                m.descricao as marca,
-                rg.descricao as regiao,
-                SUM(pi.qt * pi.valor) as valor_total
-                FROM pedido p
-                JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-                JOIN item i ON i.iditem = pi.iditem
-                JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-                JOIN cliente cli ON cli.idcliforemp = p.idcliforemp
-                JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
-                LEFT JOIN cliforemp sup ON sup.idcliforemp = p.idsupervisor
-                LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
-                LEFT JOIN marca m ON m.idmarca = i.idmarca
-                WHERE p.status IN (1,4) 
-                AND p.idtransacao IN (1,17) 
-                AND p.data BETWEEN :data_inicio AND :data_fim
-                $whereGestorPedido
-                ";
-
-        // Filtro de filial
-                if (!empty($filters['filial'])) {
-                    $sql .= " AND p.idfilial = :filial";
-                }
-                
-        // Filtro de representante
-                if (!empty($filters['representante'])) {
-                    $sql .= " AND p.idvendrepre = :representante";
-                }
-
-                $sql .= "
-                GROUP BY c.fantasia, vend.fantasia, sup.razao, i.descricao, m.descricao, rg.descricao
-
-                UNION ALL
-
-                -- NOTAS FISCAIS
-                SELECT 
-                c.fantasia,
-                vend.fantasia,
-                sup.razao,
-                i.descricao,
-                m.descricao,
-                rg.descricao,
-                SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total
-                FROM nfs n
-                JOIN nfs_item ni ON ni.idnfs = n.idnfs
-                JOIN item i ON i.iditem = ni.iditem
-                JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-                JOIN cliente cli ON cli.idcliforemp = n.idcliforemp
-                JOIN cliforemp vend ON vend.idcliforemp = n.idvendrepre
-                LEFT JOIN cliforemp sup ON sup.idcliforemp = n.idsupervisor
-                LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
-                LEFT JOIN marca m ON m.idmarca = i.idmarca
-                WHERE n.status = 2 
-                AND n.idtransacao = 1 
-                AND n.dataemissao BETWEEN :data_inicio AND :data_fim
-                $whereGestorNF
-                ";
-
-        // Filtro de filial para NFs
-                if (!empty($filters['filial'])) {
-                    $sql .= " AND n.idfilial = :filial";
-                }
-                
-        // Filtro de representante para NFs
-                if (!empty($filters['representante'])) {
-                    $sql .= " AND n.idvendrepre = :representante";
-                }
-
-                $sql .= "
-                GROUP BY c.fantasia, vend.fantasia, sup.razao, i.descricao, m.descricao, rg.descricao
-                ) AS dados
-                WHERE {$dbDimension} IS NOT NULL AND {$dbDimension} != ''
-                GROUP BY {$dbDimension}
-                ORDER BY valor DESC 
-                LIMIT {$limit}
-                ";
-
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->bindValue(':data_inicio', $dataInicio);
-                $stmt->bindValue(':data_fim', $dataFim);
-                
-                if (!empty($filters['filial'])) {
-                    $stmt->bindValue(':filial', $filters['filial']);
-                }
-                if (!empty($filters['supervisor'])) {
-                    $stmt->bindValue(':supervisor', (int)$filters['supervisor'], \PDO::PARAM_INT);
-                }
-                if (!empty($filters['representante'])) {
-                    $stmt->bindValue(':representante', $filters['representante']);
-                }
-                
-                $stmt->execute();
-
-                $ranking = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-                
-        // Calcula percentual de cada item
-                $total = array_sum(array_column($ranking, 'valor'));
-                foreach ($ranking as &$item) {
-                    $item['percentual'] = $total > 0 ? round(($item['valor'] / $total) * 100, 2) : 0;
-                }
-
-                return $this->jsonResponse($response, [
-                    'success' => true, 
-                    'ranking' => $ranking, 
-                    'total_geral' => $total
-                ]);
-                
-            } catch (\Exception $e) {
-                error_log('Erro ranking: ' . $e->getMessage());
-                return $this->jsonResponse($response, [
-                    'success' => false, 
-                    'error' => $e->getMessage()
-                ], 500);
-            }
-        }
-
 
     /**
-     * POST /v1/vendas/cubo/exportar
-     */
-    public function exportar(Request $request, Response $response): Response
-    {
-        try {
-            $input = json_decode($request->getBody()->getContents(), true) ?? [];
-            $rowDimension = $input['row_dimension'] ?? 'data_documento';
-            $metrics = $input['metrics'] ?? ['valor_total'];
-            $filters = $input['filters'] ?? [];
-            $user = $request->getAttribute('user');
-            $uid = $user['uid'] ?? 0;
-            
-            $dataInicio = $filters['data_inicio'] ?? date('Y-m-01');
-            $dataFim = $filters['data_fim'] ?? date('Y-m-t');
-            $permissoes = $this->getUserPermissions($uid);
-            
-            $rowDimMap = [
-                'data_documento' => 'data_documento',
-                'data_nf' => 'data_documento',
-                'cliente' => 'cliente',
-                'representante' => 'representante',
-                'filial' => 'filial'
-            ];
-            
-            $dbRowDimension = $rowDimMap[$rowDimension] ?? 'data_documento';
-            
-            $metricSelect = [];
-            foreach ($metrics as $metric) {
-                if ($metric === 'valor_total' || $metric === 'valor_bruto') {
-                    $metricSelect[] = "SUM(COALESCE(valor_total, 0)) AS valor_total";
-                } elseif ($metric === 'quantidade_total' || $metric === 'quantidade') {
-                    $metricSelect[] = "SUM(COALESCE(quantidade_total, 0)) AS quantidade_total";
-                } elseif ($metric === 'peso_total' || $metric === 'peso') {
-                    $metricSelect[] = "SUM(COALESCE(peso_total, 0)) AS peso_total";
-                } else {
-                    $metricSelect[] = "SUM(COALESCE(valor_total, 0)) AS valor_total";
-                }
-            }
-            
-            $sql = "
-            SELECT 
-            {$dbRowDimension} AS dimensao,
-            " . implode(", ", $metricSelect) . "
-            FROM (
-            SELECT 
-            p.data as data_documento,
-            c.fantasia as cliente,
-            vend.fantasia as representante,
-            f.nome as filial,
-            SUM(pi.qt * pi.valor) as valor_total,
-            SUM(pi.qt) as quantidade_total,
-            SUM(pi.qt * i.pesobruto) as peso_total
-            FROM pedido p
-            JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-            JOIN item i ON i.iditem = pi.iditem
-            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-            JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
-            JOIN filial f ON f.idfilial = p.idfilial
-            WHERE p.status IN (1,4)
-            AND p.idtransacao IN (1,17)
-            AND p.data BETWEEN :data_inicio AND :data_fim
-            ";
-            
-            if (!empty($permissoes['filiais'])) {
-                $in = implode(',', array_map('intval', $permissoes['filiais']));
-                $sql .= " AND p.idfilial IN ({$in})";
-            }
-            
-            $sql .= "
-            GROUP BY p.data, c.fantasia, vend.fantasia, f.nome
-
-            UNION ALL
-
-            SELECT 
-            n.dataemissao as data_documento,
-            c.fantasia,
-            vend.fantasia,
-            f.nome,
-            SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total,
-            SUM(ni.qt) as quantidade_total,
-            SUM(ni.pesoliquido * ni.qt) as peso_total
-            FROM nfs n
-            JOIN nfs_item ni ON ni.idnfs = n.idnfs
-            JOIN item i ON i.iditem = ni.iditem
-            JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-            JOIN cliforemp vend ON vend.idcliforemp = n.idvendrepre
-            JOIN filial f ON f.idfilial = n.idfilial
-            WHERE n.status = 2
-            AND n.idtransacao = 1
-            AND n.dataemissao BETWEEN :data_inicio AND :data_fim
-            ";
-            
-            if (!empty($permissoes['filiais'])) {
-                $in = implode(',', array_map('intval', $permissoes['filiais']));
-                $sql .= " AND n.idfilial IN ({$in})";
-            }
-            
-            $sql .= "
-            GROUP BY n.dataemissao, c.fantasia, vend.fantasia, f.nome
-            ) AS dados
-            GROUP BY {$dbRowDimension}
-            ORDER BY {$dbRowDimension} DESC
-            ";
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':data_inicio', $dataInicio);
-            $stmt->bindValue(':data_fim', $dataFim);
-            $stmt->execute();
-            $data = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            $filename = "cubo_vendas_" . date('Ymd_His') . ".csv";
-            $output = fopen('php://temp', 'w');
-            
-            $headers = ['Dimensao'];
-            foreach ($metrics as $metric) {
-                $headers[] = $metric;
-            }
-            fputcsv($output, $headers, ';');
-            
-            foreach ($data as $row) {
-                $line = [$row['dimensao']];
-                foreach ($metrics as $metric) {
-                    $line[] = $row[$metric] ?? 0;
-                }
-                fputcsv($output, $line, ';');
-            }
-            
-            rewind($output);
-            $csvContent = stream_get_contents($output);
-            fclose($output);
-            
-            $response->getBody()->write($csvContent);
-            return $response
-            ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
-            ->withHeader('Content-Disposition', "attachment; filename=\"{$filename}\"");
-        } catch (\Exception $e) {
-            return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);
-        }
-    }
-    
-    /**
-     * POST /v1/vendas/cubo/filtros-contextuais
+     * POST /v1/vendas/cubo/filtros-contextuais  {idfilial, idsupervisor, idrepresentante}
+     * Saída: options[campo] = [{value: <rótulo>, label: <rótulo>}] (contrato legado, usado também pelo Dashboard).
      */
     public function getFiltrosContextuais(Request $request, Response $response): Response
     {
         try {
-            $input = json_decode($request->getBody()->getContents(), true) ?? [];
-            $idfilial = intval($input['idfilial'] ?? 0);
-            $idsupervisor = intval($input['idsupervisor'] ?? 0);
-            $idrepresentante = intval($input['idrepresentante'] ?? 0);
-            
-            $sql = "
-            SELECT DISTINCT 
-            c.fantasia as cliente,
-            vend.fantasia as representante,
-            sup.razao as supervisor,
-            rg.descricao as regiao,
-            cid.uf as estado,
-            cid.descricao as cidade,
-            g.descricao as grupo,
-            sg.descricao as subgrupo,
-            i.descricao as produto,
-            m.descricao as marca
-            FROM pedido p
-            JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-            JOIN item i ON i.iditem = pi.iditem
-            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-            JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre and vend.inativo = 'N'
-            LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp
-            LEFT JOIN cliforemp sup ON sup.idcliforemp = p.idsupervisor
-            LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
-            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
-            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
-            LEFT JOIN grupo sg ON sg.idgrupo = g.idgrupopai
-            LEFT JOIN marca m ON m.idmarca = i.idmarca
-            WHERE 1=1
-            ";
-            
-            $params = [];
-            
-            if ($idfilial > 0) {
-                $sql .= " AND p.idfilial = :idfilial";
-                $params[':idfilial'] = $idfilial;
-            }
-            if ($idsupervisor > 0) {
-                $sql .= " AND p.idsupervisor = :idsupervisor";
-                $params[':idsupervisor'] = $idsupervisor;
-            }
-            if ($idrepresentante > 0) {
-                $sql .= " AND p.idvendrepre = :idrepresentante";
-                $params[':idrepresentante'] = $idrepresentante;
-            }
-            
-            $sql .= " LIMIT 2000";
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            $options = [
-                'cliente' => [],
-                'representante' => [],
-                'supervisor' => [],
-                'regiao' => [],
-                'estado' => [],
-                'cidade' => [],
-                'grupo' => [],
-                'subgrupo' => [],
-                'produto' => [],
-                'marca' => []
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+            $idsupervisor = (int)($input['idsupervisor'] ?? 0);
+            $idrepresentante = (int)($input['idrepresentante'] ?? 0);
+            [$di, $df] = $this->periodoLookup($input);
+
+            $f = $this->filtrosVazios($di, $df);
+            $f['filiais'] = $scope->resolverFiliais($idfilial > 0 ? $idfilial : null);
+            $f['gestores'] = $scope->resolverGestores($idsupervisor > 0 ? $idsupervisor : null);
+            $f['representantes'] = $idrepresentante > 0 ? [$idrepresentante] : [];
+
+            $mapa = [
+                'cliente' => 'cliente', 'representante' => 'representante', 'supervisor' => 'supervisor',
+                'regiao' => 'regiao', 'estado' => 'uf', 'cidade' => 'cidade', 'grupo' => 'grupo',
+                'subgrupo' => 'subgrupo', 'produto' => 'produto', 'marca' => 'marca',
             ];
-            
-            foreach ($dados as $row) {
-                foreach ($options as $key => $value) {
-                    if (!empty($row[$key]) && !in_array($row[$key], $options[$key])) {
-                        $options[$key][] = $row[$key];
-                    }
-                }
-            }
-            
+
+            $params = [];
+            $base = $this->baseSql($f, $params);
             $formatted = [];
-            foreach ($options as $key => $values) {
-                $formatted[$key] = array_map(function($v) use ($key) {
+            foreach ($mapa as $key => $col) {
+                $stmt = $this->pdo->prepare("WITH base AS ($base) SELECT DISTINCT $col AS v FROM base WHERE $col IS NOT NULL AND $col <> '' ORDER BY v LIMIT 500");
+                $stmt->execute($params);
+                $formatted[$key] = array_map(static function ($v) {
                     return ['value' => $v, 'label' => $v];
-                }, array_values($values));
+                }, $stmt->fetchAll(\PDO::FETCH_COLUMN));
             }
-            
+
             return $this->jsonResponse($response, ['success' => true, 'options' => $formatted]);
-        } catch (\Exception $e) {
-            error_log('Erro getFiltrosContextuais: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'options' => []]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getFiltrosContextuais', ['success' => false, 'options' => []]);
         }
     }
-    
-    /**
-     * POST /v1/vendas/cubo/detalhes - CORRIGIDO
-     */
-    public function getDetalhes(Request $request, Response $response): Response
-    {
-        try {
-            $input = json_decode($request->getBody()->getContents(), true) ?? [];
-            $dimensao = $input['dimensao'] ?? 'data_documento';
-            $valor = $input['valor'] ?? '';
-            $filters = $input['filters'] ?? [];
-            
-            $dataInicio = $filters['data_inicio'] ?? date('Y-m-01');
-            $dataFim = $filters['data_fim'] ?? date('Y-m-t');
-            
-            $sql = "
-            SELECT 
-            data_documento as data_nf,
-            numero_documento as numero_nf,
-            cliente,
-            produto,
-            valor_total as valor_bruto,
-            quantidade_total as quantidade,
-            peso_total as peso,
-            comissao_total as comissao,
-            tipo_documento
-            FROM (
-            SELECT 
-            p.data as data_documento,
-            p.idpedido as numero_documento,
-            c.fantasia as cliente,
-            i.descricao as produto,
-            SUM(pi.qt * pi.valor) as valor_total,
-            SUM(pi.qt) as quantidade_total,
-            SUM(pi.qt * i.pesobruto) as peso_total,
-            0 as comissao_total,
-            'PEDIDO' as tipo_documento
-            FROM pedido p
-            JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
-            JOIN item i ON i.iditem = pi.iditem
-            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
-            WHERE p.data BETWEEN :data_inicio AND :data_fim
-            ";
-            
-            if ($dimensao === 'data_documento' || $dimensao === 'data_nf') {
-                $sql .= " AND p.data = :valor";
-            } elseif ($dimensao === 'cliente') {
-                $sql .= " AND c.fantasia = :valor";
-            } elseif ($dimensao === 'representante' || $dimensao === 'vendedor') {
-                $sql .= " AND p.idvendrepre = :valor";
-            } elseif ($dimensao === 'supervisor') {
-                $sql .= " AND p.idsupervisor = :valor";
-            } elseif ($dimensao === 'produto') {
-                $sql .= " AND i.descricao = :valor";
-            }
-            
-            // Filtros adicionais
-            if (!empty($filters['filial'])) {
-                $sql .= " AND p.idfilial = :filial";
-            }
-            if (!empty($filters['supervisor'])) {
-                $sql .= " AND p.idsupervisor = :supervisor";
-            }
-            if (!empty($filters['representante'])) {
-                $sql .= " AND p.idvendrepre = :representante";
-            }
-            
-            $sql .= "
-            GROUP BY p.data, p.idpedido, c.fantasia, i.descricao
-
-            UNION ALL
-
-            SELECT 
-            n.dataemissao as data_documento,
-            n.idnfs as numero_documento,
-            c.fantasia as cliente,
-            i.descricao as produto,
-            SUM(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total,
-            SUM(ni.qt) as quantidade_total,
-            SUM(ni.pesoliquido * ni.qt) as peso_total,
-            SUM(COALESCE(ni.valor_comissao,0)) as comissao_total,
-            'NF' as tipo_documento
-            FROM nfs n
-            JOIN nfs_item ni ON ni.idnfs = n.idnfs
-            JOIN item i ON i.iditem = ni.iditem
-            JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-            WHERE n.dataemissao BETWEEN :data_inicio AND :data_fim
-            ";
-            
-            if ($dimensao === 'data_documento' || $dimensao === 'data_nf') {
-                $sql .= " AND n.dataemissao = :valor";
-            } elseif ($dimensao === 'cliente') {
-                $sql .= " AND c.fantasia = :valor";
-            } elseif ($dimensao === 'representante' || $dimensao === 'vendedor') {
-                $sql .= " AND n.idvendrepre = :valor";
-            } elseif ($dimensao === 'supervisor') {
-                $sql .= " AND n.idsupervisor = :valor";
-            } elseif ($dimensao === 'produto') {
-                $sql .= " AND i.descricao = :valor";
-            }
-            
-            if (!empty($filters['filial'])) {
-                $sql .= " AND n.idfilial = :filial";
-            }
-            if (!empty($filters['supervisor'])) {
-                $sql .= " AND n.idsupervisor = :supervisor";
-            }
-            if (!empty($filters['representante'])) {
-                $sql .= " AND n.idvendrepre = :representante";
-            }
-            
-            $sql .= "
-            GROUP BY n.dataemissao, n.idnfs, c.fantasia, i.descricao
-            ) AS detalhes
-            ORDER BY data_documento DESC
-            LIMIT 500
-            ";
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->bindValue(':valor', $valor);
-            $stmt->bindValue(':data_inicio', $dataInicio);
-            $stmt->bindValue(':data_fim', $dataFim);
-            
-            if (!empty($filters['filial'])) {
-                $stmt->bindValue(':filial', $filters['filial']);
-            }
-            if (!empty($filters['supervisor'])) {
-                $stmt->bindValue(':supervisor', (int)$filters['supervisor'], \PDO::PARAM_INT);
-            }
-            if (!empty($filters['representante'])) {
-                $stmt->bindValue(':representante', $filters['representante']);
-            }
-            
-            $stmt->execute();
-            $detalhes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            $totais = ['valor_bruto' => 0, 'quantidade' => 0, 'peso' => 0, 'comissao' => 0];
-            foreach ($detalhes as $item) {
-                $totais['valor_bruto'] += floatval($item['valor_bruto'] ?? 0);
-                $totais['quantidade'] += floatval($item['quantidade'] ?? 0);
-                $totais['peso'] += floatval($item['peso'] ?? 0);
-                $totais['comissao'] += floatval($item['comissao'] ?? 0);
-            }
-            
-            return $this->jsonResponse($response, ['success' => true, 'detalhes' => $detalhes, 'totais' => $totais]);
-        } catch (\Exception $e) {
-            error_log('Erro getDetalhes: ' . $e->getMessage());
-            return $this->jsonResponse($response, ['success' => false, 'error' => $e->getMessage()], 500);
-        }
-    }
-    /**
- * POST /v1/vendas/cubo/itens-documento
- * Retorna os itens de um pedido ou NF específico
- */
-    public function getItensDocumento(Request $request, Response $response): Response
-    {
-        try {
-            $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $tipo = $input['tipo'] ?? 'PEDIDO'; // PEDIDO ou NF
-        $numeroDocumento = intval($input['numero_documento'] ?? 0);
-        
-        if ($tipo === 'PEDIDO') {
-            $sql = "
-            SELECT 
-            i.descricao as produto,
-            pi.qt as quantidade,
-            pi.valor as valor_unitario,
-            (pi.qt * pi.valor) as valor_total,
-            (pi.qt * i.pesobruto) as peso,
-            g.descricao as grupo
-            FROM pedido_item pi
-            JOIN item i ON i.iditem = pi.iditem
-            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
-            WHERE pi.idpedido = :numero
-            AND pi.ativo = 'S'
-            ORDER BY i.descricao
-            ";
-        } else {
-            $sql = "
-            SELECT 
-            i.descricao as produto,
-            ni.qt as quantidade,
-            ni.valor_unitario,
-            (ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) as valor_total,
-            (ni.pesoliquido * ni.qt) as peso,
-            g.descricao as grupo,
-            COALESCE(ni.valor_comissao,0) as comissao
-            FROM nfs_item ni
-            JOIN item i ON i.iditem = ni.iditem
-            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
-            WHERE ni.idnfs = :numero
-            ORDER BY i.descricao
-            ";
-        }
-        
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute(['numero' => $numeroDocumento]);
-        $itens = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        $totais = [
-            'valor_bruto' => 0,
-            'quantidade' => 0,
-            'peso' => 0
-        ];
-        
-        foreach ($itens as $item) {
-            $totais['valor_bruto'] += floatval($item['valor_total'] ?? 0);
-            $totais['quantidade'] += floatval($item['quantidade'] ?? 0);
-            $totais['peso'] += floatval($item['peso'] ?? 0);
-        }
-        
-        return $this->jsonResponse($response, [
-            'success' => true,
-            'itens' => $itens,
-            'totais' => $totais
-        ]);
-    } catch (\Exception $e) {
-        error_log('Erro getItensDocumento: ' . $e->getMessage());
-        return $this->jsonResponse($response, ['success' => false, 'error' => $e->getMessage()], 500);
-    }
-}
 
     /**
-     * GET /v1/vendas/cubo/filters/{field}
+     * GET /v1/vendas/cubo/filters/{field}?q=&data_inicio=&data_fim=
+     * Opções (value = ID, label = descrição) dos filtros avançados, dentro do escopo do usuário.
      */
     public function getFilterOptions(Request $request, Response $response, array $args): Response
     {
         try {
-            $field = $args['field'];
-            
-            $allowedFields = ['cliente', 'representante', 'supervisor', 'regiao', 'estado', 'cidade', 'grupo', 'subgrupo', 'tipo_produto', 'marca', 'produto', 'filial'];
-            if (!in_array($field, $allowedFields)) {
-                return $this->jsonResponse($response, ['options' => []]);
+            $field = $args['field'] ?? '';
+            if (!in_array($field, self::CAMPOS_FILTRO, true)) {
+                return $this->jsonResponse($response, ['options' => [], 'error' => 'Campo de filtro inválido.'], 400);
             }
-            
-            // Mapeia o campo para a tabela correta
-            $fieldMap = [
-                'cliente' => ['table' => 'c', 'field' => 'fantasia', 'join' => 'JOIN cliforemp c ON c.idcliforemp = p.idcliforemp'],
-                'representante' => ['table' => 'vend', 'field' => 'fantasia', 'join' => 'JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre'],
-                'supervisor' => ['table' => 'sup', 'field' => 'razao', 'join' => 'LEFT JOIN cliforemp sup ON sup.idcliforemp = p.idsupervisor'],
-                'filial' => ['table' => 'f', 'field' => 'nome', 'join' => 'JOIN filial f ON f.idfilial = p.idfilial']
-            ];
-            
-            $map = $fieldMap[$field] ?? ['table' => 'p', 'field' => $field, 'join' => ''];
-            
-            $sql = "
-            SELECT DISTINCT {$map['table']}.{$map['field']} as value, {$map['table']}.{$map['field']} as label
-            FROM pedido p
-            {$map['join']}
-            WHERE {$map['table']}.{$map['field']} IS NOT NULL AND {$map['table']}.{$map['field']} != ''
-            ORDER BY {$map['table']}.{$map['field']}
-            LIMIT 200
-            ";
-            
-            $stmt = $this->pdo->query($sql);
-            $options = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
+
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $qs = $request->getQueryParams();
+
+            if ($field === 'filial') {
+                $opts = [];
+                foreach ($this->listarFiliais($scope) as $fl) {
+                    $opts[] = ['value' => (string)$fl['idfilial'], 'label' => $fl['nome']];
+                }
+                return $this->jsonResponse($response, ['options' => $opts]);
+            }
+
+            [$di, $df] = $this->periodoLookup($qs);
+            $f = $this->filtrosVazios($di, $df);
+            $f['filiais'] = $scope->resolverFiliais(null);
+            $f['gestores'] = $scope->resolverGestores(null);
+
+            $dim = self::DIMENSOES[$field];
+            $params = [];
+            $base = $this->baseSql($f, $params);
+            $where = "{$dim['id']} IS NOT NULL AND {$dim['txt']} IS NOT NULL";
+            $q = trim((string)($qs['q'] ?? ''));
+            if ($q !== '') {
+                $where .= " AND {$dim['txt']} ILIKE :q";
+                $params['q'] = '%' . $q . '%';
+            }
+            $stmt = $this->pdo->prepare("WITH base AS ($base) SELECT DISTINCT {$dim['id']} AS value, {$dim['txt']} AS label FROM base WHERE $where ORDER BY label LIMIT 1000");
+            $stmt->execute($params);
+            $options = array_map(static function ($r) {
+                return ['value' => (string)$r['value'], 'label' => (string)$r['label']];
+            }, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+
             return $this->jsonResponse($response, ['options' => $options]);
-        } catch (\Exception $e) {
-            return $this->jsonResponse($response, ['options' => []]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getFilterOptions', ['options' => []]);
         }
     }
 
- /**
- * POST /v1/vendas/cubo/gestores
- * Retorna apenas os gestores liberados para o usuário
- */
- public function getGestores(Request $request, Response $response): Response
- {
-    try {
-        $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
-        $permissoes = $this->getUserPermissions($uid);
+    // ======================================================================
+    // DADOS / TOTAIS / SÉRIE / RANKING
+    // ======================================================================
 
-        // Se for admin sem restrições, retorna todos
-        if ($permissoes['is_admin'] || empty($permissoes['gestores'])) {
-            $sql = "SELECT DISTINCT 
-            idgestor as id, 
-            gestor as nome
-            FROM vw_gestor_repre
-            WHERE inativo = 'N'
-            ORDER BY nome";
-            $stmt = $this->pdo->query($sql);
-        } else {
-            // Filtra apenas os gestores liberados
-            $inG = implode(',', array_map('intval', $permissoes['gestores']));
-            $sql = "SELECT DISTINCT 
-            idgestor as id, 
-            gestor as nome
-            FROM vw_gestor_repre
-            WHERE idgestor IN ($inG)
-            AND inativo = 'N'
-            ORDER BY nome";
-            $stmt = $this->pdo->query($sql);
+    /**
+     * POST /v1/vendas/cubo/data
+     */
+    public function getData(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $dimKey = $this->dimensao($input['row_dimension'] ?? 'data_documento');
+            $metrics = $this->metricas($input['metrics'] ?? null);
+            $limit = max(1, min(1000, (int)($input['limit'] ?? 500)));
+            [$f, $warning] = $this->filtros($scope, $input['filters'] ?? []);
+
+            $rows = $this->consultarDimensao($f, $dimKey, $metrics, $limit);
+            $totals = $this->consultarTotais($f);
+
+            $anterior = $this->periodoAnterior($f);
+            $fAnt = $f;
+            $fAnt['di'] = $anterior[0];
+            $fAnt['df'] = $anterior[1];
+            $totalsAnt = $this->consultarTotais($fAnt);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'data' => $rows,
+                'totals' => $totals,
+                'comparativo' => $this->comparativo($totals, $totalsAnt, $anterior),
+                'time_series' => $this->consultarSerie($f),
+                'row_dimension_label' => self::DIMENSOES[$dimKey]['label'],
+                'periodo' => ['data_inicio' => $f['di'], 'data_fim' => $f['df']],
+                'truncado' => count($rows) >= $limit,
+                'warning' => $warning,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getData');
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/ranking  {dimension, metric, limit, filters}
+     */
+    public function getRanking(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $dimKey = $this->dimensao($input['dimension'] ?? 'cliente');
+            $metric = $this->metricas([$input['metric'] ?? 'valor_total'])[0];
+            $limit = max(1, min(100, (int)($input['limit'] ?? 10)));
+            [$f, $warning] = $this->filtros($scope, $input['filters'] ?? []);
+
+            $rows = $this->consultarDimensao($f, $dimKey, [$metric], $limit, true);
+            $totais = $this->consultarTotais($f);
+            $totalMetric = $this->totalDaMetrica($totais, $metric);
+
+            $ranking = [];
+            foreach ($rows as $r) {
+                $v = (float)$r[$metric];
+                $ranking[] = [
+                    'id' => $r['dimensao_id'],
+                    'nome' => $r['dimensao'],
+                    'valor' => $v,
+                    'percentual' => $totalMetric > 0 ? round(($v / $totalMetric) * 100, 2) : 0,
+                ];
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'ranking' => $ranking,
+                'total_geral' => $totalMetric,
+                'dimension' => $dimKey,
+                'metric' => $metric,
+                'warning' => $warning,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getRanking');
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/exportar - CSV com os mesmos filtros/dimensão/métricas da consulta principal.
+     */
+    public function exportar(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $dimKey = $this->dimensao($input['row_dimension'] ?? 'data_documento');
+            $metrics = $this->metricas($input['metrics'] ?? null);
+            [$f] = $this->filtros($scope, $input['filters'] ?? []);
+
+            $rows = $this->consultarDimensao($f, $dimKey, $metrics, 50000);
+
+            $out = fopen('php://temp', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
+            $headers = [self::DIMENSOES[$dimKey]['label']];
+            foreach ($metrics as $m) {
+                $headers[] = self::METRICAS[$m]['label'];
+            }
+            fputcsv($out, $headers, ';');
+
+            foreach ($rows as $row) {
+                $line = [$this->csvTexto($row['dimensao'])];
+                foreach ($metrics as $m) {
+                    $line[] = $m === 'qtd_documentos'
+                        ? (string)(int)$row[$m]
+                        : number_format((float)$row[$m], 2, ',', '');
+                }
+                fputcsv($out, $line, ';');
+            }
+            rewind($out);
+            $csv = stream_get_contents($out);
+            fclose($out);
+
+            $response->getBody()->write($csv);
+            return $response
+                ->withHeader('Content-Type', 'text/csv; charset=UTF-8')
+                ->withHeader('Content-Disposition', 'attachment; filename="cubo_vendas_' . date('Ymd_His') . '.csv"');
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'exportar');
+        }
+    }
+
+    // ======================================================================
+    // DETALHES / ITENS
+    // ======================================================================
+
+    /**
+     * POST /v1/vendas/cubo/detalhes  {dimensao, id, valor, filters}
+     * "id" é o identificador retornado em data[].dimensao_id (null => "(Não informado)").
+     * Usa a mesma base (status/transação/escopo/filtros) do resumo.
+     */
+    public function getDetalhes(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $dimKey = $this->dimensao($input['dimensao'] ?? 'data_documento');
+            $dim = self::DIMENSOES[$dimKey];
+            [$f] = $this->filtros($scope, $input['filters'] ?? []);
+
+            $hasId = array_key_exists('id', $input);
+            $idDrill = $hasId ? $input['id'] : ($input['valor'] ?? null);
+
+            $params = [];
+            $base = $this->baseSql($f, $params);
+            $cond = '1=1';
+            if ($idDrill === null || $idDrill === '') {
+                if ($hasId) {
+                    $cond = "{$dim['id']} IS NULL";
+                } else {
+                    throw new \InvalidArgumentException('Valor da dimensão não informado.');
+                }
+            } else {
+                if ($dim['kind'] === 'int') {
+                    if (!is_numeric($idDrill) || (string)(int)$idDrill !== (string)(int)$idDrill) {
+                        throw new \InvalidArgumentException('Identificador inválido para a dimensão.');
+                    }
+                    $params['drill'] = (int)$idDrill;
+                    $cond = "{$dim['id']} = :drill";
+                } elseif ($dim['kind'] === 'date') {
+                    $this->validarData((string)$idDrill);
+                    $params['drill'] = (string)$idDrill;
+                    $cond = "{$dim['id']} = CAST(:drill AS date)";
+                } else {
+                    $params['drill'] = (string)$idDrill;
+                    $cond = "{$dim['id']} = :drill";
+                }
+            }
+
+            $limite = 500;
+            $sql = "
+                WITH base AS ($base)
+                SELECT data_documento AS data_nf,
+                       documento AS numero_nf,
+                       MAX(numero_fiscal) AS numero_fiscal,
+                       cliente,
+                       produto,
+                       SUM(valor) AS valor_bruto,
+                       SUM(qtd) AS quantidade,
+                       SUM(peso) AS peso,
+                       SUM(comissao) AS comissao,
+                       tipo_documento
+                FROM base
+                WHERE $cond
+                GROUP BY data_documento, documento, cliente, produto, tipo_documento
+                ORDER BY data_documento DESC, documento DESC, produto
+                LIMIT $limite
+            ";
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $detalhes = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $sqlTot = "
+                WITH base AS ($base)
+                SELECT COALESCE(SUM(valor),0) AS valor_bruto, COALESCE(SUM(qtd),0) AS quantidade,
+                       COALESCE(SUM(peso),0) AS peso, COALESCE(SUM(comissao),0) AS comissao,
+                       COUNT(DISTINCT tipo_documento || ':' || documento) AS qtd_documentos
+                FROM base WHERE $cond
+            ";
+            $stmt = $this->pdo->prepare($sqlTot);
+            $stmt->execute($params);
+            $t = $stmt->fetch(\PDO::FETCH_ASSOC);
+            $totais = [
+                'valor_bruto' => (float)$t['valor_bruto'],
+                'quantidade' => (float)$t['quantidade'],
+                'peso' => (float)$t['peso'],
+                'comissao' => (float)$t['comissao'],
+                'qtd_documentos' => (int)$t['qtd_documentos'],
+            ];
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'detalhes' => $detalhes,
+                'totais' => $totais,
+                'truncado' => count($detalhes) >= $limite,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getDetalhes');
+        }
+    }
+
+    /**
+     * POST /v1/vendas/cubo/itens-documento  {tipo: PEDIDO|NF, numero_documento}
+     */
+    public function getItensDocumento(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+
+            $tipo = strtoupper((string)($input['tipo'] ?? 'PEDIDO'));
+            if (!in_array($tipo, ['PEDIDO', 'NF'], true)) {
+                throw new \InvalidArgumentException('Tipo de documento inválido.');
+            }
+            $numero = (int)($input['numero_documento'] ?? 0);
+            if ($numero <= 0) {
+                throw new \InvalidArgumentException('Número do documento inválido.');
+            }
+
+            if ($tipo === 'PEDIDO') {
+                $stmt = $this->pdo->prepare('SELECT idfilial, idsupervisor FROM pedido WHERE idpedido = :n AND status IN (1,4) AND idtransacao IN (1,17)');
+            } else {
+                $stmt = $this->pdo->prepare('SELECT idfilial, idsupervisor FROM nfs WHERE idnfs = :n AND status = 2 AND idtransacao = 1');
+            }
+            $stmt->execute(['n' => $numero]);
+            $cab = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$cab) {
+                return $this->jsonResponse($response, ['success' => false, 'error' => 'Documento não encontrado.'], 404);
+            }
+            if ($scope->filialRestrita() && !in_array((int)$cab['idfilial'], $scope->filiais, true)) {
+                return $this->jsonResponse($response, ['success' => false, 'error' => 'Acesso negado: documento fora do seu escopo.'], 403);
+            }
+            if ($scope->gestorRestrito() && !in_array((int)$cab['idsupervisor'], $scope->gestores, true)) {
+                return $this->jsonResponse($response, ['success' => false, 'error' => 'Acesso negado: documento fora do seu escopo.'], 403);
+            }
+
+            if ($tipo === 'PEDIDO') {
+                $sql = "
+                    SELECT i.descricao AS produto,
+                           GREATEST(pi.qt - COALESCE(pi.qtfaturado,0), 0) AS quantidade,
+                           pi.valor AS valor_unitario,
+                           GREATEST(pi.qt - COALESCE(pi.qtfaturado,0), 0) * pi.valor AS valor_total,
+                           GREATEST(pi.qt - COALESCE(pi.qtfaturado,0), 0) * COALESCE(i.pesoliquido,0) AS peso,
+                           COALESCE(gp.descricao, g.descricao) AS grupo,
+                           0 AS comissao
+                    FROM pedido_item pi
+                    JOIN item i ON i.iditem = pi.iditem
+                    LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+                    LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+                    WHERE pi.idpedido = :n AND pi.ativo = 'S'
+                    ORDER BY i.descricao
+                ";
+            } else {
+                $sql = "
+                    SELECT i.descricao AS produto,
+                           ni.qt AS quantidade,
+                           ni.valor AS valor_unitario,
+                           (ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0)) AS valor_total,
+                           (COALESCE(ni.pesoliquido,0) * ni.qt) AS peso,
+                           COALESCE(gp.descricao, g.descricao) AS grupo,
+                           COALESCE(ni.valor_comissao,0) AS comissao
+                    FROM nfs_item ni
+                    JOIN item i ON i.iditem = ni.iditem
+                    LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+                    LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+                    WHERE ni.idnfs = :n
+                    ORDER BY i.descricao
+                ";
+            }
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['n' => $numero]);
+            $itens = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $totais = ['valor_bruto' => 0, 'quantidade' => 0, 'peso' => 0, 'comissao' => 0];
+            foreach ($itens as $item) {
+                $totais['valor_bruto'] += (float)$item['valor_total'];
+                $totais['quantidade'] += (float)$item['quantidade'];
+                $totais['peso'] += (float)$item['peso'];
+                $totais['comissao'] += (float)$item['comissao'];
+            }
+
+            return $this->jsonResponse($response, ['success' => true, 'itens' => $itens, 'totais' => $totais]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, $e, 'getItensDocumento');
+        }
+    }
+
+    // ======================================================================
+    // CONSULTAS (todas partem da mesma base)
+    // ======================================================================
+
+    /**
+     * Base única em nível de item: pedidos em carteira (saldo não faturado) UNION ALL NFs faturadas.
+     * Escopo e filtros são aplicados aqui, em ambos os ramos.
+     */
+    private function baseSql(array $f, array &$params): string
+    {
+        $params['di'] = $f['di'];
+        $params['df'] = $f['df'];
+
+        $comum = '';
+        if (!empty($f['regioes'])) {
+            $comum .= ' AND cli.idregiao IN (' . $this->inList($f['regioes']) . ')';
+        }
+        if (!empty($f['ufs'])) {
+            $ph = [];
+            foreach (array_values($f['ufs']) as $i => $uf) {
+                $ph[] = ":uf$i";
+                $params["uf$i"] = $uf;
+            }
+            $comum .= ' AND cid.uf IN (' . implode(',', $ph) . ')';
+        }
+        if (!empty($f['cidades'])) {
+            $comum .= ' AND c.idcidade IN (' . $this->inList($f['cidades']) . ')';
+        }
+        if (!empty($f['grupos'])) {
+            $comum .= ' AND COALESCE(gp.idgrupo, g.idgrupo) IN (' . $this->inList($f['grupos']) . ')';
+        }
+        if (!empty($f['subgrupos'])) {
+            $comum .= ' AND g.idgrupo IN (' . $this->inList($f['subgrupos']) . ')';
+        }
+        if (!empty($f['tipos_produto'])) {
+            $comum .= ' AND i.tipo IN (' . $this->inList($f['tipos_produto']) . ')';
+        }
+        if (!empty($f['marcas'])) {
+            $comum .= ' AND i.idmarca IN (' . $this->inList($f['marcas']) . ')';
+        }
+        if (!empty($f['produtos'])) {
+            $comum .= ' AND i.iditem IN (' . $this->inList($f['produtos']) . ')';
         }
 
-        $gestores = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-        
-        error_log("Gestores encontrados: " . count($gestores));
+        $docP = '';
+        $docN = '';
+        if (!empty($f['filiais'])) {
+            $docP .= ' AND p.idfilial IN (' . $this->inList($f['filiais']) . ')';
+            $docN .= ' AND n.idfilial IN (' . $this->inList($f['filiais']) . ')';
+        }
+        if (!empty($f['gestores'])) {
+            $docP .= ' AND p.idsupervisor IN (' . $this->inList($f['gestores']) . ')';
+            $docN .= ' AND n.idsupervisor IN (' . $this->inList($f['gestores']) . ')';
+        }
+        if (!empty($f['representantes'])) {
+            $docP .= ' AND p.idvendrepre IN (' . $this->inList($f['representantes']) . ')';
+            $docN .= ' AND n.idvendrepre IN (' . $this->inList($f['representantes']) . ')';
+        }
+        if (!empty($f['clientes'])) {
+            $docP .= ' AND p.idcliforemp IN (' . $this->inList($f['clientes']) . ')';
+            $docN .= ' AND n.idcliforemp IN (' . $this->inList($f['clientes']) . ')';
+        }
+        if (!empty($f['tipos_pedido'])) {
+            $docP .= ' AND p.idtransacao IN (' . $this->inList($f['tipos_pedido']) . ')';
+            $docN .= ' AND pp.idtransacao IN (' . $this->inList($f['tipos_pedido']) . ')';
+        }
 
-        return $this->jsonResponse($response, ['gestores' => $gestores]);
-    } catch (\Exception $e) {
-        error_log('Erro getGestores: ' . $e->getMessage());
-        return $this->jsonResponse($response, ['gestores' => []]);
+        $saldo = 'GREATEST(pi.qt - COALESCE(pi.qtfaturado, 0), 0)';
+
+        return "
+            SELECT 'PEDIDO' AS tipo_documento, p.idpedido AS documento, CAST(NULL AS bigint) AS numero_fiscal,
+                   p.data AS data_documento,
+                   CASE p.status WHEN 1 THEN 'ABERTO' WHEN 4 THEN 'FATURADO PARCIAL' ELSE 'OUTROS' END AS status_descricao,
+                   p.idfilial AS idfilial, f.nome AS filial,
+                   p.idcliforemp AS idcliente, c.fantasia AS cliente,
+                   p.idvendrepre AS idrepresentante, vend.fantasia AS representante,
+                   p.idsupervisor AS idsupervisor, sup.razao AS supervisor,
+                   cli.idregiao AS idregiao, rg.descricao AS regiao,
+                   cid.uf AS uf, c.idcidade AS idcidade, cid.descricao AS cidade,
+                   COALESCE(gp.idgrupo, g.idgrupo) AS idgrupo, COALESCE(gp.descricao, g.descricao) AS grupo,
+                   g.idgrupo AS idsubgrupo, g.descricao AS subgrupo,
+                   i.tipo AS idtipoproduto, COALESCE(tp.tipo, 'Tipo ' || i.tipo) AS tipo_produto,
+                   i.idmarca AS idmarca, m.descricao AS marca,
+                   i.iditem AS iditem, i.descricao AS produto,
+                   p.idtransacao AS idtipopedido, pt.descricao AS tipo_pedido,
+                   ($saldo * pi.valor) AS valor,
+                   $saldo AS qtd,
+                   ($saldo * COALESCE(i.pesoliquido, 0)) AS peso,
+                   CAST(0 AS numeric) AS comissao
+            FROM pedido p
+            JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.ativo = 'S'
+            JOIN item i ON i.iditem = pi.iditem
+            JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
+            LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp
+            LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+            LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
+            LEFT JOIN tipo_item_produto tp ON tp.idtipo = i.tipo
+            LEFT JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
+            LEFT JOIN cliforemp sup ON sup.idcliforemp = p.idsupervisor
+            LEFT JOIN filial f ON f.idfilial = p.idfilial
+            LEFT JOIN pedido_transacao pt ON pt.idtransacao = p.idtransacao
+            WHERE p.status IN (1,4)
+              AND p.idtransacao IN (1,17)
+              AND p.data BETWEEN :di AND :df
+              AND $saldo > 0
+              $docP $comum
+
+            UNION ALL
+
+            SELECT 'NF' AS tipo_documento, n.idnfs AS documento, CAST(n.numeronf AS bigint) AS numero_fiscal,
+                   n.dataemissao AS data_documento,
+                   'FATURADO' AS status_descricao,
+                   n.idfilial AS idfilial, f.nome AS filial,
+                   n.idcliforemp AS idcliente, c.fantasia AS cliente,
+                   n.idvendrepre AS idrepresentante, vend.fantasia AS representante,
+                   n.idsupervisor AS idsupervisor, sup.razao AS supervisor,
+                   cli.idregiao AS idregiao, rg.descricao AS regiao,
+                   cid.uf AS uf, c.idcidade AS idcidade, cid.descricao AS cidade,
+                   COALESCE(gp.idgrupo, g.idgrupo) AS idgrupo, COALESCE(gp.descricao, g.descricao) AS grupo,
+                   g.idgrupo AS idsubgrupo, g.descricao AS subgrupo,
+                   i.tipo AS idtipoproduto, COALESCE(tp.tipo, 'Tipo ' || i.tipo) AS tipo_produto,
+                   i.idmarca AS idmarca, m.descricao AS marca,
+                   i.iditem AS iditem, i.descricao AS produto,
+                   pp.idtransacao AS idtipopedido, pt.descricao AS tipo_pedido,
+                   (ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete, 0) + COALESCE(ni.valorseguro, 0) + COALESCE(ni.valoroutrasdespesas, 0)) AS valor,
+                   ni.qt AS qtd,
+                   (COALESCE(ni.pesoliquido, 0) * ni.qt) AS peso,
+                   COALESCE(ni.valor_comissao, 0) AS comissao
+            FROM nfs n
+            JOIN nfs_item ni ON ni.idnfs = n.idnfs
+            JOIN item i ON i.iditem = ni.iditem
+            JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp
+            LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+            LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
+            LEFT JOIN tipo_item_produto tp ON tp.idtipo = i.tipo
+            LEFT JOIN cliforemp vend ON vend.idcliforemp = n.idvendrepre
+            LEFT JOIN cliforemp sup ON sup.idcliforemp = n.idsupervisor
+            LEFT JOIN filial f ON f.idfilial = n.idfilial
+            LEFT JOIN pedido pp ON pp.idpedido = ni.idpedido
+            LEFT JOIN pedido_transacao pt ON pt.idtransacao = pp.idtransacao
+            WHERE n.status = 2
+              AND n.idtransacao = 1
+              AND n.dataemissao BETWEEN :di AND :df
+              $docN $comum
+        ";
     }
-}
+
+    private function consultarDimensao(array $f, string $dimKey, array $metrics, int $limit, bool $semNulos = false): array
+    {
+        $dim = self::DIMENSOES[$dimKey];
+        $params = [];
+        $base = $this->baseSql($f, $params);
+
+        $selects = [];
+        foreach ($metrics as $m) {
+            $selects[] = $this->exprMetrica($m) . " AS $m";
+        }
+        $order = $dim['kind'] === 'date' ? '1 DESC' : ($metrics[0] . ' DESC, 2');
+        $extra = $semNulos ? " HAVING {$dim['id']} IS NOT NULL" : '';
+
+        $sql = "
+            WITH base AS ($base)
+            SELECT {$dim['id']} AS dimensao_id,
+                   COALESCE(CAST({$dim['txt']} AS text), '" . self::MSG_NAO_INFORMADO . "') AS dimensao,
+                   " . implode(', ', $selects) . "
+            FROM base
+            GROUP BY {$dim['id']}, {$dim['txt']}
+            $extra
+            ORDER BY $order
+            LIMIT $limit
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        foreach ($rows as &$r) {
+            foreach ($metrics as $m) {
+                $r[$m] = $m === 'qtd_documentos' ? (int)$r[$m] : (float)$r[$m];
+            }
+            if ($r['dimensao_id'] !== null && $dim['kind'] === 'int') {
+                $r['dimensao_id'] = (int)$r['dimensao_id'];
+            }
+        }
+        return $rows;
+    }
+
+    private function consultarTotais(array $f): array
+    {
+        $params = [];
+        $base = $this->baseSql($f, $params);
+        $sql = "
+            WITH base AS ($base)
+            SELECT COALESCE(SUM(valor), 0) AS valor_total, COALESCE(SUM(qtd), 0) AS quantidade_total,
+                   COALESCE(SUM(peso), 0) AS peso_total, COALESCE(SUM(comissao), 0) AS comissao_total,
+                   COUNT(DISTINCT tipo_documento || ':' || documento) AS qtd_documentos
+            FROM base
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $t = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+        $valor = (float)$t['valor_total'];
+        $docs = (int)$t['qtd_documentos'];
+        return [
+            'valor_bruto' => $valor,
+            'quantidade' => (float)$t['quantidade_total'],
+            'peso' => (float)$t['peso_total'],
+            'comissao' => (float)$t['comissao_total'],
+            'qtd_documentos' => $docs,
+            'ticket_medio' => $docs > 0 ? $valor / $docs : 0.0,
+        ];
+    }
+
+    private function consultarSerie(array $f): array
+    {
+        $params = [];
+        $base = $this->baseSql($f, $params);
+        $sql = "
+            WITH base AS ($base)
+            SELECT TO_CHAR(data_documento, 'YYYY-MM') AS periodo, SUM(valor) AS valor,
+                   SUM(qtd) AS quantidade, SUM(peso) AS peso
+            FROM base GROUP BY 1 ORDER BY 1
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $porMes = [];
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $porMes[$r['periodo']] = $r;
+        }
+
+        $labels = [];
+        $valor = [];
+        $qtd = [];
+        $peso = [];
+        $cur = new \DateTime(substr($f['di'], 0, 7) . '-01');
+        $fim = new \DateTime(substr($f['df'], 0, 7) . '-01');
+        while ($cur <= $fim) {
+            $k = $cur->format('Y-m');
+            $labels[] = $k;
+            $valor[] = (float)($porMes[$k]['valor'] ?? 0);
+            $qtd[] = (float)($porMes[$k]['quantidade'] ?? 0);
+            $peso[] = (float)($porMes[$k]['peso'] ?? 0);
+            $cur->modify('+1 month');
+        }
+
+        return [
+            'labels' => $labels,
+            'values' => $valor,
+            'series' => ['valor_total' => $valor, 'quantidade_total' => $qtd, 'peso_total' => $peso],
+        ];
+    }
+
+    private function periodoAnterior(array $f): array
+    {
+        $di = new \DateTime($f['di']);
+        $df = new \DateTime($f['df']);
+        $dias = $di->diff($df)->days + 1;
+        $fimAnt = (clone $di)->modify('-1 day');
+        $iniAnt = (clone $fimAnt)->modify('-' . ($dias - 1) . ' days');
+        return [$iniAnt->format('Y-m-d'), $fimAnt->format('Y-m-d')];
+    }
+
+    private function comparativo(array $atual, array $ant, array $periodo): array
+    {
+        $out = ['periodo_anterior' => ['data_inicio' => $periodo[0], 'data_fim' => $periodo[1]]];
+        foreach (['valor_bruto', 'quantidade', 'peso', 'comissao', 'qtd_documentos', 'ticket_medio'] as $k) {
+            $a = (float)$atual[$k];
+            $b = (float)$ant[$k];
+            $out[$k] = [
+                'atual' => $a,
+                'anterior' => $b,
+                'variacao_pct' => $b > 0 ? round((($a - $b) / $b) * 100, 2) : null,
+            ];
+        }
+        return $out;
+    }
+
+    private function totalDaMetrica(array $totais, string $metric): float
+    {
+        $map = [
+            'valor_total' => 'valor_bruto', 'quantidade_total' => 'quantidade', 'peso_total' => 'peso',
+            'comissao_total' => 'comissao', 'qtd_documentos' => 'qtd_documentos', 'ticket_medio' => 'ticket_medio',
+        ];
+        return (float)$totais[$map[$metric]];
+    }
+
+    private function exprMetrica(string $m): string
+    {
+        switch ($m) {
+            case 'valor_total':
+                return 'COALESCE(SUM(valor), 0)';
+            case 'quantidade_total':
+                return 'COALESCE(SUM(qtd), 0)';
+            case 'peso_total':
+                return 'COALESCE(SUM(peso), 0)';
+            case 'comissao_total':
+                return 'COALESCE(SUM(comissao), 0)';
+            case 'qtd_documentos':
+                return "COUNT(DISTINCT tipo_documento || ':' || documento)";
+            case 'ticket_medio':
+                return "COALESCE(SUM(valor) / NULLIF(COUNT(DISTINCT tipo_documento || ':' || documento), 0), 0)";
+        }
+        throw new \InvalidArgumentException('Métrica inválida.');
+    }
 
     // ======================================================================
-    // MÉTODOS PRIVADOS
+    // VALIDAÇÃO / ESCOPO
     // ======================================================================
 
-private function getUserPermissions(int $uid): array
-{
-    $stmt = $this->pdo->prepare("SELECT dash_filiais, dash_gestores FROM usuario WHERE idcliforemp = :uid");
-    $stmt->execute(['uid' => $uid]);
-    $userData = $stmt->fetch(\PDO::FETCH_ASSOC);
+    /**
+     * Normaliza filtros e aplica o escopo do usuário por interseção (nunca substitui).
+     * Lança DomainException (403) se filial/gestor pedidos estiverem fora do escopo.
+     *
+     * @return array [filtros, warning]
+     */
+    private function filtros(UserScope $scope, $filters): array
+    {
+        $filters = is_array($filters) ? $filters : [];
+        $di = (string)($filters['data_inicio'] ?? date('Y-m-01'));
+        $df = (string)($filters['data_fim'] ?? date('Y-m-t'));
+        $this->validarData($di);
+        $this->validarData($df);
+        if ($di > $df) {
+            throw new \InvalidArgumentException('A data inicial não pode ser maior que a data final.');
+        }
 
-    $filiais = !empty($userData['dash_filiais']) ? explode(',', $userData['dash_filiais']) : [];
-    $gestores = !empty($userData['dash_gestores']) ? explode(',', $userData['dash_gestores']) : [];
+        $warning = null;
+        $d1 = new \DateTime($di);
+        if ($d1->diff(new \DateTime($df))->days > 365) {
+            $df = (clone $d1)->modify('+365 days')->format('Y-m-d');
+            $warning = 'Período limitado a 365 dias para manter performance';
+        }
 
-    // Se for admin (uid=4), libera tudo
-    if ($uid === 4) {
-        $filiais = []; // vazio = todas
-        $gestores = []; // vazio = todos
+        $f = $this->filtrosVazios($di, $df);
+        $f['filiais'] = $scope->resolverFiliais($this->ids($filters['filial'] ?? null, 'filial'));
+        $f['gestores'] = $scope->resolverGestores($this->ids($filters['supervisor'] ?? ($filters['gestor'] ?? null), 'supervisor'));
+        $f['representantes'] = $this->ids($filters['representante'] ?? null, 'representante');
+        $f['clientes'] = $this->ids($filters['cliente'] ?? null, 'cliente');
+        $f['regioes'] = $this->ids($filters['regiao'] ?? null, 'região');
+        $f['cidades'] = $this->ids($filters['cidade'] ?? null, 'cidade');
+        $f['grupos'] = $this->ids($filters['grupo'] ?? null, 'grupo');
+        $f['subgrupos'] = $this->ids($filters['subgrupo'] ?? null, 'subgrupo');
+        $f['tipos_produto'] = $this->ids($filters['tipo_produto'] ?? null, 'tipo de produto');
+        $f['marcas'] = $this->ids($filters['marca'] ?? null, 'marca');
+        $f['produtos'] = $this->ids($filters['produto'] ?? null, 'produto');
+        $f['tipos_pedido'] = $this->ids($filters['tipo_de_pedido'] ?? null, 'tipo de pedido');
+
+        $ufs = [];
+        foreach ($this->lista($filters['estado'] ?? null) as $uf) {
+            $uf = strtoupper($uf);
+            if (!preg_match('/^[A-Z]{2}$/', $uf)) {
+                throw new \InvalidArgumentException('UF inválida.');
+            }
+            $ufs[] = $uf;
+        }
+        $f['ufs'] = $ufs;
+
+        return [$f, $warning];
     }
-    
-    return [
-        'filiais' => $filiais,
-        'gestores' => $gestores,
-        'is_admin' => ($uid === 4)
-    ];
-}
 
-private function getFiliaisPermitidas(array $filiaisPermitidas): array
-{
-    // Se for admin (array vazio), retorna todas as filiais
-    if (empty($filiaisPermitidas)) {
-        $stmt = $this->pdo->query("SELECT idfilial, nome FROM filial WHERE inativo = 'N' ORDER BY idfilial");
-        return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+    private function filtrosVazios(string $di, string $df): array
+    {
+        return [
+            'di' => $di, 'df' => $df,
+            'filiais' => [], 'gestores' => [], 'representantes' => [], 'clientes' => [],
+            'regioes' => [], 'ufs' => [], 'cidades' => [], 'grupos' => [], 'subgrupos' => [],
+            'tipos_produto' => [], 'marcas' => [], 'produtos' => [], 'tipos_pedido' => [],
+        ];
     }
-    
-    // Filtra apenas as filiais permitidas
-    $in = implode(',', array_map('intval', $filiaisPermitidas));
-    $stmt = $this->pdo->query("SELECT idfilial, nome FROM filial WHERE idfilial IN ({$in}) AND inativo = 'N' ORDER BY idfilial");
-    return $stmt->fetchAll(\PDO::FETCH_ASSOC);
-}
-private function jsonResponse($response, array $data, int $status = 200): Response
-{
-    $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
-    return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
-}
+
+    private function periodoLookup(array $in): array
+    {
+        $di = (string)($in['data_inicio'] ?? date('Y-m-d', strtotime('-12 months')));
+        $df = (string)($in['data_fim'] ?? date('Y-m-d'));
+        $this->validarData($di);
+        $this->validarData($df);
+        if ($di > $df) {
+            throw new \InvalidArgumentException('A data inicial não pode ser maior que a data final.');
+        }
+        return [$di, $df];
+    }
+
+    private function validarData(string $d): void
+    {
+        $dt = \DateTime::createFromFormat('!Y-m-d', $d);
+        if (!$dt || $dt->format('Y-m-d') !== $d) {
+            throw new \InvalidArgumentException('Data inválida (use AAAA-MM-DD).');
+        }
+    }
+
+    private function dimensao($key): string
+    {
+        $key = (string)$key;
+        $key = self::DIM_ALIAS[$key] ?? $key;
+        if (!isset(self::DIMENSOES[$key])) {
+            throw new \InvalidArgumentException('Dimensão inválida.');
+        }
+        return $key;
+    }
+
+    /** Exige >= 1 métrica válida; aceita aliases legados. */
+    private function metricas($metrics): array
+    {
+        if (!is_array($metrics) || empty($metrics)) {
+            throw new \InvalidArgumentException('Selecione ao menos uma métrica.');
+        }
+        $out = [];
+        foreach ($metrics as $m) {
+            $m = (string)$m;
+            $canon = null;
+            foreach (self::METRICAS as $k => $def) {
+                if ($m === $k || in_array($m, $def['alias'], true)) {
+                    $canon = $k;
+                    break;
+                }
+            }
+            if ($canon === null) {
+                throw new \InvalidArgumentException('Métrica inválida.');
+            }
+            $out[$canon] = $canon;
+        }
+        return array_values($out);
+    }
+
+    /** @return string[] valores não vazios (aceita escalar, lista ou "a,b") */
+    private function lista($valor): array
+    {
+        $itens = is_array($valor) ? $valor : explode(',', (string)$valor);
+        $out = [];
+        foreach ($itens as $i) {
+            $i = trim((string)$i);
+            if ($i !== '') {
+                $out[] = $i;
+            }
+        }
+        return $out;
+    }
+
+    /** @return int[] IDs numéricos; valor não numérico => 400. 0 é ignorado ("todos"). */
+    private function ids($valor, string $rotulo): array
+    {
+        $out = [];
+        foreach ($this->lista($valor) as $i) {
+            if (!ctype_digit($i)) {
+                throw new \InvalidArgumentException("Filtro inválido: $rotulo.");
+            }
+            if ((int)$i > 0) {
+                $out[(int)$i] = (int)$i;
+            }
+        }
+        return array_values($out);
+    }
+
+    private function inList(array $ids): string
+    {
+        return implode(',', array_map('intval', $ids));
+    }
+
+    private function listarFiliais(UserScope $scope): array
+    {
+        $sql = "SELECT idfilial, nome FROM filial WHERE inativo = 'N'";
+        if ($scope->filialRestrita()) {
+            $sql .= ' AND idfilial IN (' . $this->inList($scope->filiais) . ')';
+        }
+        $sql .= ' ORDER BY idfilial';
+        return $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+    }
+
+    private function csvTexto($v): string
+    {
+        $v = (string)$v;
+        return ($v !== '' && strpbrk($v[0], '=+-@') !== false) ? "'" . $v : $v;
+    }
+
+    // ======================================================================
+    // INFRA
+    // ======================================================================
+
+    private function input(Request $request): array
+    {
+        $body = (string)$request->getBody();
+        $json = json_decode($body, true);
+        return is_array($json) ? $json : [];
+    }
+
+    /** 403 (escopo), 400 (validação) ou 500 genérico (detalhe apenas no log). */
+    private function erro(Response $response, \Throwable $e, string $contexto, array $extra = []): Response
+    {
+        if ($e instanceof \DomainException) {
+            return $this->jsonResponse($response, array_merge($extra, ['success' => false, 'error' => $e->getMessage()]), 403);
+        }
+        if ($e instanceof \InvalidArgumentException) {
+            return $this->jsonResponse($response, array_merge($extra, ['success' => false, 'error' => $e->getMessage()]), 400);
+        }
+        error_log("VendasCuboController::$contexto - " . get_class($e) . ': ' . $e->getMessage());
+        return $this->jsonResponse($response, array_merge($extra, ['success' => false, 'error' => self::MSG_ERRO_INTERNO]), 500);
+    }
+
+    private function jsonResponse($response, array $data, int $status = 200): Response
+    {
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR));
+        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+    }
 }

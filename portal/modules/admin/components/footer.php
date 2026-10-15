@@ -127,6 +127,50 @@ function showToast(message, icon = 'success') {
         timerProgressBar: true
     });
 }
+
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+}
+
+// Pede o codigo de 6 digitos do app autenticador. Retorna o codigo ou null se cancelado.
+async function pedirCodigo2fa(titulo = 'Verificação em duas etapas') {
+    const r = await Swal.fire({
+        title: titulo,
+        text: 'Digite o código de 6 dígitos do seu aplicativo autenticador.',
+        input: 'text',
+        inputAttributes: { inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code' },
+        showCancelButton: true,
+        confirmButtonText: 'Confirmar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#274036',
+        inputValidator: v => /^\d{6}$/.test((v || '').trim()) ? null : 'Informe os 6 dígitos'
+    });
+    return r.isConfirmed ? r.value.trim() : null;
+}
+
+// Revela um valor sensivel (exige 2FA). Mostra por alguns segundos e permite copiar.
+async function revelarSegredo(endpoint, campo, titulo) {
+    const codigo = await pedirCodigo2fa();
+    if (!codigo) return;
+    try {
+        const r = await apiFetch(endpoint, 'POST', { codigo });
+        if (r.requer_2fa_setup) {
+            return showError('2FA não configurado', 'Ative a verificação em duas etapas em Admin > Segredos & Tokens.');
+        }
+        if (r.error) throw new Error(r.error);
+        await Swal.fire({
+            title: titulo,
+            html: `<div class="bg-slate-100 p-4 rounded-xl font-mono text-sm break-all select-all">${escapeHtml(r[campo])}</div>
+                   <p class="text-xs text-slate-400 mt-2">Esta janela mostra o valor apenas agora. O acesso foi registrado na auditoria.</p>`,
+            showCancelButton: true,
+            confirmButtonText: 'Copiar',
+            cancelButtonText: 'Fechar',
+            confirmButtonColor: '#274036'
+        }).then(x => { if (x.isConfirmed) { navigator.clipboard.writeText(r[campo]); showToast('Copiado!'); } });
+    } catch (e) {
+        showError('Erro', e.message);
+    }
+}
 </script>
 
 </body>

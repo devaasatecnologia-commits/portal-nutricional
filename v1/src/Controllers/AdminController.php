@@ -917,8 +917,11 @@ public function salvarPermissoes(Request $request, Response $response): Response
             
             $stmt = $this->pdo->query($sql);
             $tokens = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            // Últimos logs
+            // O token completo so e entregue por /api-tokens/{id}/revelar (exige 2FA)
+            foreach ($tokens as &$t) {
+                unset($t['token']);
+            }
+            unset($t);
             $sqlLogs = "SELECT 
                             al.*,
                             at.nome_cliente as cliente,

@@ -1,14 +1,17 @@
 <?php
 $pageTitle = 'Dashboard Financeiro | Nutricional';
 $moduleJs = 'financeiro.js';
-$version = time();
+$verJs = @filemtime(__DIR__ . '/../assets/js/financeiro.js') ?: 1;
+$verCss = @filemtime(__DIR__ . '/../assets/css/financeiro.css') ?: 1;
+$verBase = @filemtime(__DIR__ . '/../assets/css/module-base.css') ?: 1;
+$version = $verJs;
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/assets/css/financeiro.css?v=' . $version . '">
+<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $verBase . '">
+<link rel="stylesheet" href="/portal/assets/css/financeiro.css?v=' . $verCss . '">
 ';
 require_once __DIR__ . '/../estrutura/header.php';
 ?>
@@ -30,7 +33,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 </div>
 <div class="mobile-spacer block lg:hidden h-14"></div>
 
-<div class="modulo-container max-w-full mx-auto px-4 lg:px-6 py-4" x-data="financeiroHandler()" x-init="init()">
+<div class="modulo-container max-w-full mx-auto px-4 lg:px-6 py-4">
     
     <!-- Shimmer Loading -->
     <div id="shimmer" class="fixed top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 via-emerald-700 to-amber-400 bg-[length:200%_100%] animate-shimmer z-50 hidden"></div>
@@ -80,22 +83,20 @@ require_once __DIR__ . '/../estrutura/header.php';
             class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all">
     </select>
 </div>
-<!-- Gestor -->
-<div class="flex-1 min-w-[200px]" id="container-gestor">
-    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-        <i class="fa-solid fa-user-tie mr-1"></i> Gestor
-    </label>
-    <select id="select-gestor" onchange="app.changeGestor(this.value)" style="display:none;"
-            class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all">
-        <option value="">Selecione um gestor...</option>
-    </select>
-</div>
             
-            <div class="w-40">
+            <div class="w-40" title="Janela de recuperação: considera apenas títulos vencidos nos últimos N dias (1 a 365). Vale para a Taxa de Recuperação e para os 3 cenários.">
                 <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
-                    <i class="fa-solid fa-calendar mr-1"></i> Dias Recup.
+                    <i class="fa-solid fa-calendar mr-1"></i> Janela (dias)
                 </label>
-                <input type="number" id="filtro-dias-recup" value="120" min="1" onchange="app.load()"
+                <input type="number" id="filtro-dias-recup" value="120" min="1" max="365" onchange="app.onParamChange()"
+                       class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-bold text-amber-600">
+            </div>
+
+            <div class="w-40" title="Cenário 1 (a cobrar): título vencido, sem apontamento, com atraso maior ou igual a este número de dias. É independente da janela.">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                    <i class="fa-solid fa-hourglass-half mr-1"></i> Atraso mín. cen. 1
+                </label>
+                <input type="number" id="filtro-corte-atraso" value="8" min="1" max="365" onchange="app.onParamChange()"
                        class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-bold text-amber-600">
             </div>
             
@@ -109,22 +110,32 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- Cards da Carteira -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+    <div id="erro-cards" class="fin-estado erro mb-4" style="display:none;"></div>
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-6">
         <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
             <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Carteira Total</span>
             <span class="block text-2xl font-black text-slate-800" id="f-total">R$ 0,00</span>
+            <span class="fin-card-formula">A vencer + vencido (saldo em aberto)</span>
         </div>
         <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vencendo 30d</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">A vencer</span>
+            <span class="block text-2xl font-black text-sky-600" id="f-avencer">R$ 0,00</span>
+            <span class="fin-card-formula">Saldo de títulos ainda não vencidos</span>
+        </div>
+        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vencido 1–30d</span>
             <span class="block text-2xl font-black text-emerald-600" id="f-30">R$ 0,00</span>
+            <span class="fin-card-formula">Saldo vencido há 1 a 30 dias</span>
         </div>
         <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vencendo 60d</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vencido 31–60d</span>
             <span class="block text-2xl font-black text-amber-600" id="f-60">R$ 0,00</span>
+            <span class="fin-card-formula">Saldo vencido há 31 a 60 dias</span>
         </div>
         <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
-            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Mais de 60 Dias</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-1">Vencido &gt; 60d</span>
             <span class="block text-2xl font-black text-rose-600" id="f-90">R$ 0,00</span>
+            <span class="fin-card-formula">Saldo vencido há mais de 60 dias</span>
         </div>
     </div>
 
@@ -132,7 +143,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div class="bg-white p-5 rounded-2xl border-l-8 border-rose-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('iag')">
             <label class="text-xs font-bold text-slate-400 uppercase block mb-1">Inadimplência Geral (IAG)</label>
-            <span class="text-[10px] text-slate-400 block mb-2">(Total Vencido / Carteira Total)</span>
+            <span class="text-[10px] text-slate-400 block mb-2" title="IAG = saldo vencido ÷ carteira total. Semáforo da tabela: acima de 10% = CRÍTICO; de 5% a 10% = ATENÇÃO; abaixo de 5% = OK.">IAG = Saldo vencido ÷ Carteira total<br>Crítico &gt; 10% · Atenção ≥ 5% · OK &lt; 5%</span>
             <h3 class="text-3xl font-black text-slate-800 mb-1" id="kpi-iag">0.00%</h3>
             <div id="kpi-iag-valor" class="text-sm text-slate-500 font-semibold mb-3">R$ 0,00</div>
             <div class="text-xs font-bold text-amber-500 uppercase flex items-center gap-1">
@@ -142,7 +153,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         
         <div class="bg-white p-5 rounded-2xl border-l-8 border-amber-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('iap')">
             <label class="text-xs font-bold text-slate-400 uppercase block mb-1">Atraso Crítico (IAP)</label>
-            <span class="text-[10px] text-slate-400 block mb-2">(Títulos > 30 Dias / Carteira Total)</span>
+            <span class="text-[10px] text-slate-400 block mb-2">IAP = Saldo vencido há mais de 30 dias ÷ Carteira total<br>(faixas 31–60d + &gt;60d)</span>
             <h3 class="text-3xl font-black text-slate-800 mb-1" id="kpi-iap">0.00%</h3>
             <div id="kpi-iap-valor" class="text-sm text-slate-500 font-semibold mb-3">R$ 0,00</div>
             <div class="text-xs font-bold text-amber-500 uppercase flex items-center gap-1">
@@ -152,7 +163,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         
         <div class="bg-white p-5 rounded-2xl border-l-8 border-emerald-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('recup')">
             <label class="text-xs font-bold text-slate-400 uppercase block mb-1">Taxa de Recuperação</label>
-            <span class="text-[10px] text-slate-400 block mb-2">(Qtd Pagos / Qtd Trabalhados)</span>
+            <span class="text-[10px] text-slate-400 block mb-2" title="Base = títulos vencidos na janela, com apontamento de cobrança, excluindo status 5 (renegociado/cancelado). Pago = saldo zerado. O apontamento só conta se foi feito até a data do pagamento (aproximada por vencimento + dias de atraso). Cenário 1 (sem apontamento) não entra na base.">Recuperação = Títulos pagos ÷ Títulos trabalhados<br>Trabalhados = com apontamento (cen. 2 + 3) · status 5 excluído · apontamento até a data do pagamento</span>
             <h3 class="text-3xl font-black text-slate-800 mb-1" id="kpi-recup">0.00%</h3>
             <div id="kpi-recup-quant" class="text-sm text-slate-500 font-semibold mb-3">0 de 0 títulos</div>
             <div class="text-xs font-bold text-amber-500 uppercase flex items-center gap-1">
@@ -186,8 +197,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </select>
             </div>
         </div>
-        <div style="height: 250px; width: 100%;">
+        <div class="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3" id="hist-aviso">
+            <i class="fa-solid fa-circle-info mr-1"></i>
+            <b>Histórico consolidado por filial – não considera filtro de gestor/representante.</b>
+            Os pontos vêm de um snapshot semanal com janela fixa de 120 dias e atraso mínimo de 8 dias, portanto não reagem aos campos “Janela” e “Atraso mín.”.
+        </div>
+        <div style="height: 250px; width: 100%; position: relative;">
             <canvas id="chartHistory"></canvas>
+            <div id="chart-estado" class="fin-estado"></div>
         </div>
     </div>
 
@@ -205,6 +222,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <span>GERAR RELATÓRIO DETALHADO</span>
 </button>
 	   <div class="overflow-x-auto">
+            <div id="t-estado" class="fin-estado" style="display:none;"></div>
             <table class="w-full">
                 <thead id="t-head" class="bg-slate-50 border-b border-slate-200"></thead>
                 <tbody id="t-body"></tbody>
@@ -255,13 +273,5 @@ setInterval(() => {
     font-weight: 800;
 }
 </style>
-
-<script>
-function financeiroHandler() {
-    return {
-        init() {}
-    }
-}
-</script>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

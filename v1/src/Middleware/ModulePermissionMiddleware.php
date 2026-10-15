@@ -9,11 +9,15 @@ use Slim\Psr7\Response as SlimResponse;
 
 class ModulePermissionMiddleware
 {
-    private $module;
+    /** @var string[] */
+    private array $modules;
+    private string $module;
 
-    public function __construct(string $module)
+    /** @param string|string[] $module basta ter um dos módulos informados */
+    public function __construct($module)
     {
-        $this->module = $module;
+        $this->modules = (array)$module;
+        $this->module = implode('|', $this->modules);
     }
 
     public function __invoke(Request $request, RequestHandler $handler): Response
@@ -22,7 +26,7 @@ class ModulePermissionMiddleware
         $permissions = $user['permissoes'] ?? [];
         $authorized = (bool)($user['is_admin'] ?? false)
             || in_array('admin', $permissions, true)
-            || in_array($this->module, $permissions, true);
+            || array_intersect($this->modules, $permissions) !== [];
 
         if ($authorized) {
             return $handler->handle($request);

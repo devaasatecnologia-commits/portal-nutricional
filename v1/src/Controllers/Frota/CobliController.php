@@ -1864,7 +1864,8 @@ class CobliController
 
     private function assinaturaValida(Request $request, string $rawBody): bool
     {
-        $secret = $this->getConfigLocal('cobli_webhook_secret', $_ENV['COBLI_WEBHOOK_SECRET'] ?? '');
+        $secret = \Nutricional\Services\SecretVault::get('COBLI_WEBHOOK_SECRET')
+            ?: $this->getConfigLocal('cobli_webhook_secret', '');
         $appEnv = strtolower((string)($_ENV['APP_ENV'] ?? getenv('APP_ENV') ?: 'production'));
 
         if (empty($secret)) {

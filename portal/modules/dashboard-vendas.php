@@ -1,7 +1,7 @@
 <?php
 $pageTitle = 'Dashboard Vendas | Nutricional';
 $moduleJs = 'dashboard-vendas.js';
-$version = time();
+$version = @filemtime(__DIR__ . '/../assets/js/dashboard-vendas.js') ?: 1;
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
@@ -106,14 +106,18 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
 
+        <div x-show="erro" x-cloak class="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm"><i class="fa-solid fa-circle-exclamation mr-1"></i><span x-text="erro"></span></div>
+        <div x-show="avisoPeriodo" x-cloak class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-sm"><i class="fa-solid fa-triangle-exclamation mr-1"></i><span x-text="avisoPeriodo"></span></div>
+        <div x-show="loading" x-cloak class="mb-4 text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando indicadores...</div>
+
         <!-- CARDS PRINCIPAIS -->
-<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+<div :class="loading ? 'opacity-60' : ''" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
     
     <!-- Faturamento Total -->
     <div class="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Faturamento')">
         <div class="flex justify-between items-start">
             <div>
-                <p class="text-emerald-100 text-xs uppercase tracking-wider font-bold">Faturamento Total</p>
+                <p class="text-emerald-100 text-xs uppercase tracking-wider font-bold">Faturamento (NFs faturadas)</p>
                 <p class="text-3xl font-black mt-2" x-text="formatMoney(kpis.faturamento)">R$ 0</p>
             </div>
             <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -121,32 +125,34 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="mt-3 flex items-center gap-2 text-xs">
-            <span :class="kpis.crescimento_faturamento >= 0 ? 'text-emerald-200' : 'text-rose-200'">
-                <i :class="kpis.crescimento_faturamento >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
-                <span x-text="Math.abs(kpis.crescimento_faturamento) + '%'"></span>
+            <span :class="variacaoPositiva(kpis.variacao_faturamento) ? 'text-emerald-200' : 'text-rose-200'">
+                <i x-show="kpis.variacao_faturamento !== null" :class="variacaoPositiva(kpis.variacao_faturamento) ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-down'"></i>
+                <span x-text="variacaoTexto(kpis.variacao_faturamento)"></span>
             </span>
-            <span class="text-emerald-100">vs mês anterior</span>
+            <span class="text-emerald-100" x-text="variacaoRotulo()"></span>
         </div>
+        <p class="mt-2 text-[10px] text-emerald-100/80 leading-tight">Soma das NFs emitidas e válidas no período (mesma regra do Cubo de Vendas), com IPI/ST e frete.</p>
     </div>
 
     <!-- Total de Pedidos -->
-    <div class="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Pedidos')">
+    <div class="bg-gradient-to-br from-blue-500 to-blue-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Notas', 'NFs emitidas')">
         <div class="flex justify-between items-start">
             <div>
-                <p class="text-blue-100 text-xs uppercase tracking-wider font-bold">Total de Pedidos</p>
-                <p class="text-3xl font-black mt-2" x-text="formatNumber(kpis.total_pedidos)">0</p>
+                <p class="text-blue-100 text-xs uppercase tracking-wider font-bold">NFs emitidas</p>
+                <p class="text-3xl font-black mt-2" x-text="formatNumber(kpis.notas)">0</p>
             </div>
             <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
                 <i class="fa-solid fa-cart-shopping text-xl"></i>
             </div>
         </div>
         <div class="mt-3 flex items-center gap-2 text-xs">
-            <span :class="kpis.crescimento_pedidos >= 0 ? 'text-blue-200' : 'text-rose-200'">
-                <i :class="kpis.crescimento_pedidos >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
-                <span x-text="Math.abs(kpis.crescimento_pedidos) + '%'"></span>
+            <span :class="variacaoPositiva(kpis.variacao_notas) ? 'text-blue-200' : 'text-rose-200'">
+                <i x-show="kpis.variacao_notas !== null" :class="variacaoPositiva(kpis.variacao_notas) ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-down'"></i>
+                <span x-text="variacaoTexto(kpis.variacao_notas)"></span>
             </span>
-            <span class="text-blue-100">vs mês anterior</span>
+            <span class="text-blue-100" x-text="variacaoRotulo()"></span>
         </div>
+        <p class="mt-2 text-[10px] text-blue-100/80 leading-tight">Quantidade de NFs faturadas distintas no período.</p>
     </div>
 
     <!-- Ticket Médio -->
@@ -161,19 +167,20 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="mt-3 flex items-center gap-2 text-xs">
-            <span :class="kpis.crescimento_ticket >= 0 ? 'text-amber-200' : 'text-rose-200'">
-                <i :class="kpis.crescimento_ticket >= 0 ? 'fa-arrow-up' : 'fa-arrow-down'"></i>
-                <span x-text="Math.abs(kpis.crescimento_ticket) + '%'"></span>
+            <span :class="variacaoPositiva(kpis.variacao_ticket) ? 'text-amber-200' : 'text-rose-200'">
+                <i x-show="kpis.variacao_ticket !== null" :class="variacaoPositiva(kpis.variacao_ticket) ? 'fa-solid fa-arrow-up' : 'fa-solid fa-arrow-down'"></i>
+                <span x-text="variacaoTexto(kpis.variacao_ticket)"></span>
             </span>
-            <span class="text-amber-100">vs mês anterior</span>
+            <span class="text-amber-100" x-text="variacaoRotulo()"></span>
         </div>
+        <p class="mt-2 text-[10px] text-amber-100/80 leading-tight">Faturamento ÷ nº de NFs distintas.</p>
     </div>
 
     <!-- Vendas por Dia -->
-    <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Vendas por Dia')">
+    <div class="bg-gradient-to-br from-purple-500 to-purple-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Vendas por Dia', 'Faturamento por dia')">
         <div class="flex justify-between items-start">
             <div>
-                <p class="text-purple-100 text-xs uppercase tracking-wider font-bold">Vendas por Dia</p>
+                <p class="text-purple-100 text-xs uppercase tracking-wider font-bold">Média por dia útil</p>
                 <p class="text-3xl font-black mt-2" x-text="formatMoney(kpis.media_diaria)">R$ 0</p>
             </div>
             <div class="w-12 h-12 bg-white/20 rounded-xl flex items-center justify-center">
@@ -181,8 +188,41 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="mt-3 text-xs text-purple-100">
-            <span>💰 R$ <span x-text="formatNumber(kpis.ticket_medio_diario)"></span> por dia útil</span>
+            <span x-text="formatMoney(kpis.media_dia_com_venda) + ' por dia com venda (' + kpis.dias_com_venda + ' dias)'"></span>
         </div>
+        <p class="mt-2 text-[10px] text-purple-100/80 leading-tight">Faturamento ÷ dias úteis (seg–sex, até hoje) = <span x-text="kpis.dias_uteis"></span> dias. Feriados não descontados.</p>
+    </div>
+
+    <!-- Carteira de pedidos (separada do faturamento) -->
+    <div class="bg-gradient-to-br from-sky-500 to-sky-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Carteira', 'Carteira de pedidos')">
+        <p class="text-sky-100 text-xs uppercase tracking-wider font-bold">Carteira de pedidos</p>
+        <p class="text-2xl font-black mt-2" x-text="formatMoney(kpis.carteira.valor)">R$ 0</p>
+        <p class="mt-1 text-xs text-sky-100"><span x-text="formatNumber(kpis.carteira.pedidos)"></span> pedidos | <span x-text="formatNumber(kpis.carteira.quantidade)"></span> un.</p>
+        <p class="mt-2 text-[10px] text-sky-100/80 leading-tight">Pedidos abertos/parciais ainda não faturados. NÃO inclui o faturamento.</p>
+    </div>
+
+    <!-- Cancelados -->
+    <div class="bg-gradient-to-br from-rose-500 to-rose-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Cancelados', 'NFs canceladas')">
+        <p class="text-rose-100 text-xs uppercase tracking-wider font-bold">NFs canceladas</p>
+        <p class="text-2xl font-black mt-2" x-text="formatMoney(kpis.cancelados.valor)">R$ 0</p>
+        <p class="mt-1 text-xs text-rose-100"><span x-text="formatNumber(kpis.cancelados.notas)"></span> notas</p>
+        <p class="mt-2 text-[10px] text-rose-100/80 leading-tight">Valor das NFs de venda canceladas emitidas no período.</p>
+    </div>
+
+    <!-- Devoluções -->
+    <div class="bg-gradient-to-br from-orange-500 to-orange-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Devoluções', 'Devoluções de venda')">
+        <p class="text-orange-100 text-xs uppercase tracking-wider font-bold">Devoluções</p>
+        <p class="text-2xl font-black mt-2" x-text="formatMoney(kpis.devolucoes.valor)">R$ 0</p>
+        <p class="mt-1 text-xs text-orange-100"><span x-text="formatNumber(kpis.devolucoes.notas)"></span> NFs de entrada</p>
+        <p class="mt-2 text-[10px] text-orange-100/80 leading-tight">NFs de entrada por devolução de venda (bonificações excluídas). Não abatidas do faturamento.</p>
+    </div>
+
+    <!-- Positivação -->
+    <div class="bg-gradient-to-br from-teal-500 to-teal-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:scale-105 transition-transform" @click="abrirDetalhesCard('Positivação', 'Positivação da carteira')">
+        <p class="text-teal-100 text-xs uppercase tracking-wider font-bold">Positivação</p>
+        <p class="text-2xl font-black mt-2" x-text="kpis.positivacao.percentual.toLocaleString('pt-BR') + '%'">0%</p>
+        <p class="mt-1 text-xs text-teal-100"><span x-text="formatNumber(kpis.positivacao.positivados)"></span> de <span x-text="formatNumber(kpis.positivacao.base)"></span> clientes ativos</p>
+        <p class="mt-2 text-[10px] text-teal-100/80 leading-tight">Clientes com NF no período ÷ clientes ativos da carteira do escopo.</p>
     </div>
 </div>
 
@@ -191,19 +231,21 @@ require_once __DIR__ . '/../estrutura/header.php';
             <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="text-sm font-bold text-slate-700 uppercase">
-                        <i class="fa-regular fa-chart-line mr-2 text-emerald-500"></i> EVOLUÇÃO DE VENDAS
+                        <i class="fa-regular fa-chart-line mr-2 text-emerald-500"></i> EVOLUÇÃO DE VENDAS <span class="text-[10px] text-slate-400 normal-case" x-text="evolucao.granularidade === 'dia' ? '(diária, NFs faturadas)' : '(mensal, NFs faturadas)'"></span>
                     </h3>
                     <div class="flex gap-2">
-                        <button @click="tipoGrafico = 'valor'; renderizarGraficoEvolucao()" :class="tipoGrafico === 'valor' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">Valor (R$)</button>
-                        <button @click="tipoGrafico = 'quantidade'; renderizarGraficoEvolucao()" :class="tipoGrafico === 'quantidade' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">Quantidade</button>
+                        <button @click="mudarTipoGrafico('valor')" :class="tipoGrafico === 'valor' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">Valor (R$)</button>
+                        <button @click="mudarTipoGrafico('quantidade')" :class="tipoGrafico === 'quantidade' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">Quantidade</button>
                     </div>
                 </div>
-                <div id="chartEvolucao" style="height: 320px; width: 100%;"></div>
+                <div x-show="!loading && evolucao.itens.length === 0" class="text-sm text-slate-400 text-center py-16">Sem vendas no período.</div>
+                <div id="chartEvolucao" x-show="evolucao.itens.length > 0" style="height: 320px; width: 100%;"></div>
             </div>
             <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
                 <h3 class="text-sm font-bold text-slate-700 uppercase mb-4">
-                    <i class="fa-solid fa-chart-simple mr-2 text-amber-500"></i> PROJEÇÃO PRÓXIMOS MESES
+                    <i class="fa-solid fa-chart-simple mr-2 text-amber-500"></i> PROJEÇÃO (MÉDIA MÓVEL 3 MESES)
                 </h3>
+                <p class="text-[10px] text-slate-400 -mt-3 mb-3">3 meses fechados realizados + 3 meses projetados pela média móvel dos 3 anteriores.</p>
                 <div id="projecaoContainer" class="space-y-3">
                     <div x-show="loadingPesados && projecao.length === 0" class="space-y-3">
                         <div class="bg-slate-50 rounded-xl p-3 animate-pulse">
@@ -226,20 +268,22 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <div class="bg-slate-50 rounded-xl p-3">
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-xs font-bold text-slate-500" x-text="item.mes_label"></span>
-                                    <span :class="item.realizado > 0 ? 'text-emerald-600' : 'text-amber-600'" class="text-sm font-black">
+                                    <span :class="item.realizado ? 'text-emerald-600' : 'text-amber-600'" class="text-sm font-black">
                                         R$ <span x-text="formatNumber(item.valor)"></span>
                                     </span>
                                 </div>
                                 <div class="w-full bg-slate-200 rounded-full h-2">
-                                    <div class="h-2 rounded-full" :class="item.realizado > 0 ? 'bg-emerald-500' : 'bg-amber-500'" :style="'width: ' + (item.valor / maxProjecao * 100) + '%'"></div>
+                                    <div class="h-2 rounded-full" :class="item.realizado ? 'bg-emerald-500' : 'bg-amber-500'" :style="'width: ' + (item.valor / maxProjecao * 100) + '%'"></div>
                                 </div>
                                 <div class="flex justify-between mt-1 text-[10px] text-slate-400">
-                                    <span x-show="item.realizado > 0">✓ Realizado</span>
-                                    <span x-show="item.realizado === 0">📈 Projeção</span>
+                                    <span x-show="item.realizado">✓ Realizado</span>
+                                    <span x-show="!item.realizado">📈 Projeção</span>
                                 </div>
                             </div>
                         </template>
                     </div>
+                    <div x-show="erroPesados" x-cloak class="text-xs text-rose-600" x-text="erroPesados"></div>
+                    <div x-show="mensagemPesados" x-cloak class="text-xs text-amber-700" x-text="mensagemPesados"></div>
                     <div x-show="!loadingPesados && projecao.length === 0" class="text-center py-8 text-slate-400">
                         <i class="fa-solid fa-chart-line text-3xl mb-2 block"></i>
                         <p class="text-sm">Nenhuma projeção disponível</p>
@@ -299,7 +343,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 </div>
                                 <div class="text-right">
                                     <p class="text-sm font-bold text-emerald-600" x-text="formatMoney(item.valor)"></p>
-                                    <p class="text-[10px] text-slate-400" x-text="item.total_pedidos + ' pedidos'"></p>
+                                    <p class="text-[10px] text-slate-400" x-text="item.total_notas + ' NFs'"></p>
                                 </div>
                             </div>
                         </div>
@@ -373,8 +417,9 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
             <div class="bg-slate-50 px-5 py-3 border-b border-slate-200">
                 <h3 class="text-sm font-bold text-slate-700 uppercase">
-                    <i class="fa-solid fa-chart-pie mr-2 text-rose-500"></i> MARGEM POR PRODUTO
+                    <i class="fa-solid fa-chart-pie mr-2 text-rose-500"></i> RECEITA, COMISSÃO E MARGEM POR PRODUTO
                 </h3>
+                <p class="text-[10px] text-slate-400 mt-1">% Comissão = comissão ÷ receita. Margem gerencial = (receita − custo gerencial) ÷ receita; "—" quando não há custo cadastrado. Sem classificação de lucratividade.</p>
             </div>
             <div class="overflow-x-auto">
                 <table class="w-full text-sm">
@@ -383,9 +428,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Produto</th>
                             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Receita</th>
                             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Comissão</th>
-                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Margem</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">% Comissão</th>
+                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Margem gerencial</th>
                             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Qtd</th>
-                            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Status</th>
                         </tr>
                     </thead>
                     <tbody x-show="margemProdutos.length > 0">
@@ -397,20 +442,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 </td>
                                 <td class="px-4 py-3 text-right text-emerald-600 font-bold" x-text="formatMoney(item.receita || 0)"></td>
                                 <td class="px-4 py-3 text-right text-amber-600" x-text="formatMoney(item.comissao || 0)"></td>
-                                <td class="px-4 py-3 text-center">
-                                    <div class="inline-flex items-center gap-1">
-                                        <div class="w-16 h-2 bg-slate-200 rounded-full overflow-hidden">
-                                            <div class="h-full rounded-full" :class="(item.margem_percentual || 0) >= 10 ? 'bg-green-500' : ((item.margem_percentual || 0) >= 5 ? 'bg-yellow-500' : 'bg-red-500')" :style="'width: ' + Math.min((item.margem_percentual || 0), 100) + '%'"></div>
-                                        </div>
-                                        <span class="text-xs font-bold" :class="(item.margem_percentual || 0) >= 10 ? 'text-green-600' : ((item.margem_percentual || 0) >= 5 ? 'text-yellow-600' : 'text-red-600')" x-text="(item.margem_percentual || 0) + '%'"></span>
-                                    </div>
-                                </td>
+                                <td class="px-4 py-3 text-center text-slate-700 font-bold" x-text="(item.comissao_percentual ?? 0) + '%'"></td>
+                                <td class="px-4 py-3 text-center text-slate-700 font-bold" x-text="item.margem_percentual === null || item.margem_percentual === undefined ? '—' : item.margem_percentual + '%'"></td>
                                 <td class="px-4 py-3 text-right text-blue-600" x-text="formatNumber(item.quantidade || 0)"></td>
-                                <td class="px-4 py-3 text-center">
-                                    <span class="px-2 py-1 rounded-full text-[10px] font-bold" :class="(item.margem_percentual || 0) >= 10 ? 'bg-green-100 text-green-700' : ((item.margem_percentual || 0) >= 5 ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700')">
-                                        <span x-text="(item.margem_percentual || 0) >= 10 ? 'Lucrativo' : ((item.margem_percentual || 0) >= 5 ? 'Atenção' : 'Crítico')"></span>
-                                    </span>
-                                </td>
                             </tr>
                         </template>
                     </tbody>
@@ -438,9 +472,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </table>
             </div>
         </div>
-    </div>
 <!-- INSIGHTS: RANKING + FUNIL + ALERTAS -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
+    <div x-show="erroInsights" x-cloak class="lg:col-span-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm" x-text="erroInsights"></div>
     
     <!-- Ranking de Representantes -->
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
@@ -459,7 +493,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                         <div class="text-right">
                             <p class="text-xs font-bold text-emerald-600" x-text="formatMoney(item.valor)"></p>
-                            <p class="text-[10px] text-slate-400" x-text="item.total_pedidos + ' pedidos | ' + item.clientes_ativos + ' clientes'"></p>
+                            <p class="text-[10px] text-slate-400" x-text="item.total_notas + ' NFs | ' + item.clientes_ativos + ' clientes'"></p>
                         </div>
                     </div>
                 </div>
@@ -476,6 +510,11 @@ require_once __DIR__ . '/../estrutura/header.php';
             <h3 class="text-sm font-bold text-slate-700 uppercase">
                 <i class="fa-solid fa-filter-circle-dollar mr-2 text-blue-500"></i> FUNIL DE PEDIDOS
             </h3>
+            <p class="text-[10px] text-slate-400 mt-1">Pedidos do período por situação. Conversão = faturados (total + parcial) ÷ pedidos válidos.</p>
+        </div>
+        <div class="px-4 pt-3 flex gap-4 text-xs" x-show="funilPedidos.length > 0">
+            <span class="text-emerald-600 font-bold">Conversão: <span x-text="funilTaxas.conversao === null ? '—' : funilTaxas.conversao + '%'"></span></span>
+            <span class="text-rose-600 font-bold">Cancelamento: <span x-text="funilTaxas.cancelamento === null ? '—' : funilTaxas.cancelamento + '%'"></span></span>
         </div>
         <div class="p-4 space-y-3" x-show="funilPedidos.length > 0">
             <template x-for="(item, idx) in funilPedidos" :key="idx">
@@ -485,7 +524,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="text-slate-500" x-text="item.quantidade + ' pedidos'"></span>
                     </div>
                     <div class="w-full bg-slate-200 rounded-full h-2">
-                        <div class="h-2 rounded-full" :class="idx === 0 ? 'bg-blue-500' : 'bg-emerald-500'" :style="'width: ' + Math.min((item.valor / funilPedidos[0].valor) * 100, 100) + '%'"></div>
+                        <div class="h-2 rounded-full" :class="corFunil(item)" :style="'width: ' + larguraFunil(item) + '%'"></div>
                     </div>
                     <p class="text-[10px] text-slate-400 mt-1" x-text="formatMoney(item.valor)"></p>
                 </div>
@@ -502,8 +541,10 @@ require_once __DIR__ . '/../estrutura/header.php';
             <h3 class="text-sm font-bold text-slate-700 uppercase">
                 <i class="fa-solid fa-chart-line mr-2 text-purple-500"></i> PROJEÇÃO DE FECHAMENTO
             </h3>
+            <p class="text-[10px] text-slate-400 mt-1">Realizado do mês + média por dia útil × dias úteis restantes (mesmo escopo dos filtros).</p>
         </div>
-        <div class="p-4" x-show="projecaoFechamento.realizado">
+        <div x-show="!projecaoFechamento.carregado" class="text-center py-6 text-xs text-slate-400">Disponível quando o período inclui o mês corrente.</div>
+        <div class="p-4" x-show="projecaoFechamento.carregado">
             <div class="text-center mb-4">
                 <p class="text-[10px] text-slate-400 uppercase">Projeção para fim do mês</p>
                 <p class="text-2xl font-black text-purple-600" x-text="formatMoney(projecaoFechamento.projecao)">R$ 0</p>
@@ -515,7 +556,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <!-- Alertas -->
             <div x-show="clientesRisco.length > 0" class="mt-4">
-                <p class="text-[10px] font-bold text-rose-500 uppercase mb-2">⚠️ Clientes sem comprar (30+ dias)</p>
+                <p class="text-[10px] font-bold text-rose-500 uppercase mb-2">⚠️ Clientes sem comprar (<span x-text="riscoCriterio.dias_sem_comprar"></span>+ dias, base: últimos <span x-text="riscoCriterio.janela_dias"></span> dias)</p>
                 <template x-for="c in clientesRisco.slice(0, 3)" :key="c.id">
                     <div class="flex justify-between text-xs py-1 border-b border-slate-100 cursor-pointer hover:bg-red-50" @click="verDetalhesCliente(c.id, c.nome)">
                         <span class="text-slate-600 truncate max-w-[120px]" x-text="c.nome"></span>
@@ -524,19 +565,19 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </template>
             </div>
         </div>
-        <div x-show="!projecaoFechamento.realizado" class="text-center py-8 text-slate-400">
-            <p class="text-sm">Carregando...</p>
-        </div>
+        <div x-show="!projecaoFechamento.carregado" class="hidden"></div>
     </div>
 </div>
     <!-- MODAL DETALHES PRODUTO -->
-    <div x-show="modalProdutoOpen" x-cloak @click.self="modalProdutoOpen = false" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div x-show="modalProdutoOpen" x-cloak @click.self="fecharModalProduto()" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
         <div class="bg-white rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden">
             <div class="bg-gradient-to-r from-emerald-700 to-emerald-600 px-6 py-4 flex justify-between items-center">
                 <h3 class="text-white font-bold"><i class="fa-solid fa-cube mr-2"></i> <span x-text="produtoDetalhes.nome"></span></h3>
-                <button @click="modalProdutoOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+                <button @click="fecharModalProduto()" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
             </div>
             <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <div x-show="produtoLoading" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando...</div>
+                <div x-show="produtoErro" class="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="produtoErro"></div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <div class="bg-emerald-50 rounded-xl p-3 text-center"><p class="text-[10px] text-emerald-600 uppercase font-bold">Valor Total</p><p class="text-xl font-black text-emerald-700" x-text="formatMoney(produtoDetalhes.valor)">R$ 0</p></div>
                     <div class="bg-blue-50 rounded-xl p-3 text-center"><p class="text-[10px] text-blue-600 uppercase font-bold">Quantidade</p><p class="text-xl font-black text-blue-700" x-text="formatNumber(produtoDetalhes.quantidade)">0</p></div>
@@ -565,9 +606,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <button @click="modalClienteOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
             </div>
             <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+                <div x-show="clienteLoading" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando...</div>
+                <div x-show="clienteErro" class="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="clienteErro"></div>
                 <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                     <div class="bg-emerald-50 rounded-xl p-3 text-center"><p class="text-[10px] text-emerald-600 uppercase font-bold">Valor Total</p><p class="text-xl font-black text-emerald-700" x-text="formatMoney(clienteDetalhes.valor)">R$ 0</p></div>
-                    <div class="bg-blue-50 rounded-xl p-3 text-center"><p class="text-[10px] text-blue-600 uppercase font-bold">Total Pedidos</p><p class="text-xl font-black text-blue-700" x-text="formatNumber(clienteDetalhes.total_pedidos)">0</p></div>
+                    <div class="bg-blue-50 rounded-xl p-3 text-center"><p class="text-[10px] text-blue-600 uppercase font-bold">Total NFs</p><p class="text-xl font-black text-blue-700" x-text="formatNumber(clienteDetalhes.total_notas)">0</p></div>
                     <div class="bg-purple-50 rounded-xl p-3 text-center"><p class="text-[10px] text-purple-600 uppercase font-bold">Ticket Médio</p><p class="text-xl font-black text-purple-700" x-text="formatMoney(clienteDetalhes.ticket_medio)">R$ 0</p></div>
                     <div class="bg-amber-50 rounded-xl p-3 text-center"><p class="text-[10px] text-amber-600 uppercase font-bold">Quantidade</p><p class="text-xl font-black text-amber-700" x-text="formatNumber(clienteDetalhes.quantidade)">0</p></div>
                 </div>
@@ -591,16 +634,24 @@ require_once __DIR__ . '/../estrutura/header.php';
             <button @click="modalCardOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
         </div>
         <div class="p-6 overflow-y-auto max-h-[calc(85vh-80px)]">
-            <div x-show="cardDetalhes.length === 0" class="text-center py-12 text-slate-400">
+            <div x-show="cardLoading" class="text-center py-12 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Carregando detalhes...</div>
+            <div x-show="cardErro" class="p-3 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="cardErro"></div>
+            <div x-show="!cardLoading && !cardErro && cardDetalhes.length === 0" class="text-center py-12 text-slate-400">
                 <i class="fa-solid fa-chart-simple text-4xl mb-3 block"></i>
-                <p>Carregando detalhes...</p>
+                <p>Sem dados para o período e filtros selecionados.</p>
             </div>
             <div x-show="cardDetalhes.length > 0">
+                <div x-show="cardTotal" class="grid grid-cols-3 gap-3 mb-4 text-center">
+                    <div class="bg-emerald-50 rounded-xl p-2"><p class="text-[10px] text-emerald-600 uppercase font-bold">Total</p><p class="font-black text-emerald-700" x-text="formatMoney(cardTotal ? cardTotal.valor : 0)"></p></div>
+                    <div class="bg-blue-50 rounded-xl p-2"><p class="text-[10px] text-blue-600 uppercase font-bold" x-text="cardRotulo"></p><p class="font-black text-blue-700" x-text="formatNumber(cardTotal ? cardTotal.documentos : 0)"></p></div>
+                    <div class="bg-amber-50 rounded-xl p-2"><p class="text-[10px] text-amber-600 uppercase font-bold">Ticket médio</p><p class="font-black text-amber-700" x-text="formatMoney(cardTotal ? cardTotal.ticket_medio : 0)"></p></div>
+                </div>
                 <table class="w-full text-sm">
                     <thead class="bg-slate-50">
                         <tr>
                             <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Período</th>
                             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Valor</th>
+                            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase" x-text="cardRotulo"></th>
                             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Qtd</th>
                         </tr>
                     </thead>
@@ -609,11 +660,21 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <tr class="border-b border-slate-100">
                                 <td class="px-4 py-3 text-slate-700" x-text="item.label || item.periodo"></td>
                                 <td class="px-4 py-3 text-right text-emerald-600 font-bold" x-text="formatMoney(item.valor)"></td>
+                                <td class="px-4 py-3 text-right text-slate-600" x-text="formatNumber(item.documentos || 0)"></td>
                                 <td class="px-4 py-3 text-right text-blue-600" x-text="formatNumber(item.quantidade || 0)"></td>
                             </tr>
                         </template>
                     </tbody>
                 </table>
+                <div x-show="cardExtra && cardExtra.por_dia_semana && cardExtra.por_dia_semana.length" class="mt-6">
+                    <h4 class="text-sm font-bold text-slate-700 mb-2">Média por dia da semana</h4>
+                    <template x-for="d in (cardExtra.por_dia_semana || [])"                     :key="d.dow">
+                        <div class="flex justify-between text-xs py-1 border-b border-slate-100">
+                                                <span x-text="d.dia + ' (' + d.dias + ' dias)'"></span>
+                                                <span class="font-bold text-emerald-600" x-text="formatMoney(d.media)"></span>
+                        </div>
+                    </template>
+                </div>
             </div>
         </div>
     </div>
@@ -626,11 +687,18 @@ require_once __DIR__ . '/../estrutura/header.php';
             <button @click="modalRepresentanteOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
         </div>
         <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div>
-                    <h4 class="text-sm font-bold text-slate-700 mb-3">Top 5 Produtos</h4>
-                    <div class="space-y-2">
-                        <template x-for="(item, idx) in representanteDetalhes.produtos" :key="idx">
+            <div x-show="repLoading" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando...</div>
+            <div x-show="repErro" class="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="repErro"></div>
+            <div x-show="representanteDetalhes.total" class="grid grid-cols-3 gap-3 mb-4 text-center">
+                <div class="bg-emerald-50 rounded-xl p-2"><p class="text-[10px] text-emerald-600 uppercase font-bold">Faturamento</p><p class="font-black text-emerald-700" x-text="formatMoney(representanteDetalhes.total ? representanteDetalhes.total.valor : 0)"></p></div>
+                <div class="bg-blue-50 rounded-xl p-2"><p class="text-[10px] text-blue-600 uppercase font-bold">NFs</p><p class="font-black text-blue-700" x-text="formatNumber(representanteDetalhes.total ? representanteDetalhes.total.notas : 0)"></p></div>
+                <div class="bg-amber-50 rounded-xl p-2"><p class="text-[10px] text-amber-600 uppercase font-bold">Clientes</p><p class="font-black text-amber-700" x-text="formatNumber(representanteDetalhes.total ? representanteDetalhes.total.clientes : 0)"></p></div>
+            </div>
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div>
+                                <h4 class="text-sm font-bold text-slate-700 mb-3">Produtos</h4>
+                                <div class="space-y-2">
+                                    <template x-for="(item, idx) in representanteDetalhes.produtos" :key="idx">
                             <div class="flex justify-between p-2 bg-slate-50 rounded-lg">
                                 <span class="text-sm text-slate-700 truncate max-w-[200px]" x-text="item.produto"></span>
                                 <span class="text-sm font-bold text-emerald-600" x-text="formatMoney(item.valor)"></span>
@@ -644,7 +712,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <template x-for="c in representanteDetalhes.clientes" :key="c.id">
                             <div class="flex justify-between p-2 bg-slate-50 rounded-lg text-xs">
                                 <span class="text-slate-700 truncate max-w-[150px]" x-text="c.nome"></span>
-                                <span class="text-slate-400" x-text="c.total_pedidos + ' ped'"></span>
+                                <span class="text-slate-400" x-text="c.total_notas + ' NFs'"></span>
                                 <span class="font-bold text-emerald-600" x-text="formatMoney(c.valor)"></span>
                             </div>
                         </template>
@@ -663,6 +731,13 @@ require_once __DIR__ . '/../estrutura/header.php';
             <button @click="modalFunilOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
         </div>
         <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+            <div x-show="funilLoading" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando...</div>
+            <div x-show="funilErro" class="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="funilErro"></div>
+            <p x-show="funilDetalhes.total" class="text-xs text-slate-500 mb-3">
+                Total: <b x-text="funilDetalhes.total ? funilDetalhes.total.quantidade : 0"></b> pedidos / <b x-text="formatMoney(funilDetalhes.total ? funilDetalhes.total.valor : 0)"></b>
+                <span x-show="funilDetalhes.truncado" class="text-amber-600"> — exibindo apenas os 50 maiores.</span>
+            </p>
+            <div x-show="!funilLoading && !funilErro && funilDetalhes.pedidos.length === 0" class="text-center py-8 text-slate-400 text-sm">Nenhum pedido nesta etapa.</div>
             <table class="w-full text-sm">
                 <thead class="bg-slate-50">
                     <tr>
@@ -689,6 +764,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </table>
         </div>
     </div>
+</div>
 </div>
 </div>
 

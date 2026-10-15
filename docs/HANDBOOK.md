@@ -160,7 +160,7 @@ principal sem seguir o processo de revisao da equipe.
 - [SQL de idempotencia offline](frota_offline_idempotencia.sql) e
   [migracao de tratamento de problemas](frota_problema_tratamento_migration.sql):
   scripts revisaveis; nao executar sem validar escopo e ambiente.
-- [Token de continuidade atual](tokens/CONTINUATION-2026-10-14.md): handoff
+- [Token de continuidade atual](tokens/CONTINUATION-2026-10-15.md): handoff
   conciso para a proxima manutencao.
 - [Historico dos tokens](tokens/README.md): snapshots antigos, nao autoritativos.
 

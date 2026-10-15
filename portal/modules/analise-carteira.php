@@ -1,10 +1,11 @@
 <?php
 $pageTitle = 'Análise de Carteira | Nutricional';
-$version = time();
+$version = filemtime(__DIR__ . '/../assets/css/module-base.css');
+$jsVersion = filemtime(__DIR__ . '/../assets/js/analise-carteira.js');
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
 <style>
@@ -216,7 +217,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="kpi-card bg-white p-4 rounded-2xl border-l-4 border-emerald-500 shadow-sm">
             <span class="text-[10px] uppercase font-bold text-slate-400 block">À Vencer</span>
             <span class="block text-xl lg:text-2xl font-black text-emerald-600" id="kpi-a-vencer">R$ 0</span>
-            <span class="text-[10px] text-slate-400 mt-1">Próximos 30 dias</span>
+            <span class="text-[10px] text-slate-400 mt-1" id="kpi-a-vencer-sub" title="Inclui títulos vencidos há até 3 dias (tolerância)">Inclui tolerância de 3 dias</span>
         </div>
     </div>
 
@@ -282,6 +283,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <th class="px-4 py-3 text-right font-bold text-slate-500 uppercase">+60 Dias</th>
                         <th class="px-4 py-3 text-center font-bold text-slate-500 uppercase">%+60</th>
                         <th class="px-4 py-3 text-center font-bold text-slate-500 uppercase">Performance</th>
+                        <th class="px-4 py-3 text-right font-bold text-slate-500 uppercase">À Vencer</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-resumo-gestor-body"></tbody>
@@ -317,10 +319,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Títulos</th>
                         <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Clientes</th>
                         <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Performance</th>
+                        <th class="px-3 py-3 text-right font-bold text-slate-500 uppercase">À Vencer</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-rep-body">
-                    <tr><td colspan="12" class="text-center py-12 text-slate-400">
+                    <tr><td colspan="13"  class="text-center py-12 text-slate-400">
                         <i class="fa-solid fa-arrow-up text-2xl block mb-2 text-slate-300"></i>
                         Selecione um gestor para visualizar os dados
                     </td></tr>
@@ -355,7 +358,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <th class="px-3 py-3 text-left font-bold text-slate-500 uppercase">Documento</th>
                         <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Vencimento</th>
                         <th class="px-3 py-3 text-right font-bold text-slate-500 uppercase">Valor Saldo</th>
-                        <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Dias Atraso</th>
+                        <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Dias desde o Venc.</th>
                         <th class="px-3 py-3 text-center font-bold text-slate-500 uppercase">Dias Últ. Evento</th>
                         <th class="px-3 py-3 text-left font-bold text-slate-500 uppercase">Usuário</th>
                         <th class="px-3 py-3 text-left font-bold text-slate-500 uppercase">Registro do Evento</th>
@@ -369,6 +372,6 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 </div>
 
-<script src="/portal/assets/js/analise-carteira.js?v=<?= $version ?>"></script>
+<script src="/portal/assets/js/analise-carteira.js?v=<?= $jsVersion ?>"></script>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

@@ -1,5 +1,9 @@
 -- Transferencias de compra Matriz e Filial (consulta) + valores administraveis da guia.
 
+-- LEGADO: este parametro fixo nao e mais usado pelo relatorio da guia.
+-- A configuracao atual e por NCM em transferencia_guia_ncm_migration.sql.
+-- Mantido para preservar instalacoes que ja aplicaram esta migracao.
+
 CREATE TABLE IF NOT EXISTS guia_transferencia_config (
     id SERIAL PRIMARY KEY,
     tipo VARCHAR(5) NOT NULL DEFAULT 'ST' CHECK (tipo IN ('ST', 'NCM')),

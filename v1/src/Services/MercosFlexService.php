@@ -34,7 +34,7 @@ class MercosFlexService
     private function chamar(string $metodo, ?array $corpo = null): array
     {
         $headers = ['Accept: application/json'];
-        $token = getenv('FLEX_API_TOKEN') ?: ($_ENV['FLEX_API_TOKEN'] ?? '');
+        $token = \Nutricional\Services\SecretVault::get('FLEX_API_TOKEN');
         if ($token !== '') {
             $headers[] = 'Authorization: Bearer ' . $token;
         }

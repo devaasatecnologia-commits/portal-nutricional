@@ -66,16 +66,6 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div id="pendentes" class="space-y-2"></div>
     </div>
 
-    <?php if ($ehMF) { ?>
-    <div class="tc-card p-4 hidden" id="cardGuia">
-        <div class="flex items-center justify-between mb-2">
-            <b>Alíquotas da guia</b>
-            <button id="btnNovaGuia" class="text-sm font-bold hidden" style="color:<?= $cor[0] ?>"><i class="fa-solid fa-plus"></i> Nova vigência</button>
-        </div>
-        <p class="text-xs text-slate-400 mb-3">Valor da guia = base de ST × alíquota vigente na data da solicitação.</p>
-        <div id="guias" class="space-y-2"></div>
-    </div>
-    <?php } ?>
 </div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

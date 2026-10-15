@@ -182,6 +182,12 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 ]);
                 $message = 'Job atualizado com sucesso!';
             } else {
+                if (!isset(CronRotinasController::ROTINAS[$input['comando'] ?? ''])) {
+                    return $this->jsonResponse($response, [
+                        'success' => false,
+                        'message' => 'Comando inválido. Escolha uma das rotinas disponíveis.'
+                    ], 400);
+                }
                 // Criar
                 $stmt = $this->pdo->prepare("
                     INSERT INTO cron_jobs (nome, descricao, categoria_id, comando, ativo, schedule, 
@@ -341,7 +347,7 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         try {
             // ✅ Delegar para o CronRotinasController
             $rotinasController = new CronRotinasController();
-            $resultado = $rotinasController->executarRotina($comando, $jobData['parametros'] ?? [], $usuario, $ip);
+            $resultado = $rotinasController->executarRotina($comando, $this->parametrosDoJob($jobData), $usuario, $ip);
             
             $duracao = round(microtime(true) - $startTime, 2);
             
@@ -377,7 +383,103 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
     // ======================================================================
     // MÉTODOS AUXILIARES
     // ======================================================================
-    
+
+    /** JSONB volta do PDO como string: converte para array. */
+    private function parametrosDoJob(array $job): array
+    {
+        $p = $job['parametros'] ?? [];
+        if (is_string($p)) {
+            $p = json_decode($p, true);
+        }
+        return is_array($p) ? $p : [];
+    }
+
+    /**
+     * Executa um job (usado pelo dispatcher cron/run.php). Registra a execucao
+     * e atualiza ultima/proxima execucao.
+     */
+    public function executarJobAgendado(array $job): array
+    {
+        $execId = $this->criarExecucao($job['id'], 'SISTEMA', 'CLI', 'AGENDADO');
+        $inicio = microtime(true);
+        try {
+            $resultado = (new CronRotinasController())->executarRotina(
+                $job['comando'],
+                $this->parametrosDoJob($job),
+                'SISTEMA',
+                'CLI'
+            );
+        } catch (\Throwable $e) {
+            $resultado = ['success' => false, 'message' => $e->getMessage()];
+        }
+        $duracao = round(microtime(true) - $inicio, 2);
+        $this->finalizarExecucao($execId, !empty($resultado['success']) ? 'sucesso' : 'falha', $resultado, $duracao);
+
+        $proxima = null;
+        try {
+            $proxima = (new CronExpression($job['schedule']))->getNextRunDate()->format('Y-m-d H:i:s');
+        } catch (\Throwable $e) {
+        }
+        $this->pdo->prepare("
+            UPDATE cron_jobs
+            SET ultima_execucao = NOW(), proxima_execucao = ?,
+                tempo_medio_execucao = (tempo_medio_execucao * 0.7 + ? * 0.3)
+            WHERE id = ?
+        ")->execute([$proxima, $duracao, $job['id']]);
+
+        return $resultado + ['duracao' => $duracao];
+    }
+
+    /** GET /cron/rotinas - comandos disponiveis para criar jobs */
+    public function getRotinas(Request $request, Response $response): Response
+    {
+        $lista = [];
+        foreach (CronRotinasController::ROTINAS as $comando => [$nome, $desc]) {
+            $lista[] = ['comando' => $comando, 'nome' => $nome, 'descricao' => $desc];
+        }
+        return $this->jsonResponse($response, ['success' => true, 'rotinas' => $lista]);
+    }
+
+    /**
+     * GET /cron/servidor - como agendar o dispatcher na hospedagem.
+     * A hospedagem desabilita exec(), entao o painel nao consegue editar o crontab:
+     * mostramos a linha exata para colar em cPanel > Tarefas Cron.
+     */
+    public function getServidor(Request $request, Response $response): Response
+    {
+        $script = realpath(__DIR__ . '/../../cron/run.php') ?: (dirname(__DIR__, 2) . '/cron/run.php');
+        $logDir = dirname(__DIR__, 3) . '/logs';
+        $php = '/usr/local/bin/php';
+        $linha = "* * * * * {$php} {$script} >> {$logDir}/cron_run.log 2>&1";
+
+        $hb = $logDir . '/cron_heartbeat.txt';
+        $ultimo = is_file($hb) ? (int)trim((string)@file_get_contents($hb)) : 0;
+        $ativo = $ultimo > 0 && (time() - $ultimo) <= 180;
+
+        $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
+        $execOk = function_exists('exec') && !in_array('exec', $disabled, true);
+
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'linha_cron' => $linha,
+            'script' => $script,
+            'php_sugerido' => $php,
+            'edicao_direta' => $execOk,
+            'dispatcher_ativo' => $ativo,
+            'ultimo_batimento' => $ultimo ? date('Y-m-d H:i:s', $ultimo) : null,
+            'instrucoes' => [
+                'Abra o cPanel da hospedagem > Avancado > Tarefas Cron (Cron Jobs).',
+                'Em "Configuracoes comuns" escolha "A cada minuto (* * * * *)".',
+                'No campo Comando cole a linha abaixo (sem os 5 asteriscos, que o cPanel ja preenche) e clique em "Adicionar nova tarefa cron".',
+                'Confirme o caminho do PHP com o suporte da hospedagem (ex.: /usr/local/bin/php ou /opt/cpanel/ea-php82/root/usr/bin/php).',
+                'Depois disso, crie/edite os jobs aqui no painel: o dispatcher executa cada job no horario do campo Schedule. Nao e preciso mexer mais no servidor.',
+                $execOk
+                    ? 'exec() esta habilitado neste servidor, mas o painel nao altera o crontab sozinho por seguranca.'
+                    : 'exec() esta desabilitado nesta hospedagem: o agendamento deve ser feito manualmente no cPanel (uma unica vez).',
+            ],
+        ]);
+    }
+
     private function criarExecucao($jobId, $usuario, $ip, $origem)
     {
         $stmt = $this->pdo->prepare("

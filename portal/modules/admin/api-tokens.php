@@ -87,8 +87,8 @@ async function carregarTokens() {
                     <td class="px-4 py-3 font-semibold">${t.nome_cliente || 'N/A'}</td>
                     <td class="px-4 py-3">
                         <code class="text-xs bg-slate-100 px-2 py-1 rounded">${t.token_prefixo}...</code>
-                        <button onclick="navigator.clipboard.writeText('${t.token}'); showToast('Token copiado!', 'info')" class="ml-2 text-slate-400 hover:text-amber-500">
-                            <i class="fa-regular fa-copy"></i>
+                        <button onclick="revelarSegredo('/admin/api-tokens/${t.id}/revelar', 'token', 'Token de ${escapeHtml(t.nome_cliente)}')" title="Revelar (exige 2FA)" class="ml-2 text-slate-400 hover:text-amber-500">
+                            <i class="fa-solid fa-eye"></i>
                         </button>
                     </td>
                     <td class="px-4 py-3 text-xs">

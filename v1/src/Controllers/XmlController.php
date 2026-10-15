@@ -1094,7 +1094,7 @@ public function enviarEmailDivergencia(Request $request, Response $response): Re
         $mail->Host = $_ENV['MAIL_HOST'];
         $mail->SMTPAuth = true;
         $mail->Username = $_ENV['MAIL_USER'];
-        $mail->Password = $_ENV['MAIL_PASS'];
+        $mail->Password = \Nutricional\Services\SecretVault::get('MAIL_PASS');
         $mail->SMTPSecure = \PHPMailer\PHPMailer\PHPMailer::ENCRYPTION_SMTPS;
         $mail->Port = $_ENV['MAIL_PORT'];
         $mail->CharSet = 'UTF-8';

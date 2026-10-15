@@ -177,7 +177,7 @@ class FlexMinimoService
             $mail->Host = $_ENV['MAIL_HOST'] ?? 'mail.nutricionalbr.com';
             $mail->SMTPAuth = true;
             $mail->Username = $_ENV['MAIL_USER'] ?? 'nao-responder@nutricionalbr.com';
-            $mail->Password = $_ENV['MAIL_PASS'] ?? '';
+            $mail->Password = \Nutricional\Services\SecretVault::get('MAIL_PASS');
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = (int)($_ENV['MAIL_PORT'] ?? 465);
             $mail->CharSet = 'UTF-8';

@@ -18,6 +18,9 @@ require_once __DIR__ . '/components/sidebar.php';
         </div>
     </div>
     <div class="flex gap-2">
+         <button onclick="mostrarServidor()" class="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 text-sm">
+            <i class="fa-solid fa-server"></i> Agendar no servidor
+        </button>
          <button onclick="novoJob()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 text-sm">
             <i class="fa-solid fa-plus"></i> Novo Job
         </button>
@@ -197,7 +200,8 @@ require_once __DIR__ . '/components/sidebar.php';
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Comando *</label>
-                            <input type="text" id="jobComando" required class="w-full p-3 border border-slate-200 rounded-xl text-sm font-mono" placeholder="representantes">
+                            <input type="text" id="jobComando" required list="listaRotinas" class="w-full p-3 border border-slate-200 rounded-xl text-sm font-mono" placeholder="representantes">
+                            <datalist id="listaRotinas"></datalist>
                         </div>
                     </div>
                     
@@ -271,6 +275,43 @@ require_once __DIR__ . '/components/sidebar.php';
 <script>
 let grafico = null;
 let todosJobs = [];
+
+// ======================================================================
+// SERVIDOR (agendamento do dispatcher na hospedagem)
+// ======================================================================
+async function mostrarServidor() {
+    try {
+        const d = await apiFetch('/cron/servidor', 'GET');
+        if (!d.success) throw new Error(d.error || 'Erro');
+        const status = d.dispatcher_ativo
+            ? `<span class="text-emerald-600 font-bold">Dispatcher ativo</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
+            : '<span class="text-rose-600 font-bold">Dispatcher NÃO detectado</span> — agende no servidor conforme abaixo.';
+        await Swal.fire({
+            title: 'Agendar no servidor',
+            width: 760,
+            html: `<div class="text-left text-sm space-y-3">
+                <p>${status}</p>
+                <ol class="list-decimal pl-5 space-y-1">${d.instrucoes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
+                <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_cron)}</div>
+            </div>`,
+            showCancelButton: true,
+            confirmButtonText: 'Copiar linha do cron',
+            cancelButtonText: 'Fechar',
+            confirmButtonColor: '#274036'
+        }).then(r => { if (r.isConfirmed) { navigator.clipboard.writeText(d.linha_cron); showToast('Linha copiada'); } });
+    } catch (e) {
+        showError('Erro', e.message);
+    }
+}
+
+async function carregarRotinas() {
+    try {
+        const d = await apiFetch('/cron/rotinas', 'GET');
+        document.getElementById('listaRotinas').innerHTML = (d.rotinas || [])
+            .map(r => `<option value="${escapeHtml(r.comando)}">${escapeHtml(r.nome)} - ${escapeHtml(r.descricao)}</option>`).join('');
+    } catch (e) { /* sugestao opcional */ }
+}
+document.addEventListener('DOMContentLoaded', carregarRotinas);
 
 // ======================================================================
 // MODAL

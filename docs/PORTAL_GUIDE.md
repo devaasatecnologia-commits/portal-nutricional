@@ -40,9 +40,35 @@ deve ser usado nas permissoes, nunca o nome visual do modulo.
 - usuarios: cadastro, ativacao e permissoes;
 - permissoes: vinculo de modulos, filiais e gestores;
 - setores: liberacao em grupo;
+- configuracoes dos modulos: regras da guia das transferencias de compra e parametros do Flex Minimo;
 - crons: jobs e execucoes;
 - API tokens: tokens de integracao;
 - auditoria: rastreabilidade administrativa.
+
+As configuracoes sao especificas por modulo e validadas no backend. A guia usa
+vigencias em `guia_transferencia_ncm_regra`; os parametros dos gestores do Flex
+Minimo ficam em `flex_minimo_config`. Ativar a rotina Flex no portal exige
+desligar antes a rotina equivalente no ERP para evitar emprestimos duplicados.
+
+O relatorio da guia de transferencia Matriz para Filial considera itens faturados
+com situacao tributaria 010 e agrupa a base `nfs_item.valortotal_imp` por NCM
+(`item.idclassfiscal` ligado a `classificacaofiscal.idclassificacaofiscal`,
+usando `classificacaofiscal.classificacao` como NCM). Somente os NCMs cadastrados
+em Admin > Configuracoes dos Modulos participam (tabela `guia_transferencia_ncm_regra`);
+os demais sao ignorados, sem alerta. Ao adicionar NCMs e possivel filtrar pelo imposto
+dos itens (`estoque_filial.idimposto` da filial 1, igual a consulta de itens do ERP; ★ = imposto
+com ST 010 no PR), marcar varios de uma vez e definir os parametros. A tela ja vem com o padrao da
+planilha (MVA 59,6%, PR 19,5%, credito 12%, H - F), com botao "Restaurar padrao", ajuda em cada
+coluna e simulacao ao vivo com um valor de exemplo.
+
+Formula por NCM (colunas da planilha): E = soma dos itens ST 010 na nota;
+F = E x credito de origem (12%); G = E x (1 + MVA); H = G x aliquota PR (19,5%);
+guia I = H - F. As operacoes (+, -, x, /) e percentuais sao configuraveis; para mudar
+um valor use uma nova vigencia. A lista e a formula precisam ser confirmadas pelo
+responsavel fiscal antes de serem usadas como valor de pagamento.
+
+Migracoes: `transferencia_guia_ncm_migration.sql` e, em seguida,
+`transferencia_guia_ncm_participa_migration.sql` (remove as regras "sem ST PR" importadas).
 
 ## Modulo Frota
 

@@ -62,7 +62,7 @@ async function carregar() {
         estado.registros = r.registros;
         $('rotulo').textContent = filtrado() ? 'Filtrado' : 'Últimas 10';
         $('totais').textContent = ehMF
-            ? `${r.quantidade} solicitação(ões) · guia ${brl(r.total_guia)}`
+            ? `${r.quantidade} solicitação(ões) · guia ${brl(r.total_guia)}${r.erros_calculo ? ` · ${r.erros_calculo} erro(s) de cálculo` : ''}`
             : `${r.quantidade} solicitação(ões) · ${brl(r.total_valor)}`;
         $('lista').innerHTML = r.registros.length ? r.registros.map(linha).join('') : '<div class="text-sm text-slate-400">Nenhum registro.</div>';
     } catch (e) {
@@ -88,8 +88,17 @@ function detalhe(r) {
     const html = ehMF
         ? `<div><b>Solicitação:</b> ${esc(r.idcompra)}</div><div><b>${r.remessa ? 'Remessa' : 'Embarque'}:</b> ${esc(r.embarque)} – ${esc(r.nomeembarque)}</div>
            <div><b>Data:</b> ${dataBR(r.data)}</div><div><b>Pedidos:</b> ${esc(r.qtpedido ?? 0)}</div>
-           <div><b>Base ST:</b> ${brl(r.valor_st)}</div><div><b>Alíquota:</b> ${r.aliquota == null ? '<span class="text-red-600">sem regra vigente</span>' : num(Number(r.aliquota) * 100, 4) + '%'}</div>
-           <div><b>Valor da guia:</b> <span class="font-bold text-sky-700">${brl(r.valor_guia)}</span></div>`
+           <div><b>Base dos NCMs da guia:</b> ${brl(r.valor_st)}</div>
+           <div><b>Valor calculado da guia:</b> <span class="font-bold text-sky-700">${brl(r.valor_guia)}</span></div>
+           ${Number(r.erros_calculo || 0) ? `<div class="text-red-600"><b>Erro:</b> ${esc(r.erros_calculo)} item(ns) não calculados por divisão inválida.</div>` : ''}
+           <div class="border-t mt-2 pt-2"><b>Memória por NCM</b></div>
+           ${(r.detalhes_ncm || []).length ? '' : '<div class="text-slate-400">Nenhum item faturado de NCM configurado na guia.</div>'}
+           ${(r.detalhes_ncm || []).map((n) => `<div class="mt-2 rounded-lg bg-slate-50 p-2">
+             <div class="font-bold">             ${esc(n.ncm)} · Soma Total dos Itens ${brl(n.base)}</div>
+                          <div>Base de Cálculo ICMS-ST (MVA ${num(n.mva_percentual, 4)}% ${esc(n.operador_mva)}): ${brl(n.base_ajustada)} · ICMS-ST: ${brl(n.icms_st_bruto)}</div>
+                          <div>Crédito ICMS Origem (${num(n.credito_interestadual_percentual, 4)}%): ${brl(n.credito_origem)}</div>
+                          <div>Valor Guia (ICMS-ST ${esc(n.operador_guia)} Crédito) =  ${n.erro_calculo ? '<span class="text-red-600">divisão inválida</span>' : brl(n.valor_guia)}</div>
+           </div>`).join('')}`
         : `<div><b>Solicitação:</b> ${esc(r.idcompra)}</div><div><b>Ordem de compra:</b> ${esc(r.ordem)}</div><div><b>Fornecedor:</b> ${esc(r.fornecedor)}</div>
            <div><b>Data:</b> ${dataBR(r.data)}</div><div><b>Quantidade:</b> ${num(r.quantidade)}</div><div><b>Peso:</b> ${num(r.peso)} kg</div><div><b>Valor:</b> ${brl(r.valor)}</div>`;
     Swal.fire({ ...swalBase, title: 'Solicitação ' + r.idcompra, html: `<div class="text-left text-sm space-y-1">${html}</div>`, confirmButtonText: 'Fechar' });
@@ -100,10 +109,10 @@ async function baixar() {
         const r = await apiFetch(base, 'GET', { ...filtros(), limite: 2000 });
         if (!r.registros.length) return Swal.fire({ ...swalBase, icon: 'info', title: 'Sem dados', text: 'Não há registros para exportar.' });
         const dec = (v) => Number(v ?? 0).toFixed(2).replace('.', ',');
-        const cab = ehMF ? ['Solicitação', 'Tipo', 'Embarque/Remessa', 'Descrição', 'Data', 'Pedidos', 'Base ST', 'Alíquota %', 'Valor guia']
+        const cab = ehMF ? ['Solicitação', 'Tipo', 'Embarque/Remessa', 'Descrição', 'Data', 'Pedidos', 'Base NCMs da guia', 'Valor guia', 'Erros de cálculo', 'Detalhe por NCM']
             : ['Solicitação', 'Ordem', 'Data', 'Fornecedor', 'Quantidade', 'Peso', 'Valor'];
         const linhas = r.registros.map((x) => ehMF
-            ? [x.idcompra, x.remessa ? 'Remessa' : 'Embarque', x.embarque, x.nomeembarque, dataBR(x.data), x.qtpedido, dec(x.valor_st), x.aliquota == null ? '' : dec(Number(x.aliquota) * 100), dec(x.valor_guia)]
+            ? [x.idcompra, x.remessa ? 'Remessa' : 'Embarque', x.embarque, x.nomeembarque, dataBR(x.data), x.qtpedido, dec(x.valor_st), dec(x.valor_guia), x.erros_calculo, JSON.stringify(x.detalhes_ncm || [])]
             : [x.idcompra, x.ordem, dataBR(x.data), x.fornecedor, x.quantidade, x.peso, dec(x.valor)]);
         const cel = (v) => '"' + String(v ?? '').replace(/"/g, '""') + '"';
         const blob = new Blob(['\ufeff' + [cab, ...linhas].map((l) => l.map(cel).join(';')).join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -115,64 +124,12 @@ async function baixar() {
     } catch (e) { Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao exportar', text: e.message }); }
 }
 
-// ---- Guia (somente Matriz -> Filial) ----
-async function carregarGuias() {
-    if (!ehMF) return;
-    try {
-        const r = await apiFetch(base + '/guia-config');
-        $('cardGuia').classList.remove('hidden');
-        $('btnNovaGuia').classList.toggle('hidden', !r.pode_editar);
-        $('guias').innerHTML = r.regras.map((g) => `
-            <div class="tc-row" style="cursor:default;${g.ativo ? '' : 'opacity:.5'}">
-                <div class="flex-1 min-w-0">
-                    <div class="font-bold text-sm text-slate-800">${g.tipo === 'NCM' ? 'NCM ' + esc(g.ncm) : 'ST'} · ${num(Number(g.aliquota) * 100, 4)}%</div>
-                    <div class="text-xs text-slate-400">desde ${dataBR(g.vigencia_inicio)} · ${esc(g.descricao || '')} ${g.ativo ? '' : '· desativada'}</div>
-                </div>
-                ${r.pode_editar && g.ativo ? `<button data-des="${g.id}" class="text-xs font-bold text-red-500">Desativar</button>` : ''}
-            </div>`).join('') || '<div class="text-sm text-slate-400">Nenhuma regra.</div>';
-    } catch { /* sem permissao de ver: mantem oculto */ }
-}
-
-async function novaGuia() {
-    const { value } = await Swal.fire({
-        ...swalBase, title: 'Nova vigência da guia', showCancelButton: true, confirmButtonText: 'Salvar', cancelButtonText: 'Cancelar',
-        html: `<div class="text-left space-y-2">
-            <label class="block text-xs font-bold">Tipo<select id="gTipo" class="swal2-input" style="margin:.25rem 0"><option value="ST">ST</option><option value="NCM">NCM</option></select></label>
-            <label class="block text-xs font-bold">NCM (só para tipo NCM)<input id="gNcm" class="swal2-input" style="margin:.25rem 0" inputmode="numeric"></label>
-            <label class="block text-xs font-bold">Alíquota (%)<input id="gAliq" class="swal2-input" style="margin:.25rem 0" inputmode="decimal" placeholder="19,0322"></label>
-            <label class="block text-xs font-bold">Vigência a partir de<input id="gVig" type="date" class="swal2-input" style="margin:.25rem 0"></label>
-            <label class="block text-xs font-bold">Descrição<input id="gDesc" class="swal2-input" style="margin:.25rem 0" maxlength="120"></label></div>`,
-        preConfirm: () => ({
-            tipo: $('gTipo').value, ncm: $('gNcm').value, aliquota_percentual: $('gAliq').value,
-            vigencia_inicio: $('gVig').value, descricao: $('gDesc').value,
-        }),
-    });
-    if (!value) return;
-    try {
-        await apiFetch(base + '/guia-config', 'POST', value);
-        carregarGuias();
-        carregar();
-    } catch (e) { Swal.fire({ ...swalBase, icon: 'error', title: 'Não salvou', text: e.message }); }
-}
-
 window.addEventListener('DOMContentLoaded', () => {
     $('btnFiltrar').addEventListener('click', carregar);
     $('btnLimpar').addEventListener('click', () => { $('dtIni').value = ''; $('dtFim').value = ''; $('busca').value = ''; carregar(); });
     $('busca').addEventListener('input', () => { clearTimeout(estado.timer); estado.timer = setTimeout(carregar, 400); });
     $('btnXls').addEventListener('click', baixar);
     $('lista').addEventListener('click', (ev) => { const r = ev.target.closest('[data-i]'); if (r) detalhe(estado.registros[Number(r.dataset.i)]); });
-    if (ehMF) {
-        $('btnNovaGuia').addEventListener('click', novaGuia);
-        $('guias').addEventListener('click', async (ev) => {
-            const b = ev.target.closest('[data-des]');
-            if (!b) return;
-            const ok = await Swal.fire({ ...swalBase, icon: 'question', title: 'Desativar esta regra?', showCancelButton: true, confirmButtonText: 'Desativar', cancelButtonText: 'Cancelar' });
-            if (!ok.isConfirmed) return;
-            try { await apiFetch(base + '/guia-config', 'POST', { desativar_id: Number(b.dataset.des) }); carregarGuias(); carregar(); }
-            catch (e) { Swal.fire({ ...swalBase, icon: 'error', title: 'Erro', text: e.message }); }
-        });
-    }
     carregar();
     carregarPendentes();
-    carregarGuias();
 });

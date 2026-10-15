@@ -1,7 +1,11 @@
 <?php
 $pageTitle = 'Cubo Vendas | Nutricional';
 $moduleJs = 'cubo-vendas.js';
-$version = time();
+$version = max(
+    (int)@filemtime(__DIR__ . '/../assets/css/module-base.css'),
+    (int)@filemtime(__DIR__ . '/../assets/css/cubo-vendas.css'),
+    (int)@filemtime(__DIR__ . '/../assets/js/cubo-vendas.js')
+);
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 
@@ -64,8 +68,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-regular fa-calendar mr-1"></i> Período
                     </label>
                     <div class="flex gap-2">
-                        <input type="date" x-model="filters.data_inicio" class="flex-1 p-3 border-2 border-slate-200 rounded-xl text-sm">
-                        <input type="date" x-model="filters.data_fim" class="flex-1 p-3 border-2 border-slate-200 rounded-xl text-sm">
+                        <input type="date" x-model="filters.data_inicio" @change="opcoesCarregadas = false; atualizar()" class="flex-1 p-3 border-2 border-slate-200 rounded-xl text-sm">
+                        <input type="date" x-model="filters.data_fim" @change="opcoesCarregadas = false; atualizar()" class="flex-1 p-3 border-2 border-slate-200 rounded-xl text-sm">
                     </div>
                 </div>
                 
@@ -116,7 +120,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
             <i class="fa-solid fa-chart-line mr-1"></i> Agrupar por
         </label>
-        <select x-model="rowDimension" @change="carregarDados()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm bg-white cursor-pointer">
+        <select x-model="rowDimension" @change="atualizar()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm bg-white cursor-pointer">
             <template x-for="(dim, key) in dimensionsDisponiveis" :key="key">
                 <option :value="key" x-text="dim.label"></option>
             </template>
@@ -126,7 +130,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- Botões -->
     <div class="flex gap-2">
         <button @click="abrirModalFiltrosAvancados()" class="px-4 py-3 bg-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-300 transition-all">
-            <i class="fa-solid fa-filter mr-2"></i>Filtros
+            <i class="fa-solid fa-filter mr-2"></i>Filtros<span x-show="filtrosAvancadosAtivos > 0" class="ml-1 text-xs bg-emerald-600 text-white rounded-full px-1.5" x-text="filtrosAvancadosAtivos"></span>
         </button>
         <button @click="abrirModalMetricas()" class="px-4 py-3 bg-slate-200 text-slate-700 rounded-xl font-bold hover:bg-slate-300 transition-all">
             <i class="fa-solid fa-chart-simple mr-2"></i>Métricas
@@ -139,24 +143,54 @@ require_once __DIR__ . '/../estrutura/header.php';
 </div>
 
 <!-- CARDS TOTAIS -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+<div x-show="erro" x-cloak class="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm flex justify-between items-center">
+    <span><i class="fa-solid fa-triangle-exclamation mr-2"></i><span x-text="erro"></span></span>
+    <button @click="erro = ''" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-times"></i></button>
+</div>
+<div x-show="aviso && !erro" x-cloak class="mb-4 p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs">
+    <i class="fa-solid fa-circle-info mr-2"></i><span x-text="aviso"></span>
+</div>
+<div x-show="carregando" x-cloak class="mb-4 text-sm text-slate-500">
+    <i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando dados...
+</div>
+<div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-3 mb-2" :class="carregando ? 'opacity-60' : ''">
     <div class="bg-white p-4 rounded-2xl border-l-4 border-emerald-500 shadow-sm">
         <span class="text-[10px] uppercase font-bold text-slate-400 block">Valor Total</span>
         <span class="block text-2xl font-black text-emerald-600" x-text="formatMoney(totals.valor_bruto)">R$ 0</span>
+        <span class="block text-[10px]" :class="variacaoClasse('valor_bruto')" x-text="variacao('valor_bruto')"></span>
+        <span class="block text-[10px] text-slate-400 mt-1">NFs faturadas (status 2, transação 1) + saldo de pedidos em carteira (status 1 e 4, transações 1 e 17). Valor com IPI/ST, frete, seguro e outras despesas nas NFs.</span>
     </div>
     <div class="bg-white p-4 rounded-2xl border-l-4 border-blue-500 shadow-sm">
         <span class="text-[10px] uppercase font-bold text-slate-400 block">Quantidade</span>
         <span class="block text-2xl font-black text-blue-600" x-text="formatNumber(totals.quantidade)">0</span>
-    </div>
+                <span class="block text-[10px]" :class="variacaoClasse('quantidade')" x-text="variacao('quantidade')"></span>
+                <span class="block text-[10px] text-slate-400 mt-1">Soma das unidades vendidas; em pedidos conta apenas o saldo ainda não faturado.</span>
+            </div>
     <div class="bg-white p-4 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
         <span class="text-[10px] uppercase font-bold text-slate-400 block">Peso (kg)</span>
         <span class="block text-2xl font-black text-indigo-600" x-text="formatNumber(totals.peso)">0</span>
-    </div>
+                <span class="block text-[10px]" :class="variacaoClasse('peso')" x-text="variacao('peso')"></span>
+                <span class="block text-[10px] text-slate-400 mt-1">Peso líquido (cadastro do item) × quantidade, igual para pedidos e NFs.</span>
+            </div>
     <div class="bg-white p-4 rounded-2xl border-l-4 border-amber-500 shadow-sm">
         <span class="text-[10px] uppercase font-bold text-slate-400 block">Comissão</span>
         <span class="block text-2xl font-black text-amber-600" x-text="formatMoney(totals.comissao)">R$ 0</span>
-    </div>
-</div>
+                <span class="block text-[10px]" :class="variacaoClasse('comissao')" x-text="variacao('comissao')"></span>
+                <span class="block text-[10px] text-slate-400 mt-1">Comissão registrada nas NFs faturadas. Pedidos em carteira não possuem comissão.</span>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-slate-500 shadow-sm">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block">Documentos</span>
+                <span class="block text-2xl font-black text-slate-700" x-text="formatNumber(totals.qtd_documentos)">0</span>
+                <span class="block text-[10px]" :class="variacaoClasse('qtd_documentos')" x-text="variacao('qtd_documentos')"></span>
+                <span class="block text-[10px] text-slate-400 mt-1">Quantidade de NFs e pedidos distintos (cada documento conta uma vez).</span>
+            </div>
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-teal-500 shadow-sm">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block">Ticket Médio</span>
+                <span class="block text-2xl font-black text-teal-600" x-text="formatMoney(totals.ticket_medio)">R$ 0</span>
+                <span class="block text-[10px] text-slate-400 mt-1">Valor total ÷ documentos distintos.</span>
+            </div>
+        </div>
+        <p class="text-[11px] text-slate-400 mb-6">Comparativo: variação % em relação ao período imediatamente anterior, de mesmo tamanho. O período é limitado a 365 dias.</p>
 
 <!-- GRÁFICO + RANKING (mesmo padrão do Financeiro) -->
 <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
@@ -167,9 +201,9 @@ require_once __DIR__ . '/../estrutura/header.php';
             <i class="fa-regular fa-chart-line mr-2 text-emerald-500"></i> EVOLUÇÃO MENSAL
         </h4>
         <select id="graficoTipo" onchange="mudarTipoGrafico()" class="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">
-            <option value="valor_bruto">Valor (R$)</option>
-            <option value="quantidade">Quantidade</option>
-            <option value="peso">Peso (kg)</option>
+            <option value="valor_total">Valor (R$)</option>
+            <option value="quantidade_total">Quantidade</option>
+            <option value="peso_total">Peso líquido (kg)</option>
         </select>
     </div>
     <div style="height: 250px; width: 100%;">
@@ -211,20 +245,20 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </tr>
             </thead>
             <tbody>
-                <template x-for="row in tableData" :key="row.dimensao">
+                <template x-for="row in tableData" :key="row.dimensao_id + '|' + row.dimensao">
                  <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer" 
-                 @click="verDetalhes(row.dimensao)">
+                 @click="verDetalhes(row)">
                  <td class="px-4 py-3 font-medium text-slate-700" x-text="row.dimensao"></td>
                  <template x-for="metric in metricsSelecionadas" :key="metric">
                     <td class="px-4 py-3 text-right" :class="getMetricClass(metric)" x-text="formatMetric(row[metric], metric)"></td>
                 </template>
-                <td class="px-4 py-3 text-right text-emerald-600 font-bold" x-text="row.percentual_participacao + '%'"></td>
+                <td class="px-4 py-3 text-right text-emerald-600 font-bold" x-text="row.percentual_participacao === null ? '-' : row.percentual_participacao + '%'"></td>
             </tr>
         </template>
-        <tr x-show="tableData.length === 0">
+        <tr x-show="tableData.length === 0 && !carregando">
             <td colspan="10" class="text-center py-12 text-slate-400">
                 <i class="fa-solid fa-chart-simple text-4xl mb-3 block"></i>
-                <p>Nenhum dado encontrado para os filtros selecionados</p>
+                <p x-text="erro ? 'Não foi possível carregar os dados.' : 'Nenhum dado encontrado para os filtros selecionados'"></p>
             </td>
         </tr>
     </tbody>
@@ -368,7 +402,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
             </template>
         </div>
         <div class="flex gap-3 mt-6">
-            <button @click="modalMetricasOpen = false; carregarDados()" class="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700">
+            <button @click="aplicarMetricas()" class="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700">
                 Aplicar
             </button>
             <button @click="modalMetricasOpen = false" class="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-300">
@@ -403,6 +437,10 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
             </div>
         </div>
         
+        <div x-show="detalhesCarregando" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando...</div>
+        <div x-show="detalhesErro" class="mb-3 p-3 rounded-xl bg-red-50 text-red-700 text-sm" x-text="detalhesErro"></div>
+        <div x-show="detalhesTruncado" class="mb-3 p-3 rounded-xl bg-amber-50 text-amber-700 text-xs">Lista limitada a 500 linhas; os totais abaixo consideram todos os registros.</div>
+        <div x-show="!detalhesCarregando && !detalhesErro && documentosAgrupados.length === 0" class="text-center py-6 text-slate-400 text-sm">Nenhum documento encontrado.</div>
         <!-- Tabela de Documentos (AGRUPADO) -->
         <div class="overflow-x-auto border border-slate-200 rounded-xl">
             <table class="w-full text-sm">
@@ -419,7 +457,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
                     </tr>
                 </thead>
                 <tbody>
-                    <template x-for="(doc, docIdx) in documentosAgrupados" :key="doc.numero_nf">
+                    <template x-for="(doc, docIdx) in documentosAgrupados" :key="doc.chave">
                         <tr>
                             <td colspan="8" class="p-0 border-0">
                                 <!-- Linha principal -->
@@ -430,7 +468,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
                                         <i class="fa-solid text-xs text-slate-400 transition-transform" 
                                         :class="doc.expandido ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
                                     </td>
-                                    <td class="px-4 py-3 font-mono text-xs font-bold text-emerald-600" x-text="doc.numero_nf || '---'"></td>
+                                    <td class="px-4 py-3 font-mono text-xs font-bold text-emerald-600" x-text="doc.numero_fiscal || doc.numero_nf || '---'"></td>
                                     <td class="px-4 py-3 text-slate-700 text-xs max-w-[180px] truncate" :title="doc.cliente" x-text="doc.cliente || '---'"></td>
                                     <td class="px-4 py-3 text-right text-emerald-600 font-bold text-xs whitespace-nowrap" x-text="formatMoney(doc.valor_bruto)"></td>
                                     <td class="px-4 py-3 text-right text-blue-600 text-xs" x-text="formatNumber(doc.quantidade)"></td>
@@ -465,7 +503,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            <template x-for="item in doc.itens" :key="item.produto">
+                                            <template x-for="(item, itemIdx) in doc.itens" :key="itemIdx">
                                                 <tr class="border-b border-slate-100">
                                                     <td class="px-3 py-2 text-slate-600" x-text="item.produto"></td>
                                                     <td class="px-3 py-2 text-right text-blue-600" x-text="formatNumber(item.quantidade)"></td>
@@ -478,8 +516,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
                                         </tbody>
                                     </table>
                                 </div>
-                                <div x-show="!doc.carregando && (!doc.itens || doc.itens.length === 0)" class="text-center py-4 text-slate-400 text-xs">
-                                    Nenhum item encontrado
+                                <div x-show="!doc.carregando && (!doc.itens || doc.itens.length === 0)" class="text-center py-4 text-slate-400 text-xs" x-text="doc.erro || 'Nenhum item encontrado'">
                                 </div>
                             </div>
                         </td>
@@ -510,7 +547,7 @@ class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 b
             </div>
             <div>
                 <span class="text-[10px] uppercase font-bold text-slate-400 block">Total Documentos</span>
-                <span class="text-lg font-black text-slate-700" x-text="documentosAgrupados.length"></span>
+                <span class="text-lg font-black text-slate-700" x-text="formatNumber(detalhesTotais.qtd_documentos)"></span>
             </div>
         </div>
     </div>

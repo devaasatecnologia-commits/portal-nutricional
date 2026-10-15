@@ -1,73 +1,151 @@
 // ==========================================================================
-// MÓDULO FINANCEIRO - VERSÃO FINAL (SEM DEBUG)
+// MÓDULO FINANCEIRO
+// A identidade do usuário vem sempre do JWT no backend; o seletor de
+// "Usuário (Visão)" só envia um alvo que o backend valida (403 se não permitido).
 // ==========================================================================
 
+const NIVEL_NOME = { filial: 'FILIAL', gestor: 'GESTOR', representante: 'REPRESENTANTE', cliente: 'CLIENTE' };
+
+function esc(valor) {
+    return String(valor ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function fmtBRL(v) {
+    return (parseFloat(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+}
+
+function fmtPct(v) {
+    return (parseFloat(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+}
+
+function fmtNum(v) {
+    return (parseFloat(v) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtData(d) {
+    if (!d || d === 'Sem Data') return 'S/DATA';
+    if (typeof d === 'string') {
+        if (d.includes('/')) return d.substring(0, 10);
+        const p = d.substring(0, 10).split('-');
+        if (p.length === 3) return `${p[2]}/${p[1]}/${p[0]}`;
+    }
+    return 'S/DATA';
+}
+
 const app = {
-    nivel: "filial",
+    nivel: 'filial',
     f_id: null,
-    path: [{ nivel: "filial", f_id: null, nome: "GLOBAL" }],
-
-    uid: (() => {
-        try {
-            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-            return userData.uid || 0;
-        } catch {
-            return 0;
-        }
-    })(),
-
+    path: [{ nivel: 'filial', f_id: null, nome: 'TODAS AS FILIAIS' }],
     chart: null,
     initialized: false,
+    loadSeq: 0,
+
+    fire(opts) {
+        return Swal.fire({ position: 'top', ...opts });
+    },
+
+    msg(title, text, icon) {
+        return this.fire({ title, text, icon });
+    },
 
     async init() {
-        document.getElementById("hist-day").value = new Date().getDay();
+        document.getElementById('hist-day').value = new Date().getDay();
         this.updateBreadcrumb();
-        await this.load();
         await this.loadUsersList();
+        await this.load();
         this.loadHistory();
     },
 
     async api(endpoint, body) {
-        const url = `/v1/financeiro/${endpoint}`;
-        const resp = await fetchWithAuth(url, {
+        const resp = await fetchWithAuth(`/v1/financeiro/${endpoint}`, {
             method: 'POST',
             body: JSON.stringify(body)
         });
-        const data = await resp.json();
+        let data = null;
+        try {
+            data = await resp.json();
+        } catch (e) {
+            data = null;
+        }
         if (!resp.ok) {
-            throw new Error(data.error || data.erro || `Erro ${resp.status}`);
+            throw new Error((data && (data.error || data.erro)) || `Erro ${resp.status}`);
         }
         return data;
     },
 
+    // ---------------- parâmetros ----------------
+    lerInteiro(id, padrao) {
+        const el = document.getElementById(id);
+        let v = parseInt(el ? el.value : '', 10);
+        if (isNaN(v) || v < 1) v = padrao;
+        if (v > 365) v = 365;
+        if (el) el.value = v;
+        return v;
+    },
+
+    alvoUsuario() {
+        const sel = document.getElementById('global-user-filter');
+        return sel && sel.value ? sel.value : 0;
+    },
+
+    filialSelecionada() {
+        const sel = document.getElementById('select-filial');
+        return sel && sel.value ? parseInt(sel.value, 10) || 0 : 0;
+    },
+
+    params() {
+        return {
+            idusuario: this.alvoUsuario(),
+            idfilial: this.filialSelecionada(),
+            dias_recup: this.lerInteiro('filtro-dias-recup', 120),
+            corte_atraso: this.lerInteiro('filtro-corte-atraso', 8)
+        };
+    },
+
+    paramsNivel() {
+        const p = this.params();
+        // No nível filial o filtro_id é a própria filial
+        const filtro = this.nivel === 'filial' ? p.idfilial : (this.f_id || 0);
+        return { ...p, nivel: this.nivel, filtro_id: filtro };
+    },
+
+    onParamChange() {
+        this.load();
+    },
+
+    // ---------------- navegação ----------------
+    rotuloBase() {
+        const selUser = document.getElementById('global-user-filter');
+        const selFil = document.getElementById('select-filial');
+        const filial = selFil && selFil.value ? selFil.options[selFil.selectedIndex].text : 'TODAS AS FILIAIS';
+        const outro = selUser && selUser.style.display !== 'none' && selUser.value
+            ? selUser.options[selUser.selectedIndex].text + ' - ' : '';
+        return outro + filial;
+    },
+
     updateBreadcrumb() {
-        const container = document.getElementById("b-path");
+        const container = document.getElementById('b-path');
         if (!container) return;
-        const niveisUnicos = [];
-        const niveisVistos = new Set();
-        for (let i = this.path.length - 1; i >= 0; i--) {
-            const step = this.path[i];
-            if (!niveisVistos.has(step.nivel)) {
-                niveisVistos.add(step.nivel);
-                niveisUnicos.unshift(step);
-            }
-        }
-        this.path = niveisUnicos;
-        container.innerHTML = "";
+        container.innerHTML = '';
         this.path.forEach((step, index) => {
-            const span = document.createElement("span");
+            const span = document.createElement('span');
             span.innerText = step.nome;
             if (index === this.path.length - 1) {
-                span.className = "text-slate-700 cursor-default font-bold";
+                span.className = 'text-slate-700 cursor-default font-bold';
             } else {
-                span.className = "cursor-pointer underline hover:text-amber-500 transition-colors";
-                span.onclick = () => this.goToBreadcrumb(index);
+                span.className = 'cursor-pointer underline hover:text-amber-500 transition-colors';
+                span.addEventListener('click', () => this.goToBreadcrumb(index));
             }
             container.appendChild(span);
             if (index < this.path.length - 1) {
-                const sep = document.createElement("span");
-                sep.className = "mx-2 text-slate-400";
-                sep.innerText = "›";
+                const sep = document.createElement('span');
+                sep.className = 'mx-2 text-slate-400';
+                sep.innerText = '›';
                 container.appendChild(sep);
             }
         });
@@ -75,401 +153,391 @@ const app = {
 
     goToBreadcrumb(index) {
         this.path = this.path.slice(0, index + 1);
-        const target = this.path[index];
-        this.nivel = target.nivel;
-        this.f_id = target.f_id;
+        const alvo = this.path[index];
+        this.nivel = alvo.nivel;
+        this.f_id = alvo.f_id;
         this.updateBreadcrumb();
         this.load();
     },
 
     async loadUsersList() {
-        const select = document.getElementById("global-user-filter");
+        const select = document.getElementById('global-user-filter');
         if (!select) return;
         try {
-            const currentValue = select.value;
-            const usuarios = await this.api("lista-usuarios", {
-                idusuario: this.uid,
-                idfilial: this.f_id
-            });
-            select.innerHTML = "";
-            if (usuarios && usuarios.length > 1) {
-                select.innerHTML = '<option value="">VISÃO GLOBAL (FILIAL)</option>';
-                usuarios.forEach(u => {
-                    const opt = document.createElement("option");
+            const usuarios = await this.api('lista-usuarios', {});
+            select.innerHTML = '';
+            const meu = (usuarios && usuarios[0]) ? usuarios[0].id : null;
+            const outros = (usuarios || []).filter(u => u.id !== meu);
+            if (outros.length > 0) {
+                // Valor vazio = o próprio usuário logado
+                const opt0 = document.createElement('option');
+                opt0.value = '';
+                opt0.innerText = 'MINHA VISÃO';
+                select.appendChild(opt0);
+                outros.forEach(u => {
+                    const opt = document.createElement('option');
                     opt.value = u.id;
-                    opt.innerText = u.nome.toUpperCase();
-                    if (u.id == this.uid) opt.selected = true;
+                    opt.innerText = String(u.nome || '').toUpperCase();
                     select.appendChild(opt);
                 });
-                if (currentValue && Array.from(select.options).some(option => option.value === currentValue)) {
-                    select.value = currentValue;
-                }
-                select.style.display = "block";
+                select.style.display = 'block';
             } else {
-                select.style.display = "none";
+                select.style.display = 'none';
             }
         } catch (e) {
-            console.error("Erro ao carregar usuários:", e);
-            select.style.display = "none";
+            console.error('Erro ao carregar usuários:', e);
+            select.style.display = 'none';
         }
     },
 
-    changeUser(val) {
-        this.nivel = "filial";
+    changeUser() {
+        this.nivel = 'filial';
         this.f_id = null;
         this.initialized = false;
-        const selectUser = document.getElementById("global-user-filter");
-        const nomeUser = selectUser.options[selectUser.selectedIndex].text;
-        const isMaster = selectUser.selectedIndex > 0;
-        const label = isMaster ? `${nomeUser} - TODAS AS FILIAIS` : "TODAS AS FILIAIS";
-        this.path = [{ nivel: "filial", f_id: this.f_id, nome: label }];
+        const selFil = document.getElementById('select-filial');
+        if (selFil) selFil.value = '';
+        this.path = [{ nivel: 'filial', f_id: null, nome: 'TODAS AS FILIAIS' }];
         this.updateBreadcrumb();
         this.load().then(() => this.loadHistory());
     },
 
-    async load() {
-        const shimmer = document.getElementById("shimmer");
-        if (shimmer) shimmer.style.display = "block";
-        try {
-            const globalUserSelect = document.getElementById("global-user-filter");
-            const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-            const diasRecupInput = document.getElementById("filtro-dias-recup");
-            const diasRecup = (diasRecupInput && diasRecupInput.value) ? diasRecupInput.value : 120;
-            // NÍVEL CLIENTE – busca clientes via dashboard
-            if (this.nivel === 'cliente') {
-                const res = await this.api("dashboard", {
-                    idusuario: currentUid,
-                    nivel: this.nivel,
-                    filtro_id: this.f_id,
-                    dias_recup: diasRecup
-                });
-                this.renderTable(res.tabela || []);
-                const resumoContainer = document.querySelector('.resumo-container');
-                if (resumoContainer) resumoContainer.style.display = "none";
-                if (shimmer) shimmer.style.display = "none";
-                return;
-            }
+    changeFilial() {
+        this.nivel = 'filial';
+        this.f_id = null;
+        this.path = [{ nivel: 'filial', f_id: null, nome: this.rotuloBase() }];
+        this.updateBreadcrumb();
+        this.load();
+        this.loadHistory();
+    },
 
-            // DEMAIS NÍVEIS (filial, gestor)
-            const res = await this.api("dashboard", {
-                idusuario: currentUid,
-                nivel: this.nivel,
-                filtro_id: this.f_id,
-                dias_recup: diasRecup
-            });
+    reset() {
+        const selUser = document.getElementById('global-user-filter');
+        if (selUser) selUser.value = '';
+        document.getElementById('filtro-dias-recup').value = 120;
+        document.getElementById('filtro-corte-atraso').value = 8;
+        document.getElementById('hist-type').value = 'iag_calculado';
+        document.getElementById('hist-day').value = new Date().getDay();
+        this.changeUser();
+    },
+
+    drill(id, nome) {
+        if (this.nivel === 'filial') {
+            this.nivel = 'gestor';
+        } else if (this.nivel === 'gestor') {
+            this.nivel = 'representante';
+        } else {
+            this.showClientTitles(id, nome);
+            return;
+        }
+        this.f_id = id;
+        this.path.push({ nivel: this.nivel, f_id: id, nome });
+        this.updateBreadcrumb();
+        this.load();
+    },
+
+    // ---------------- dashboard ----------------
+    setText(id, valor) {
+        const el = document.getElementById(id);
+        if (el) el.innerText = valor;
+    },
+
+    mostrarErroCards(msg) {
+        const el = document.getElementById('erro-cards');
+        if (!el) return;
+        el.style.display = msg ? 'block' : 'none';
+        el.innerText = msg || '';
+    },
+
+    estadoTabela(msg, erro) {
+        const el = document.getElementById('t-estado');
+        if (!el) return;
+        el.style.display = msg ? 'block' : 'none';
+        el.className = 'fin-estado' + (erro ? ' erro' : '');
+        el.innerText = msg || '';
+    },
+
+    popularFiliais(config) {
+        const select = document.getElementById('select-filial');
+        if (!select) return;
+        const filiais = config.filiais || [];
+        select.innerHTML = '';
+        select.style.display = filiais.length <= 1 ? 'none' : 'block';
+        if (filiais.length > 1) {
+            const optTodas = document.createElement('option');
+            optTodas.value = '';
+            optTodas.innerText = 'TODAS AS FILIAIS';
+            select.appendChild(optTodas);
+        }
+        filiais.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f.idfilial;
+            opt.innerText = f.nome;
+            select.appendChild(opt);
+        });
+        if (config.filial_padrao) select.value = config.filial_padrao;
+        else if (filiais.length === 1) select.value = filiais[0].idfilial;
+    },
+
+    async load() {
+        const seq = ++this.loadSeq;
+        const shimmer = document.getElementById('shimmer');
+        if (shimmer) shimmer.style.display = 'block';
+        this.mostrarErroCards('');
+        this.estadoTabela('');
+        try {
+            const res = await this.api('dashboard', this.paramsNivel());
+            if (seq !== this.loadSeq) return;
 
             if (!this.initialized) {
-                const userDisplay = document.getElementById("user-display");
-                if (userDisplay) userDisplay.innerText = res.config?.usuario || "USUÁRIO";
-                const select = document.getElementById("select-filial");
-                if (select) {
-                    select.innerHTML = "";
-                    if (res.config?.filiais) {
-                        select.style.display = res.config.filiais.length <= 1 ? "none" : "block";
-                        if (res.config.filiais.length > 1) {
-                            const optTodas = document.createElement("option");
-                            optTodas.value = "";
-                            optTodas.innerText = "TODAS AS FILIAIS";
-                            select.appendChild(optTodas);
-                        }
-                        res.config.filiais.forEach(f => {
-                            const opt = document.createElement("option");
-                            opt.value = f.idfilial;
-                            opt.innerText = f.nome;
-                            select.appendChild(opt);
-                        });
-                    }
-                }
-                this.f_id = this.f_id || res.config?.filial_padrao;
-                if (this.f_id && select) select.value = this.f_id;
-                if (this.path.length === 1 && this.f_id) {
-                    const selectedOpt = select ? select.options[select.selectedIndex] : null;
-                    const nomeFilial = selectedOpt ? selectedOpt.text : "FILIAL";
-                    const isMaster = globalUserSelect && globalUserSelect.style.display !== "none" && globalUserSelect.selectedIndex > 0;
-                    const nomeUser = isMaster ? globalUserSelect.options[globalUserSelect.selectedIndex].text : "";
-                    const label = isMaster ? `${nomeUser} - ${nomeFilial}` : nomeFilial;
-                    this.path[0] = { nivel: "filial", f_id: this.f_id, nome: label };
+                this.setText('user-display', res.config?.usuario || 'USUÁRIO');
+                this.popularFiliais(res.config || {});
+                if (this.path.length === 1) {
+                    this.path[0].nome = this.rotuloBase();
                     this.updateBreadcrumb();
                 }
                 this.initialized = true;
             }
 
-            const resu = res.resumo_filial || { total: 0, vencidos: 0, valor_iap: 0, d30: 0, d60: 0, d90: 0 };
-            const fmt = { style: "currency", currency: "BRL" };
-            const setText = (id, value) => {
-                const el = document.getElementById(id);
-                if (el) el.innerText = value;
-            };
-            setText('f-total', (parseFloat(resu.total) || 0).toLocaleString("pt-br", fmt));
-            setText('f-30', (parseFloat(resu.d30) || 0).toLocaleString("pt-br", fmt));
-            setText('f-60', (parseFloat(resu.d60) || 0).toLocaleString("pt-br", fmt));
-            setText('f-90', (parseFloat(resu.d90) || 0).toLocaleString("pt-br", fmt));
-            const iagVal = resu.total > 0 ? (resu.vencidos / resu.total * 100).toFixed(2) : "0.00";
-            setText('kpi-iag', iagVal + "%");
-            setText('kpi-iag-quick', iagVal + "%");
-            setText('kpi-iap', (resu.total > 0 ? (resu.valor_iap / resu.total * 100).toFixed(2) : "0.00") + "%");
-            setText('kpi-recup', (res.taxa_recup || 0) + "%");
-            setText('kpi-iag-valor', (parseFloat(resu.vencidos) || 0).toLocaleString("pt-br", fmt));
-            setText('kpi-iap-valor', (parseFloat(resu.valor_iap) || 0).toLocaleString("pt-br", fmt));
-            if (res.recup_detalhe) {
-                setText('kpi-recup-quant', `${res.recup_detalhe.pagos} de ${res.recup_detalhe.total} títulos`);
-            }
+            const r = res.resumo_filial || {};
+            const total = parseFloat(r.total) || 0;
+            const venc = parseFloat(r.vencidos) || 0;
+            const iap = parseFloat(r.valor_iap) || 0;
+            this.setText('f-total', fmtBRL(total));
+            this.setText('f-avencer', fmtBRL(r.a_vencer));
+            this.setText('f-30', fmtBRL(r.d30));
+            this.setText('f-60', fmtBRL(r.d60));
+            this.setText('f-90', fmtBRL(r.d90));
+            this.setText('kpi-iag', fmtPct(total > 0 ? venc * 100 / total : 0));
+            this.setText('kpi-iap', fmtPct(total > 0 ? iap * 100 / total : 0));
+            this.setText('kpi-iag-valor', `${fmtBRL(venc)} vencido`);
+            this.setText('kpi-iap-valor', `${fmtBRL(iap)} vencido há mais de 30 dias`);
+            this.setText('kpi-recup', fmtPct(res.taxa_recup));
+            const d = res.recup_detalhe || {};
+            this.setText('kpi-recup-quant', `${d.pagos || 0} pagos de ${d.total || 0} títulos trabalhados`);
             this.renderTable(res.tabela || []);
         } catch (e) {
-            console.error("Erro no load:", e);
+            if (seq !== this.loadSeq) return;
+            console.error('Erro no load:', e);
+            this.mostrarErroCards(`Não foi possível carregar os indicadores: ${e.message}`);
+            ['f-total', 'f-avencer', 'f-30', 'f-60', 'f-90', 'kpi-iag', 'kpi-iap', 'kpi-recup'].forEach(id => this.setText(id, '—'));
+            this.setText('kpi-iag-valor', '');
+            this.setText('kpi-iap-valor', '');
+            this.setText('kpi-recup-quant', '');
+            this.renderTable([], true);
+            this.estadoTabela(`Erro ao carregar a tabela: ${e.message}`, true);
         } finally {
-            if (shimmer) shimmer.style.display = "none";
+            if (seq === this.loadSeq && shimmer) shimmer.style.display = 'none';
         }
     },
 
-renderTable(dados) {
-    const head = document.getElementById("t-head");
-    const body = document.getElementById("t-body");
-    if (!head || !body) return;
-    body.innerHTML = "";
-
-    if (this.nivel === "cliente") {
+    renderTable(dados, erro) {
+        const head = document.getElementById('t-head');
+        const body = document.getElementById('t-body');
+        if (!head || !body) return;
+        body.innerHTML = '';
+        const titulos = { filial: 'Gestor', gestor: 'Representante', representante: 'Cliente' };
         head.innerHTML = `<tr>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Cliente</th>
+            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">${esc(titulos[this.nivel] || 'Item')}</th>
             <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Total Vencido</th>
-            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">IAG</th>
-            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Status</th>
-        </table>`;
-        dados.forEach(i => {
-            let perfColor = "#10b981";
-            if (i.performance === 'CRÍTICO') perfColor = "#ef4444";
-            else if (i.performance === 'ATENÇÃO') perfColor = "#f59e0b";
-            const tr = document.createElement("tr");
-            tr.className = "border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-all";
-            tr.onclick = () => this.showClientTitles(i.id, i.nome);
-            tr.innerHTML = `
-                <td class="px-4 py-3"><b>${i.nome}</b><br><small class="text-slate-400">ID: ${i.id}</small></td>
-                <td class="px-4 py-3 text-right font-semibold">R$ ${parseFloat(i.vencidos).toLocaleString("pt-br", { minimumFractionDigits: 2 })}</td>
-                <td class="px-4 py-3 text-center"><b>${i.iag}%</b></td>
-                <td class="px-4 py-3 text-center"><span style="color:${perfColor}; border:1px solid ${perfColor}; padding:4px 8px; border-radius:6px; font-weight:700;">${i.performance}</span></td>
-            `;
-            body.appendChild(tr);
-        });
-    } else {
-               let titulo = "";
-        if (this.nivel === "filial") {
-                titulo = "Gestor";
-        } else if (this.nivel === "gestor") {
-                titulo = "Representante";
-            } else if (this.nivel === "representante") {
-                titulo = "Cliente";
-        } else {
-            titulo = "Item";
-        }
-        head.innerHTML = `<tr>
-            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">${titulo}</th>
-            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Total Vencido</th>
-            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">IAG</th>
-            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Status</th>
+            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase" title="IAG = vencido ÷ carteira. Crítico > 10%, Atenção ≥ 5%">IAG</th>
+            <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase" title="Crítico > 10% · Atenção ≥ 5% · Saudável < 5%">Status</th>
         </tr>`;
 
+        if (!dados.length) {
+            if (!erro) this.estadoTabela('Nenhum registro com saldo para este nível/filtro.');
+            return;
+        }
+
         dados.forEach(i => {
-            let perfColor = "#10b981";
-            if (i.performance === 'CRÍTICO') perfColor = "#ef4444";
-            else if (i.performance === 'ATENÇÃO') perfColor = "#f59e0b";
-            const tr = document.createElement("tr");
-            tr.className = "border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-all";
-            const idItem = i.id;
-            const nomeItem = i.nome;
-            tr.onclick = (function(id, nome) {
-                return function() { app.drill(id, nome); };
-            })(idItem, nomeItem);
+            let cor = '#10b981';
+            if (i.performance === 'CRÍTICO') cor = '#ef4444';
+            else if (i.performance === 'ATENÇÃO') cor = '#f59e0b';
+            const tr = document.createElement('tr');
+            tr.className = 'border-b border-slate-100 hover:bg-slate-50 cursor-pointer transition-all';
+            tr.dataset.id = i.id;
+            tr.dataset.nome = i.nome;
+            tr.addEventListener('click', () => this.drill(i.id, i.nome));
             tr.innerHTML = `
-                <td class="px-4 py-3"><b>${i.nome}</b><br><small class="text-slate-400">ID: ${i.id}</small></td>
-                <td class="px-4 py-3 text-right font-semibold">R$ ${parseFloat(i.vencidos).toLocaleString("pt-br", { minimumFractionDigits: 2 })}</td>
-                <td class="px-4 py-3 text-center"><b>${i.iag}%</b></td>
-                <td class="px-4 py-3 text-center"><span style="color:${perfColor}; border:1px solid ${perfColor}; padding:4px 8px; border-radius:6px; font-weight:700;">${i.performance}</span></td>
-            `;
+                <td class="px-4 py-3"><b>${esc(i.nome)}</b><br><small class="text-slate-400">ID: ${esc(i.id)}</small></td>
+                <td class="px-4 py-3 text-right font-semibold">${fmtBRL(i.vencidos)}</td>
+                <td class="px-4 py-3 text-center"><b>${fmtPct(i.iag)}</b></td>
+                <td class="px-4 py-3 text-center"><span style="color:${cor}; border:1px solid ${cor}; padding:4px 8px; border-radius:6px; font-weight:700;">${esc(i.performance)}</span></td>`;
             body.appendChild(tr);
         });
-    }
-},
+    },
 
-  async showClientTitles(id_cliente, nome_cliente) {
-    Swal.fire({ title: "Buscando títulos...", didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-    try {
-        const globalUserSelect = document.getElementById("global-user-filter");
-        const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-        const idfilial = document.getElementById("select-filial")?.value || 0;
-        const diasRecup = document.getElementById("filtro-dias-recup")?.value || 999;
-        const payload = {
-            idusuario: currentUid,
-            idfilial: idfilial,
-            dias_recup: diasRecup,
-            nivel: "cliente",
-            filtro_id: id_cliente
-        };
-        const res = await this.api("relatorio-detalhado", payload);
-        
-        if (!res || res.length === 0) {
-            Swal.fire("Aviso", "Este cliente não possui títulos pendentes com saldo.", "info");
-            return;
-        }
-        
-        // 🔧 CORREÇÃO: Filtrar apenas títulos com saldo POSITIVO
-        const titulosValidos = res.filter(t => parseFloat(t.valorsaldo) > 0.01);
-        
-        if (titulosValidos.length === 0) {
-            Swal.fire("Aviso", "Este cliente não possui títulos pendentes com saldo.", "info");
-            return;
-        }
-        
-        let html = `<div style="max-height:450px; overflow-y:auto; text-align:left;">
-            <table style="width:100%; font-size:0.8rem; border-collapse: collapse;">
-                <thead>
-                    <tr style="background:#f1f5f9; position:sticky; top:0;">
-                        <th style="padding:8px; text-align:left;">Título / Venc.</th>
-                        <th style="padding:8px; text-align:right;">Valor</th>
-                        <th style="padding:8px; text-align:left;">Último Apontamento</th>
-                    </tr>
-                </thead>
-                <tbody>`;
-        
-        for (const t of titulosValidos) {
-            // 🔧 CORREÇÃO: Usar vencimento_formatado já vindo do backend
-            let dataVencimento = t.vencimento_formatado || 'S/DATA';
-            let atraso = parseInt(t.dias_atraso) || 0;
-            let atrasoFormatado = atraso > 0 ? `<span style="color:#ef4444;">+${atraso}d</span>` : `<span style="color:#10b981;">${atraso}d</span>`;
-            
-            // Tratar evento
-            let eventoHtml = '<i style="color:#94a3b8;">Sem registro</i>';
-            if (t.evento && t.evento !== 'Sem Registro' && t.evento !== 'Sem registro') {
-                eventoHtml = `<b style="color:#274036;">${t.evento}</b>`;
-                if (t.ultimo_evento_formatado && t.ultimo_evento_formatado !== 'Sem Data') {
-                    eventoHtml += `<br><small style="color:#64748b;">${t.ultimo_evento_formatado}</small>`;
-                }
-                if (t.descricao && t.descricao !== 'Sem Registro' && t.descricao !== 'Sem registro') {
-                    eventoHtml += `<br><span style="color:#475569; font-size:0.7rem;">"${t.descricao.substring(0, 50)}${t.descricao.length > 50 ? '...' : ''}"</span>`;
-                }
+    // ---------------- títulos do cliente ----------------
+    async showClientTitles(id_cliente, nome_cliente) {
+        this.fire({ title: 'Buscando títulos...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        try {
+            const res = await this.api('relatorio-detalhado', {
+                ...this.params(),
+                nivel: 'cliente',
+                filtro_id: id_cliente
+            });
+            if (!res || res.length === 0) {
+                this.msg('Aviso', 'Este cliente não possui títulos pendentes com saldo.', 'info');
+                return;
             }
-            
-            let valorSaldo = parseFloat(t.valorsaldo) || 0;
-            
-            html += `<tr style="border-bottom:1px solid #e2e8f0;">
-                <td style="padding:8px;">
-                    <b>${t.documento}</b><br>
-                    <small style="color:#64748b;">Venc: ${dataVencimento} (${atrasoFormatado})</small>
-                </td>
-                <td style="padding:8px; text-align:right; font-weight:bold; color:#dc2626;">
-                    ${valorSaldo.toLocaleString("pt-br", { style: 'currency', currency: 'BRL' })}
-                </td>
-                <td style="padding:8px;">
-                    ${eventoHtml}
-                 </td>
-             </tr>`;
+
+            let html = `<div style="max-height:450px; overflow-y:auto; text-align:left;">
+                <table style="width:100%; font-size:0.8rem; border-collapse: collapse;">
+                <thead><tr style="background:#f1f5f9; position:sticky; top:0;">
+                    <th style="padding:8px; text-align:left;">Título / Venc.</th>
+                    <th style="padding:8px; text-align:right;">Saldo</th>
+                    <th style="padding:8px; text-align:left;">Último apontamento</th>
+                </tr></thead><tbody>`;
+            for (const t of res) {
+                const atraso = parseInt(t.dias_atraso, 10) || 0;
+                const atrasoHtml = atraso > 0
+                    ? `<span style="color:#ef4444;">+${atraso}d</span>` : `<span style="color:#10b981;">${atraso}d</span>`;
+                let evento = '<i style="color:#94a3b8;">Sem registro</i>';
+                if (t.evento && t.evento !== 'Sem Registro') {
+                    evento = `<b style="color:#274036;">${esc(t.evento)}</b>`;
+                    if (t.ultimo_evento && t.ultimo_evento !== 'Sem Data') {
+                        evento += `<br><small style="color:#64748b;">${esc(t.ultimo_evento)}</small>`;
+                    }
+                    if (t.descricao && t.descricao !== 'Sem Registro') {
+                        const d = String(t.descricao);
+                        evento += `<br><span style="color:#475569; font-size:0.7rem;">"${esc(d.substring(0, 50))}${d.length > 50 ? '...' : ''}"</span>`;
+                    }
+                }
+                html += `<tr style="border-bottom:1px solid #e2e8f0;">
+                    <td style="padding:8px;"><b>${esc(t.documento)}</b><br>
+                        <small style="color:#64748b;">Venc: ${esc(fmtData(t.vencimento))} (${atrasoHtml})</small></td>
+                    <td style="padding:8px; text-align:right; font-weight:bold; color:#dc2626;">${fmtBRL(t.valorsaldo)}</td>
+                    <td style="padding:8px;">${evento}</td></tr>`;
+            }
+            html += '</tbody></table></div>';
+            const aviso = res[0].total_linhas > res.length
+                ? `<p style="font-size:0.75rem;color:#b45309;margin-top:8px;">Exibindo ${res.length} de ${res[0].total_linhas} títulos.</p>` : '';
+
+            this.fire({
+                title: `Títulos do cliente: ${esc(nome_cliente)}`,
+                html: html + aviso,
+                width: '850px',
+                confirmButtonColor: '#274036',
+                confirmButtonText: 'Fechar'
+            });
+        } catch (e) {
+            console.error(e);
+            this.msg('Erro', `Falha ao carregar títulos: ${e.message}`, 'error');
         }
-        
-        html += `</tbody></table></div>`;
-        
-        Swal.fire({
-            title: `Títulos do cliente: ${nome_cliente}`,
-            html: html,
-            width: '850px',
-            confirmButtonColor: "#274036",
-            confirmButtonText: 'Fechar'
-        });
-    } catch (e) {
-        console.error(e);
-        Swal.fire("Erro", "Falha ao carregar títulos.", "error");
-    }
-},
+    },
+
+    // ---------------- histórico ----------------
+    formatCurrency(v) {
+        return fmtBRL(v);
+    },
+
+    estadoGrafico(msg, erro) {
+        const el = document.getElementById('chart-estado');
+        const canvas = document.getElementById('chartHistory');
+        if (this.chart) {
+            this.chart.destroy();
+            this.chart = null;
+        }
+        if (canvas) canvas.style.display = msg ? 'none' : 'block';
+        if (!el) return;
+        el.style.display = msg ? 'flex' : 'none';
+        el.className = 'fin-estado' + (erro ? ' erro' : '');
+        el.innerText = msg || '';
+    },
 
     async loadHistory() {
         try {
-            const type = document.getElementById("hist-type")?.value || "iag_calculado";
-            const day = document.getElementById("hist-day")?.value || new Date().getDay();
-            const globalUserSelect = document.getElementById("global-user-filter");
-            const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-            const selectFilialGlobal = document.getElementById("select-filial");
-            const alvoVisualizado = (selectFilialGlobal && selectFilialGlobal.value)
-                ? selectFilialGlobal.value
-                : (this.f_id || 0);
-            const res = await this.api("historico-kpi", {
-                idusuario: currentUid,
+            const type = document.getElementById('hist-type')?.value || 'iag_calculado';
+            const day = document.getElementById('hist-day')?.value || new Date().getDay();
+            const res = await this.api('historico-kpi', {
+                idusuario: this.alvoUsuario(),
                 tipo: type,
-                filtro_id: alvoVisualizado,
+                filtro_id: this.filialSelecionada(),
                 dia_semana: day
             });
             if (!res || res.length === 0) {
-                if (this.chart) {
-                    this.chart.destroy();
-                    this.chart = null;
-                }
+                this.estadoGrafico('Sem registros no histórico para este filtro e dia da semana.');
                 return;
             }
+            this.estadoGrafico('');
+            const canvas = document.getElementById('chartHistory');
+            if (!canvas) return;
             const labels = res.map(h => h.data);
             const values = res.map(h => parseFloat(h.valor) || 0);
-            const labelMap = { iag_calculado: "IAG %", iap_calculado: "IAP %", taxa_recuperacao: "Recuperação %" };
-            if (this.chart) this.chart.destroy();
-            const canvas = document.getElementById("chartHistory");
-            if (!canvas) return;
-            const ctx = canvas.getContext("2d");
-            const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, "#274036");
-            gradient.addColorStop(1, "#4a7a67");
-            this.chart = new Chart(ctx, {
-                type: "bar",
-                data: { labels, datasets: [{ label: labelMap[type] || type, data: values, backgroundColor: gradient, borderRadius: 8, hoverBackgroundColor: "#f7be2f" }] },
+            const labelMap = { iag_calculado: 'IAG %', iap_calculado: 'IAP %', taxa_recuperacao: 'Recuperação %' };
+            const self = this;
+            this.chart = new Chart(canvas.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: labelMap[type] || type,
+                        data: values,
+                        backgroundColor: (c) => {
+                            const area = c.chart.chartArea;
+                            if (!area) return '#274036';
+                            const g = c.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                            g.addColorStop(0, '#274036');
+                            g.addColorStop(1, '#4a7a67');
+                            return g;
+                        },
+                        borderRadius: 8,
+                        hoverBackgroundColor: '#f7be2f'
+                    }]
+                },
                 plugins: [{
                     id: 'numerosNoTopo',
                     afterDatasetsDraw(chart) {
+                        const ctx = chart.ctx;
                         chart.data.datasets.forEach((dataset, i) => {
-                            chart.getDatasetMeta(i).data.forEach((point, idx) => {
-                                const valor = dataset.data[idx];
+                            chart.getDatasetMeta(i).data.forEach((ponto, idx) => {
+                                ctx.save();
                                 ctx.font = 'bold 11px "Plus Jakarta Sans"';
                                 ctx.fillStyle = '#274036';
                                 ctx.textAlign = 'center';
                                 ctx.textBaseline = 'bottom';
-                                ctx.fillText(parseFloat(valor).toFixed(2) + '%', point.x, point.y - 8);
+                                ctx.fillText(fmtPct(dataset.data[idx]), ponto.x, ponto.y - 8);
+                                ctx.restore();
                             });
                         });
                     }
                 }],
                 options: {
-                    responsive: true, maintainAspectRatio: false, layout: { padding: { top: 25 } },
-                    onClick: (_, elements) => {
-                        if (elements.length > 0) {
-                            this.showHistoryDetails(res[elements[0].index], type);
-                        }
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    layout: { padding: { top: 25 } },
+                    onClick: (_, els) => {
+                        if (els.length > 0) self.showHistoryDetails(res[els[0].index], type);
                     },
-                    onHover: (event, elements) => {
-                        event.native.target.style.cursor = elements.length > 0 ? 'pointer' : 'default';
+                    onHover: (event, els) => {
+                        event.native.target.style.cursor = els.length > 0 ? 'pointer' : 'default';
                     },
                     plugins: {
                         legend: { display: false },
                         tooltip: {
                             backgroundColor: 'rgba(30,41,59,0.95)',
                             callbacks: {
-                                label: (tooltipContext) => `Percentual: ${tooltipContext.raw}%`,
-                                afterLabel: (tooltipContext) => {
-                                    const item = res[tooltipContext.dataIndex];
+                                label: (c) => `Percentual: ${fmtPct(c.raw)}`,
+                                afterLabel: (c) => {
+                                    const item = res[c.dataIndex];
                                     if (type === 'taxa_recuperacao') {
                                         return `Recuperados: ${item.abs_recup_pagos} de ${item.abs_recup_total}`;
                                     }
-                                    const valor = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
-                                    return `Valor-base: ${this.formatCurrency(valor)}`;
+                                    const v = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
+                                    return `Valor-base: ${fmtBRL(v)}`;
                                 }
                             }
                         }
                     },
-                    scales: { y: { beginAtZero: true, grid: { color: "#f1f5f9" }, ticks: { callback: (v) => v + "%" } }, x: { grid: { display: false } } }
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: (v) => v + '%' } },
+                        x: { grid: { display: false } }
+                    }
                 }
             });
         } catch (e) {
-            console.error("Erro no gráfico:", e);
+            console.error('Erro no gráfico:', e);
+            this.estadoGrafico(`Erro ao carregar o histórico: ${e.message}`, true);
         }
-    },
-
-    formatCurrency(value) {
-        return (parseFloat(value) || 0).toLocaleString('pt-BR', {
-            style: 'currency',
-            currency: 'BRL'
-        });
     },
 
     showHistoryDetails(item, type) {
@@ -478,201 +546,107 @@ renderTable(dados) {
             iap_calculado: 'Atraso Crítico (IAP)',
             taxa_recuperacao: 'Taxa de Recuperação'
         };
-        const data = item.data_registro
-            ? item.data_registro.split('-').reverse().join('/')
-            : item.data;
-
+        const data = item.data_registro ? item.data_registro.split('-').reverse().join('/') : item.data;
         let componentes;
         if (type === 'taxa_recuperacao') {
             componentes = `
-                <div><span>Recuperados</span><strong>${item.abs_recup_pagos}</strong></div>
-                <div><span>Base trabalhada</span><strong>${item.abs_recup_total}</strong></div>`;
+                <div><span>Recuperados</span><strong>${esc(item.abs_recup_pagos)}</strong></div>
+                <div><span>Base trabalhada</span><strong>${esc(item.abs_recup_total)}</strong></div>`;
         } else {
-            const valor = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
+            const v = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
             componentes = `
-                <div><span>Valor do indicador</span><strong>${this.formatCurrency(valor)}</strong></div>
-                <div><span>Carteira total</span><strong>${this.formatCurrency(item.abs_total)}</strong></div>`;
+                <div><span>Valor do indicador</span><strong>${fmtBRL(v)}</strong></div>
+                <div><span>Carteira total</span><strong>${fmtBRL(item.abs_total)}</strong></div>`;
         }
-
-        Swal.fire({
+        this.fire({
             title: nomes[type] || 'Histórico financeiro',
             html: `
                 <div style="display:grid; gap:10px; text-align:left; font-size:0.85rem;">
                     <div style="padding:12px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px;">
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Data registrada</span><strong>${data}</strong></div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Resultado</span><strong>${parseFloat(item.valor).toFixed(2)}%</strong></div>
-                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Filiais</span><strong>${item.filiais || '-'}</strong></div>
-                        <div style="display:flex; justify-content:space-between;"><span>Registros consolidados</span><strong>${item.registros_origem || 0}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Data registrada</span><strong>${esc(data)}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Resultado</span><strong>${fmtPct(item.valor)}</strong></div>
+                        <div style="display:flex; justify-content:space-between; margin-bottom:8px;"><span>Filiais</span><strong>${esc(item.filiais || '-')}</strong></div>
+                        <div style="display:flex; justify-content:space-between;"><span>Registros consolidados</span><strong>${esc(item.registros_origem || 0)}</strong></div>
                     </div>
                     <div style="display:grid; gap:8px;">${componentes}</div>
+                    <div style="font-size:0.7rem; color:#94a3b8;">Histórico consolidado por filial – não considera filtro de gestor/representante.</div>
                 </div>`,
             confirmButtonText: 'Fechar',
             confirmButtonColor: '#274036'
         });
     },
 
-    drill(id, nome) {
-        if (this.nivel === 'filial') {
-            this.path.push({ nivel: 'gestor', f_id: id, nome: nome });
-            this.nivel = 'gestor';
-            this.f_id = id;
-            this.updateBreadcrumb();
-            this.load();
-            return;
-        }
-        if (this.nivel === 'gestor') {
-            this.path.push({ nivel: 'representante', f_id: id, nome: nome });
-            this.nivel = 'representante';
-            this.f_id = id;
-            this.updateBreadcrumb();
-            this.load();
-            return;
-        }
-        if (this.nivel === 'representante') {
-            this.showClientTitles(id, nome);
-        }
-    },
-
-    changeFilial(v) {
-        this.f_id = v;
-        this.nivel = "filial";
-        const selectFilial = document.getElementById("select-filial");
-        const nomeFilial = selectFilial.options[selectFilial.selectedIndex].text;
-        const selectUser = document.getElementById("global-user-filter");
-        const isMaster = selectUser && selectUser.style.display !== "none" && selectUser.selectedIndex > 0;
-        const nomeUser = isMaster ? selectUser.options[selectUser.selectedIndex].text : "";
-        const label = isMaster ? `${nomeUser} - ${nomeFilial}` : nomeFilial;
-        this.path = [{ nivel: "filial", f_id: v, nome: label }];
-        this.updateBreadcrumb();
-        this.loadUsersList().then(() => {
-            this.load();
-            this.loadHistory();
-        });
-    },
-
-    reset() {
-        this.nivel = "filial";
-        this.f_id = null;
-        const selectUser = document.getElementById("global-user-filter");
-        if (selectUser) selectUser.value = "";
-        const selectFilial = document.getElementById("select-filial");
-        if (selectFilial) selectFilial.value = "";
-        this.initialized = false;
-        this.path = [{ nivel: "filial", f_id: null, nome: "GLOBAL" }];
-        this.updateBreadcrumb();
-        this.loadUsersList().then(() => {
-            this.load();
-            this.loadHistory();
-        });
-    },
-
+    // ---------------- auditoria ----------------
     async showAudit(tipo) {
-    Swal.fire({ title: "Aguarde...", didOpen: () => Swal.showLoading() });
-    try {
-        const globalUserSelect = document.getElementById("global-user-filter");
-        const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-        const diasRecup = document.getElementById("filtro-dias-recup")?.value || 120;
-        
-        const res = await this.api("detalhes-kpi", {
-            tipo,
-            nivel: this.nivel,
-            filtro_id: this.f_id,
-            idusuario: currentUid,
-            dias_recup: diasRecup
-        });
-        
-        if (!res || res.length === 0) {
-            Swal.fire("Info", "Nenhum registro encontrado.", "info");
-            return;
-        }
-        
-        let titulo = tipo.toUpperCase();
-        let html = `<div style="max-height:400px; overflow:auto;">
-                    <table style="width:100%; border-collapse: collapse;">
-                    <thead>
-                        <tr style="background:#f1f5f9; position:sticky; top:0;">
-                            <th style="padding:8px; text-align:left;">Cliente / Origem</th>
-                            <th style="padding:8px; text-align:right;">Valor / Qtd</th>
-                        </tr>
-                    </thead>
-                    <tbody>`;
-        
-        res.forEach(d => {
-            // 🔧 CORREÇÃO: Verifica se é quantidade ou valor
-            let valor;
-            let isQuantidade = false;
-            
-            if (d.is_qtd === true) {
-                // Caso 1: É quantidade (cenários de recuperação)
-                valor = d.valor;
-                isQuantidade = true;
-            } else {
-                // Caso 2: É valor monetário (IAG/IAP)
-                valor = `R$ ${parseFloat(d.valor).toLocaleString("pt-br", { minimumFractionDigits: 2 })}`;
-            }
-            
-            let clickAttr = '';
-            let lupaIcon = '';
-            
-            if (d.cenario_id) {
-                clickAttr = `onclick="app.showRecupDetails(${d.cenario_id}, '${d.label.replace(/'/g, "\\'")}')" style="cursor:pointer;"`;
-                lupaIcon = `<i class="fa-solid fa-magnifying-glass" style="margin-left:8px; color:#274036;"></i>`;
-            }
-            
-            html += `<tr ${clickAttr} style="border-bottom:1px solid #e2e8f0; hover:bg-slate-50;">
-                        <td style="padding:8px;">
-                            <b>${d.label}</b>
-                        </td>
-                        <td style="padding:8px; text-align:right;">
-                            <b>${valor}</b> ${lupaIcon}
-                        </td>
-                     </tr>`;
-        });
-        
-        html += `</tbody></table></div>`;
-        
-        Swal.fire({ 
-            title: `Auditoria: ${titulo}`, 
-            html: html, 
-            width: "600px", 
-            confirmButtonColor: "#274036",
-            customClass: {
-                popup: 'audit-modal'
-            }
-        });
-    } catch (e) {
-        console.error("Erro detalhado:", e);
-        Swal.fire("Erro", "Falha ao buscar detalhes. Verifique o console para mais informações.", "error");
-    }
-},
-
-    async showRecupDetails(cenario_id, titulo) {
-        Swal.fire({ title: "Buscando Títulos...", didOpen: () => Swal.showLoading() });
+        this.fire({ title: 'Aguarde...', didOpen: () => Swal.showLoading() });
         try {
-            const globalUserSelect = document.getElementById("global-user-filter");
-            const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-            const diasRecup = document.getElementById("filtro-dias-recup")?.value || 120;
-            const res = await this.api("detalhes-kpi", {
-                tipo: 'recup',
-                cenario: cenario_id,
-                nivel: this.nivel,
-                filtro_id: this.f_id,
-                idusuario: currentUid,
-                dias_recup
-            });
+            const p = this.paramsNivel();
+            const res = await this.api('detalhes-kpi', { ...p, tipo });
             if (!res || res.length === 0) {
-                Swal.fire("Info", "Nenhum título encontrado.", "info");
+                this.msg('Info', 'Nenhum registro encontrado.', 'info');
                 return;
             }
-            let html = `<div style="max-height:450px; overflow:auto;"><table style="width:100%;"><thead><tr><th>Cliente</th><th>Doc / R$</th><th>Últ. Evento</th></tr></thead><tbody>`;
+            const titulos = { iag: 'IAG – Top 10 clientes por saldo vencido', iap: 'IAP – Top 10 clientes por saldo vencido há mais de 30 dias', recup: 'Taxa de Recuperação – cenários' };
+            const nota = tipo === 'recup'
+                ? `<p style="font-size:0.75rem;color:#64748b;text-align:left;margin-bottom:8px;">Janela: títulos vencidos nos últimos <b>${p.dias_recup}</b> dias · Cenário 1: atraso ≥ <b>${p.corte_atraso}</b> dias · status 5 (renegociado/cancelado) excluído. Taxa = cenário 3 ÷ (cenário 2 + cenário 3).</p>`
+                : '';
+            let html = `${nota}<div style="max-height:400px; overflow:auto;"><table style="width:100%; border-collapse: collapse;">
+                <thead><tr style="background:#f1f5f9; position:sticky; top:0;">
+                    <th style="padding:8px; text-align:left;">${tipo === 'recup' ? 'Cenário' : 'Cliente'}</th>
+                    <th style="padding:8px; text-align:right;">${tipo === 'recup' ? 'Qtd títulos' : 'Valor'}</th>
+                </tr></thead><tbody>`;
             res.forEach(d => {
-                let evento = d.desc_evento ? `${d.desc_evento}<br><small>(${d.data_evento})</small>` : '<span class="text-danger">Sem Apontamento</span>';
-                html += `<tr><td>${d.cliente}</td><td style="text-align:center;"><b>${d.documento}</b><br>Venc: ${d.data_vencimento}<br><span class="text-muted">${(parseFloat(d.valorsaldo) || 0).toLocaleString("pt-br", { style: 'currency', currency: 'BRL' })}</span></td><td>${evento}</td></tr>`;
+                const valor = d.is_qtd === true ? esc(d.valor) : fmtBRL(d.valor);
+                const clic = d.cenario_id ? ` data-cenario="${esc(d.cenario_id)}" data-label="${esc(d.label)}" style="cursor:pointer;border-bottom:1px solid #e2e8f0;"` : ' style="border-bottom:1px solid #e2e8f0;"';
+                const lupa = d.cenario_id ? '<i class="fa-solid fa-magnifying-glass" style="margin-left:8px; color:#274036;"></i>' : '';
+                html += `<tr${clic}><td style="padding:8px;"><b>${esc(d.label)}</b></td>
+                    <td style="padding:8px; text-align:right;"><b>${valor}</b> ${lupa}</td></tr>`;
             });
-            Swal.fire({
-                title: titulo,
-                html: html + `</tbody></table></div>`,
-                width: "850px",
+            html += '</tbody></table></div>';
+            this.fire({
+                title: titulos[tipo] || tipo.toUpperCase(),
+                html,
+                width: '650px',
+                confirmButtonColor: '#274036',
+                customClass: { popup: 'audit-modal' },
+                didOpen: (popup) => {
+                    popup.querySelectorAll('tr[data-cenario]').forEach(tr => {
+                        tr.addEventListener('click', () => this.showRecupDetails(parseInt(tr.dataset.cenario, 10), tr.dataset.label));
+                    });
+                }
+            });
+        } catch (e) {
+            console.error('Erro detalhado:', e);
+            this.msg('Erro', `Falha ao buscar detalhes: ${e.message}`, 'error');
+        }
+    },
+
+    async showRecupDetails(cenario_id, titulo) {
+        this.fire({ title: 'Buscando títulos...', didOpen: () => Swal.showLoading() });
+        try {
+            const res = await this.api('detalhes-kpi', { ...this.paramsNivel(), tipo: 'recup', cenario: cenario_id });
+            if (!res || res.length === 0) {
+                this.msg('Info', 'Nenhum título encontrado.', 'info');
+                return;
+            }
+            const colValor = cenario_id === 3 ? 'Recebido' : 'Saldo';
+            let html = `<div style="max-height:450px; overflow:auto;"><table style="width:100%; font-size:0.8rem;">
+                <thead><tr><th style="text-align:left;">Cliente</th><th>Doc / ${colValor}</th><th style="text-align:left;">Últ. evento</th></tr></thead><tbody>`;
+            res.forEach(d => {
+                const evento = d.desc_evento && d.desc_evento !== 'Sem Registro'
+                    ? `${esc(d.desc_evento)}<br><small>(${esc(d.data_evento || '')})</small>`
+                    : '<span style="color:#dc2626;">Sem apontamento</span>';
+                html += `<tr><td style="padding:4px;">${esc(d.cliente)}</td>
+                    <td style="text-align:center;"><b>${esc(d.documento)}</b><br>Venc: ${esc(d.data_vencimento)}<br><span style="color:#64748b;">${fmtBRL(d.valorsaldo)}</span></td>
+                    <td style="padding:4px;">${evento}</td></tr>`;
+            });
+            const total = parseInt(res[0].total_cenario, 10) || res.length;
+            const aviso = total > res.length
+                ? `<p style="font-size:0.75rem;color:#b45309;margin-top:8px;">Exibindo os ${res.length} maiores de ${total} títulos.</p>` : '';
+            this.fire({
+                title: esc(titulo),
+                html: html + '</tbody></table></div>' + aviso,
+                width: '850px',
                 showCancelButton: true,
                 confirmButtonText: '<i class="fa-solid fa-arrow-left"></i> Voltar',
                 cancelButtonText: 'Fechar'
@@ -680,604 +654,250 @@ renderTable(dados) {
                 if (result.isConfirmed) this.showAudit('recup');
             });
         } catch (e) {
-            Swal.fire('Erro', 'Falha ao buscar detalhes.', 'error');
+            this.msg('Erro', `Falha ao buscar detalhes: ${e.message}`, 'error');
         }
     },
 
- async gerarRelatorio() {
-    const globalUserSelect = document.getElementById("global-user-filter");
-    const currentUid = (globalUserSelect && globalUserSelect.value) ? globalUserSelect.value : this.uid;
-    const selectFilial = document.getElementById("select-filial");
-    const idfilial = selectFilial && selectFilial.value ? selectFilial.value : 0;
-    const diasRecup = document.getElementById("filtro-dias-recup")?.value || 999;
+    // ---------------- relatório PDF ----------------
+    async gerarRelatorio() {
+        const p = this.params();
+        const nivel = this.nivel;
+        const filtroId = nivel === 'filial' ? 0 : (this.f_id || 0);
 
-    let nivel = this.nivel;
-    let filtroId = this.f_id;
-
-    if (nivel === 'filial') {
-        filtroId = 0;
-    }
-    Swal.fire({ title: 'Gerando Relatório...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-
-    try {
-        const data = await this.api("relatorio-detalhado", {
-            idusuario: currentUid,
-            idfilial: idfilial,
-            dias_recup: diasRecup,
-            nivel: nivel,
-            filtro_id: filtroId || 0
-        });
-
-        Swal.close();
-
-        if (data.error) throw new Error(data.error);
-        if (!data || data.length === 0) {
-            Swal.fire('Aviso', 'Nenhum título encontrado.', 'info');
+        const jsPDFCtor = window.jspdf?.jsPDF;
+        if (!jsPDFCtor) {
+            this.msg('Erro', 'A biblioteca de PDF (jsPDF) não foi carregada. Verifique a conexão e recarregue a página.', 'error');
             return;
         }
 
-        let tituloRelatorio = "RELATÓRIO FINANCEIRO - TÍTULOS";
-        if (nivel === 'filial') {
-            const filialNome = selectFilial?.options[selectFilial.selectedIndex]?.text || 'Filial';
-            tituloRelatorio = `RELATÓRIO FINANCEIRO - FILIAL: ${filialNome}`;
-        } else if (nivel === 'gestor' && filtroId > 0) {
-            const gestorNome = this.path.find(p => p.nivel === 'gestor')?.nome || 'Gestor';
-            tituloRelatorio = `RELATÓRIO FINANCEIRO - GESTOR: ${gestorNome}`;
-        } else if (nivel === 'representante' && filtroId > 0) {
-            const representanteNome = this.path.find(p => p.nivel === 'representante')?.nome || 'Representante';
-            tituloRelatorio = `RELATÓRIO FINANCEIRO - REPRESENTANTE: ${representanteNome}`;
-        } else if (nivel === 'cliente' && filtroId > 0) {
-            const clienteNome = this.path.find(p => p.nivel === 'cliente')?.nome || 'Cliente';
-            tituloRelatorio = `RELATÓRIO FINANCEIRO - CLIENTE: ${clienteNome}`;
-        }
+        this.fire({ title: 'Gerando relatório...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
+        try {
+            const data = await this.api('relatorio-detalhado', { ...p, nivel, filtro_id: filtroId });
+            Swal.close();
+            if (!data || data.length === 0) {
+                this.msg('Aviso', 'Nenhum título encontrado.', 'info');
+                return;
+            }
 
-        const nomeUsuario = document.getElementById("user_nome")?.value || 'Sistema';
-        const nomeFilial = selectFilial?.options[selectFilial.selectedIndex]?.text || 'Todas';
+            const selFil = document.getElementById('select-filial');
+            const nomeFilial = selFil && selFil.value ? selFil.options[selFil.selectedIndex].text : 'Todas as filiais';
+            const nomeNivel = nivel === 'filial'
+                ? nomeFilial
+                : (this.path.find(x => x.nivel === nivel)?.nome || '');
+            const titulo = `RELATÓRIO FINANCEIRO - ${NIVEL_NOME[nivel] || 'GERAL'}: ${nomeNivel}`;
+            const nomeUsuario = (typeof getUserNome === 'function' ? getUserNome() : '') || 'Sistema';
 
-        // ✅ Verifique se a função gerarPDFFinanceiro está definida
-        if (typeof gerarPDFFinanceiro !== 'function') {
-            console.error("Função gerarPDFFinanceiro não encontrada!");
-            Swal.fire('Erro', 'Função de geração de PDF não disponível.', 'error');
-            return;
-        }
-
-        const doc = gerarPDFFinanceiro(data, nomeUsuario, nomeFilial, diasRecup, tituloRelatorio);
-        if (doc) {
+            const doc = gerarPDFFinanceiro(jsPDFCtor, data, nomeUsuario, nomeFilial, titulo);
             doc.save(`relatorio_financeiro_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.pdf`);
-            Swal.fire({ icon: 'success', title: 'PDF Gerado!', text: `${data.length} títulos`, timer: 3000, showConfirmButton: false, toast: true });
-        } else {
-            Swal.fire('Erro', 'Falha ao gerar o PDF.', 'error');
+
+            const totalLinhas = parseInt(data[0].total_linhas, 10) || data.length;
+            const truncado = totalLinhas > data.length;
+            this.fire({
+                icon: truncado ? 'warning' : 'success',
+                title: truncado ? 'PDF gerado com limite' : 'PDF gerado!',
+                text: truncado
+                    ? `Exibindo ${data.length} de ${totalLinhas} títulos (limite do relatório). Filtre por gestor/representante para ver o restante.`
+                    : `${data.length} títulos`,
+                timer: truncado ? 8000 : 3000,
+                showConfirmButton: truncado
+            });
+        } catch (error) {
+            Swal.close();
+            this.msg('Erro', error.message, 'error');
         }
-    } catch (error) {
-        Swal.close();
-        Swal.fire({ icon: 'error', title: 'Erro', text: error.message });
     }
-}
 };
-// ==========================================================================
-// FUNÇÃO PARA GERAR PDF PROFISSIONAL - VERSÃO COM LARGURAS OTIMIZADAS
-// ==========================================================================
-function gerarPDFFinanceiro(dados, usuario, nomeFilial, diasRecup, tituloPersonalizado = null) {
-    const { jsPDF } = window.jspdf;
-    if (!jsPDF) {
-        Swal.fire('Erro', 'Biblioteca jsPDF não encontrada.', 'error');
-        return null;
-    }
 
+// ==========================================================================
+// PDF (A4 paisagem, 277mm úteis, fontes >= 6pt)
+// ==========================================================================
+function gerarPDFFinanceiro(jsPDF, dados, usuario, nomeFilial, titulo) {
     const doc = new jsPDF('l', 'mm', 'a4');
-    const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
-    const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 10;
-    const usableWidth = pageWidth - (margin * 2); // 277mm
-    
-    let y = 12;
-    let paginaAtual = 1;
+    const usable = pageWidth - margin * 2;
+    const FONTE = 6;
+    const ALTURA = 5.6;
 
-    // ============================================================
-    // FUNÇÃO PARA TEXTO EM CAIXA ALTA
-    // ============================================================
-    function toUpperCaseText(str) {
-        if (!str || str === 'Sem Registro' || str === 'Sem Data') return 'S/REG';
-        if (str === 'Sem Registro') return 'S/REG';
-        return String(str).toUpperCase();
-    }
-
-    // ============================================================
-    // FUNÇÃO PARA PRIMEIRA LETRA MAIÚSCULA
-    // ============================================================
-    function capitalizeFirstLetter(str) {
-        if (!str || str === 'Sem Registro') return 'S/REG';
-        if (str === 'S/REG') return 'S/REG';
-        return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
-    }
-
-    // ============================================================
-    // FUNÇÃO PARA TRUNCAR TEXTO
-    // ============================================================
-    function truncarTexto(texto, maxLen = 50) {
-        if (!texto || texto === 'Sem Registro') return 'S/REG';
-        if (texto === 'S/REG') return 'S/REG';
-        if (texto.length <= maxLen) return texto;
-        return texto.substring(0, maxLen) + '...';
-    }
-
-    // ============================================================
-    // EXTRAI GESTORES ÚNICOS
-    // ============================================================
-    const gestoresUnicos = [...new Set(dados.map(item => item.gestor).filter(g => g))];
-    const gestoresTexto = gestoresUnicos.length > 0 
-        ? gestoresUnicos.join(', ')
-        : 'Não informado';
-
-    // ============================================================
-    // CALCULA TOTAIS
-    // ============================================================
-    const totalValor = dados[0]?.total_geral_valor || dados.reduce((sum, i) => sum + (parseFloat(i.valor) || 0), 0);
-    const totalRecebido = dados[0]?.total_geral_recebido || dados.reduce((sum, i) => sum + (parseFloat(i.totalrecebido) || 0), 0);
-    const totalSaldo = dados[0]?.total_geral_saldo || dados.reduce((sum, i) => sum + (parseFloat(i.valorsaldo) || 0), 0);
-
-    // ============================================================
-    // DEFINIÇÃO DAS COLUNAS - LARGURAS OTIMIZADAS
-    // ============================================================
     const colunas = [
-        { label: "EMISSÃO", width: 16, align: "center" },        // Reduzido
-        { label: "CLIENTE", width: 35, align: "left" },          // Reduzido
-        { label: "DOCUMENTO", width: 22, align: "left" },        // Reduzido
-        { label: "VENC", width: 14, align: "center" },           // Abreviado
-        { label: "RECEBIDO", width: 18, align: "right" },        // Ajustado
-        { label: "SALDO", width: 18, align: "right" },           // Ajustado
-        { label: "ATR", width: 8, align: "center" },             // Abreviado
-        { label: "REPRES", width: 22, align: "left" },           // Reduzido significativamente
-        { label: "DT ULT", width: 14, align: "center" },         // Abreviado
-        { label: "ULTIMO EVENTO", width: 50, align: "left" },    // Aumentado para dar mais espaço
-        { label: "DSC", width: 10, align: "center" },            // Abreviado (Dias Sem Cobrança)
-        { label: "USU", width: 14, align: "left" }               // Abreviado
+        { label: 'EMISSÃO', width: 16, align: 'center' },
+        { label: 'CLIENTE', width: 44, align: 'left' },
+        { label: 'DOCUMENTO', width: 26, align: 'left' },
+        { label: 'VENC.', width: 16, align: 'center' },
+        { label: 'RECEBIDO', width: 20, align: 'right' },
+        { label: 'SALDO', width: 20, align: 'right' },
+        { label: 'ATRASO', width: 12, align: 'center' },
+        { label: 'REPRESENTANTE', width: 30, align: 'left' },
+        { label: 'DT ÚLT. EVENTO', width: 18, align: 'center' },
+        { label: 'ÚLTIMO EVENTO', width: 50, align: 'left' },
+        { label: 'DIAS S/ COB.', width: 13, align: 'center' },
+        { label: 'USUÁRIO', width: 12, align: 'left' }
     ];
-    
-    // Verifica se a soma das larguras não ultrapassa a largura utilizável
-    const somaLarguras = colunas.reduce((sum, col) => sum + col.width, 0);
-    if (somaLarguras > usableWidth) {
-        console.warn(`Soma das colunas (${somaLarguras}mm) excede largura útil (${usableWidth}mm)`);
-    }
+    const soma = colunas.reduce((s, c) => s + c.width, 0);
+    colunas[9].width += usable - soma;
 
-    // ============================================================
-    // CABEÇALHO COMPLETO
-    // ============================================================
-    function desenharCabecalhoCompleto(doc, pagina) {
-        let yCab = 12;
-        
-        // LINHA 1: TÍTULO E DATA/HORA
-        doc.setFont("helvetica", "bold");
+    const semReg = (v) => !v || v === 'Sem Registro' || v === 'Sem Data';
+    const ajustar = (texto, largura) => {
+        let t = String(texto ?? '');
+        if (doc.getTextWidth(t) <= largura) return t;
+        while (t.length > 1 && doc.getTextWidth(t + '..') > largura) t = t.slice(0, -1);
+        return t + '..';
+    };
+
+    const totalLinhas = parseInt(dados[0]?.total_linhas, 10) || dados.length;
+    const totalValor = parseFloat(dados[0]?.total_geral_valor) || 0;
+    const totalRecebido = parseFloat(dados[0]?.total_geral_recebido) || 0;
+    const totalSaldo = parseFloat(dados[0]?.total_geral_saldo) || 0;
+    const gestores = [...new Set(dados.map(i => i.gestor).filter(Boolean))];
+
+    function cabecalho(pagina) {
+        let y = 12;
+        doc.setFont('helvetica', 'bold');
         doc.setFontSize(11);
         doc.setTextColor(30, 41, 59);
-        const titulo = tituloPersonalizado || "RELATÓRIO FINANCEIRO";
-        doc.text(titulo, margin, yCab);
-        
-        doc.setFontSize(6.5);
-        doc.setFont("helvetica", "normal");
+        doc.text(ajustar(titulo, usable - 60), margin, y);
+        doc.setFontSize(FONTE + 1);
+        doc.setFont('helvetica', 'normal');
         doc.setTextColor(100, 116, 139);
-        doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageWidth - margin, yCab, { align: 'right' });
-        yCab += 6.5;
-        
-        // LINHA 2: INFORMAÇÕES
-        doc.setFontSize(7);
-        doc.setTextColor(30, 41, 59);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("Usuário:", margin, yCab);
-        doc.setFont("helvetica", "normal");
-        doc.text(` ${usuario}`, margin + 15, yCab);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("Filial:", margin + 65, yCab);
-        doc.setFont("helvetica", "normal");
-        doc.text(` ${nomeFilial}`, margin + 75, yCab);
-        
-        doc.setFont("helvetica", "bold");
-        doc.text("Registros:", pageWidth - margin - 30, yCab);
-        doc.setFont("helvetica", "normal");
-        doc.text(` ${dados.length}`, pageWidth - margin - 10, yCab, { align: 'right' });
-        
-        yCab += 5.5;
-        
-        // LINHA 3: GESTORES
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(6.5);
-        doc.text("Gestor(es):", margin, yCab);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(71, 85, 105);
-        
-        const maxLarguraGestores = usableWidth - 30;
-        let gestoresDisplay = gestoresTexto;
-        
-        if (doc.getTextWidth(gestoresDisplay) > maxLarguraGestores) {
-            let textoTruncado = '';
-            const gestoresArray = gestoresUnicos;
-            
-            for (let i = 0; i < gestoresArray.length; i++) {
-                const teste = textoTruncado ? `${textoTruncado}, ${gestoresArray[i]}` : gestoresArray[i];
-                if (doc.getTextWidth(teste + '...') <= maxLarguraGestores) {
-                    textoTruncado = teste;
-                } else {
-                    const restantes = gestoresArray.length - i;
-                    textoTruncado += ` +${restantes} mais`;
-                    break;
-                }
-            }
-            gestoresDisplay = textoTruncado || gestoresArray[0] + '...';
-        }
-        
-        doc.text(` ${gestoresDisplay}`, margin + 22, yCab);
-        
-        doc.setTextColor(100, 116, 139);
-        doc.text(`Pág. ${pagina}`, pageWidth - margin, yCab, { align: 'right' });
-        
-        yCab += 7;
-        
-        // CARDS DE TOTAIS (mais compactos)
-        const cardY = yCab;
-        const cardHeight = 7.5;
-        const espacoCards = 2;
-        const cardWidth = (usableWidth - (espacoCards * 2)) / 3;
-        
-        doc.setFillColor(30, 41, 59);
-        doc.roundedRect(margin, cardY, cardWidth, cardHeight, 1.5, 1.5, 'F');
-        doc.setTextColor(255, 255, 255);
-        doc.setFontSize(5);
-        doc.setFont("helvetica", "normal");
-        doc.text("TOTAL GERAL", margin + 2, cardY + 3);
-        doc.setFontSize(6);
-        doc.setFont("helvetica", "bold");
-        doc.text(`R$ ${parseFloat(totalValor).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + 2, cardY + 6.5);
-        
-        doc.setFillColor(5, 150, 105);
-        doc.roundedRect(margin + cardWidth + espacoCards, cardY, cardWidth, cardHeight, 1.5, 1.5, 'F');
-        doc.setFontSize(5);
-        doc.setFont("helvetica", "normal");
-        doc.text("TOTAL RECEBIDO", margin + cardWidth + espacoCards + 2, cardY + 3);
-        doc.setFontSize(6);
-        doc.setFont("helvetica", "bold");
-        doc.text(`R$ ${parseFloat(totalRecebido).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + cardWidth + espacoCards + 2, cardY + 6.5);
-        
-        doc.setFillColor(185, 28, 28);
-        doc.roundedRect(margin + (cardWidth + espacoCards) * 2, cardY, cardWidth, cardHeight, 1.5, 1.5, 'F');
-        doc.setFontSize(5);
-        doc.setFont("helvetica", "normal");
-        doc.text("SALDO DEVEDOR", margin + (cardWidth + espacoCards) * 2 + 2, cardY + 3);
-        doc.setFontSize(6);
-        doc.setFont("helvetica", "bold");
-        doc.text(`R$ ${parseFloat(totalSaldo).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, margin + (cardWidth + espacoCards) * 2 + 2, cardY + 6.5);
-        
-        yCab += cardHeight + 5;
-        
-        return yCab;
-    }
+        doc.text(`Gerado em: ${new Date().toLocaleString('pt-BR')}`, pageWidth - margin, y, { align: 'right' });
+        y += 6;
 
-    // ============================================================
-    // CABEÇALHO DA TABELA
-    // ============================================================
-    function desenharCabecalhoTabela(doc, y) {
+        doc.setFontSize(FONTE + 1);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Usuário:', margin, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(ajustar(usuario, 60), margin + 14, y);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Filial:', margin + 90, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(ajustar(nomeFilial, 90), margin + 100, y);
+        const reg = totalLinhas > dados.length
+            ? `${dados.length} de ${totalLinhas} (limite)` : `${dados.length}`;
+        doc.setFont('helvetica', 'bold');
+        doc.text('Registros:', pageWidth - margin - 45, y);
+        doc.setFont('helvetica', 'normal');
+        doc.text(reg, pageWidth - margin, y, { align: 'right' });
+        y += 5;
+
+        doc.setFont('helvetica', 'bold');
+        doc.text('Gestor(es):', margin, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(71, 85, 105);
+        doc.text(ajustar(gestores.join(', ') || 'Não informado', usable - 45), margin + 17, y);
+        doc.setTextColor(100, 116, 139);
+        doc.text(`Pág. ${pagina}`, pageWidth - margin, y, { align: 'right' });
+        y += 5;
+
+        const cw = (usable - 4) / 3;
+        const cards = [
+            ['TOTAL GERAL', totalValor, [30, 41, 59]],
+            ['TOTAL RECEBIDO', totalRecebido, [5, 150, 105]],
+            ['SALDO DEVEDOR', totalSaldo, [185, 28, 28]]
+        ];
+        cards.forEach((c, i) => {
+            const x = margin + i * (cw + 2);
+            doc.setFillColor(...c[2]);
+            doc.roundedRect(x, y, cw, 9, 1.5, 1.5, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(FONTE);
+            doc.text(c[0], x + 2, y + 3.6);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(FONTE + 2);
+            doc.text(`R$ ${fmtNum(c[1])}`, x + 2, y + 7.6);
+        });
+        y += 12;
+
+        // cabeçalho da tabela
         doc.setFillColor(30, 41, 59);
-        doc.rect(margin, y, usableWidth, 6.5, 'F');
-        
-        doc.setDrawColor(51, 65, 85);
-        doc.setLineWidth(0.2);
+        doc.rect(margin, y, usable, 6, 'F');
+        doc.setTextColor(255, 255, 255);
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(FONTE);
         let x = margin;
         colunas.forEach(col => {
-            doc.line(x, y, x, y + 6.5);
+            if (col.align === 'center') doc.text(col.label, x + col.width / 2, y + 4, { align: 'center' });
+            else if (col.align === 'right') doc.text(col.label, x + col.width - 1.5, y + 4, { align: 'right' });
+            else doc.text(col.label, x + 1.5, y + 4);
             x += col.width;
         });
-        doc.line(pageWidth - margin, y, pageWidth - margin, y + 6.5);
-        
-        doc.setTextColor(255, 255, 255);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(4.8);
-        
-        x = margin;
-        colunas.forEach(col => {
-            if (col.align === "center") {
-                doc.text(col.label, x + col.width / 2, y + 4.2, { align: 'center' });
-            } else if (col.align === "right") {
-                doc.text(col.label, x + col.width - 1.5, y + 4.2, { align: 'right' });
-            } else {
-                doc.text(col.label, x + 1.5, y + 4.2);
-            }
-            x += col.width;
-        });
-        
-        doc.setDrawColor(51, 65, 85);
-        doc.setLineWidth(0.3);
-        doc.line(margin, y + 6.5, pageWidth - margin, y + 6.5);
-        
-        return y + 7;
+        return y + 6.5;
     }
 
-    // ============================================================
-    // FUNÇÕES AUXILIARES
-    // ============================================================
-    function formatarData(data) {
-        if (!data || data === 'Sem Data') return 'S/DATA';
-        try {
-            if (typeof data === 'string') {
-                if (data.includes('/')) return data.substring(0, 10);
-                const partes = data.split('-');
-                if (partes.length === 3) return `${partes[2]}/${partes[1]}/${partes[0]}`;
-            }
-            const date = new Date(data);
-            if (!isNaN(date.getTime())) {
-                return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
-            }
-        } catch (e) {
-            return 'S/DATA';
-        }
-        return 'S/DATA';
-    }
+    let pagina = 1;
+    let y = cabecalho(pagina);
 
-    // ============================================================
-    // DESENHA PRIMEIRA PÁGINA
-    // ============================================================
-    y = desenharCabecalhoCompleto(doc, paginaAtual);
-    y = desenharCabecalhoTabela(doc, y);
-    doc.setTextColor(0, 0, 0);
-    doc.setFont("helvetica", "normal");
-
-    // ============================================================
-    // ALTURA DA LINHA
-    // ============================================================
-    const alturaLinhaPadrao = 5.2;
-    
-    // ============================================================
-    // LOOP PRINCIPAL
-    // ============================================================
-    for (let idx = 0; idx < dados.length; idx++) {
-        const item = dados[idx];
-        
-        // EXTRAI APENAS O REPRESENTANTE (sem o gestor)
-        let representante = item.nome_vendedor || '';
-        if (representante && representante.includes(' / ')) {
-            representante = representante.split(' / ')[1] || representante;
-        }
-        // Limita o tamanho do nome do representante
-        if (representante.length > 20) {
-            representante = representante.substring(0, 18) + '..';
-        }
-        representante = toUpperCaseText(representante);
-        
-        // TRATA O ÚLTIMO EVENTO
-        let ultimoEvento = item.descricao || 'Sem Registro';
-        ultimoEvento = truncarTexto(ultimoEvento, 55);
-        ultimoEvento = capitalizeFirstLetter(ultimoEvento);
-        
-        // DEMAIS CAMPOS
-        let clienteNome = toUpperCaseText(item.nomefantasia || '');
-        // Limita nome do cliente
-        if (clienteNome.length > 30) {
-            clienteNome = clienteNome.substring(0, 28) + '..';
-        }
-        
-        let documento = toUpperCaseText(item.documento || '-');
-        let metodoPagto = item.metodopagto ? ` ${toUpperCaseText(item.metodopagto)}` : '';
-        let usuarioTexto = toUpperCaseText(item.usuario || 'Sem Registro');
-        if (usuarioTexto === 'SEM REGISTRO') usuarioTexto = 'S/REG';
-        
-        let ultEventoDias = item.ult_evento_dias || 'Sem Registro';
-        if (ultEventoDias === 'Sem Registro') ultEventoDias = 'S/REG';
-        
-        // Prepara os textos
-        const textos = [
-            formatarData(item.dataemissao),
-            `${item.idcliforemp || ''} ${clienteNome}`,
-            `${documento}${metodoPagto}`,
-            formatarData(item.vencimento),
-            (parseFloat(item.totalrecebido) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            (parseFloat(item.valorsaldo) || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-            `${parseInt(item.dias_atraso) || 0}`,
-            representante || 'S/REPRES',
-            formatarData(item.ultimo_evento),
-            ultimoEvento,
-            ultEventoDias,
-            usuarioTexto
-        ];
-        
-        // VERIFICA QUEBRA DE PÁGINA
-        if (alturaLinhaPadrao > pageHeight - 18 - y) {
+    dados.forEach((item, idx) => {
+        if (y + ALTURA > pageHeight - 12) {
             doc.addPage();
-            paginaAtual++;
-            y = 12;
-            y = desenharCabecalhoCompleto(doc, paginaAtual);
-            y = desenharCabecalhoTabela(doc, y);
-            doc.setTextColor(0, 0, 0);
-            doc.setFont("helvetica", "normal");
+            pagina++;
+            y = cabecalho(pagina);
         }
-        
-        // FUNDO ZEBRADO
-        if (idx % 2 === 0) {
-            doc.setFillColor(248, 250, 252);
-        } else {
-            doc.setFillColor(255, 255, 255);
-        }
-        doc.rect(margin, y, usableWidth, alturaLinhaPadrao, 'F');
-        
-        // LINHAS DE GRADE
+        doc.setFillColor(idx % 2 === 0 ? 248 : 255, idx % 2 === 0 ? 250 : 255, idx % 2 === 0 ? 252 : 255);
+        doc.rect(margin, y, usable, ALTURA, 'F');
         doc.setDrawColor(226, 232, 240);
         doc.setLineWidth(0.1);
-        doc.line(margin, y, pageWidth - margin, y);
-        doc.line(margin, y + alturaLinhaPadrao, pageWidth - margin, y + alturaLinhaPadrao);
-        
-        let xGrid = margin;
-        colunas.forEach(col => {
-            doc.line(xGrid, y, xGrid, y + alturaLinhaPadrao);
-            xGrid += col.width;
-        });
-        doc.line(pageWidth - margin, y, pageWidth - margin, y + alturaLinhaPadrao);
-        
-        // RENDERIZA COLUNAS
-        let x = margin;
-        const yBase = y + 3.3;
-        
-        // Fonte padrão
-        doc.setFontSize(4.8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(30, 41, 59);
-        
-        // 1. EMISSÃO
-        doc.text(textos[0], x + colunas[0].width / 2, yBase, { align: 'center' });
-        x += colunas[0].width;
-        
-        // 2. CLIENTE
-        let clienteTexto = textos[1];
-        if (doc.getTextWidth(clienteTexto) > colunas[1].width - 2) {
-            doc.setFontSize(4.5);
-        }
-        doc.text(clienteTexto, x + 1, yBase);
-        doc.setFontSize(4.8);
-        x += colunas[1].width;
-        
-        // 3. DOCUMENTO
-        doc.text(textos[2], x + 1, yBase);
-        x += colunas[2].width;
-        
-        // 4. VENCIMENTO
-        doc.text(textos[3], x + colunas[3].width / 2, yBase, { align: 'center' });
-        x += colunas[3].width;
-        
-        // 5. RECEBIDO
-        const recebido = parseFloat(item.totalrecebido) || 0;
-        if (recebido > 0) doc.setTextColor(5, 150, 105);
-        doc.text(textos[4], x + colunas[4].width - 1, yBase, { align: 'right' });
-        doc.setTextColor(30, 41, 59);
-        x += colunas[4].width;
-        
-        // 6. SALDO
-        const saldo = parseFloat(item.valorsaldo) || 0;
-        if (saldo > 0) {
-            doc.setTextColor(185, 28, 28);
-            doc.setFont("helvetica", "bold");
-        }
-        doc.text(textos[5], x + colunas[5].width - 1, yBase, { align: 'right' });
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        x += colunas[5].width;
-        
-        // 7. ATRASO
-        const atraso = parseInt(item.dias_atraso) || 0;
-        if (atraso > 30) {
-            doc.setTextColor(185, 28, 28);
-            doc.setFont("helvetica", "bold");
-        } else if (atraso > 0) {
-            doc.setTextColor(245, 158, 11);
-        } else if (atraso === 0) {
-            doc.setTextColor(5, 150, 105);
-        }
-        doc.text(textos[6], x + colunas[6].width / 2, yBase, { align: 'center' });
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        x += colunas[6].width;
-        
-        // 8. REPRESENTANTE (agora com largura adequada)
-        let repTexto = textos[7];
-        if (doc.getTextWidth(repTexto) > colunas[7].width - 2) {
-            doc.setFontSize(4.2);
-        }
-        doc.text(repTexto, x + 1, yBase);
-        doc.setFontSize(4.8);
-        x += colunas[7].width;
-        
-        // 9. DATA ÚLTIMO EVENTO
-        if (textos[8] === 'S/DATA') {
-            doc.setTextColor(148, 163, 184);
-            doc.setFont("helvetica", "italic");
-        }
-        doc.text(textos[8], x + colunas[8].width / 2, yBase, { align: 'center' });
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        x += colunas[8].width;
-        
-        // 10. ÚLTIMO EVENTO (fonte menor)
-        doc.setFontSize(4.2);
-        if (textos[9] === 'S/REG') {
-            doc.setTextColor(148, 163, 184);
-            doc.setFont("helvetica", "italic");
-        }
-        
-        let eventoTexto = textos[9];
-        const larguraEvento = colunas[9].width - 2;
-        if (doc.getTextWidth(eventoTexto) > larguraEvento) {
-            doc.setFontSize(3.8);
-            if (doc.getTextWidth(eventoTexto) > larguraEvento) {
-                doc.setFontSize(3.5);
-            }
-        }
-        doc.text(eventoTexto, x + 1, yBase);
-        
-        // Restaura fonte
-        doc.setFontSize(4.8);
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        x += colunas[9].width;
-        
-        // 11. DIAS SEM COBRANÇA
-        if (textos[10] === 'S/REG') {
-            doc.setTextColor(148, 163, 184);
-            doc.setFont("helvetica", "italic");
-        } else {
-            const diasNum = parseInt(textos[10]);
-            if (!isNaN(diasNum) && diasNum > 30) {
-                doc.setTextColor(185, 28, 28);
-                doc.setFont("helvetica", "bold");
-            }
-        }
-        doc.text(textos[10], x + colunas[10].width / 2, yBase, { align: 'center' });
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        x += colunas[10].width;
-        
-        // 12. USUÁRIO
-        if (textos[11] === 'S/REG') {
-            doc.setTextColor(148, 163, 184);
-            doc.setFont("helvetica", "italic");
-        }
-        doc.text(textos[11], x + 1, yBase);
-        doc.setTextColor(30, 41, 59);
-        doc.setFont("helvetica", "normal");
-        
-        y += alturaLinhaPadrao;
-    }
+        doc.line(margin, y + ALTURA, pageWidth - margin, y + ALTURA);
 
-    // ============================================================
-    // RODAPÉ
-    // ============================================================
-    const totalPaginas = doc.internal.getNumberOfPages();
-    for (let i = 1; i <= totalPaginas; i++) {
+        let rep = item.nome_vendedor || '';
+        if (rep.includes(' / ')) rep = rep.split(' / ')[1] || rep;
+
+        const saldo = parseFloat(item.valorsaldo) || 0;
+        const recebido = parseFloat(item.totalrecebido) || 0;
+        const atraso = parseInt(item.dias_atraso, 10) || 0;
+        const dsc = semReg(item.ult_evento_dias) ? 'S/REG' : String(item.ult_evento_dias);
+        const evento = semReg(item.descricao) ? 'S/REG' : item.descricao;
+
+        const celulas = [
+            { t: fmtData(item.dataemissao) },
+            { t: `${item.idcliforemp || ''} ${String(item.nomefantasia || '').toUpperCase()}` },
+            { t: `${String(item.documento || '-').toUpperCase()}${item.metodopagto ? ' ' + String(item.metodopagto).toUpperCase() : ''}` },
+            { t: fmtData(item.vencimento) },
+            { t: fmtNum(recebido), cor: recebido > 0 ? [5, 150, 105] : null },
+            { t: fmtNum(saldo), cor: saldo > 0 ? [185, 28, 28] : null, bold: saldo > 0 },
+            { t: String(atraso), cor: atraso > 30 ? [185, 28, 28] : (atraso > 0 ? [245, 158, 11] : [5, 150, 105]), bold: atraso > 30 },
+            { t: (rep || 'S/REPRES').toUpperCase() },
+            { t: semReg(item.ultimo_evento) ? 'S/DATA' : item.ultimo_evento, mudo: semReg(item.ultimo_evento) },
+            { t: evento, mudo: evento === 'S/REG' },
+            { t: dsc, mudo: dsc === 'S/REG', cor: parseInt(dsc, 10) > 30 ? [185, 28, 28] : null, bold: parseInt(dsc, 10) > 30 },
+            { t: semReg(item.usuario) ? 'S/REG' : String(item.usuario).toUpperCase(), mudo: semReg(item.usuario) }
+        ];
+
+        let x = margin;
+        celulas.forEach((c, i) => {
+            const col = colunas[i];
+            doc.setFont('helvetica', c.bold ? 'bold' : (c.mudo ? 'italic' : 'normal'));
+            doc.setFontSize(FONTE);
+            if (c.mudo) doc.setTextColor(148, 163, 184);
+            else if (c.cor) doc.setTextColor(...c.cor);
+            else doc.setTextColor(30, 41, 59);
+            const t = ajustar(c.t, col.width - 2);
+            const yb = y + 3.9;
+            if (col.align === 'center') doc.text(t, x + col.width / 2, yb, { align: 'center' });
+            else if (col.align === 'right') doc.text(t, x + col.width - 1, yb, { align: 'right' });
+            else doc.text(t, x + 1, yb);
+            x += col.width;
+        });
+        y += ALTURA;
+    });
+
+    const paginas = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= paginas; i++) {
         doc.setPage(i);
-        
         doc.setDrawColor(39, 64, 54);
         doc.setLineWidth(0.3);
         doc.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
-        
-        doc.setFontSize(5);
+        doc.setFontSize(FONTE);
         doc.setTextColor(148, 163, 184);
-        doc.setFont("helvetica", "normal");
-        doc.text(`Nutricional - ${new Date().toLocaleDateString('pt-BR')}`, margin, pageHeight - 5.5);
-        doc.text(`Pág. ${i}/${totalPaginas}`, pageWidth - margin, pageHeight - 5.5, { align: 'right' });
+        doc.setFont('helvetica', 'normal');
+        const aviso = totalLinhas > dados.length ? ` · Exibindo ${dados.length} de ${totalLinhas} títulos` : '';
+        doc.text(`Nutricional - ${new Date().toLocaleDateString('pt-BR')}${aviso}`, margin, pageHeight - 5.5);
+        doc.text(`Pág. ${i}/${paginas}`, pageWidth - margin, pageHeight - 5.5, { align: 'right' });
     }
-    
     return doc;
 }
-
-// ==========================================================================
-// CONFIGURAÇÃO SWEETALERT2
-// ==========================================================================
-const originalFire = Swal.fire;
-Swal.fire = function (...args) {
-    if (typeof args[0] === 'object' && args[0] !== null) {
-        if (args[0].width === '800px') args[0].position = 'center';
-        else args[0].position = 'top';
-    } else {
-        return originalFire.call(this, { title: args[0], text: args[1], icon: args[2], position: 'top' });
-    }
-    return originalFire.apply(this, args);
-};
 
 window.addEventListener('DOMContentLoaded', () => {
     app.init();

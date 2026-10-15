@@ -1,6 +1,7 @@
 <?php
 namespace Nutricional\Controllers;
 
+use Nutricional\Utils\UserScope;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -8,687 +9,539 @@ class FinanceiroController
 {
     private $pdo;
 
+    private const NIVEIS = ['filial', 'gestor', 'representante'];
+    private const NIVEIS_DETALHE = ['filial', 'gestor', 'representante', 'cliente'];
+    private const LIMITE_RELATORIO = 5000;
+    private const LIMITE_CENARIO = 500;
+
+    /** Títulos renegociados/cancelados (status 5) não entram na taxa de recuperação. */
+    private const SEM_STATUS_5 = "NOT EXISTS (SELECT 1 FROM receber rx
+        WHERE rx.idcliforemp = vfe.idcliforemp AND rx.idfilial = vfe.idfilial
+          AND rx.documento = vfe.documento AND rx.vencimento = vfe.vencimento
+          AND rx.excluido = 'N' AND rx.status = 5)";
+
     public function __construct()
     {
         $this->pdo = \getPDO();
     }
-/**
- * POST /v1/financeiro/dashboard
- */
-public function getDashboard(Request $request, Response $response): Response
-{
-    $input = json_decode($request->getBody()->getContents(), true) ?? [];
-    $diasRecup = intval($input['dias_recup'] ?? 120);
-    $corteAtraso = ($diasRecup > 0 && $diasRecup <= 7) ? $diasRecup : 8;
-    $uid = intval($input['idusuario'] ?? 0);
-    $nivel = $input['nivel'] ?? 'filial';
-    $fid = intval($input['filtro_id'] ?? 0);
 
-    try {
-        // Obtém permissões do usuário
-        $stUser = $this->pdo->prepare("SELECT username, dash_filiais, dash_gestores FROM usuario WHERE idcliforemp = :uid");
-        $stUser->execute(['uid' => $uid]);
-        $userRow = $stUser->fetch();
+    // ======================================================================
+    // INFRAESTRUTURA
+    // ======================================================================
 
-        $nomeLogado = $userRow['username'] ?? 'USUÁRIO';
-        $dashFiliais = !empty($userRow['dash_filiais']) ? explode(',', $userRow['dash_filiais']) : [];
-        $dashGestores = !empty($userRow['dash_gestores']) ? explode(',', $userRow['dash_gestores']) : [];
-
-        // Lista de filiais permitidas
-        if (!empty($dashFiliais)) {
-            $placeholders = implode(',', array_fill(0, count($dashFiliais), '?'));
-            $sqlF = "SELECT DISTINCT idfilial, nome FROM filial WHERE inativo = 'N' AND idfilial IN ($placeholders) ORDER BY idfilial";
-            $stF = $this->pdo->prepare($sqlF);
-            $stF->execute($dashFiliais);
-        } else {
-            $sqlF = "SELECT DISTINCT f.idfilial, f.nome FROM filial f 
-                     JOIN vw_analise_receber_geral_cliente v ON v.idfilial = f.idfilial 
-                     WHERE v.idvendrepre = :uid ORDER BY f.idfilial";
-            $stF = $this->pdo->prepare($sqlF);
-            $stF->execute(['uid' => $uid]);
-        }
-        $listaFiliais = $stF->fetchAll();
-
-        $filialPadrao = count($listaFiliais) === 1
-            ? (int)$listaFiliais[0]['idfilial']
-            : 0;
-
-        if ($fid === 0 && $filialPadrao > 0) {
-            $fid = $filialPadrao;
-        }
-
-        // Travas de segurança
-        $travaHierarquia = "";
-        $travaEventos = "";
-        $params = [];
-
-        if (!empty($dashFiliais) || !empty($dashGestores)) {
-            $condsVarg = [];
-            $condsVfe = [];
-            if (!empty($dashFiliais)) {
-                $placeholdersF = implode(',', array_fill(0, count($dashFiliais), '?'));
-                $condsVarg[] = "varg.idfilial IN ($placeholdersF)";
-                $condsVfe[] = "vfe.idfilial IN ($placeholdersF)";
-                foreach ($dashFiliais as $f) {
-                    $params[] = (int)$f;
-                }
-            }
-            if (!empty($dashGestores)) {
-                $placeholdersG = implode(',', array_fill(0, count($dashGestores), '?'));
-                $condsVarg[] = "varg.idsupervisor IN ($placeholdersG)";
-                $condsVfe[] = "vfe.idgestor IN ($placeholdersG)";
-                foreach ($dashGestores as $g) {
-                    $params[] = (int)$g;
-                }
-            }
-            $travaHierarquia = implode(' AND ', $condsVarg);
-            $travaEventos = implode(' AND ', $condsVfe);
-        } else {
-            $travaHierarquia = "varg.idvendrepre = ?";
-            $travaEventos = "vfe.idrepresentante = ?";
-            $params[] = $uid;
-        }
-
-        // ============================================================
-        // PARÂMETROS DA QUERY PRINCIPAL
-        // ============================================================
-        $joinExtra = "";
-        $whereDrill = "";
-        $whereCards = "";
-        $select = "";
-        $groupBy = "";
-        $paramsQuery = $params;
-
-        // 🔥 NOVA LÓGICA - CADA NÍVEL RETORNA O PRÓXIMO NÍVEL
-        switch ($nivel) {
-            // ============================================================
-            // NÍVEL FILIAL: Retorna os GESTORES da filial
-            // ============================================================
-            case 'filial':
-                $select = "varg.idsupervisor as id, varg.nomegestor as nome";
-                $groupBy = "varg.idsupervisor, varg.nomegestor";
-                $whereDrill = "varg.idsupervisor IS NOT NULL";
-                $whereCards = "varg.idsupervisor IS NOT NULL";
-                if ($fid > 0) {
-                    $whereDrill .= " AND varg.idfilial = ?";
-                    $whereCards .= " AND varg.idfilial = ?";
-                    $paramsQuery[] = $fid;
-                }
-                break;
-
-            // ============================================================
-            // NÍVEL GESTOR: Retorna os REPRESENTANTES do gestor
-            // ============================================================
-            case 'gestor':
-                $select = "varg.idvendrepre as id, varg.nomerepresentante as nome";
-                $groupBy = "varg.idvendrepre, varg.nomerepresentante";
-                $whereDrill = "varg.idsupervisor = ? AND varg.idvendrepre IS NOT NULL";
-                $whereCards = "varg.idsupervisor = ? AND varg.idvendrepre IS NOT NULL";
-                $paramsQuery[] = $fid;
-                break;
-
-            // ============================================================
-            // NÍVEL REPRESENTANTE: Retorna os CLIENTES do representante
-            // ============================================================
-            case 'representante':
-                $select = "varg.idcliforemp as id, varg.cliente as nome";
-                $groupBy = "varg.idcliforemp, varg.cliente";
-                $whereDrill = "varg.idvendrepre = ? AND varg.vencidos > 0";
-                $whereCards = "varg.idvendrepre = ?";
-                $paramsQuery[] = $fid;
-                break;
-
-            // ============================================================
-            // NÍVEL CLIENTE: Retorna os TÍTULOS do cliente (para a modal)
-            // ============================================================
-            case 'cliente':
-                $sql = "SELECT 
-                            documento,
-                            valorsaldo,
-                            to_char(vencimento, 'DD/MM/YYYY') as vencimento_formatado,
-                            dias_atraso,
-                            evento,
-                            descricao,
-                            to_char(ultimo_evento, 'DD/MM/YYYY') as ultimo_evento_formatado
-                        FROM vw_financeiro_eventos_geral vfe
-                        WHERE vfe.idcliforemp = ?
-                        AND ($travaEventos)
-                        AND valorsaldo > 0.01
-                        ORDER BY vencimento ASC, dias_atraso DESC";
-                
-                $stmtTitulos = $this->pdo->prepare($sql);
-                    $stmtTitulos->execute(array_merge([$fid], $params));
-                $titulos = $stmtTitulos->fetchAll(\PDO::FETCH_ASSOC);
-                
-                $response->getBody()->write(json_encode([
-                    'config' => ['usuario' => $nomeLogado, 'filiais' => $listaFiliais, 'filial_padrao' => $filialPadrao],
-                    'resumo_filial' => null,
-                    'tabela' => $titulos,
-                    'taxa_recup' => 0,
-                    'recup_detalhe' => null
-                ]));
-                return $response->withHeader('Content-Type', 'application/json');
-                break;
-
-            default:
-                $select = "f.idfilial as id, f.nome as nome";
-                $joinExtra = "JOIN filial f ON f.idfilial = varg.idfilial";
-                $groupBy = "f.idfilial, f.nome";
-                $whereDrill = "varg.idfilial = ?";
-                $whereCards = "varg.idfilial = ?";
-                $paramsQuery[] = $fid;
-                break;
-        }
-
-        // ============================================================
-        // TAXA DE RECUPERAÇÃO
-        // ============================================================
-        $whereRec = $travaEventos;
-        $paramsRec = array_merge([$corteAtraso], $params);
-
-        if ($nivel === 'filial' && $fid > 0) {
-            $whereRec .= " AND vfe.idfilial = ?";
-            $paramsRec[] = $fid;
-        } elseif ($nivel === 'gestor') {
-            $whereRec .= " AND vfe.idgestor = ?";
-            $paramsRec[] = $fid;
-        } elseif ($nivel === 'representante') {
-            $whereRec .= " AND vfe.idrepresentante = ?";
-            $paramsRec[] = $fid;
-        }
-
-        $sqlRec = "SELECT 
-            SUM(CASE WHEN vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= ? AND vfe.valorsaldo > 0.01 THEN 1 ELSE 0 END) as cenario_1,
-            SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0.01 THEN 1 ELSE 0 END) as cenario_2,
-            SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END) as cenario_3
-        FROM vw_financeiro_eventos_geral vfe 
-        WHERE ($whereRec)
-        AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '{$diasRecup} days')";
-
-        $stmtRec = $this->pdo->prepare($sqlRec);
-        $stmtRec->execute($paramsRec);
-        $rowRec = $stmtRec->fetch();
-
-        $c1 = (int)($rowRec['cenario_1'] ?? 0);
-        $c2 = (int)($rowRec['cenario_2'] ?? 0);
-        $c3 = (int)($rowRec['cenario_3'] ?? 0);
-
-        $baseTotal = $c1 + $c2 + $c3;
-        $taxaContexto = $baseTotal > 0 ? round(($c3 * 100) / $baseTotal, 2) : 0;
-
-        // ============================================================
-        // CONSULTA PRINCIPAL (TABELA)
-        // ============================================================
-        $sql = "SELECT $select, 
-                       SUM(COALESCE(varg.vencidos,0))::float as vencidos, 
-                       SUM(COALESCE(varg.total_receber,0))::float as total_receber,
-                       SUM(COALESCE(varg.dias_60 + varg.mais_60_dias,0))::float as valor_iap
-                FROM vw_analise_receber_geral_cliente varg
-                $joinExtra
-                WHERE ($travaHierarquia) AND ($whereDrill)
-                GROUP BY $groupBy ORDER BY vencidos DESC";
-
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($paramsQuery);
-        $tabela = $stmt->fetchAll();
-
-        foreach ($tabela as &$r) {
-            $r['iag'] = $r['total_receber'] > 0 ? round(($r['vencidos'] * 100) / $r['total_receber'], 2) : 0;
-            if ($r['iag'] > 10) $r['performance'] = 'CRÍTICO';
-            elseif ($r['iag'] >= 5) $r['performance'] = 'ATENÇÃO';
-            else $r['performance'] = 'SAUDÁVEL';
-        }
-
-        // ============================================================
-        // RESUMO DA CARTEIRA (CARDS)
-        // ============================================================
-        $sqlSum = "SELECT SUM(COALESCE(varg.total_receber,0))::float as total, 
-                          SUM(COALESCE(varg.vencidos,0))::float as vencidos,
-                          SUM(COALESCE(varg.dias_60 + varg.mais_60_dias,0))::float as valor_iap,
-                          SUM(COALESCE(varg.dias_30,0))::float as d30, 
-                          SUM(COALESCE(varg.dias_60,0))::float as d60, 
-                          SUM(COALESCE(varg.mais_60_dias,0))::float as d90 
-                   FROM vw_analise_receber_geral_cliente varg
-                   WHERE ($travaHierarquia) AND ($whereCards)";
-
-        $stSum = $this->pdo->prepare($sqlSum);
-        $stSum->execute($paramsQuery);
-        $resumo = $stSum->fetch();
-
-        // 🔥 CORREÇÃO: Monta a resposta com a filial padrão correta
-        $payload = json_encode([
-            "config" => [
-                "usuario" => $nomeLogado, 
-                "filiais" => $listaFiliais, 
-                "filial_padrao" => $filialPadrao  // ← CORRIGIDO
-            ],
-            "resumo_filial" => $resumo,
-            "tabela" => $tabela,
-            "taxa_recup" => $taxaContexto,
-            "recup_detalhe" => ["pagos" => $c3, "total" => $baseTotal]
-        ]);
-
-        $response->getBody()->write($payload);
-        return $response->withHeader('Content-Type', 'application/json');
-
-    } catch (\Exception $e) {
-        error_log('Erro em getDashboard: ' . $e->getMessage());
-        $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
-        return $response->withStatus(500);
-    }
-}
-
- /**
-     * POST /v1/financeiro/usuario-info
-     * Retorna informações detalhadas do usuário
-     */
-    public function getUsuarioInfo(Request $request, Response $response): Response
+    private function json(Response $response, $data, int $status = 200): Response
     {
-        return $this->getUsuarioPermissoes($request, $response);
+        $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE));
+        return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
     }
 
-   /**
- * POST /v1/financeiro/usuario-permissoes
- * Retorna as permissões de um usuário específico
- */
-public function getUsuarioPermissoes(Request $request, Response $response): Response
-{
-    $input = json_decode($request->getBody()->getContents(), true) ?? [];
-    $uid = intval($input['idusuario'] ?? 0);
-
-    try {
-        $stmt = $this->pdo->prepare("
-            SELECT 
-                idcliforemp,
-                idusuario,
-                username,
-                dash_filiais,
-                dash_gestores,
-                permite_ver_usuarios
-            FROM usuario 
-            WHERE idcliforemp = :uid
-        ");
-        $stmt->execute(['uid' => $uid]);
-        $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
-
-        if (!$usuario) {
-            throw new \Exception("Usuário não encontrado");
+    private function fail(Response $response, \Throwable $e, string $contexto): Response
+    {
+        if ($e instanceof \InvalidArgumentException) {
+            return $this->json($response, ['error' => $e->getMessage()], 400);
         }
-
-        // 🔥 CORREÇÃO: Garante que dash_filiais e dash_gestores sejam strings
-        $usuario['dash_filiais'] = $usuario['dash_filiais'] ?? '';
-        $usuario['dash_gestores'] = $usuario['dash_gestores'] ?? '';
-
-        // Busca os gestores que este usuário pode ver (dash_gestores)
-        $gestores = [];
-        if (!empty($usuario['dash_gestores'])) {
-            $ids = explode(',', $usuario['dash_gestores']);
-            $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            
-            $stmtG = $this->pdo->prepare("
-                SELECT idcliforemp, username as nome
-                FROM usuario
-                WHERE idcliforemp IN ($placeholders)
-                AND inativo = 'N'
-                ORDER BY username
-            ");
-            $stmtG->execute($ids);
-            $gestores = $stmtG->fetchAll(\PDO::FETCH_ASSOC);
+        if ($e instanceof \DomainException) {
+            return $this->json($response, ['error' => $e->getMessage()], 403);
         }
-
-        // 🔥 CORREÇÃO: Busca as filiais disponíveis para este usuário
-        $filiaisDisponiveis = [];
-        if (!empty($usuario['dash_filiais'])) {
-            $ids = explode(',', $usuario['dash_filiais']);
-            $placeholders = implode(',', array_fill(0, count($ids), '?'));
-            
-            $stmtF = $this->pdo->prepare("
-                SELECT idfilial, nome
-                FROM filial
-                WHERE idfilial IN ($placeholders)
-                AND inativo = 'N'
-                ORDER BY idfilial
-            ");
-            $stmtF->execute($ids);
-            $filiaisDisponiveis = $stmtF->fetchAll(\PDO::FETCH_ASSOC);
+        if ($e instanceof \OutOfBoundsException) {
+            return $this->json($response, ['error' => $e->getMessage()], 404);
         }
-
-        $response->getBody()->write(json_encode([
-            'usuario' => $usuario,
-            'gestores' => $gestores,
-            'filiais_disponiveis' => $filiaisDisponiveis
-        ]));
-        return $response->withHeader('Content-Type', 'application/json');
-
-    } catch (\Exception $e) {
-        error_log('Erro em getUsuarioPermissoes: ' . $e->getMessage());
-        error_log('Stack trace: ' . $e->getTraceAsString());
-        $response->getBody()->write(json_encode([
-            'error' => $e->getMessage()
-        ]));
-        return $response->withStatus(500);
+        error_log("Financeiro::$contexto - " . $e->getMessage());
+        return $this->json($response, ['error' => 'Erro interno ao processar a solicitação.'], 500);
     }
-}
+
+    private function input(Request $request): array
+    {
+        $dados = json_decode((string)$request->getBody(), true);
+        return is_array($dados) ? $dados : [];
+    }
+
+    private function inteiroEntre($valor, int $padrao, int $min, int $max, string $campo): int
+    {
+        if ($valor === null || $valor === '') {
+            return $padrao;
+        }
+        $n = filter_var($valor, FILTER_VALIDATE_INT);
+        if ($n === false || $n < $min || $n > $max) {
+            throw new \InvalidArgumentException("Parâmetro '$campo' deve ser um inteiro entre $min e $max.");
+        }
+        return $n;
+    }
+
+    private function validarNivel($nivel, array $permitidos): string
+    {
+        $nivel = is_string($nivel) ? $nivel : 'filial';
+        if (!in_array($nivel, $permitidos, true)) {
+            throw new \InvalidArgumentException('Nível inválido.');
+        }
+        return $nivel;
+    }
+
+    private function ints(array $ids): string
+    {
+        return implode(',', array_map('intval', $ids));
+    }
+
+    // ======================================================================
+    // ESCOPO / AUTORIZAÇÃO
+    // ======================================================================
+
+    private function carregarUsuario(int $uid): ?array
+    {
+        $st = $this->pdo->prepare(
+            'SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, permite_ver_usuarios
+               FROM usuario WHERE idcliforemp = :uid'
+        );
+        $st->execute(['uid' => $uid]);
+        $row = $st->fetch(\PDO::FETCH_ASSOC);
+        return $row ?: null;
+    }
+
     /**
-     * POST /v1/financeiro/gestores-por-filial
-     * Retorna os gestores de uma filial específica para um usuário
+     * Usuários que o solicitante pode usar como "Usuário (Visão)". Fonte única da regra:
+     * a lista exibida na tela e a validação do idusuario recebido usam este método.
+     *
+     * @return array{lista: array<int, array{id:int,nome:string}>, derivada: bool}
+     *         derivada = visão por filiais/gestores (regras 3 e 4): o alvo é sempre
+     *         interseccionado com o escopo do próprio solicitante.
      */
-    public function getGestoresPorFilial(Request $request, Response $response): Response
+    private function usuariosPermitidos(array $eu, bool $isAdmin): array
     {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $uid = intval($input['idusuario'] ?? 0);
-        $idfilial = intval($input['idfilial'] ?? 0);
+        $uid = (int)$eu['idcliforemp'];
+        $filiais = UserScope::lista($eu['dash_filiais'] ?? '');
+        $gestores = UserScope::lista($eu['dash_gestores'] ?? '');
+        $derivada = false;
+        $usuarios = [];
 
+        $vinculados = [];
+        if (!$isAdmin && ($eu['permite_ver_usuarios'] ?? 'N') !== 'S') {
+            $st = $this->pdo->prepare('SELECT idusuario_visualizar FROM usuario_visualizacao WHERE idusuario = :id');
+            $st->execute(['id' => (int)$eu['idusuario']]);
+            $vinculados = array_map('intval', $st->fetchAll(\PDO::FETCH_COLUMN));
+        }
+
+        if ($isAdmin || ($eu['permite_ver_usuarios'] ?? 'N') === 'S') {
+            $st = $this->pdo->query(
+                "SELECT u.idcliforemp AS id, u.username AS nome FROM usuario u
+                  WHERE u.idcliforemp > 0 AND u.inativo = 'N' ORDER BY u.username"
+            );
+            $usuarios = $st->fetchAll(\PDO::FETCH_ASSOC);
+        } elseif (!empty($vinculados)) {
+            $st = $this->pdo->query(
+                "SELECT u.idcliforemp AS id, u.username AS nome FROM usuario u
+                  WHERE u.idusuario IN (" . $this->ints($vinculados) . ") AND u.idcliforemp > 0 AND u.inativo = 'N'
+                  ORDER BY u.username"
+            );
+            $usuarios = $st->fetchAll(\PDO::FETCH_ASSOC);
+        } elseif (!empty($filiais)) {
+            $derivada = true;
+            $st = $this->pdo->query(
+                "SELECT u.idcliforemp AS id, u.username AS nome FROM usuario u
+                  WHERE u.idcliforemp > 0 AND u.inativo = 'N'
+                    AND EXISTS (SELECT 1 FROM vw_analise_receber_geral_cliente v
+                                 WHERE v.idvendrepre = u.idcliforemp AND v.idfilial IN (" . $this->ints($filiais) . "))
+                  ORDER BY u.username"
+            );
+            $usuarios = $st->fetchAll(\PDO::FETCH_ASSOC);
+        } elseif (!empty($gestores)) {
+            $derivada = true;
+            $st = $this->pdo->query(
+                "SELECT u.idcliforemp AS id, u.username AS nome FROM usuario u
+                  WHERE u.idcliforemp > 0 AND u.inativo = 'N'
+                    AND EXISTS (SELECT 1 FROM vw_analise_receber_geral_cliente v
+                                 WHERE v.idvendrepre = u.idcliforemp AND v.idsupervisor IN (" . $this->ints($gestores) . "))
+                  ORDER BY u.username"
+            );
+            $usuarios = $st->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
+        foreach ($usuarios as &$u) {
+            $u['id'] = (int)$u['id'];
+        }
+        unset($u);
+
+        // O próprio usuário sempre está na lista, em primeiro lugar.
+        $usuarios = array_values(array_filter($usuarios, fn($u) => $u['id'] !== $uid));
+        array_unshift($usuarios, ['id' => $uid, 'nome' => (string)$eu['username']]);
+
+        return ['lista' => $usuarios, 'derivada' => $derivada];
+    }
+
+    /**
+     * Resolve o usuário-alvo da consulta. A identidade vem do JWT; o idusuario do corpo só
+     * é aceito se estiver entre os usuários que o solicitante pode visualizar.
+     *
+     * @return array{uid:int, row:array, extra:array{filiais:int[],gestores:int[]}}
+     */
+    private function resolverAlvo(Request $request, array $input): array
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        if ($scope->uid <= 0) {
+            throw new \DomainException('Acesso negado: usuário não identificado.');
+        }
+
+        $alvo = (int)($input['idusuario'] ?? 0);
+        if ($alvo <= 0) {
+            $alvo = $scope->uid;
+        }
+
+        $extra = ['filiais' => [], 'gestores' => []];
+        if ($alvo !== $scope->uid) {
+            $eu = $this->carregarUsuario($scope->uid);
+            if (!$eu) {
+                throw new \DomainException('Acesso negado: usuário não identificado.');
+            }
+            $perm = $this->usuariosPermitidos($eu, $scope->isAdmin);
+            if (!in_array($alvo, array_column($perm['lista'], 'id'), true)) {
+                throw new \DomainException('Acesso negado: você não tem permissão para visualizar este usuário.');
+            }
+            if ($perm['derivada']) {
+                $extra = [
+                    'filiais' => UserScope::lista($eu['dash_filiais'] ?? ''),
+                    'gestores' => UserScope::lista($eu['dash_gestores'] ?? ''),
+                ];
+            }
+        }
+
+        $row = $this->carregarUsuario($alvo);
+        if (!$row) {
+            throw new \OutOfBoundsException('Usuário não encontrado.');
+        }
+        return ['uid' => $alvo, 'row' => $row, 'extra' => $extra];
+    }
+
+    private function interseccao(array $proprio, array $extra): array
+    {
+        if (empty($extra)) {
+            return $proprio;
+        }
+        if (empty($proprio)) {
+            return $extra;
+        }
+        $r = array_values(array_intersect($proprio, $extra));
+        return $r ?: [0];
+    }
+
+    /**
+     * Travas de segurança sobre a view de carteira (varg) e a de eventos (vfe).
+     * Sem dash_filiais/dash_gestores o usuário enxerga apenas a própria carteira (representante).
+     *
+     * @return array{varg:string, vfe:string, filiais:int[], gestores:int[]}
+     */
+    private function travas(array $alvo): array
+    {
+        $row = $alvo['row'];
+        $proprioF = UserScope::lista($row['dash_filiais'] ?? '');
+        $proprioG = UserScope::lista($row['dash_gestores'] ?? '');
+        $filiais = $this->interseccao($proprioF, $alvo['extra']['filiais']);
+        $gestores = $this->interseccao($proprioG, $alvo['extra']['gestores']);
+
+        $v = [];
+        $e = [];
+        if (empty($proprioF) && empty($proprioG)) {
+            $uid = (int)$row['idcliforemp'];
+            $v[] = "varg.idvendrepre = $uid";
+            $e[] = "vfe.idrepresentante = $uid";
+        }
+        if (!empty($filiais)) {
+            $v[] = 'varg.idfilial IN (' . $this->ints($filiais) . ')';
+            $e[] = 'vfe.idfilial IN (' . $this->ints($filiais) . ')';
+        }
+        if (!empty($gestores)) {
+            $v[] = 'varg.idsupervisor IN (' . $this->ints($gestores) . ')';
+            $e[] = 'vfe.idgestor IN (' . $this->ints($gestores) . ')';
+        }
+
+        return ['varg' => implode(' AND ', $v), 'vfe' => implode(' AND ', $e), 'filiais' => $filiais, 'gestores' => $gestores];
+    }
+
+    /** @return array{0: array, 1: int} [lista de filiais disponíveis, filial padrão (só quando há uma)] */
+    private function filiaisDisponiveis(array $alvo, array $tr): array
+    {
+        if (!empty($tr['filiais'])) {
+            $st = $this->pdo->query(
+                "SELECT DISTINCT idfilial, nome FROM filial
+                  WHERE inativo = 'N' AND idfilial IN (" . $this->ints($tr['filiais']) . ') ORDER BY idfilial'
+            );
+        } else {
+            $uid = (int)$alvo['uid'];
+            $st = $this->pdo->query(
+                "SELECT DISTINCT f.idfilial, f.nome FROM filial f
+                   JOIN vw_analise_receber_geral_cliente v ON v.idfilial = f.idfilial
+                  WHERE v.idvendrepre = $uid ORDER BY f.idfilial"
+            );
+        }
+        $lista = $st->fetchAll(\PDO::FETCH_ASSOC);
+        return [$lista, count($lista) === 1 ? (int)$lista[0]['idfilial'] : 0];
+    }
+
+    /**
+     * Filial efetiva da consulta. No nível "filial" o filtro_id é a própria filial; nos demais
+     * níveis a filial selecionada na tela (idfilial) continua restringindo cards, taxa e tabela.
+     */
+    private function filialEfetiva(string $nivel, int $fid, int $idfilial, array $lista, int $padrao): int
+    {
+        $sel = ($nivel === 'filial' && $fid > 0) ? $fid : $idfilial;
+        if ($sel <= 0) {
+            $sel = $padrao;
+        }
+        if ($sel > 0 && !in_array($sel, array_map('intval', array_column($lista, 'idfilial')), true)) {
+            throw new \DomainException('Acesso negado: filial fora do seu escopo.');
+        }
+        return $sel;
+    }
+
+    /** @return array{0:string,1:string} condições [varg, vfe] do nível/filial selecionados */
+    private function filtroNivel(string $nivel, int $fid, int $filial): array
+    {
+        $v = [];
+        $e = [];
+        if ($filial > 0) {
+            $v[] = "varg.idfilial = $filial";
+            $e[] = "vfe.idfilial = $filial";
+        }
+        if ($nivel !== 'filial' && $fid <= 0) {
+            throw new \InvalidArgumentException("Parâmetro 'filtro_id' é obrigatório para o nível informado.");
+        }
+        switch ($nivel) {
+            case 'gestor':
+                $v[] = "varg.idsupervisor = $fid";
+                $e[] = "vfe.idgestor = $fid";
+                break;
+            case 'representante':
+                $v[] = "varg.idvendrepre = $fid";
+                $e[] = "vfe.idrepresentante = $fid";
+                break;
+            case 'cliente':
+                $v[] = "varg.idcliforemp = $fid";
+                $e[] = "vfe.idcliforemp = $fid";
+                break;
+        }
+        return [$v ? implode(' AND ', $v) : '1=1', $e ? implode(' AND ', $e) : '1=1'];
+    }
+
+    /**
+     * Regra única da taxa de recuperação (dashboard, cenários e detalhes):
+     *  - janela: títulos vencidos nos últimos N dias (dias_recup), sem status 5 (renegociado/cancelado);
+     *  - saldo "aberto" = > 0,01; "quitado" = entre -0,01 e 0,01 (saldo negativo não entra);
+     *  - cenário 1: sem apontamento, aberto e com atraso >= corte_atraso;
+     *  - cenário 2: com apontamento e ainda aberto;
+     *  - cenário 3 (recuperado): com apontamento, quitado, e o apontamento é anterior ou igual
+     *    à data da quitação (vencimento + dias_atraso, pois dias_atraso = data_ult_cobranca - vencimento nos quitados).
+     */
+    private function regrasRecup(int $dias, int $corte): array
+    {
+        return [
+            1 => "vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= $corte AND vfe.valorsaldo > 0.01",
+            2 => "vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0.01",
+            3 => "vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo BETWEEN -0.01 AND 0.01
+                  AND (vfe.dias_atraso IS NULL OR vfe.ultimo_evento <= vfe.vencimento + vfe.dias_atraso)",
+            'janela' => "vfe.vencimento >= (CURRENT_DATE - INTERVAL '$dias days') AND " . self::SEM_STATUS_5,
+        ];
+    }
+
+    // ======================================================================
+    // ENDPOINTS
+    // ======================================================================
+
+    /**
+     * POST /v1/financeiro/dashboard
+     */
+    public function getDashboard(Request $request, Response $response): Response
+    {
         try {
-            // 🔥 BUSCA TODOS OS GESTORES DA FILIAL
-            $sql = "
-                SELECT DISTINCT 
-                    v.idsupervisor as id,
-                    v.nomegestor as nome
-                FROM vw_analise_receber_geral_cliente v
-                WHERE v.idfilial = :idfilial
-                  AND v.idsupervisor IS NOT NULL
-                  AND v.idsupervisor > 0
-                ORDER BY v.nomegestor
-            ";
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['idfilial' => $idfilial]);
-            $gestores = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $input = $this->input($request);
+            $nivel = $this->validarNivel($input['nivel'] ?? 'filial', self::NIVEIS);
+            $diasRecup = $this->inteiroEntre($input['dias_recup'] ?? null, 120, 1, 365, 'dias_recup');
+            $corte = $this->inteiroEntre($input['corte_atraso'] ?? null, 8, 1, 365, 'corte_atraso');
+            $fid = (int)($input['filtro_id'] ?? 0);
+            $idfilial = (int)($input['idfilial'] ?? 0);
 
-            $response->getBody()->write(json_encode([
-                'gestores' => $gestores,
-                'total' => count($gestores)
-            ]));
-            return $response->withHeader('Content-Type', 'application/json');
+            $alvo = $this->resolverAlvo($request, $input);
+            $tr = $this->travas($alvo);
+            [$listaFiliais, $filialPadrao] = $this->filiaisDisponiveis($alvo, $tr);
+            $filial = $this->filialEfetiva($nivel, $fid, $idfilial, $listaFiliais, $filialPadrao);
+            [$fVarg, $fVfe] = $this->filtroNivel($nivel, $fid, $filial);
 
-        } catch (\Exception $e) {
-            error_log('Erro em getGestoresPorFilial: ' . $e->getMessage());
-            $response->getBody()->write(json_encode([
-                'error' => $e->getMessage(),
-                'gestores' => []
-            ]));
-            return $response->withStatus(500);
+            // Tabela: o nível seguinte ao selecionado
+            switch ($nivel) {
+                case 'filial':
+                    $select = 'varg.idsupervisor AS id, MAX(varg.nomegestor) AS nome';
+                    $groupBy = 'varg.idsupervisor';
+                    $drill = 'varg.idsupervisor IS NOT NULL';
+                    $cards = 'varg.idsupervisor IS NOT NULL';
+                    break;
+                case 'gestor':
+                    $select = 'varg.idvendrepre AS id, MAX(varg.nomerepresentante) AS nome';
+                    $groupBy = 'varg.idvendrepre';
+                    $drill = 'varg.idvendrepre IS NOT NULL';
+                    $cards = 'varg.idvendrepre IS NOT NULL';
+                    break;
+                default: // representante -> clientes com vencidos
+                    $select = 'varg.idcliforemp AS id, MAX(varg.cliente) AS nome';
+                    $groupBy = 'varg.idcliforemp';
+                    $drill = 'varg.vencidos > 0';
+                    $cards = '1=1';
+                    break;
+            }
+
+            $sql = "SELECT $select,
+                           COALESCE(SUM(varg.vencidos), 0)::float AS vencidos,
+                           COALESCE(SUM(varg.total_receber), 0)::float AS total_receber,
+                           COALESCE(SUM(COALESCE(varg.dias_60, 0) + COALESCE(varg.mais_60_dias, 0)), 0)::float AS valor_iap
+                      FROM vw_analise_receber_geral_cliente varg
+                     WHERE ({$tr['varg']}) AND ($fVarg) AND ($drill)
+                     GROUP BY $groupBy ORDER BY vencidos DESC";
+            $tabela = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+
+            foreach ($tabela as &$r) {
+                $r['iag'] = $r['total_receber'] > 0 ? round(($r['vencidos'] * 100) / $r['total_receber'], 2) : 0;
+                if ($r['iag'] > 10) {
+                    $r['performance'] = 'CRÍTICO';
+                } elseif ($r['iag'] >= 5) {
+                    $r['performance'] = 'ATENÇÃO';
+                } else {
+                    $r['performance'] = 'SAUDÁVEL';
+                }
+            }
+            unset($r);
+
+            // Cards da carteira. Faixas: d30 = vencido 1-30d, d60 = 31-60d, d90 = >60d.
+            $sqlSum = "SELECT COALESCE(SUM(varg.total_receber), 0)::float AS total,
+                              COALESCE(SUM(varg.vencidos), 0)::float AS vencidos,
+                              COALESCE(SUM(varg.a_vencer), 0)::float AS a_vencer,
+                              COALESCE(SUM(COALESCE(varg.dias_60, 0) + COALESCE(varg.mais_60_dias, 0)), 0)::float AS valor_iap,
+                              COALESCE(SUM(varg.dias_30), 0)::float AS d30,
+                              COALESCE(SUM(varg.dias_60), 0)::float AS d60,
+                              COALESCE(SUM(varg.mais_60_dias), 0)::float AS d90
+                         FROM vw_analise_receber_geral_cliente varg
+                        WHERE ({$tr['varg']}) AND ($fVarg) AND ($cards)";
+            $resumo = $this->pdo->query($sqlSum)->fetch(\PDO::FETCH_ASSOC);
+
+            // Taxa de recuperação
+            $rg = $this->regrasRecup($diasRecup, $corte);
+            $sqlRec = "SELECT
+                    COALESCE(SUM(CASE WHEN {$rg[1]} THEN 1 ELSE 0 END), 0) AS c1,
+                    COALESCE(SUM(CASE WHEN {$rg[2]} THEN 1 ELSE 0 END), 0) AS c2,
+                    COALESCE(SUM(CASE WHEN {$rg[3]} THEN 1 ELSE 0 END), 0) AS c3
+                  FROM vw_financeiro_eventos_geral vfe
+                 WHERE ({$tr['vfe']}) AND ($fVfe) AND {$rg['janela']}";
+            $rec = $this->pdo->query($sqlRec)->fetch(\PDO::FETCH_ASSOC);
+            $c1 = (int)$rec['c1'];
+            $c2 = (int)$rec['c2'];
+            $c3 = (int)$rec['c3'];
+            $base = $c1 + $c2 + $c3;
+
+            return $this->json($response, [
+                'config' => [
+                    'usuario' => $alvo['row']['username'] ?? 'USUÁRIO',
+                    'filiais' => $listaFiliais,
+                    'filial_padrao' => $filialPadrao,
+                    'filial_efetiva' => $filial,
+                ],
+                'resumo_filial' => $resumo,
+                'tabela' => $tabela,
+                'taxa_recup' => $base > 0 ? round(($c3 * 100) / $base, 2) : 0,
+                'recup_detalhe' => [
+                    'pagos' => $c3,
+                    'total' => $base,
+                    'cenario_1' => $c1,
+                    'cenario_2' => $c2,
+                    'cenario_3' => $c3,
+                    'dias_recup' => $diasRecup,
+                    'corte_atraso' => $corte,
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getDashboard');
         }
     }
 
     /**
      * POST /v1/financeiro/historico-kpi
+     * Série do snapshot kpi_financeiro_historico (consolidado por filial).
      */
     public function getHistoricoKpi(Request $request, Response $response): Response
     {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $uid = intval($input['idusuario'] ?? 0);
-        $tipo = $input['tipo'] ?? 'iag_calculado';
-        $fid = intval($input['filtro_id'] ?? 0);
-        $dia = intval($input['dia_semana'] ?? date('w'));
-        if ($dia < 0 || $dia > 6) {
-            $dia = (int)date('w');
-        }
-
-        $colunasPermitidas = ['iag_calculado', 'iap_calculado', 'taxa_recuperacao'];
-        if (!in_array($tipo, $colunasPermitidas)) $tipo = 'iag_calculado';
-
         try {
-            $whereFilial = '';
-            $params = ['uid' => $uid, 'dia' => $dia];
-
-            $stmtPermissoes = $this->pdo->prepare(
-                'SELECT dash_filiais FROM usuario WHERE idcliforemp = :uid'
-            );
-            $stmtPermissoes->execute(['uid' => $uid]);
-            $dashFiliais = (string)($stmtPermissoes->fetchColumn() ?: '');
-            $filiaisPermitidas = array_values(array_filter(array_map('intval', explode(',', $dashFiliais))));
-
-            if ($fid > 0) {
-                if (!empty($filiaisPermitidas) && !in_array($fid, $filiaisPermitidas, true)) {
-                    $whereFilial = ' AND 1 = 0';
-                } else {
-                    $whereFilial = ' AND idfilial = :idfilial';
-                    $params['idfilial'] = $fid;
-                }
-            } elseif (!empty($filiaisPermitidas)) {
-                $placeholders = [];
-                foreach ($filiaisPermitidas as $index => $idfilial) {
-                    $nomeParametro = 'filial_' . $index;
-                    $placeholders[] = ':' . $nomeParametro;
-                    $params[$nomeParametro] = $idfilial;
-                }
-                $whereFilial = ' AND idfilial IN (' . implode(', ', $placeholders) . ')';
+            $input = $this->input($request);
+            $tipo = $input['tipo'] ?? 'iag_calculado';
+            $fid = (int)($input['filtro_id'] ?? 0);
+            $dia = (int)($input['dia_semana'] ?? date('w'));
+            if ($dia < 0 || $dia > 6) {
+                $dia = (int)date('w');
+            }
+            if (!in_array($tipo, ['iag_calculado', 'iap_calculado', 'taxa_recuperacao'], true)) {
+                $tipo = 'iag_calculado';
             }
 
-            $baseRecuperacao = 'SUM(
-                CASE
-                    WHEN taxa_recuperacao > 0 AND qtd_recuperados > 0
-                    THEN qtd_recuperados * 100.0 / taxa_recuperacao
-                    ELSE 0
-                END
-            )';
+            $alvo = $this->resolverAlvo($request, $input);
+            $permitidas = $this->interseccao(
+                UserScope::lista($alvo['row']['dash_filiais'] ?? ''),
+                $alvo['extra']['filiais']
+            );
+
+            $whereFilial = '';
+            if ($fid > 0) {
+                if (!empty($permitidas) && !in_array($fid, $permitidas, true)) {
+                    $whereFilial = ' AND 1 = 0';
+                } else {
+                    $whereFilial = ' AND idfilial = ' . $fid;
+                }
+            } elseif (!empty($permitidas)) {
+                $whereFilial = ' AND idfilial IN (' . $this->ints($permitidas) . ')';
+            }
 
             $calculoValor = match ($tipo) {
                 'iap_calculado' => 'ROUND(SUM(COALESCE(valor_iap, 0)) * 100.0 / NULLIF(SUM(COALESCE(total_receber, 0)), 0), 2)',
-                'taxa_recuperacao' => 'ROUND(
-                    SUM(COALESCE(qtd_recuperados, 0)) * 100.0 /
-                    NULLIF(' . $baseRecuperacao . ', 0),
-                    2
-                )',
+                'taxa_recuperacao' => 'ROUND(SUM(COALESCE(qtd_recuperados, 0)) * 100.0 / NULLIF(SUM(COALESCE(qtd_trabalhados, 0)), 0), 2)',
                 default => 'ROUND(SUM(COALESCE(vencidos, 0)) * 100.0 / NULLIF(SUM(COALESCE(total_receber, 0)), 0), 2)',
             };
 
             $sql = "SELECT * FROM (
-                        SELECT
-                            data_registro,
-                            to_char(data_registro, 'DD/MM') AS data,
-                            COALESCE($calculoValor, 0)::float AS valor,
-                            SUM(COALESCE(vencidos, 0))::float AS abs_iag,
-                            SUM(COALESCE(valor_iap, 0))::float AS abs_iap,
-                            SUM(COALESCE(total_receber, 0))::float AS abs_total,
-                            ROUND(COALESCE($baseRecuperacao, 0))::int AS abs_recup_total,
-                            SUM(COALESCE(qtd_recuperados, 0))::int AS abs_recup_pagos,
-                            STRING_AGG(DISTINCT idfilial::text, ', ' ORDER BY idfilial::text) AS filiais,
-                            COUNT(*)::int AS registros_origem
-                        FROM kpi_financeiro_historico
-                        WHERE idusuario = :uid$whereFilial
-                                                    AND EXTRACT(DOW FROM data_registro) = :dia
-                        GROUP BY data_registro
-                        ORDER BY data_registro DESC
-                        LIMIT 10
+                        SELECT data_registro,
+                               to_char(data_registro, 'DD/MM') AS data,
+                               COALESCE($calculoValor, 0)::float AS valor,
+                               SUM(COALESCE(vencidos, 0))::float AS abs_iag,
+                               SUM(COALESCE(valor_iap, 0))::float AS abs_iap,
+                               SUM(COALESCE(total_receber, 0))::float AS abs_total,
+                               SUM(COALESCE(qtd_trabalhados, 0))::int AS abs_recup_total,
+                               SUM(COALESCE(qtd_recuperados, 0))::int AS abs_recup_pagos,
+                               STRING_AGG(DISTINCT idfilial::text, ', ') AS filiais,
+                               COUNT(*)::int AS registros_origem
+                          FROM kpi_financeiro_historico
+                         WHERE idusuario = :uid AND nivel_visao = 'filial'$whereFilial
+                           AND EXTRACT(DOW FROM data_registro) = :dia
+                         GROUP BY data_registro
+                         ORDER BY data_registro DESC
+                         LIMIT 10
                     ) historico
                     ORDER BY data_registro ASC";
-
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $resultados = $stmt->fetchAll();
+            $stmt->execute(['uid' => $alvo['uid'], 'dia' => $dia]);
 
-            $payload = json_encode($resultados);
-            $response->getBody()->write($payload);
-            return $response->withHeader('Content-Type', 'application/json');
-        } catch (\Exception $e) {
-            $response->getBody()->write(json_encode([]));
-            return $response->withStatus(500);
+            return $this->json($response, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getHistoricoKpi');
         }
     }
 
     /**
      * POST /v1/financeiro/lista-usuarios
-     * Lista usuários que o usuário logado pode visualizar
+     * Usuários que o solicitante (JWT) pode usar como visão.
      */
     public function getListaUsuariosHistorico(Request $request, Response $response): Response
     {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $uid = intval($input['idusuario'] ?? 0);
-        $fid = intval($input['idfilial'] ?? 0);
-
         try {
-            $stUser = $this->pdo->prepare("
-                SELECT 
-                    idcliforemp, 
-                    idusuario,
-                    username, 
-                    dash_filiais, 
-                    dash_gestores,
-                    permite_ver_usuarios,
-                    inativo 
-                FROM usuario 
-                WHERE idcliforemp = :uid
-            ");
-            $stUser->execute(['uid' => $uid]);
-            $userRow = $stUser->fetch();
-
-            if (!$userRow) {
-                throw new \Exception("Usuário não encontrado");
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $eu = $scope->uid > 0 ? $this->carregarUsuario($scope->uid) : null;
+            if (!$eu) {
+                throw new \DomainException('Acesso negado: usuário não identificado.');
             }
-
-            $dashFiliais = !empty($userRow['dash_filiais']) ? array_map('intval', explode(',', $userRow['dash_filiais'])) : [];
-            $dashGestores = !empty($userRow['dash_gestores']) ? array_map('intval', explode(',', $userRow['dash_gestores'])) : [];
-            $permiteVerTodos = $userRow['permite_ver_usuarios'] === 'S';
-            $idusuario = (int)$userRow['idusuario'];
-
-            $usuariosVisualizar = [];
-            if (!$permiteVerTodos) {
-                $stmtVis = $this->pdo->prepare("
-                    SELECT idusuario_visualizar 
-                    FROM usuario_visualizacao 
-                    WHERE idusuario = :idusuario
-                ");
-                $stmtVis->execute(['idusuario' => $idusuario]);
-                $usuariosVisualizar = $stmtVis->fetchAll(\PDO::FETCH_COLUMN);
-            }
-
-            $usuarios = [];
-
-            // 🔥 REGRA 1: PODE VER TODOS
-            if ($permiteVerTodos) {
-                $sql = "
-                    SELECT DISTINCT 
-                        u.idcliforemp as id, 
-                        u.username as nome
-                    FROM usuario u
-                    WHERE u.idcliforemp IS NOT NULL 
-                      AND u.idcliforemp > 0
-                      AND u.inativo = 'N'
-                    ORDER BY u.username
-                ";
-                $stmt = $this->pdo->query($sql);
-                $usuarios = $stmt->fetchAll();
-            } 
-            // 🔥 REGRA 2: PODE VER USUÁRIOS ESPECÍFICOS
-            elseif (!empty($usuariosVisualizar)) {
-                $placeholders = implode(',', array_fill(0, count($usuariosVisualizar), '?'));
-                
-                $sql = "
-                    SELECT DISTINCT 
-                        u.idcliforemp as id, 
-                        u.username as nome
-                    FROM usuario u
-                    WHERE u.idusuario IN ($placeholders)
-                      AND u.inativo = 'N'
-                    ORDER BY u.username
-                ";
-                
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute($usuariosVisualizar);
-                $usuarios = $stmt->fetchAll();
-            } 
-            // 🔥 REGRA 3: ACESSO POR FILIAIS
-            elseif (!empty($dashFiliais)) {
-                $placeholdersF = implode(',', array_fill(0, count($dashFiliais), '?'));
-                
-                $sql = "
-                    SELECT DISTINCT 
-                        u.idcliforemp as id, 
-                        u.username as nome
-                    FROM usuario u
-                    WHERE u.idcliforemp IS NOT NULL 
-                      AND u.idcliforemp > 0
-                      AND u.inativo = 'N'
-                      AND (
-                          u.idcliforemp = ?
-                          OR EXISTS (
-                              SELECT 1 FROM vw_analise_receber_geral_cliente v 
-                              WHERE v.idvendrepre = u.idcliforemp 
-                              AND v.idfilial IN ($placeholdersF)
-                          )
-                      )
-                    ORDER BY 
-                        CASE WHEN u.idcliforemp = ? THEN 0 ELSE 1 END,
-                        u.username
-                ";
-                
-                    $params = array_merge([$uid], $dashFiliais, [$uid]);
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute($params);
-                $usuarios = $stmt->fetchAll();
-            } 
-            // 🔥 REGRA 4: ACESSO POR GESTORES
-            elseif (!empty($dashGestores)) {
-                $placeholdersG = implode(',', array_fill(0, count($dashGestores), '?'));
-                
-                $sql = "
-                    SELECT DISTINCT 
-                        u.idcliforemp as id, 
-                        u.username as nome
-                    FROM usuario u
-                    WHERE u.idcliforemp IS NOT NULL 
-                      AND u.idcliforemp > 0
-                      AND u.inativo = 'N'
-                      AND u.idcliforemp IN (
-                          SELECT DISTINCT v.idvendrepre 
-                          FROM vw_analise_receber_geral_cliente v
-                          WHERE v.idsupervisor IN ($placeholdersG)
-                      )
-                    ORDER BY u.username
-                ";
-                
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute($dashGestores);
-                $usuarios = $stmt->fetchAll();
-            } 
-            // 🔥 REGRA 5: USUÁRIO COMUM
-            else {
-                $sql = "
-                    SELECT 
-                        idcliforemp as id, 
-                        username as nome
-                    FROM usuario 
-                    WHERE idcliforemp = :uid
-                      AND inativo = 'N'
-                ";
-                
-                $stmt = $this->pdo->prepare($sql);
-                $stmt->execute(['uid' => $uid]);
-                $usuarios = $stmt->fetchAll();
-            }
-
-            // 🔧 SEMPRE GARANTE O PRÓPRIO USUÁRIO
-            $idsUsuarios = array_column($usuarios, 'id');
-            if (!in_array($uid, $idsUsuarios)) {
-                $sqlOwn = "SELECT idcliforemp as id, username as nome FROM usuario WHERE idcliforemp = :uid AND inativo = 'N'";
-                $stmt = $this->pdo->prepare($sqlOwn);
-                $stmt->execute(['uid' => $uid]);
-                $ownUser = $stmt->fetch();
-                if ($ownUser) {
-                    $usuarios[] = $ownUser;
-                }
-            }
-
-            // 🔧 ORDENA
-            usort($usuarios, function($a, $b) use ($uid) {
-                if ($a['id'] == $uid) return -1;
-                if ($b['id'] == $uid) return 1;
-                return strcmp($a['nome'], $b['nome']);
-            });
-
-            $response->getBody()->write(json_encode($usuarios));
-            return $response->withHeader('Content-Type', 'application/json');
-
-        } catch (\Exception $e) {
-            error_log('Erro em getListaUsuariosHistorico: ' . $e->getMessage());
-            error_log('Stack trace: ' . $e->getTraceAsString());
-            
-            $response->getBody()->write(json_encode([
-                'erro' => $e->getMessage()
-            ]));
-            return $response->withStatus(500);
+            $perm = $this->usuariosPermitidos($eu, $scope->isAdmin);
+            return $this->json($response, $perm['lista']);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getListaUsuariosHistorico');
         }
     }
 
@@ -697,337 +550,156 @@ public function getUsuarioPermissoes(Request $request, Response $response): Resp
      */
     public function getDetalhesAnaliseKpi(Request $request, Response $response): Response
     {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        $tipo = $input['tipo'] ?? '';
-        $nivel = $input['nivel'] ?? 'filial';
-        $fid = intval($input['filtro_id'] ?? 0);
-        $uid = intval($input['idusuario'] ?? 0);
-        $cenario = intval($input['cenario'] ?? 0);
-        $diasRecup = intval($input['dias_recup'] ?? 120);
-
         try {
-            $stUser = $this->pdo->prepare("SELECT dash_filiais, dash_gestores FROM usuario WHERE idcliforemp = :uid");
-            $stUser->execute(['uid' => $uid]);
-            $userRow = $stUser->fetch();
-
-            $dashFiliais = !empty($userRow['dash_filiais']) ? explode(',', $userRow['dash_filiais']) : [];
-            $dashGestores = !empty($userRow['dash_gestores']) ? explode(',', $userRow['dash_gestores']) : [];
-
-            $travaHierarquia = "";
-            $travaEventos = "";
-
-            if (!empty($dashFiliais) || !empty($dashGestores)) {
-                $condsVarg = [];
-                $condsVfe = [];
-                if (!empty($dashFiliais)) {
-                    $inF = implode(',', array_map('intval', $dashFiliais));
-                    $condsVarg[] = "varg.idfilial IN ($inF)";
-                    $condsVfe[] = "vfe.idfilial IN ($inF)";
-                }
-                if (!empty($dashGestores)) {
-                    $inG = implode(',', array_map('intval', $dashGestores));
-                    $condsVarg[] = "varg.idsupervisor IN ($inG)";
-                    $condsVfe[] = "vfe.idgestor IN ($inG)";
-                }
-                $travaHierarquia = implode(' AND ', $condsVarg);
-                $travaEventos = implode(' AND ', $condsVfe);
-            } else {
-                $travaHierarquia = "varg.idvendrepre = $uid";
-                $travaEventos = "vfe.idrepresentante = $uid";
+            $input = $this->input($request);
+            $tipo = (string)($input['tipo'] ?? '');
+            $nivel = $this->validarNivel($input['nivel'] ?? 'filial', self::NIVEIS_DETALHE);
+            $fid = (int)($input['filtro_id'] ?? 0);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+            $cenario = (int)($input['cenario'] ?? 0);
+            $diasRecup = $this->inteiroEntre($input['dias_recup'] ?? null, 120, 1, 365, 'dias_recup');
+            $corte = $this->inteiroEntre($input['corte_atraso'] ?? null, 8, 1, 365, 'corte_atraso');
+            if (!in_array($tipo, ['iag', 'iap', 'recup', 'titulos_cliente'], true)) {
+                throw new \InvalidArgumentException('Tipo de auditoria inválido.');
+            }
+            if ($cenario < 0 || $cenario > 3) {
+                throw new \InvalidArgumentException('Cenário inválido.');
             }
 
-            $whereFiltro = "";
-            $campoFiltroTaxa = "";
+            $alvo = $this->resolverAlvo($request, $input);
+            $tr = $this->travas($alvo);
+            [$listaFiliais, $filialPadrao] = $this->filiaisDisponiveis($alvo, $tr);
+            $filial = $this->filialEfetiva($nivel, $fid, $idfilial, $listaFiliais, $filialPadrao);
 
-            switch ($nivel) {
-                case 'filial':
-                    $whereFiltro = ($fid > 0) ? "varg.idfilial = $fid" : "1=1";
-                    $campoFiltroTaxa = ($fid > 0) ? "vfe.idfilial = $fid" : "1=1";
-                    break;
-                case 'gestor':
-                    $whereFiltro = "varg.idsupervisor = $fid";
-                    $campoFiltroTaxa = "vfe.idgestor = $fid";
-                    break;
-                case 'representante':
-                    $whereFiltro = "varg.idvendrepre = $fid";
-                    $campoFiltroTaxa = "vfe.idrepresentante = $fid";
-                    break;
-                case 'cliente':
-                    $whereFiltro = "varg.idcliforemp = $fid";
-                    $campoFiltroTaxa = "vfe.idcliforemp = $fid";
-                    break;
-            }
-
-            // Títulos do Cliente
             if ($tipo === 'titulos_cliente') {
-                $sql = "SELECT 
-                            documento, 
-                            valorsaldo::float as valor,
-                            to_char(vencimento, 'DD/MM/YYYY') as data_vencimento,
-                            dias_atraso,
-                            evento as ultimo_evento,
-                            to_char(ultimo_evento, 'DD/MM/YYYY') as data_evento,
-                            usuariocriador as responsavel,
-                            descricao as evento_registrado
-                        FROM vw_financeiro_eventos_geral vfe
-                        WHERE idcliforemp = $fid 
-                        AND valorsaldo > 0.01
-                        AND ($travaEventos) 
-                        ORDER BY vfe.vencimento ASC, vfe.ultimo_evento DESC NULLS LAST
-                        LIMIT 20";
-                
-                $stmt = $this->pdo->query($sql);
-                $resultados = $stmt->fetchAll();
-                $payload = json_encode($resultados);
-                $response->getBody()->write($payload);
-                return $response->withHeader('Content-Type', 'application/json');
+                [, $fVfe] = $this->filtroNivel('cliente', $fid, $filial);
+                $sql = "SELECT vfe.documento,
+                               vfe.valorsaldo::float AS valor,
+                               to_char(vfe.vencimento, 'DD/MM/YYYY') AS data_vencimento,
+                               vfe.dias_atraso,
+                               vfe.evento AS ultimo_evento,
+                               to_char(vfe.ultimo_evento, 'DD/MM/YYYY') AS data_evento,
+                               vfe.usuariocriador AS responsavel,
+                               vfe.descricao AS evento_registrado
+                          FROM vw_financeiro_eventos_geral vfe
+                         WHERE ($fVfe) AND vfe.valorsaldo > 0.01 AND ({$tr['vfe']})
+                         ORDER BY vfe.vencimento ASC, vfe.ultimo_evento DESC NULLS LAST
+                         LIMIT 20";
+                return $this->json($response, $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC));
             }
 
-            // IAG ou IAP
-            if ($tipo === 'iag' || $tipo === 'iap') {
-                $campo = ($tipo === 'iag') 
-                         ? "COALESCE(varg.vencidos, 0)" 
-                         : "(COALESCE(varg.dias_60,0) + COALESCE(varg.mais_60_dias,0))";
+            [$fVarg, $fVfe] = $this->filtroNivel($nivel, $fid, $filial);
 
-                $sql = "SELECT varg.cliente as label, SUM($campo)::float as valor 
-                        FROM vw_analise_receber_geral_cliente varg 
-                        WHERE ($travaHierarquia) 
-                        AND $whereFiltro 
-                        AND $campo > 0
-                        GROUP BY varg.cliente ORDER BY valor DESC LIMIT 10";
-                
-                $stmt = $this->pdo->query($sql);
-                $resultados = $stmt->fetchAll();
-                $resultadosFormatados = array_map(function($item) {
-                    return [
-                        'label' => $item['label'],
-                        'valor' => floatval($item['valor']),
-                        'is_qtd' => false
-                    ];
-                }, $resultados);
-                $payload = json_encode($resultadosFormatados ?: []);
-                $response->getBody()->write($payload);
-                return $response->withHeader('Content-Type', 'application/json');
+            if ($tipo === 'iag' || $tipo === 'iap') {
+                $campo = $tipo === 'iag'
+                    ? 'COALESCE(varg.vencidos, 0)'
+                    : '(COALESCE(varg.dias_60, 0) + COALESCE(varg.mais_60_dias, 0))';
+                $sql = "SELECT MAX(varg.cliente) AS label, SUM($campo)::float AS valor
+                          FROM vw_analise_receber_geral_cliente varg
+                         WHERE ({$tr['varg']}) AND ($fVarg) AND $campo > 0
+                         GROUP BY varg.idcliforemp ORDER BY valor DESC LIMIT 10";
+                $rows = array_map(fn($i) => [
+                    'label' => $i['label'],
+                    'valor' => (float)$i['valor'],
+                    'is_qtd' => false,
+                ], $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC));
+                return $this->json($response, $rows);
             }
 
             // Recuperação
-            if ($tipo === 'recup') {
-                $corteAtraso = ($diasRecup > 0 && $diasRecup <= 7) ? $diasRecup : 8;
+            $rg = $this->regrasRecup($diasRecup, $corte);
 
-                if ($cenario > 0) {
-                    $whereCenario = "";
-                    $campoValor = "vfe.valorsaldo";
-
-                    if ($cenario === 1) {
-                        $whereCenario = "vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= $corteAtraso AND vfe.valorsaldo > 0";
-                    } elseif ($cenario === 2) {
-                        $whereCenario = "vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0";
-                    } elseif ($cenario === 3) {
-                        $whereCenario = "vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01";
-                        $campoValor = "vfe.totalrecebido";
-                    }
-
-                    $sql = "SELECT 
-                                vfe.nomefantasia as cliente, 
-                                vfe.documento, 
-                                $campoValor as valorsaldo,
-                                to_char(vfe.vencimento, 'DD/MM/YYYY') as data_vencimento,
-                                to_char(vfe.ultimo_evento, 'DD/MM/YYYY') as data_evento, 
-                                vfe.evento as desc_evento
-                            FROM vw_financeiro_eventos_geral vfe 
-                            WHERE ($travaEventos) AND $campoFiltroTaxa 
-                            AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '$diasRecup days')
-                            AND ($whereCenario)
-                            ORDER BY $campoValor DESC LIMIT 150";
-                    
-                    $stmt = $this->pdo->query($sql);
-                    $resultados = $stmt->fetchAll();
-                    $payload = json_encode($resultados);
-                    $response->getBody()->write($payload);
-                    return $response->withHeader('Content-Type', 'application/json');
-                }
-
-                // Resumo dos 3 cenários
-                $sql = "SELECT 
-                    SUM(CASE WHEN vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= $corteAtraso AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) as c1,
-                    SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) as c2,
-                    SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END) as c3
-                FROM vw_financeiro_eventos_geral vfe 
-                WHERE ($travaEventos) 
-                AND $campoFiltroTaxa 
-                AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '$diasRecup days')";
-                
-                $stmt = $this->pdo->query($sql);
-                $row = $stmt->fetch();
-
-                $labelDias = ($corteAtraso == 8) ? "+7" : ">=" . $corteAtraso;
-
-                $resultados = [
-                    ["label" => "1) Clientes $labelDias dias de atraso sem evento", "valor" => (int)$row['c1'], "is_qtd" => true, "cenario_id" => 1],
-                    ["label" => "2) Com apontamento, não pago", "valor" => (int)$row['c2'], "is_qtd" => true, "cenario_id" => 2],
-                    ["label" => "3) Com apontamento, pago (Recuperados)", "valor" => (int)$row['c3'], "is_qtd" => true, "cenario_id" => 3]
-                ];
-                
-                $payload = json_encode($resultados);
-                $response->getBody()->write($payload);
-                return $response->withHeader('Content-Type', 'application/json');
+            if ($cenario > 0) {
+                $campoValor = $cenario === 3 ? 'vfe.totalrecebido' : 'vfe.valorsaldo';
+                $sql = "SELECT vfe.nomefantasia AS cliente,
+                               vfe.documento,
+                               $campoValor::float AS valorsaldo,
+                               to_char(vfe.vencimento, 'DD/MM/YYYY') AS data_vencimento,
+                               to_char(vfe.ultimo_evento, 'DD/MM/YYYY') AS data_evento,
+                               vfe.evento AS desc_evento,
+                               vfe.dias_atraso,
+                               COUNT(*) OVER() AS total_cenario
+                          FROM vw_financeiro_eventos_geral vfe
+                         WHERE ({$tr['vfe']}) AND ($fVfe) AND {$rg['janela']} AND ({$rg[$cenario]})
+                         ORDER BY $campoValor DESC, vfe.idcliforemp, vfe.documento
+                         LIMIT " . self::LIMITE_CENARIO;
+                return $this->json($response, $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC));
             }
 
-            throw new \Exception("Tipo de auditoria inválido.");
+            $sql = "SELECT
+                    COALESCE(SUM(CASE WHEN {$rg[1]} THEN 1 ELSE 0 END), 0) AS c1,
+                    COALESCE(SUM(CASE WHEN {$rg[2]} THEN 1 ELSE 0 END), 0) AS c2,
+                    COALESCE(SUM(CASE WHEN {$rg[3]} THEN 1 ELSE 0 END), 0) AS c3
+                  FROM vw_financeiro_eventos_geral vfe
+                 WHERE ({$tr['vfe']}) AND ($fVfe) AND {$rg['janela']}";
+            $row = $this->pdo->query($sql)->fetch(\PDO::FETCH_ASSOC);
 
-        } catch (\Exception $e) {
-            $response->getBody()->write(json_encode(['erro' => $e->getMessage()]));
-            return $response->withStatus(500);
+            return $this->json($response, [
+                ['label' => "1) Sem apontamento e com atraso de $corte dias ou mais (a cobrar)", 'valor' => (int)$row['c1'], 'is_qtd' => true, 'cenario_id' => 1],
+                ['label' => '2) Com apontamento, ainda não pago', 'valor' => (int)$row['c2'], 'is_qtd' => true, 'cenario_id' => 2],
+                ['label' => '3) Com apontamento, pago (recuperados)', 'valor' => (int)$row['c3'], 'is_qtd' => true, 'cenario_id' => 3],
+            ]);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getDetalhesAnaliseKpi');
         }
     }
 
     /**
      * POST /v1/financeiro/relatorio-detalhado
-     * Retorna dados para geração de PDF
+     * Títulos em aberto (saldo > 0,01) para o PDF. Usa a mesma view dos demais endpoints.
      */
     public function getRelatorioDetalhado(Request $request, Response $response): Response
     {
-        $input = json_decode($request->getBody()->getContents(), true) ?? [];
-        
-        $uid = intval($input['idusuario'] ?? 0);
-        $idfilial = intval($input['idfilial'] ?? 0);
-        $nivel = $input['nivel'] ?? 'filial';
-        $filtroId = intval($input['filtro_id'] ?? 0);
-        
         try {
-            $whereConditions = [];
-            $params = [];
+            $input = $this->input($request);
+            $nivel = $this->validarNivel($input['nivel'] ?? 'filial', self::NIVEIS_DETALHE);
+            $fid = (int)($input['filtro_id'] ?? 0);
+            $idfilial = (int)($input['idfilial'] ?? 0);
 
-            $stmtUsuario = $this->pdo->prepare(
-                "SELECT dash_filiais, dash_gestores FROM usuario WHERE idcliforemp = ?"
-            );
-            $stmtUsuario->execute([$uid]);
-            $usuario = $stmtUsuario->fetch();
+            $alvo = $this->resolverAlvo($request, $input);
+            $tr = $this->travas($alvo);
+            [$listaFiliais, $filialPadrao] = $this->filiaisDisponiveis($alvo, $tr);
+            $filial = $this->filialEfetiva($nivel, $nivel === 'filial' ? 0 : $fid, $idfilial, $listaFiliais, $filialPadrao);
+            if ($nivel === 'filial') {
+                $fid = 0;
+            }
+            [, $fVfe] = $this->filtroNivel($nivel, $fid, $filial);
 
-            if (!$usuario) {
-                throw new \Exception('Usuário não encontrado');
-            }
+            $sql = "SELECT
+                        vfe.idfilial,
+                        COALESCE(vfe.idtipoevento, 0) AS idtipoevento,
+                        vfe.dataemissao,
+                        vfe.metodopagto,
+                        vfe.idcliforemp,
+                        vfe.nomefantasia,
+                        vfe.documento,
+                        vfe.vencimento,
+                        vfe.valor,
+                        vfe.totalrecebido,
+                        vfe.valorsaldo,
+                        vfe.dias_atraso,
+                        vfe.nome_vendedor,
+                        COALESCE(CAST(vfe.ult_evento_dias AS TEXT), 'Sem Registro') AS ult_evento_dias,
+                        COALESCE(TO_CHAR(vfe.ultimo_evento, 'DD/MM/YYYY'), 'Sem Data') AS ultimo_evento,
+                        COALESCE(vfe.descricao, 'Sem Registro') AS descricao,
+                        COALESCE(vfe.usuario, 'Sem Registro') AS usuario,
+                        COALESCE(vfe.usuariocriador, 'Sem Registro') AS usuariocriador,
+                        COALESCE(vfe.evento, 'Sem Registro') AS evento,
+                        cfe.fantasia AS gestor,
+                        SUM(vfe.valor) OVER() AS total_geral_valor,
+                        SUM(vfe.totalrecebido) OVER() AS total_geral_recebido,
+                        SUM(vfe.valorsaldo) OVER() AS total_geral_saldo,
+                        COUNT(*) OVER() AS total_linhas
+                    FROM vw_financeiro_eventos_geral vfe
+                    LEFT JOIN cliforemp cfe ON cfe.idcliforemp = vfe.idgestor
+                   WHERE ({$tr['vfe']}) AND ($fVfe) AND vfe.valorsaldo > 0.01
+                   ORDER BY cfe.fantasia, vfe.nome_vendedor, vfe.idcliforemp,
+                            vfe.ult_evento_dias NULLS LAST, vfe.dataemissao, vfe.vencimento, vfe.evento
+                   LIMIT " . self::LIMITE_RELATORIO;
 
-            $dashFiliais = array_values(array_filter(array_map(
-                'intval',
-                explode(',', (string)($usuario['dash_filiais'] ?? ''))
-            )));
-            $dashGestores = array_values(array_filter(array_map(
-                'intval',
-                explode(',', (string)($usuario['dash_gestores'] ?? ''))
-            )));
-
-            if (!empty($dashFiliais)) {
-                $whereConditions[] = 'vfe.idfilial IN (' . implode(',', array_fill(0, count($dashFiliais), '?')) . ')';
-                array_push($params, ...$dashFiliais);
-            }
-
-            if (!empty($dashGestores)) {
-                $whereConditions[] = 'vfe.idgestor IN (' . implode(',', array_fill(0, count($dashGestores), '?')) . ')';
-                array_push($params, ...$dashGestores);
-            }
-
-            if (empty($dashFiliais) && empty($dashGestores)) {
-                $whereConditions[] = 'vfe.idrepresentante = ?';
-                $params[] = $uid;
-            }
-            
-            if ($idfilial > 0) {
-                $whereConditions[] = "vfe.idfilial = ?";
-                $params[] = $idfilial;
-            }
-            $whereConditions[] = "vfe.valorsaldo > 0.01";
-            
-            if ($nivel === 'gestor' && $filtroId > 0) {
-                $whereConditions[] = "vfe.idgestor = ?";
-                $params[] = $filtroId;
-            }
-            elseif ($nivel === 'cliente' && $filtroId > 0) {
-                $whereConditions[] = "vfe.idcliforemp = ?";
-                $params[] = $filtroId;
-            }
-            elseif ($nivel === 'representante' && $filtroId > 0) {
-                $whereConditions[] = "vfe.idrepresentante = ?";
-                $params[] = $filtroId;
-            }
-            
-            $whereClause = !empty($whereConditions) ? "WHERE " . implode(" AND ", $whereConditions) : "";
-            
-            $sql = "
-                SELECT DISTINCT
-                    vfe.idfilial, 
-                    COALESCE(vfe.idtipoevento, 0) AS idtipoevento,
-                    vfe.dataemissao,
-                    vfe.metodopagto,
-                    vfe.idcliforemp,
-                    vfe.nomefantasia, 
-                    vfe.documento, 
-                    vfe.vencimento, 
-                    vfe.valor, 
-                    vfe.totalrecebido,
-                    vfe.valorsaldo,
-                    vfe.dias_atraso,
-                    vfe.nome_vendedor,
-                    TO_CHAR(vfe.vencimento, 'DD/MM/YYYY') as vencimento_formatado,
-                    TO_CHAR(vfe.dataemissao, 'DD/MM/YYYY') as dataemissao_formatado,
-                    COALESCE(CAST(vfe.ult_evento_dias AS TEXT), 'Sem Registro') AS ult_evento_dias,
-                    COALESCE(TO_CHAR(vfe.ultimo_evento, 'DD/MM/YYYY'), 'Sem Data') AS ultimo_evento,
-                    COALESCE(vfe.descricao, 'Sem Registro') AS descricao,
-                    COALESCE(vfe.usuario, 'Sem Registro') AS usuario,
-                    COALESCE(vfe.usuariocriador, 'Sem Registro') AS usuariocriador,
-                    COALESCE(vfe.evento, 'Sem Registro') AS evento,
-                    cfe.fantasia AS gestor,
-                    SUM(vfe.valor) OVER() AS total_geral_valor,
-                    SUM(vfe.totalrecebido) OVER() AS total_geral_recebido,
-                    SUM(vfe.valorsaldo) OVER() AS total_geral_saldo
-                FROM vw_financeiro_eventos vfe
-                LEFT JOIN cliforemp cfe ON cfe.idcliforemp = vfe.idgestor
-                {$whereClause}
-                GROUP BY
-                    vfe.idfilial, 
-                    vfe.idtipoevento,
-                    vfe.dataemissao,
-                    vfe.idcliforemp,
-                    vfe.nomefantasia, 
-                    vfe.metodopagto,
-                    vfe.documento, 
-                    vfe.vencimento, 
-                    vfe.valor, 
-                    vfe.totalrecebido,
-                    vfe.valorsaldo,
-                    vfe.dias_atraso,
-                    vfe.nome_vendedor,
-                    vfe.ult_evento_dias,
-                    vfe.ultimo_evento,
-                    vfe.descricao,
-                    vfe.usuario,
-                    vfe.usuariocriador,
-                    vfe.evento,
-                    cfe.fantasia
-                ORDER BY
-                    gestor,
-                    nome_vendedor, 
-                    idcliforemp,
-                    ult_evento_dias, 
-                    dataemissao, 
-                    vencimento, 
-                    evento ASC";
-            
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute($params);
-            $dados = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            
-            $response->getBody()->write(json_encode($dados, JSON_UNESCAPED_UNICODE));
-            return $response->withHeader('Content-Type', 'application/json');
-            
-        } catch (\PDOException $e) {
-            error_log("Erro PDO: " . $e->getMessage());
-            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
-            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
-        } catch (\Exception $e) {
-            error_log("Erro: " . $e->getMessage());
-            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
-            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+            return $this->json($response, $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC));
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getRelatorioDetalhado');
         }
     }
 }

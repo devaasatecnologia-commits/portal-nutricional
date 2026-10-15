@@ -4441,7 +4441,7 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             $mail->Host = $_ENV['MAIL_HOST'] ?? 'smtp.gmail.com';
             $mail->SMTPAuth = true;
             $mail->Username = $_ENV['MAIL_USER'] ?? '';
-            $mail->Password = $_ENV['MAIL_PASS'] ?? '';
+            $mail->Password = \Nutricional\Services\SecretVault::get('MAIL_PASS');
             $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
             $mail->Port = $_ENV['MAIL_PORT'] ?? 465;
             $mail->CharSet = 'UTF-8';

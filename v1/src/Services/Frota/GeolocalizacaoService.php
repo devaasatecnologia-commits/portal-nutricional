@@ -10,7 +10,7 @@ class GeolocalizacaoService
     public function __construct($pdo)
     {
         $this->pdo = $pdo;
-        $this->googleApiKey = $_ENV['GOOGLE_MAPS_API_KEY'] ?? '';
+        $this->googleApiKey = \Nutricional\Services\SecretVault::get('GOOGLE_MAPS_API_KEY');
     }
     
     /**

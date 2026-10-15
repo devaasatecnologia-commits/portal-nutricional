@@ -59,6 +59,11 @@ $currentPage = basename($_SERVER['PHP_SELF']);
             <span>Aparência do Menu</span>
         </a>
 
+        <a href="configuracoes-modulos.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'configuracoes-modulos.php' ? 'active' : '' ?>">
+            <i class="fa-solid fa-sliders w-5 text-center text-white/50"></i>
+            <span>Configurações dos Módulos</span>
+        </a>
+
         <div class="px-4 mt-6 mb-3">
             <span class="text-[10px] font-bold uppercase tracking-widest text-white/40">API & Integrações</span>
         </div>
@@ -66,6 +71,11 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         <a href="api-tokens.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'api-tokens.php' ? 'active' : '' ?>">
             <i class="fa-solid fa-key w-5 text-center text-white/50"></i>
             <span>API Tokens</span>
+        </a>
+        
+        <a href="segredos.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'segredos.php' ? 'active' : '' ?>">
+            <i class="fa-solid fa-vault w-5 text-center text-white/50"></i>
+            <span>Segredos & 2FA</span>
         </a>
         
         <a href="crons.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'crons.php' ? 'active' : '' ?>">

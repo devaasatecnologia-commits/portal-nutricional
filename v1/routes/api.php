@@ -694,7 +694,7 @@ $protected->group('/financeiro', function ($group) {
     $group->post('/lista-usuarios', [$controller, 'getListaUsuariosHistorico']);
     $group->post('/detalhes-kpi', [$controller, 'getDetalhesAnaliseKpi']);
     $group->post('/relatorio-detalhado', [$controller, 'getRelatorioDetalhado']);
-});
+})->add(new ModulePermissionMiddleware('financeiro'));
 
         // ======================================================================
         // RECEITA FEDERAL - CONSULTA CNPJ
@@ -954,8 +954,6 @@ $protected->group('/transf-compras', function ($group) {
     $group->group('/matriz-filial', function ($g) use ($c) {
         $g->get('', [$c, 'matrizFilial']);
         $g->get('/pendentes', [$c, 'embarquesPendentes']);
-        $g->get('/guia-config', [$c, 'guiaConfig']);
-        $g->post('/guia-config', [$c, 'guiaSalvar']);
     })->add(new ModulePermissionMiddleware('transferencia-matriz-filial'));
     $group->group('/filial-matriz', function ($g) use ($c) {
         $g->get('', [$c, 'filialMatriz']);
@@ -1006,14 +1004,17 @@ $protected->group('/crm', function ($group) {
         // ======================================================================
 $protected->group('/cron', function ($group) {
     $controller = new CronController();
-    $group->get('/auditoria', [$controller, 'getAuditoria']);
-    $group->get('/auditoria/{id}', [$controller, 'getAuditoriaDetalhes']);
-    $group->post('/executar', [$controller, 'executar']);
-    $group->post('/limpar-links', [$controller, 'limparLinks']);
-    $group->get('/dashboard', [$controller, 'getDashboard']);
-    $group->get('/jobs', [$controller, 'getJobs']);
-    $group->post('/jobs', [$controller, 'salvarJob']);
-    $group->delete('/jobs/{id}', [$controller, 'deletarJob']);
+    $admin = new ModulePermissionMiddleware('admin');
+    $group->get('/auditoria', [$controller, 'getAuditoria'])->add($admin);
+    $group->get('/auditoria/{id}', [$controller, 'getAuditoriaDetalhes'])->add($admin);
+    $group->post('/executar', [$controller, 'executar'])->add($admin);
+    $group->post('/limpar-links', [$controller, 'limparLinks'])->add($admin);
+    $group->get('/dashboard', [$controller, 'getDashboard'])->add($admin);
+    $group->get('/jobs', [$controller, 'getJobs'])->add($admin);
+    $group->post('/jobs', [$controller, 'salvarJob'])->add($admin);
+    $group->delete('/jobs/{id}', [$controller, 'deletarJob'])->add($admin);
+    $group->get('/rotinas', [$controller, 'getRotinas'])->add($admin);
+    $group->get('/servidor', [$controller, 'getServidor'])->add($admin);
     $group->get('/alertas-marketing', [new MarketingController(), 'cronAlertas']);
 });
 
@@ -1048,7 +1049,7 @@ $protected->group('/vendas', function ($group) {
     $group->post('/dashboard/detalhes-card', [$dash, 'getDetalhesCard']);
     $group->post('/dashboard/detalhes-representante', [$dash, 'getDetalhesRepresentante']);
     $group->post('/dashboard/detalhes-funil', [$dash, 'getDetalhesFunil']);
-});
+})->add(new ModulePermissionMiddleware(['cubo_vendas', 'dashboard_vendas']));
 
         // ======================================================================
         // ANÁLISE DE CARTEIRA (INADIMPLÊNCIA)
@@ -1057,18 +1058,23 @@ $protected->group('/analise-carteira', function ($group) {
     $controller = new AnaliseCarteiraController();
     $group->get('/admin/gestores', [$controller, 'getTodosGestores']);
     $group->post('/gestores', [$controller, 'getGestores']);
-    $group->post('/representantes', [$controller, 'getRepresentantes']);
     $group->post('/resumo-gestor', [$controller, 'getResumoGestor']);
     $group->post('/tabela-gestor', [$controller, 'getTabelaGestor']);
     $group->post('/titulos-representante', [$controller, 'getTitulosRepresentante']);
     $group->post('/exportar', [$controller, 'exportar']);
-});
+})->add(new ModulePermissionMiddleware('analise_carteira'));
 
         // ======================================================================
         // ADMINISTRAÇÃO DO SISTEMA
         // ======================================================================
 $protected->group('/admin', function ($group) {
     $controller = new AdminController();
+    $configModulos = new \Nutricional\Controllers\ModuleConfigController();
+    $group->get('/config-modulos/guia', [$configModulos, 'listarGuia']);
+    $group->get('/config-modulos/guia/ncms', [$configModulos, 'listarNcms']);
+    $group->post('/config-modulos/guia', [$configModulos, 'salvarGuia']);
+    $group->get('/config-modulos/flex-minimo', [$configModulos, 'listarFlexMinimo']);
+    $group->post('/config-modulos/flex-minimo', [$configModulos, 'salvarFlexMinimo']);
     $group->get('/modulos', [$controller, 'getModulos']);
     $group->post('/modulos', [$controller, 'salvarModulo']);
     $group->get('/menu-visual', [$controller, 'getMenuVisual']);
@@ -1081,7 +1087,6 @@ $protected->group('/admin', function ($group) {
     $group->post('/usuarios/visualizacao', [$controller, 'salvarVisualizacao']);
     $group->post('/usuarios/{id}/toggle', [$controller, 'toggleUsuario']);
     $group->post('/usuarios/editar', [$controller, 'editarUsuario']);
-    $group->post('/upload-foto', [new AdminController(), 'uploadFotoPerfil']);
     $group->post('/permissoes', [$controller, 'salvarPermissoes']);
     $group->get('/gestores', [$controller, 'getGestores']);
     $group->get('/setores', [$controller, 'getSetores']);
@@ -1090,8 +1095,23 @@ $protected->group('/admin', function ($group) {
     $group->get('/api-tokens', [$controller, 'getTokens']);
     $group->post('/api-tokens', [$controller, 'criarToken']);
     $group->post('/api-tokens/{id}/revogar', [$controller, 'revogarToken']);
+    $segredos = new \Nutricional\Controllers\AdminSegredosController();
+    $group->post('/api-tokens/{id}/revelar', [$segredos, 'revelarApiToken']);
+    $group->get('/segredos', [$segredos, 'listar']);
+    $group->post('/segredos', [$segredos, 'salvar']);
+    $group->get('/segredos/auditoria', [$segredos, 'auditoria']);
+    $group->delete('/segredos/{chave}', [$segredos, 'remover']);
+    $group->post('/segredos/{chave}/revelar', [$segredos, 'revelar']);
+    $group->post('/2fa/iniciar', [$segredos, 'iniciarDoisFatores']);
+    $group->post('/2fa/confirmar', [$segredos, 'confirmarDoisFatores']);
+    $group->post('/2fa/desativar', [$segredos, 'desativarDoisFatores']);
     $group->get('/escopos', [$controller, 'getEscopos']);
     $group->get('/logs', [$controller, 'getLogs']);
+})->add(new ModulePermissionMiddleware('admin'));
+
+// Foto de perfil: qualquer usuario autenticado (usada pelo portal e pelo app do motorista)
+$protected->group('/admin', function ($group) {
+    $group->post('/upload-foto', [new AdminController(), 'uploadFotoPerfil']);
 });
 
         // ======================================================================
