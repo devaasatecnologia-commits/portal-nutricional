@@ -1155,6 +1155,21 @@ $protected->group('/consulta', function ($group) {
 
 $protected->get('/embarques-ativos', [new ConsultaController(), 'getEmbarquesAtivos']);
 
+        // ======================================================================
+        // 2FA DO PROPRIO USUARIO (qualquer perfil autenticado)
+        // ======================================================================
+        // O admin habilita "exigir 2FA no login" em /v1/admin/seguranca-usuarios.
+        // O usuario cadastra o autenticador por aqui, na propria conta.
+        // As rotas /v1/admin/2fa/* continuam existindo (uso interno do admin),
+        // mas nao sao mais o unico caminho.
+        $protected->group('/2fa', function ($g) {
+            $c = new \Nutricional\Controllers\Meu2faController();
+            $g->get('/status',     [$c, 'status']);
+            $g->post('/iniciar',   [$c, 'iniciar']);
+            $g->post('/confirmar', [$c, 'confirmar']);
+            $g->post('/desativar', [$c, 'desativar']);
+        });
+
         // ==========================================================================
         // APLICAÇÃO DAS MIDDLEWARES NA ORDEM CORRETA
         // ==========================================================================
@@ -1165,5 +1180,4 @@ $protected->get('/embarques-ativos', [new ConsultaController(), 'getEmbarquesAti
     })->add(new CsrfMiddleware())      // 3º: Verifica CSRF (último a executar na ida, primeiro na volta)
       ->add(new JwtMiddleware())        // 2º: Valida o token JWT
       ->add(new BlacklistMiddleware()); // 1º: Verifica se token está na blacklist (primeiro a executar)
-
   });

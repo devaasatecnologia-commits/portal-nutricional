@@ -407,8 +407,60 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
         @media (min-width: 1536px) {
             .\32xl\:grid-cols-5 { grid-template-columns: repeat(5, 1fr); }
         }
+
+        /* ================================================================ */
+        /* AVISO 2FA - ajuste para não ficar atrás do sidebar fixo          */
+        /* ================================================================ */
+        #aviso2fa { margin-left: 280px; }
+        @media (max-width: 1024px) {
+            #aviso2fa { margin-left: 0 !important; }
+        }
     </style>
 
     <?php if (isset($extraCss)) echo $extraCss; ?>
 </head>
 <body class="bg-slate-50 text-slate-800">
+
+<!-- ==================================================================
+     AVISO PERSISTENTE 2FA
+     Aparece em todas as telas do portal enquanto o usuário logado
+     tiver exige_2fa_login=true e ainda não tiver 2FA ativado.
+     Não bloqueia acesso — apenas avisa e oferece "Ativar agora".
+     O login.php grava requer_cadastro_2fa no localStorage (userData).
+     ================================================================== -->
+<div id="aviso2fa" class="hidden bg-amber-50 border-b border-amber-200 text-amber-800 px-4 py-2 text-sm">
+    <div class="max-w-7xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+        <span>
+            <i class="fa-solid fa-shield-halved mr-2"></i>
+            Sua conta ainda não tem <b>verificação em duas etapas</b>. Ative para proteger seu acesso.
+        </span>
+        <div class="flex items-center gap-2">
+            <a href="<?= $portalBase ?>/portal/modules/2fa.php"
+               class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-bold text-xs whitespace-nowrap"
+               style="text-decoration:none;">
+                Ativar agora
+            </a>
+            <button type="button"
+                    onclick="sessionStorage.setItem('aviso2fa_fechado','1'); document.getElementById('aviso2fa').classList.add('hidden');"
+                    title="Fechar (volta a aparecer no próximo login)"
+                    class="text-amber-700 hover:text-amber-900 text-lg leading-none px-1"
+                    style="background:none;border:none;cursor:pointer;">
+                &times;
+            </button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    try {
+        // Se o usuário fechou nesta sessão, não mostra de novo
+        if (sessionStorage.getItem('aviso2fa_fechado') === '1') return;
+
+        const u = JSON.parse(localStorage.getItem('userData') || '{}');
+        if (u && u.requer_cadastro_2fa) {
+            const el = document.getElementById('aviso2fa');
+            if (el) el.classList.remove('hidden');
+        }
+    } catch (e) { /* silencioso */ }
+})();
+</script>

@@ -12,6 +12,10 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 /**
  * Admin: cofre de segredos (tokens/chaves cifrados no banco) e 2FA por TOTP.
  * Valores em claro so saem pelos endpoints de "revelar", que exigem codigo 2FA.
+ *
+ * Nota: iniciar/confirmar/desativar 2FA operam sobre o proprio usuario logado,
+ * por isso NAO exigem admin. A barreira admin continua em listar/salvar/
+ * remover/revelar/revelarApiToken/auditoria/enviarWhatsapp/statusWhatsapp.
  */
 class AdminSegredosController
 {
@@ -133,14 +137,16 @@ class AdminSegredosController
     }
 
     // ======================================================================
-    // 2FA (TOTP)
+    // 2FA (TOTP) - opera sobre o PROPRIO usuario logado, sem exigir admin
     // ======================================================================
 
-    /** POST /v1/admin/2fa/iniciar  {senha} - gera segredo pendente */
+    /** POST /v1/2fa/iniciar  {senha} - gera segredo pendente */
     public function iniciarDoisFatores(Request $request, Response $response): Response
     {
-        if ($r = $this->exigirAdmin($request, $response)) return $r;
         $u = $this->usuario($request);
+        if ($u['idusuario'] <= 0) {
+            return $this->json($response, ['error' => 'Nao autenticado'], 401);
+        }
         $in = $this->body($request);
 
         if (!$this->senhaConfere($u, (string)($in['senha'] ?? ''))) {
@@ -167,11 +173,13 @@ class AdminSegredosController
         ]));
     }
 
-    /** POST /v1/admin/2fa/confirmar  {codigo} - ativa o 2FA */
+    /** POST /v1/2fa/confirmar  {codigo} - ativa o 2FA */
     public function confirmarDoisFatores(Request $request, Response $response): Response
     {
-        if ($r = $this->exigirAdmin($request, $response)) return $r;
         $u = $this->usuario($request);
+        if ($u['idusuario'] <= 0) {
+            return $this->json($response, ['error' => 'Nao autenticado'], 401);
+        }
         $in = $this->body($request);
         if ($r = $this->limiteTentativas($response, $u)) return $r;
 
@@ -191,11 +199,13 @@ class AdminSegredosController
         return $this->json($response, ['success' => true, 'message' => '2FA ativado']);
     }
 
-    /** POST /v1/admin/2fa/desativar  {senha, codigo} */
+    /** POST /v1/2fa/desativar  {senha, codigo} */
     public function desativarDoisFatores(Request $request, Response $response): Response
     {
-        if ($r = $this->exigirAdmin($request, $response)) return $r;
         $u = $this->usuario($request);
+        if ($u['idusuario'] <= 0) {
+            return $this->json($response, ['error' => 'Nao autenticado'], 401);
+        }
         $in = $this->body($request);
 
         if (!$this->senhaConfere($u, (string)($in['senha'] ?? ''))) {

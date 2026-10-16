@@ -1,43 +1,39 @@
-# Arquivos ignorados pelo Git
-
+﻿# Dependencias e build
 vendor/
+*.tar.gz
+*.zip
+composer.phar
+
+# Ambiente (nunca commitar .env real)
 .env
-.env.*
-!.env.example
-*.log
-.DS_Store
-Thumbs.db
-*.sqlite
-/node_modules/
-/.vscode/
-.idea/
-cache/
-logs/
-tmp/
-uploads/
-*.cache
-*.tmp
-/.git/
+.env.*.local
 
-# Backups e temporarios
-*.bak_*
-*.bak
-*.apos_passo_*
-*.bak_antes_*
-payload.json
-
-# Configuracoes locais com credenciais (NAO commitar)
-conect.php
-config.php
-email_config.php
+# Scripts de deploy e diagnostico
+extract_vendor.php
+phpinfo.php
 sql.php
+index_legado.php
+uteis.php
+email_listas.php
+error-catcher.php
+ver_logs_cron.php
+
+# Uploads de producao/desenvolvimento
+uploads/
+portal/uploads/
+
+# Arquivos locais soltos que nunca vao para o Git
 template.php
-
-
-# Backups locais de arquivos removidos (Bloco 5.F)
-docs/_backups_removidos/
-
-cobli_*.json
-
+frota-token*.txt
 verificacao_completa.txt
-*.txt
+
+# Logs e temporarios
+*.log
+*.bak
+*.bak_*
+
+# Fontes (mantidas localmente, nao versionadas)
+fonts/
+
+# Branches de sessao de agente (nao subir para o GitHub)
+# (nao ha como ignorar branch pelo .gitignore; veja procedimento abaixo)

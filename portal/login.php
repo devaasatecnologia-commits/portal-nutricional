@@ -1,4 +1,3 @@
-
 <?php
 // login.php - Versão Moderna Tailwind
 ?>
@@ -12,6 +11,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <style>
         body { font-family: 'Plus Jakarta Sans', sans-serif; }
@@ -70,6 +70,7 @@
                 <input type="text" id="codigo2fa" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*"
                        class="block w-full px-3 py-3 border border-slate-200 rounded-xl text-center text-lg tracking-[0.5em] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50"
                        placeholder="000000">
+                <p class="text-xs text-slate-400 mt-2">Abra o app autenticador e informe os 6 dígitos.</p>
             </div>
 
             <div id="errorMessage" class="hidden bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
@@ -106,64 +107,191 @@
     console.log(`🌐 API_URL: ${API_URL}`);
 
     // ==========================================================================
-    // FUNÇÃO DE LOGIN
+    // HELPERS
+    // ==========================================================================
+    function mostrarErro(msg) {
+        const errorDiv = document.getElementById('errorMessage');
+        document.getElementById('errorText').textContent = msg;
+        errorDiv.classList.remove('hidden');
+    }
+    function esconderErro() {
+        document.getElementById('errorMessage').classList.add('hidden');
+    }
+
+    function apiFetch(path, method = 'GET', body = null) {
+        const token = localStorage.getItem('authToken');
+        const opts = {
+            method,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(token ? { 'Authorization': 'Bearer ' + token } : {})
+            }
+        };
+        if (body) opts.body = JSON.stringify(body);
+        return fetch(API_URL + path, opts).then(r => r.json().catch(() => ({ error: 'HTTP ' + r.status })));
+    }
+
+    function destinoFinal(user) {
+        const motoristaId = Number(user?.motorista_id || 0);
+        return motoristaId > 0
+            ? `${appBase}/portal/modules/frota/motorista-offline.php?motorista_id=${motoristaId}`
+            : `${appBase}/portal/`;
+    }
+
+    // ==========================================================================
+    // MODAL DE ATIVAÇÃO DE 2FA (durante o login)
+    // ==========================================================================
+    async function abrirModalAtivacao2fa(user) {
+        // 1) Senha
+        const s = await Swal.fire({
+            title: 'Configurar autenticador',
+            html: 'Sua conta precisa da <b>verificação em duas etapas</b>.<br>Vamos configurar agora?',
+            input: 'password',
+            inputAttributes: { autocomplete: 'current-password' },
+            inputPlaceholder: 'Confirme sua senha',
+            showCancelButton: true,
+            confirmButtonText: 'Ativar agora',
+            cancelButtonText: 'Deixar para depois',
+            confirmButtonColor: '#274036',
+            cancelButtonColor: '#94a3b8',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            inputValidator: v => v ? null : 'Informe a senha'
+        });
+
+        // "Deixar para depois" → entra no portal
+        if (!s.isConfirmed) {
+            window.location.href = destinoFinal(user);
+            return;
+        }
+
+        // 2) Gera o segredo
+        let d;
+        try {
+            d = await apiFetch('/2fa/iniciar', 'POST', { senha: s.value });
+        } catch (e) {
+            await Swal.fire({ icon: 'error', title: 'Erro', text: e.message });
+            window.location.href = destinoFinal(user);
+            return;
+        }
+        if (d.error) {
+            await Swal.fire({ icon: 'error', title: 'Erro', text: d.error });
+            window.location.href = destinoFinal(user);
+            return;
+        }
+
+        // 3) Mostra o segredo + campo do código
+        const r = await Swal.fire({
+            title: 'Configure o app autenticador',
+            html: `<p class="text-sm mb-2 text-left">No app (Google, Microsoft, Authy), escolha
+                     <b>Adicionar conta &gt; Inserir chave</b> e informe:</p>
+                   <div style="background:#f1f5f9;padding:12px;border-radius:12px;font-family:monospace;font-size:.85rem;word-break:break-all;text-align:left;user-select:all">${d.segredo}</div>
+                   <p class="text-xs text-slate-400 mt-2 text-left">Tipo: baseado em tempo. Depois digite abaixo o código de 6 dígitos gerado.</p>`,
+            input: 'text',
+            inputAttributes: { inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code', placeholder: '000000' },
+            showCancelButton: true,
+            confirmButtonText: 'Ativar',
+            cancelButtonText: 'Deixar para depois',
+            confirmButtonColor: '#274036',
+            cancelButtonColor: '#94a3b8',
+            allowOutsideClick: false,
+            allowEscapeKey: false,
+            inputValidator: v => /^\d{6}$/.test((v || '').trim()) ? null : 'Informe os 6 dígitos'
+        });
+
+        if (!r.isConfirmed) {
+            window.location.href = destinoFinal(user);
+            return;
+        }
+
+        // 4) Confirma o código
+        let c;
+        try {
+            c = await apiFetch('/2fa/confirmar', 'POST', { codigo: r.value.trim() });
+        } catch (e) {
+            await Swal.fire({ icon: 'error', title: 'Erro', text: e.message });
+            window.location.href = destinoFinal(user);
+            return;
+        }
+        if (c.error) {
+            await Swal.fire({ icon: 'error', title: 'Código inválido', text: c.error });
+            // Não tranca: entra no portal e o banner lembra depois.
+            window.location.href = destinoFinal(user);
+            return;
+        }
+
+        // 5) Sucesso
+        // Atualiza o userData local: não precisa mais do banner
+        const u = { ...(JSON.parse(localStorage.getItem('userData') || '{}')), requer_cadastro_2fa: false };
+        localStorage.setItem('userData', JSON.stringify(u));
+
+        await Swal.fire({ icon: 'success', title: '2FA ativado', timer: 1200, showConfirmButton: false });
+        window.location.href = destinoFinal(user);
+    }
+
+    // ==========================================================================
+    // SUBMIT DO LOGIN
     // ==========================================================================
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value;
         const password = document.getElementById('password').value;
-        const errorDiv = document.getElementById('errorMessage');
-        const errorText = document.getElementById('errorText');
         const submitBtn = e.target.querySelector('button[type="submit"]');
 
-        // Estado de carregamento
         submitBtn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Autenticando...';
         submitBtn.disabled = true;
         submitBtn.classList.add('opacity-75');
-        errorDiv.classList.add('hidden');
-        
+        esconderErro();
+
         try {
-            // Chama a API com a URL correta (automática)
             const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user: username, pass: password, codigo2fa: document.getElementById('codigo2fa').value })
+                body: JSON.stringify({
+                    user: username,
+                    pass: password,
+                    codigo2fa: document.getElementById('codigo2fa').value
+                })
             });
-            
             const data = await response.json();
 
+            // 2FA exigido e já cadastrado
             if (data.requer_2fa) {
-                const campo = document.getElementById('campo2fa');
-                campo.classList.remove('hidden');
+                document.getElementById('campo2fa').classList.remove('hidden');
                 document.getElementById('codigo2fa').focus();
+                submitBtn.innerHTML = '<i class="fa fa-sign-in-alt"></i> Entrar no Sistema';
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-75');
+                if (data.error) mostrarErro(data.error);
+                return;
             }
+
             if (!response.ok) throw new Error(data.error || 'Credenciais inválidas');
-            
-            // Armazena token e dados com segurança
+
+            // Guarda token/dados
             localStorage.setItem('authToken', data.token);
             localStorage.removeItem('portal_bloqueio_inatividade');
             localStorage.setItem('portal_ultima_atividade', String(Date.now()));
             localStorage.setItem('userData', JSON.stringify(data.user));
-            
-            // Sucesso: Redireciona para o portal
+
+            // 2FA exigido mas ainda não cadastrado → abre o modal
+            if (data.user && data.user.requer_cadastro_2fa) {
+                submitBtn.innerHTML = '<i class="fa fa-shield-halved"></i> Configurar 2FA...';
+                submitBtn.classList.replace('bg-emerald-600', 'bg-amber-500');
+                await abrirModalAtivacao2fa(data.user);
+                return;
+            }
+
+            // Login normal
             submitBtn.classList.replace('bg-emerald-600', 'bg-green-500');
             submitBtn.innerHTML = '<i class="fa fa-check"></i> Acesso Liberado!';
-            
-            setTimeout(() => {
-                const motoristaId = Number(data.user?.motorista_id || 0);
-                window.location.href = motoristaId > 0
-                    ? `${appBase}/portal/modules/frota/motorista-offline.php?motorista_id=${motoristaId}`
-                    : `${appBase}/portal/`;
-            }, 500);
+            setTimeout(() => { window.location.href = destinoFinal(data.user); }, 400);
 
         } catch (error) {
-            // Reverte botão e exibe erro
             submitBtn.innerHTML = '<i class="fa fa-sign-in-alt"></i> Entrar no Sistema';
             submitBtn.disabled = false;
             submitBtn.classList.remove('opacity-75');
-            
-            errorText.textContent = error.message;
-            errorDiv.classList.remove('hidden');
+            mostrarErro(error.message || 'Credenciais inválidas');
         }
     });
 </script>
