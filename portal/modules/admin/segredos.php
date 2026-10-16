@@ -29,8 +29,21 @@ require_once __DIR__ . '/components/sidebar.php';
     </div>
 </div>
 
+<!-- Abas -->
+<div id="abasSeg" class="flex gap-2 mb-4 overflow-x-auto border-b border-slate-200">
+    <button data-aba="chaves" onclick="abrirAba('chaves')" class="aba-seg px-4 py-2 text-sm font-bold whitespace-nowrap"><i class="fa-solid fa-key mr-2"></i>Chaves de integração</button>
+    <button data-aba="seguranca" onclick="abrirAba('seguranca')" class="aba-seg px-4 py-2 text-sm font-bold whitespace-nowrap"><i class="fa-solid fa-user-lock mr-2"></i>Segurança por usuário</button>
+    <button data-aba="cofre" onclick="abrirAba('cofre')" class="aba-seg px-4 py-2 text-sm font-bold whitespace-nowrap"><i class="fa-solid fa-lock mr-2"></i>Meu cofre</button>
+    <button data-aba="auditoria" onclick="abrirAba('auditoria')" class="aba-seg px-4 py-2 text-sm font-bold whitespace-nowrap"><i class="fa-solid fa-clipboard-list mr-2"></i>Auditoria de acessos</button>
+</div>
+<style>
+    .aba-seg { color:#64748b; border-bottom:3px solid transparent; margin-bottom:-1px; }
+    .aba-seg:hover { color:#274036; }
+    .aba-seg.ativa { color:#274036; border-bottom-color:#10b981; }
+</style>
+
 <!-- Segredos -->
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+<div data-painel="chaves" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
     <div class="p-5 border-b border-slate-100">
         <h5 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-key mr-2"></i>Chaves de integração</h5>
         <p class="text-xs text-slate-400 mt-1">O valor do banco tem prioridade sobre o <code>.env</code>. DB_*, CHAVE_SECRETA, API_TOKEN, CRON_TOKEN e JWT_SECRET continuam no <code>.env</code> (necessários antes de conectar ao banco).</p>
@@ -54,7 +67,7 @@ require_once __DIR__ . '/components/sidebar.php';
 </div>
 
 <!-- Segurança por usuário -->
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+<div data-painel="seguranca" class="hidden bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
     <div class="p-5 border-b border-slate-100 flex justify-between items-center gap-3 flex-wrap">
         <div>
             <h5 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-user-lock mr-2"></i>Segurança de acesso por usuário</h5>
@@ -80,7 +93,7 @@ require_once __DIR__ . '/components/sidebar.php';
 </div>
 
 <!-- Cofre de senhas -->
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+<div data-painel="cofre" class="hidden bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
     <div class="p-5 border-b border-slate-100 flex justify-between items-center gap-3 flex-wrap">
         <div>
             <h5 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-lock mr-2"></i>Meu cofre de senhas</h5>
@@ -92,7 +105,7 @@ require_once __DIR__ . '/components/sidebar.php';
 </div>
 
 <!-- Auditoria -->
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+<div data-painel="auditoria" class="hidden bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
     <div class="p-5 border-b border-slate-100">
         <h5 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-clipboard-list mr-2"></i>Auditoria de acessos</h5>
     </div>
@@ -475,7 +488,17 @@ async function removerItemCofre(id) {
     } catch (e) { showError('Erro', e.message); }
 }
 
-document.addEventListener('DOMContentLoaded', () => { carregar(); carregarSeguranca(); carregarCofre(); });
+function abrirAba(nome) {
+    document.querySelectorAll('[data-painel]').forEach(p => p.classList.toggle('hidden', p.dataset.painel !== nome));
+    document.querySelectorAll('.aba-seg').forEach(b => b.classList.toggle('ativa', b.dataset.aba === nome));
+    try { history.replaceState(null, '', '#' + nome); } catch (e) { /* sem histórico */ }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const h = location.hash.replace('#', '');
+    abrirAba(['chaves', 'seguranca', 'cofre', 'auditoria'].includes(h) ? h : 'chaves');
+    carregar(); carregarSeguranca(); carregarCofre();
+});
 </script>
 
 <?php require_once __DIR__ . '/components/footer.php'; ?>
