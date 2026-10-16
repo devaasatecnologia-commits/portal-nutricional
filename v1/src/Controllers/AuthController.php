@@ -383,6 +383,12 @@ class AuthController
             if (empty($novaSenha)) {
                 return $this->jsonError($response, 'Nova senha é obrigatória', 400);
             }
+
+            $erroWhats = \Nutricional\Services\WhatsAppCodigo::conferir($this->pdo, (int)($user['idusuario'] ?? 0), (string)($input['codigo_whatsapp'] ?? ''));
+            if ($erroWhats !== null) {
+                $response->getBody()->write(json_encode(['error' => $erroWhats, 'requer_whatsapp' => true], JSON_UNESCAPED_UNICODE));
+                return $response->withStatus(403)->withHeader('Content-Type', 'application/json');
+            }
             
             // ✅ MANTÉM O MESMO FORMATO MD5 LEGADO
             $novaHash = strtoupper(md5(strtoupper($username) . $novaSenha));

@@ -2,7 +2,10 @@
 namespace Nutricional\Controllers;
 
 use Nutricional\Services\SecretVault;
+use Nutricional\Services\SegurancaUsuario;
 use Nutricional\Services\Totp;
+use Nutricional\Services\WhatsAppCodigo;
+use Nutricional\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -21,6 +24,14 @@ class AdminSegredosController
     {
         $this->pdo = \getPDO();
         $this->garantirTabelas();
+        SegurancaUsuario::garantirTabela($this->pdo);
+        try {
+            if (!$this->pdo->query("SELECT to_regclass('admin_whatsapp_codigo') IS NOT NULL")->fetchColumn()) {
+                WhatsAppCodigo::garantirTabela($this->pdo);
+            }
+        } catch (\Throwable $e) {
+            error_log('[AdminSegredos] tabela whatsapp: ' . $e->getMessage());
+        }
     }
 
     // ======================================================================
@@ -229,9 +240,60 @@ class AdminSegredosController
             $this->auditar($alvo, $acao, $u, $request, false);
             return $this->json($response, ['error' => 'Codigo de verificacao invalido ou expirado'], 403);
         }
+        // TOTP valido: confere o WhatsApp (uso unico) e so entao grava o contador
+        if ($r = $this->validarWhatsapp($request, $response, $u, $alvo, $acao)) return $r;
         $this->pdo->prepare("UPDATE admin_2fa SET ultimo_contador = :c WHERE idusuario = :id")
             ->execute(['c' => $contador, 'id' => $u['idusuario']]);
         return null;
+    }
+
+    /** Exige o codigo de 5 min do WhatsApp quando o usuario tem numero cadastrado e ha provedor. */
+    protected function validarWhatsapp(Request $request, Response $response, array $u, string $alvo, string $acao): ?Response
+    {
+        if (!WhatsAppCodigo::exigido($this->pdo, $u['idusuario'])) {
+            return null;
+        }
+        $cod = trim((string)($this->body($request)['codigo_whatsapp'] ?? ''));
+        $res = WhatsAppCodigo::verificar($this->pdo, $u['idusuario'], $cod);
+        if ($res === 'ok') {
+            return null;
+        }
+        $this->auditar($alvo, $acao, $u, $request, false);
+        $msg = $res === 'expirado'
+            ? 'Codigo do WhatsApp ausente ou expirado. Envie um novo codigo.'
+            : 'Codigo do WhatsApp incorreto';
+        return $this->json($response, ['error' => $msg, 'requer_whatsapp' => true], 403);
+    }
+
+    /** POST /v1/admin/whatsapp/enviar - envia codigo de 5 min para o numero cadastrado do usuario logado */
+    public function enviarWhatsapp(Request $request, Response $response): Response
+    {
+        $u = $this->usuario($request);
+        if ($u['idusuario'] <= 0) {
+            return $this->json($response, ['error' => 'Nao autenticado'], 401);
+        }
+        try {
+            $res = WhatsAppCodigo::enviar($this->pdo, $u['idusuario'], $u['username'], $request->getServerParams()['REMOTE_ADDR'] ?? null);
+        } catch (\Throwable $e) {
+            error_log('[AdminSegredos] whatsapp: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Falha ao enviar codigo'], 500);
+        }
+        if (!$res['ok']) {
+            return $this->json($response, ['error' => $res['erro']], $res['status']);
+        }
+        return $this->json($response, ['success' => true, 'destino' => $res['destino'], 'validade_min' => WhatsAppCodigo::VALIDADE_MIN]);
+    }
+
+    /** GET /v1/admin/whatsapp/status - indica se o codigo do WhatsApp sera exigido */
+    public function statusWhatsapp(Request $request, Response $response): Response
+    {
+        $u = $this->usuario($request);
+        $numero = WhatsAppCodigo::numero($this->pdo, $u['idusuario']);
+        return $this->json($response, [
+            'provedor' => WhatsAppService::provedor(),
+            'exigido' => WhatsAppCodigo::exigido($this->pdo, $u['idusuario']),
+            'destino' => $numero ? WhatsAppService::mascarar($numero) : null,
+        ]);
     }
 
     protected function limiteTentativas(Response $response, array $u): ?Response

@@ -387,6 +387,11 @@ x-transition.opacity>
                 class="w-full p-2.5 border-2 border-amber-200 rounded-xl text-sm focus:border-amber-400 transition-all">
                 <input type="password" x-model="perfilSenhaConfirm" placeholder="Confirmar senha" autocomplete="new-password"
                 class="w-full p-2.5 border-2 border-amber-200 rounded-xl text-sm focus:border-amber-400 transition-all">
+                <div x-show="perfilExigeWhats" class="space-y-2">
+                    <input type="text" x-model="perfilWhatsCodigo" inputmode="numeric" maxlength="6" placeholder="Código recebido por WhatsApp" autocomplete="one-time-code"
+                    class="w-full p-2.5 border-2 border-amber-200 rounded-xl text-sm focus:border-amber-400 transition-all">
+                    <button type="button" @click="enviarCodigoWhats()" class="text-xs font-bold text-amber-700 underline">Enviar código por WhatsApp (vale 5 min)</button>
+                </div>
             </form>
         </div>
 
@@ -431,7 +436,7 @@ function portalDashboard() {
         username: 'Usuário', userIniciais: 'UN', nivelAcesso: 'Usuário',
         saudacao: '', dataHoje: '', setores: [], setoresVisiveis: [], setoresFiltrados: [],
         setorAtivo: 'todos', totalModulos: 0,
-        perfilUsername: '', perfilSenha: '', perfilSenhaConfirm: '',
+        perfilUsername: '', perfilSenha: '', perfilSenhaConfirm: '', perfilExigeWhats: false, perfilWhatsCodigo: '',
         fotoPerfil: null, perfilDados: {}, perfilFoto: null, perfilFotoPreview: null, perfilFotoFile: null,
         scrollListener: null,
         init() {
@@ -621,10 +626,29 @@ initScrollSpy() {
         // ======================================================================
         // PERFIL
         // ======================================================================
+        async enviarCodigoWhats() {
+            const errEl = document.getElementById('perfilError');
+            try {
+                const resp = await fetch(`${API_URL}/auth/whatsapp/enviar`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + localStorage.getItem('authToken') },
+                    body: '{}'
+                });
+                const d = await resp.json();
+                if (errEl) {
+                    errEl.textContent = d.success ? 'Código enviado para ' + d.destino + '. Vale por 5 minutos.' : (d.error || 'Falha ao enviar.');
+                    errEl.classList.remove('hidden');
+                }
+            } catch (e) {
+                if (errEl) { errEl.textContent = 'Erro de conexão.'; errEl.classList.remove('hidden'); }
+            }
+        },
         abrirPerfil() {
             this.sidebarOpen = false;
             this.perfilSenha = '';
             this.perfilSenhaConfirm = '';
+            this.perfilExigeWhats = false;
+            this.perfilWhatsCodigo = '';
             this.perfilFotoFile = null;
             this.perfilFotoPreview = null;
             const errEl = document.getElementById('perfilError');
@@ -716,9 +740,10 @@ initScrollSpy() {
                             'Content-Type': 'application/json', 
                             'Authorization': 'Bearer ' + token 
                         }, 
-                        body: JSON.stringify({ senha: this.perfilSenha }) 
+                        body: JSON.stringify({ senha: this.perfilSenha, codigo_whatsapp: this.perfilWhatsCodigo.trim() })
                     });
                     const data = await resp.json();
+                    if (data.requer_whatsapp) { this.perfilExigeWhats = true; }
                     if (data.success) { 
                         if (sucEl) { 
                             sucEl.textContent = 'Perfil atualizado!'; 

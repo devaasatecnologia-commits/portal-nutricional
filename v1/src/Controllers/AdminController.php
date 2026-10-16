@@ -274,6 +274,14 @@ public function editarUsuario(Request $request, Response $response): Response
             return $this->jsonResponse($response, ['error' => 'ID do usuário é obrigatório'], 400);
         }
 
+        if (!empty($senha)) {
+            $ator = (array)($request->getAttribute('user') ?? []);
+            $erroWhats = \Nutricional\Services\WhatsAppCodigo::conferir($this->pdo, (int)($ator['idusuario'] ?? 0), (string)($input['codigo_whatsapp'] ?? ''));
+            if ($erroWhats !== null) {
+                return $this->jsonResponse($response, ['error' => $erroWhats, 'requer_whatsapp' => true], 403);
+            }
+        }
+
         $this->pdo->beginTransaction();
 
         // Busca o idusuario

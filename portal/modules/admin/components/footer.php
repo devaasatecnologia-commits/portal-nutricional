@@ -41,6 +41,10 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     };
     
     if (body) {
+        if (window.__waCodigo && method !== 'GET' && typeof body === 'object' && !body.codigo_whatsapp) {
+            body.codigo_whatsapp = window.__waCodigo;
+            window.__waCodigo = null;
+        }
         options.body = JSON.stringify(body);
     }
     
@@ -132,20 +136,58 @@ function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
 }
 
-// Pede o codigo de 6 digitos do app autenticador. Retorna o codigo ou null se cancelado.
-async function pedirCodigo2fa(titulo = 'Verificação em duas etapas') {
+// Pede o codigo do app autenticador (TOTP) e, se o usuario tiver WhatsApp cadastrado, o codigo de 5 min
+// enviado por WhatsApp. Retorna o TOTP (ou '' quando totp=false) e deixa o codigo do WhatsApp em
+// window.__waCodigo, que o proximo apiFetch POST envia como codigo_whatsapp. Retorna null se cancelado.
+async function pedirCodigo2fa(titulo = 'Verificação em duas etapas', totp = true) {
+    let exigeWhats = false, destino = '';
+    try {
+        const st = await apiFetch('/admin/whatsapp/status');
+        exigeWhats = !!st.exigido; destino = st.destino || '';
+    } catch (e) { /* segue so com TOTP */ }
+    window.__waCodigo = null;
+
+    const campo = (id, rotulo) => `<label class="block text-left text-xs font-semibold text-slate-600 mt-3 mb-1">${rotulo}</label>
+        <input id="${id}" class="swal2-input !m-0 !w-full" inputmode="numeric" maxlength="6" autocomplete="one-time-code" placeholder="000000">`;
+    const html = (totp ? campo('vTotp', 'Código do aplicativo autenticador') : '')
+        + (exigeWhats ? campo('vWhats', `Código enviado por WhatsApp (${escapeHtml(destino)}) - vale 5 min`)
+            + '<button type="button" id="vEnviar" class="mt-2 text-sm text-emerald-700 font-semibold underline">Enviar código por WhatsApp</button>' : '');
+    if (!totp && !exigeWhats) return '';
+
     const r = await Swal.fire({
         title: titulo,
-        text: 'Digite o código de 6 dígitos do seu aplicativo autenticador.',
-        input: 'text',
-        inputAttributes: { inputmode: 'numeric', maxlength: 6, autocomplete: 'one-time-code' },
+        html,
         showCancelButton: true,
         confirmButtonText: 'Confirmar',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#274036',
-        inputValidator: v => /^\d{6}$/.test((v || '').trim()) ? null : 'Informe os 6 dígitos'
+        didOpen: () => {
+            const b = document.getElementById('vEnviar');
+            if (!b) return;
+            b.onclick = async () => {
+                b.disabled = true; b.textContent = 'Enviando...';
+                try {
+                    const e = await apiFetch('/admin/whatsapp/enviar', 'POST', {});
+                    if (e.error) throw new Error(e.error);
+                    b.textContent = 'Código enviado. Reenviar em 60s';
+                    setTimeout(() => { b.disabled = false; b.textContent = 'Reenviar código'; }, 60000);
+                } catch (err) {
+                    b.disabled = false; b.textContent = 'Enviar código por WhatsApp';
+                    Swal.showValidationMessage(err.message);
+                }
+            };
+        },
+        preConfirm: () => {
+            const t = (document.getElementById('vTotp')?.value || '').trim();
+            const w = (document.getElementById('vWhats')?.value || '').trim();
+            if (totp && !/^\d{6}$/.test(t)) return Swal.showValidationMessage('Informe os 6 dígitos do autenticador');
+            if (exigeWhats && !/^\d{6}$/.test(w)) return Swal.showValidationMessage('Informe os 6 dígitos do WhatsApp');
+            return { t, w };
+        }
     });
-    return r.isConfirmed ? r.value.trim() : null;
+    if (!r.isConfirmed) return null;
+    window.__waCodigo = r.value.w || null;
+    return r.value.t;
 }
 
 // Revela um valor sensivel (exige 2FA). Mostra por alguns segundos e permite copiar.

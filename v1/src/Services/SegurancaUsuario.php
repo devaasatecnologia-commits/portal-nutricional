@@ -17,11 +17,15 @@ class SegurancaUsuario
         // Sem permissao de DDL: rodar docs/segredos_migration.sql com o dono do banco.
         try {
             if ($pdo->query("SELECT to_regclass('usuario_seguranca') IS NOT NULL")->fetchColumn()) {
+                if (!$pdo->query("SELECT 1 FROM information_schema.columns WHERE table_name = 'usuario_seguranca' AND column_name = 'whatsapp'")->fetchColumn()) {
+                    $pdo->exec("ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(20)");
+                }
                 return;
             }
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS usuario_seguranca (
                     idusuario INT PRIMARY KEY,
+                    whatsapp VARCHAR(20),
                     exige_2fa_login BOOLEAN NOT NULL DEFAULT false,
                     inatividade_min INT NOT NULL DEFAULT 10,
                     token_min INT NOT NULL DEFAULT 240,

@@ -130,6 +130,7 @@ $app->group('/v1', function ($group) {
         $protected->post('/auth/logout', [new AuthController(), 'logout']);
         $protected->post('/auth/inatividade', [new AuthController(), 'registrarInatividade']);
         $protected->post('/auth/alterar-senha', [new AuthController(), 'alterarSenha']);
+        $protected->post('/auth/whatsapp/enviar', [new \Nutricional\Controllers\AdminSegredosController(), 'enviarWhatsapp']);
         $protected->get('/perfil/dados', [new AuthController(), 'getDadosPerfil']);
 
         // Retorno de carga por embarque (comparativo + destinos abertos)
@@ -1105,6 +1106,8 @@ $protected->group('/admin', function ($group) {
     $group->post('/2fa/iniciar', [$segredos, 'iniciarDoisFatores']);
     $group->post('/2fa/confirmar', [$segredos, 'confirmarDoisFatores']);
     $group->post('/2fa/desativar', [$segredos, 'desativarDoisFatores']);
+    $group->post('/whatsapp/enviar', [$segredos, 'enviarWhatsapp']);
+    $group->get('/whatsapp/status', [$segredos, 'statusWhatsapp']);
     $segUsuarios = new \Nutricional\Controllers\AdminSegurancaUsuariosController();
     $group->get('/seguranca-usuarios', [$segUsuarios, 'listarPolitica']);
     $group->post('/seguranca-usuarios/{id}', [$segUsuarios, 'salvarPolitica']);

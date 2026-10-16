@@ -623,20 +623,26 @@ async function segurancaUsuario(idusuario, nome) {
                 <label>Inatividade (minutos, 1 a 480)</label>
                 <input id="sg_inat" type="number" min="1" max="480" class="swal2-input" style="margin:4px 0 10px;width:100%" value="${s.inatividade_min}">
                 <label>Duração do token (minutos, 15 a 1440)</label>
-                <input id="sg_tok" type="number" min="15" max="1440" class="swal2-input" style="margin:4px 0 0;width:100%" value="${s.token_min}">
-                <p style="font-size:.72rem;color:#94a3b8;margin-top:8px">Vale no próximo login do usuário.</p></div>`,
+                <input id="sg_tok" type="number" min="15" max="1440" class="swal2-input" style="margin:4px 0 10px;width:100%" value="${s.token_min}">
+                <label>WhatsApp para códigos de verificação (DDD + número)</label>
+                <input id="sg_whats" type="tel" class="swal2-input" style="margin:4px 0 0;width:100%" placeholder="11999998888" value="${escapeHtml(s.whatsapp || '')}">
+                <p style="font-size:.72rem;color:#94a3b8;margin-top:8px">Vale no próximo login do usuário. Com número cadastrado, ele passa a precisar do código de 5 min do WhatsApp nas ações sensíveis.</p></div>`,
             showCancelButton: true, confirmButtonText: 'Salvar', cancelButtonText: 'Cancelar', confirmButtonColor: '#274036',
             preConfirm: () => {
                 const v = { exige_2fa_login: document.getElementById('sg_2fa').checked,
                     inatividade_min: parseInt(document.getElementById('sg_inat').value, 10),
-                    token_min: parseInt(document.getElementById('sg_tok').value, 10) };
+                    token_min: parseInt(document.getElementById('sg_tok').value, 10),
+                    whatsapp: document.getElementById('sg_whats').value.trim() };
                 if (!(v.inatividade_min >= 1 && v.inatividade_min <= 480)) return Swal.showValidationMessage('Inatividade entre 1 e 480');
                 if (!(v.token_min >= 15 && v.token_min <= 1440)) return Swal.showValidationMessage('Token entre 15 e 1440');
                 return v;
             }
         });
         if (!r.isConfirmed) return;
-        const res = await apiFetch('/admin/seguranca-usuarios/' + idusuario, 'POST', r.value);
+        const codigo = await pedirCodigo2fa('Confirmar alteração de segurança');
+        if (codigo === null) return;
+        const res = await apiFetch('/admin/seguranca-usuarios/' + idusuario, 'POST', { ...r.value, codigo });
+        if (res.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas em Segredos & 2FA para alterar a segurança dos usuários.');
         if (res.error) throw new Error(res.error);
         showToast('Segurança atualizada');
     } catch (e) { showError('Erro', e.message); }
@@ -837,9 +843,15 @@ async function salvarEdicao() {
     }
     
     try {
+        let codigo_whatsapp;
+        if (senha) {
+            const ok = await pedirCodigo2fa('Confirmar nova senha', false);
+            if (ok === null) return;
+            codigo_whatsapp = window.__waCodigo;
+            window.__waCodigo = null;
+            if (codigo_whatsapp) data.codigo_whatsapp = codigo_whatsapp;
+        }
         showLoading('Salvando...');
-        
-        // 🔥 Salva edição do usuário
         const result = await apiFetch('/admin/usuarios/editar', 'POST', data);
         
         // 🔥 Salva visualizações

@@ -24,7 +24,7 @@ class AdminSegurancaUsuariosController extends AdminSegredosController
                    COALESCE(s.inatividade_min, " . SegurancaUsuario::PADRAO_INATIVIDADE_MIN . ") AS inatividade_min,
                    COALESCE(s.token_min, " . SegurancaUsuario::PADRAO_TOKEN_MIN . ") AS token_min,
                    COALESCE(a.ativo, false) AS tem_2fa,
-                   s.atualizado_por, s.atualizado_em
+                   s.atualizado_por, s.atualizado_em,                    COALESCE(s.whatsapp, '') AS whatsapp
             FROM usuario u
             LEFT JOIN usuario_seguranca s ON s.idusuario = u.idusuario
             LEFT JOIN admin_2fa a ON a.idusuario = u.idusuario
@@ -67,6 +67,18 @@ class AdminSegurancaUsuariosController extends AdminSegredosController
         }
         $exige = !empty($in['exige_2fa_login']);
 
+        $temWhats = array_key_exists('whatsapp', $in);
+        $whats = null;
+        if ($temWhats && trim((string)$in['whatsapp']) !== '') {
+            $whats = \Nutricional\Services\WhatsAppService::normalizarNumero((string)$in['whatsapp']);
+            if ($whats === null) {
+                return $this->json($response, ['error' => 'Numero de WhatsApp invalido. Use DDD + numero (ex.: 11999998888)'], 422);
+            }
+        }
+
+        // Alterar politica/numero exige TOTP + WhatsApp (se o admin tiver) de quem executa
+        if ($r = $this->validarDoisFatores($request, $response, $u, 'seguranca:' . substr((string)$alvoNome, 0, 60), 'politica')) return $r;
+
         $this->pdo->prepare("
             INSERT INTO usuario_seguranca (idusuario, exige_2fa_login, inatividade_min, token_min, atualizado_por, atualizado_em)
             VALUES (:id, :e, :i, :t, :p, NOW())
@@ -74,6 +86,9 @@ class AdminSegurancaUsuariosController extends AdminSegredosController
                SET exige_2fa_login = EXCLUDED.exige_2fa_login, inatividade_min = EXCLUDED.inatividade_min,
                    token_min = EXCLUDED.token_min, atualizado_por = EXCLUDED.atualizado_por, atualizado_em = NOW()
         ")->execute(['id' => $alvo, 'e' => $exige ? 'true' : 'false', 'i' => $inat, 't' => $tok, 'p' => $u['username']]);
+        if ($temWhats) {
+            $this->pdo->prepare("UPDATE usuario_seguranca SET whatsapp = :w WHERE idusuario = :id")->execute(['w' => $whats, 'id' => $alvo]);
+        }
 
         $this->auditar('seguranca:' . substr((string)$alvoNome, 0, 60), 'politica', $u, $request, true);
         return $this->json($response, ['success' => true]);

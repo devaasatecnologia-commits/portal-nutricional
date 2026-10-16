@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS usuario_seguranca (
     atualizado_por VARCHAR(100),
     atualizado_em TIMESTAMP DEFAULT NOW()
 );
+ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(20);
+
+-- Codigo de verificacao por WhatsApp (5 min, uso unico, so o hash e guardado)
+CREATE TABLE IF NOT EXISTS admin_whatsapp_codigo (
+    idusuario INT PRIMARY KEY,
+    hash VARCHAR(64) NOT NULL,
+    expira TIMESTAMP NOT NULL,
+    tentativas INT NOT NULL DEFAULT 0,
+    enviado_em TIMESTAMP NOT NULL DEFAULT NOW()
+);
 
 -- Cofre pessoal de senhas (cifrado com chave derivada da senha mestra; nada em claro)
 CREATE TABLE IF NOT EXISTS cofre_mestre (

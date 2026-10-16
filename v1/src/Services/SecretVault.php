@@ -18,6 +18,12 @@ class SecretVault
         'GOOGLE_MAPS_API_KEY'  => ['Google Maps - API Key', 'Frota', 'Geocodificacao e rotas'],
         'MAIL_PASS'            => ['SMTP - Senha', 'E-mail', 'Senha do usuario SMTP (MAIL_USER continua no .env)'],
         'FLEX_API_TOKEN'       => ['Saldo Flex (Mercos) - Token', 'Integracoes', 'Token da API de saldo Flex'],
+        'ZAPI_INSTANCE_ID'     => ['WhatsApp Z-API - ID da instancia', 'WhatsApp', 'Envio do codigo de verificacao (Z-API)'],
+        'ZAPI_TOKEN'           => ['WhatsApp Z-API - Token', 'WhatsApp', 'Token da instancia Z-API'],
+        'ZAPI_CLIENT_TOKEN'    => ['WhatsApp Z-API - Client-Token', 'WhatsApp', 'Token de seguranca da conta Z-API (opcional)'],
+        'WHATSAPP_META_PHONE_ID' => ['WhatsApp Meta - Phone Number ID', 'WhatsApp', 'Cloud API oficial da Meta'],
+        'WHATSAPP_META_TOKEN'  => ['WhatsApp Meta - Token permanente', 'WhatsApp', 'Token de acesso do usuario do sistema'],
+        'WHATSAPP_META_TEMPLATE' => ['WhatsApp Meta - Nome do template', 'WhatsApp', 'Template de autenticacao aprovado (pt_BR, com 1 variavel e botao copiar codigo)'],
     ];
 
     private static array $cache = [];

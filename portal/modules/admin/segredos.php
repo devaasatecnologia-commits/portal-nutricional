@@ -84,6 +84,7 @@ require_once __DIR__ . '/components/sidebar.php';
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Exigir 2FA no login</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Inatividade (min)</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Token (min)</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">WhatsApp (código)</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase"></th>
                 </tr>
             </thead>
@@ -298,17 +299,23 @@ function renderizarSeguranca() {
                 ${u.exige_2fa_login && !u.tem_2fa ? '<div class="text-[10px] text-amber-600">aguardando cadastro</div>' : ''}</td>
             <td class="px-4 py-2 text-center"><input type="number" min="1" max="480" id="segInat_${u.idusuario}" value="${u.inatividade_min}" class="w-20 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
             <td class="px-4 py-2 text-center"><input type="number" min="15" max="1440" id="segTok_${u.idusuario}" value="${u.token_min}" class="w-24 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
-            <td class="px-4 py-2 text-center"><button onclick="salvarSeguranca(${u.idusuario})" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">Salvar</button></td>
-        </tr>`).join('') || '<tr><td colspan="6" class="text-center py-6 text-slate-400">Nenhum usuário</td></tr>';
-}
+                        <td class="px-4 py-2 text-center"><input type="tel" id="segWhats_${u.idusuario}" value="${escapeHtml(u.whatsapp)}" placeholder="11999998888" class="w-36 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
+                        <td class="px-4 py-2 text-center"><button onclick="salvarSeguranca(${u.idusuario})" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">Salvar</button></td>
+                    </tr>`).join('') || '<tr><td colspan="7" class="text-center py-6 text-slate-400">Nenhum usuário</td></tr>';
+            }
 
-async function salvarSeguranca(id) {
-    try {
-        const d = await apiFetch('/admin/seguranca-usuarios/' + id, 'POST', {
-            exige_2fa_login: document.getElementById('seg2fa_' + id).checked,
-            inatividade_min: parseInt(document.getElementById('segInat_' + id).value, 10),
-            token_min: parseInt(document.getElementById('segTok_' + id).value, 10)
-        });
+            async function salvarSeguranca(id) {
+                const codigo = await pedirCodigo2fa('Confirmar alteração de segurança');
+                if (codigo === null) return;
+                try {
+                    const d = await apiFetch('/admin/seguranca-usuarios/' + id, 'POST', {
+                        codigo,
+                        exige_2fa_login: document.getElementById('seg2fa_' + id).checked,
+                        inatividade_min: parseInt(document.getElementById('segInat_' + id).value, 10),
+                        token_min: parseInt(document.getElementById('segTok_' + id).value, 10),
+                        whatsapp: document.getElementById('segWhats_' + id).value.trim()
+                    });
+                    if (d.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas para alterar a segurança dos usuários.');
         if (d.error) throw new Error(d.error);
         showToast('Política salva');
         carregarSeguranca();
