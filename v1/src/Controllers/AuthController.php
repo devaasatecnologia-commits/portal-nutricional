@@ -65,6 +65,33 @@ class AuthController
                 return $this->jsonError($response, 'Credenciais inválidas', 401);
             }
 
+            // Politica por usuario: 2FA no login, inatividade e duracao do token
+            $seg = \Nutricional\Services\SegurancaUsuario::config($this->pdo, (int)$usuario['idusuario']);
+            $doisFatoresPendente = false;
+            if ($seg['exige_2fa_login']) {
+                if (\Nutricional\Services\SegurancaUsuario::tem2fa($this->pdo, (int)$usuario['idusuario'])) {
+                    $codigo2fa = preg_replace('/\D/', '', (string)($input['codigo2fa'] ?? ''));
+                    if ($codigo2fa === '') {
+                        $response->getBody()->write(json_encode(['error' => 'Informe o código do aplicativo autenticador', 'requer_2fa' => true]));
+                        return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
+                    }
+                    $res = \Nutricional\Services\SegurancaUsuario::validarCodigoLogin(
+                        $this->pdo, (int)$usuario['idusuario'], (string)$usuario['username'], $codigo2fa,
+                        (string)($request->getServerParams()['REMOTE_ADDR'] ?? '')
+                    );
+                    if ($res === 'bloqueado') {
+                        return $this->jsonError($response, 'Muitas tentativas. Aguarde 10 minutos.', 429);
+                    }
+                    if ($res !== 'ok') {
+                        $response->getBody()->write(json_encode(['error' => 'Código inválido ou expirado', 'requer_2fa' => true]));
+                        return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
+                    }
+                } else {
+                    // Evita trancar o usuario fora: entra e deve cadastrar o autenticador.
+                    $doisFatoresPendente = true;
+                }
+            }
+
             // Buscar permissões
             $permissoes = $this->getPermissoesDoUsuario($usuario['idusuario'], $usuario['idcliforemp']);
             $motoristaId = $this->getMotoristaIdPorErp((int)$usuario['idcliforemp']);
@@ -84,7 +111,7 @@ class AuthController
                 'permissoes' => $permissoes,
                 'motorista_id' => $motoristaId,
                 'iat' => time(),
-                'exp' => time() + (4 * 3600)
+                'exp' => time() + ($seg['token_min'] * 60)
             ];
 
             $token = JWT::encode($payload, $this->jwtSecret, 'HS256');
@@ -123,7 +150,10 @@ class AuthController
                     'dash_filiais' => $payload['dash_filiais'],
                     'dash_gestores' => $payload['dash_gestores'],
                     'permissoes' => $payload['permissoes'],
-                    'motorista_id' => $payload['motorista_id']
+                    'motorista_id' => $payload['motorista_id'],
+                    'inatividade_min' => $seg['inatividade_min'],
+                    'exige_2fa' => $seg['exige_2fa_login'],
+                    'requer_cadastro_2fa' => $doisFatoresPendente
                 ]
             ];
             

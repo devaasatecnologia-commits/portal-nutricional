@@ -1105,6 +1105,17 @@ $protected->group('/admin', function ($group) {
     $group->post('/2fa/iniciar', [$segredos, 'iniciarDoisFatores']);
     $group->post('/2fa/confirmar', [$segredos, 'confirmarDoisFatores']);
     $group->post('/2fa/desativar', [$segredos, 'desativarDoisFatores']);
+    $segUsuarios = new \Nutricional\Controllers\AdminSegurancaUsuariosController();
+    $group->get('/seguranca-usuarios', [$segUsuarios, 'listarPolitica']);
+    $group->post('/seguranca-usuarios/{id}', [$segUsuarios, 'salvarPolitica']);
+    $cofre = new \Nutricional\Controllers\CofreSenhasController();
+    $group->get('/cofre/status', [$cofre, 'status']);
+    $group->post('/cofre/criar', [$cofre, 'criar']);
+    $group->post('/cofre/desbloquear', [$cofre, 'desbloquear']);
+    $group->get('/cofre/itens', [$cofre, 'listarItens']);
+    $group->post('/cofre/itens', [$cofre, 'salvarItem']);
+    $group->post('/cofre/itens/{id}/revelar', [$cofre, 'revelarItem']);
+    $group->post('/cofre/itens/{id}/remover', [$cofre, 'removerItem']);
     $group->get('/escopos', [$controller, 'getEscopos']);
     $group->get('/logs', [$controller, 'getLogs']);
 })->add(new ModulePermissionMiddleware('admin'));

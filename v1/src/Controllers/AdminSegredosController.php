@@ -15,7 +15,7 @@ class AdminSegredosController
     private const MAX_FALHAS = 5;
     private const JANELA_MIN = 10;
 
-    private $pdo;
+    protected $pdo;
 
     public function __construct()
     {
@@ -214,7 +214,7 @@ class AdminSegredosController
     // ======================================================================
 
     /** Valida o codigo TOTP (exige 2FA ativo). Retorna Response de erro ou null se ok. */
-    private function validarDoisFatores(Request $request, Response $response, array $u, string $alvo, string $acao): ?Response
+    protected function validarDoisFatores(Request $request, Response $response, array $u, string $alvo, string $acao): ?Response
     {
         if ($r = $this->limiteTentativas($response, $u)) return $r;
 
@@ -234,7 +234,7 @@ class AdminSegredosController
         return null;
     }
 
-    private function limiteTentativas(Response $response, array $u): ?Response
+    protected function limiteTentativas(Response $response, array $u): ?Response
     {
         $stmt = $this->pdo->prepare("
             SELECT COUNT(*) FROM admin_segredos_log
@@ -248,7 +248,7 @@ class AdminSegredosController
         return null;
     }
 
-    private function buscar2fa(int $idusuario): ?array
+    protected function buscar2fa(int $idusuario): ?array
     {
         $stmt = $this->pdo->prepare("SELECT segredo_cifrado, ativo, ultimo_contador FROM admin_2fa WHERE idusuario = :id");
         $stmt->execute(['id' => $idusuario]);
@@ -263,7 +263,7 @@ class AdminSegredosController
     }
 
     /** Confere a senha no mesmo formato usado pelo login (MD5 de USERNAME+senha). */
-    private function senhaConfere(array $u, string $senha): bool
+    protected function senhaConfere(array $u, string $senha): bool
     {
         if ($senha === '') {
             return false;
@@ -275,7 +275,7 @@ class AdminSegredosController
         return $hash !== '' && hash_equals(strtoupper($hash), $calc);
     }
 
-    private function auditar(string $chave, string $acao, array $u, Request $request, bool $sucesso): void
+    protected function auditar(string $chave, string $acao, array $u, Request $request, bool $sucesso): void
     {
         try {
             $this->pdo->prepare("
@@ -291,7 +291,7 @@ class AdminSegredosController
         }
     }
 
-    private function usuario(Request $request): array
+    protected function usuario(Request $request): array
     {
         $u = (array)($request->getAttribute('user') ?? []);
         return [
@@ -301,7 +301,7 @@ class AdminSegredosController
         ];
     }
 
-    private function exigirAdmin(Request $request, Response $response): ?Response
+    protected function exigirAdmin(Request $request, Response $response): ?Response
     {
         $u = $this->usuario($request);
         if (!$u['is_admin'] || $u['idusuario'] <= 0) {
@@ -310,7 +310,7 @@ class AdminSegredosController
         return null;
     }
 
-    private function body(Request $request): array
+    protected function body(Request $request): array
     {
         $parsed = $request->getParsedBody();
         if (is_array($parsed)) {
@@ -353,12 +353,12 @@ class AdminSegredosController
         }
     }
 
-    private function semCache(Response $response): Response
+    protected function semCache(Response $response): Response
     {
         return $response->withHeader('Cache-Control', 'no-store, private')->withHeader('Pragma', 'no-cache');
     }
 
-    private function json(Response $response, array $data, int $status = 200): Response
+    protected function json(Response $response, array $data, int $status = 200): Response
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
         return $response->withStatus($status)->withHeader('Content-Type', 'application/json');

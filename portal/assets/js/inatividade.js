@@ -2,7 +2,14 @@
 (function () {
     'use strict';
 
-    const LIMITE_MS = 10 * 60 * 1000;
+    // Limite definido por usuario no Admin (login devolve inatividade_min); padrão 10 min.
+    const LIMITE_MS = (function () {
+        try {
+            const m = Number(JSON.parse(localStorage.getItem('userData') || '{}').inatividade_min);
+            if (m >= 1 && m <= 480) return m * 60 * 1000;
+        } catch (e) { /* usa o padrão */ }
+        return 10 * 60 * 1000;
+    })();
 
     // Tabela de códigos de parada logística (código = grupo.número)
     const CODIGOS = [

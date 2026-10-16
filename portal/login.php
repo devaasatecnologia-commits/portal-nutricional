@@ -65,6 +65,13 @@
                 </div>
             </div>
 
+            <div id="campo2fa" class="hidden">
+                <label class="block text-sm font-semibold text-slate-700 mb-2">Código do autenticador</label>
+                <input type="text" id="codigo2fa" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*"
+                       class="block w-full px-3 py-3 border border-slate-200 rounded-xl text-center text-lg tracking-[0.5em] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50"
+                       placeholder="000000">
+            </div>
+
             <div id="errorMessage" class="hidden bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
                 <i class="fa fa-exclamation-circle"></i>
                 <span id="errorText">Credenciais inválidas.</span>
@@ -120,11 +127,16 @@
             const response = await fetch(`${API_URL}/auth/login`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ user: username, pass: password })
+                body: JSON.stringify({ user: username, pass: password, codigo2fa: document.getElementById('codigo2fa').value })
             });
             
             const data = await response.json();
-            
+
+            if (data.requer_2fa) {
+                const campo = document.getElementById('campo2fa');
+                campo.classList.remove('hidden');
+                document.getElementById('codigo2fa').focus();
+            }
             if (!response.ok) throw new Error(data.error || 'Credenciais inválidas');
             
             // Armazena token e dados com segurança

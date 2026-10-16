@@ -27,3 +27,31 @@ CREATE TABLE IF NOT EXISTS admin_segredos_log (
     created_at TIMESTAMP DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_admin_segredos_log_falhas ON admin_segredos_log (idusuario, created_at) WHERE sucesso = false;
+
+-- Politica de seguranca por usuario (2FA no login, inatividade, duracao do token)
+CREATE TABLE IF NOT EXISTS usuario_seguranca (
+    idusuario INT PRIMARY KEY,
+    exige_2fa_login BOOLEAN NOT NULL DEFAULT false,
+    inatividade_min INT NOT NULL DEFAULT 10,
+    token_min INT NOT NULL DEFAULT 240,
+    atualizado_por VARCHAR(100),
+    atualizado_em TIMESTAMP DEFAULT NOW()
+);
+
+-- Cofre pessoal de senhas (cifrado com chave derivada da senha mestra; nada em claro)
+CREATE TABLE IF NOT EXISTS cofre_mestre (
+    idusuario INT PRIMARY KEY,
+    salt TEXT NOT NULL,
+    verificador TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS cofre_itens (
+    id BIGSERIAL PRIMARY KEY,
+    idusuario INT NOT NULL,
+    titulo VARCHAR(120) NOT NULL,
+    dados_cifrados TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_cofre_itens_usuario ON cofre_itens (idusuario);
