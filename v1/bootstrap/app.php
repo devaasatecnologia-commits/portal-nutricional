@@ -4,8 +4,13 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 use Dotenv\Dotenv;
 use Slim\Factory\AppFactory;
 
-// Carrega variáveis de ambiente
-$dotenv = Dotenv::createImmutable(__DIR__ . '/../..');
+// Carrega variáveis de ambiente. Procura o .env fora da área pública, nesta ordem:
+// 2 níveis acima do site (home da conta), 1 nível acima e, por fim, a raiz do site.
+$envDir = dirname(__DIR__, 2);
+foreach ([dirname(__DIR__, 4), dirname(__DIR__, 3), dirname(__DIR__, 2)] as $cand) {
+    if (is_file($cand . '/.env')) { $envDir = $cand; break; }
+}
+$dotenv = Dotenv::createImmutable($envDir);
 $dotenv->load();
 
 // Timezone
