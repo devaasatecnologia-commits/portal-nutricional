@@ -1112,6 +1112,7 @@ $protected->group('/admin', function ($group) {
     $group->get('/cofre/status', [$cofre, 'status']);
     $group->post('/cofre/criar', [$cofre, 'criar']);
     $group->post('/cofre/desbloquear', [$cofre, 'desbloquear']);
+    $group->post('/cofre/alterar-mestra', [$cofre, 'alterarMestra']);
     $group->get('/cofre/itens', [$cofre, 'listarItens']);
     $group->post('/cofre/itens', [$cofre, 'salvarItem']);
     $group->post('/cofre/itens/{id}/revelar', [$cofre, 'revelarItem']);

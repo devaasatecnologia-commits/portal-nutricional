@@ -354,6 +354,7 @@ function renderizarCofre() {
         return;
     }
     acoes.innerHTML = `<button onclick="itemCofre()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 mr-2"><i class="fa-solid fa-plus mr-1"></i>Novo item</button>
+        <button onclick="alterarMestra()" class="px-4 py-2 border border-amber-300 text-amber-600 rounded-xl text-sm font-bold hover:bg-amber-500 hover:text-white mr-2"><i class="fa-solid fa-key mr-1"></i>Alterar senha mestra</button>
         <button onclick="bloquearCofre()" class="px-4 py-2 border border-slate-300 rounded-xl text-sm font-bold hover:bg-slate-100">Bloquear</button>`;
     corpo.innerHTML = cofre.itens.length ? `<table class="w-full">${cofre.itens.map(i => `
         <tr class="border-b border-slate-100 text-sm text-slate-700">
@@ -366,17 +367,72 @@ function renderizarCofre() {
             </td></tr>`).join('')}</table>` : 'Cofre vazio. Clique em "Novo item".';
 }
 
+function gerarSenha(tam = 20) {
+    const set = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789!@#$%&*?-_=+';
+    const buf = new Uint32Array(tam);
+    crypto.getRandomValues(buf);
+    let s;
+    do { s = Array.from(buf, n => set[n % set.length]).join(''); crypto.getRandomValues(buf); } while (forcaSenha(s).nivel < 3);
+    return s;
+}
+
+function forcaSenha(s) {
+    const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z\d]/].filter(r => r.test(s)).length;
+    const nivel = s.length >= 20 && classes >= 3 ? 4 : s.length >= 12 && classes >= 3 ? 3 : s.length >= 12 ? 2 : s.length >= 8 ? 1 : 0;
+    return { nivel, classes, texto: ['Muito fraca', 'Fraca', 'Razoável', 'Boa', 'Forte'][nivel], cor: ['#dc2626', '#ea580c', '#d97706', '#65a30d', '#059669'][nivel] };
+}
+
+function medidorForca(idInput, idSaida) {
+    const v = document.getElementById(idInput).value;
+    const f = forcaSenha(v);
+    document.getElementById(idSaida).innerHTML = v ? `<span style="color:${f.cor};font-weight:700">${f.texto}</span>` : '';
+}
+
+async function alterarMestra() {
+    const f = await Swal.fire({
+        title: 'Alterar senha mestra',
+        html: '<p style="font-size:.8rem;margin-bottom:8px">Todos os itens serão recifrados com a nova senha. Anote-a: <b>não há recuperação</b>.</p>' +
+              '<input id="am_atual" type="password" class="swal2-input" placeholder="Senha mestra atual" autocomplete="off">' +
+              '<input id="am_nova" type="password" class="swal2-input" placeholder="Nova senha mestra" autocomplete="new-password" oninput="medidorForca(\'am_nova\',\'am_forca\')">' +
+              '<div id="am_forca" style="font-size:.8rem;min-height:18px"></div>' +
+              '<input id="am_nova2" type="password" class="swal2-input" placeholder="Repita a nova senha" autocomplete="new-password">' +
+              '<button type="button" onclick="const s=gerarSenha(24);[\'am_nova\',\'am_nova2\'].forEach(i=>{const e=document.getElementById(i);e.type=\'text\';e.value=s});medidorForca(\'am_nova\',\'am_forca\')" style="margin-top:8px;font-size:.78rem;color:#059669;font-weight:700"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar senha forte</button>',
+        showCancelButton: true, confirmButtonText: 'Continuar', confirmButtonColor: '#274036',
+        preConfirm: () => {
+            const a = document.getElementById('am_atual').value, n = document.getElementById('am_nova').value, n2 = document.getElementById('am_nova2').value;
+            if (!a) return Swal.showValidationMessage('Informe a senha atual');
+            if (n.length < 12) return Swal.showValidationMessage('Mínimo de 12 caracteres');
+            if (forcaSenha(n).nivel < 3) return Swal.showValidationMessage('Use 3 tipos de caractere (a-z, A-Z, 0-9, símbolo) ou 20+ caracteres');
+            if (n !== n2) return Swal.showValidationMessage('As senhas não conferem');
+            return { a, n };
+        }
+    });
+    if (!f.isConfirmed) return;
+    const codigo = await pedirCodigo2fa('Código para alterar a senha mestra');
+    if (!codigo) return;
+    try {
+        showLoading('Recifrando o cofre...');
+        const d = await apiFetch('/admin/cofre/alterar-mestra', 'POST', { senha_mestra: f.value.a, nova_mestra: f.value.n, codigo });
+        Swal.close();
+        if (d.error) throw new Error(d.error);
+        cofre.mestra = f.value.n;
+        showToast('Senha mestra alterada');
+    } catch (e) { Swal.close(); showError('Erro', e.message); }
+}
+
 async function criarCofre() {
     const f = await Swal.fire({
         title: 'Criar cofre',
         html: '<p style="font-size:.8rem;margin-bottom:8px">A senha mestra (mín. 12 caracteres) <b>não pode ser recuperada</b>. Anote-a em local seguro.</p>' +
-              '<input id="cv_mestra" type="password" class="swal2-input" placeholder="Senha mestra" autocomplete="new-password">' +
+              '<input id="cv_mestra" type="password" class="swal2-input" placeholder="Senha mestra" autocomplete="new-password" oninput="medidorForca(\'cv_mestra\',\'cv_forca\')">' +
+              '<div id="cv_forca" style="font-size:.8rem;min-height:18px"></div>' +
               '<input id="cv_mestra2" type="password" class="swal2-input" placeholder="Repita a senha mestra" autocomplete="new-password">' +
               '<input id="cv_login" type="password" class="swal2-input" placeholder="Sua senha de login" autocomplete="current-password">',
         showCancelButton: true, confirmButtonText: 'Continuar', confirmButtonColor: '#274036',
         preConfirm: () => {
             const m = document.getElementById('cv_mestra').value, m2 = document.getElementById('cv_mestra2').value, l = document.getElementById('cv_login').value;
             if (m.length < 12) return Swal.showValidationMessage('Mínimo de 12 caracteres');
+            if (forcaSenha(m).nivel < 3) return Swal.showValidationMessage('Use 3 tipos de caractere (a-z, A-Z, 0-9, símbolo) ou 20+ caracteres');
             if (m !== m2) return Swal.showValidationMessage('As senhas não conferem');
             if (!l) return Swal.showValidationMessage('Informe sua senha de login');
             return { m, l };
@@ -460,6 +516,7 @@ async function itemCofre(id) {
                <input id="ci_login" class="swal2-input" placeholder="Login / usuário" autocomplete="off" value="${escapeHtml(atual.login)}">
                <input id="ci_url" class="swal2-input" placeholder="URL" autocomplete="off" value="${escapeHtml(atual.url)}">
                <input id="ci_senha" type="text" class="swal2-input" placeholder="Senha" autocomplete="off" value="${escapeHtml(atual.senha)}">
+               <button type="button" onclick="document.getElementById('ci_senha').value=gerarSenha(20)" style="font-size:.78rem;color:#059669;font-weight:700;margin:4px 0"><i class="fa-solid fa-wand-magic-sparkles"></i> Gerar senha forte</button>
                <textarea id="ci_notas" class="swal2-textarea" placeholder="Notas">${escapeHtml(atual.notas)}</textarea>`,
         showCancelButton: true, confirmButtonText: 'Salvar', confirmButtonColor: '#274036',
         preConfirm: () => {

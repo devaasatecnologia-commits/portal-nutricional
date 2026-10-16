@@ -48,8 +48,8 @@ class CofreSenhasController extends AdminSegredosController
         $in = $this->body($request);
         $mestra = (string)($in['senha_mestra'] ?? '');
 
-        if (strlen($mestra) < self::MIN_MESTRA) {
-            return $this->json($response, ['error' => 'A senha mestra deve ter ao menos ' . self::MIN_MESTRA . ' caracteres'], 422);
+        if ($erro = $this->erroForcaMestra($mestra)) {
+            return $this->json($response, ['error' => $erro], 422);
         }
         if (!$this->senhaConfere($u, (string)($in['senha'] ?? ''))) {
             $this->auditar('cofre', 'criar', $u, $request, false);
@@ -172,6 +172,69 @@ class CofreSenhasController extends AdminSegredosController
         $this->pdo->prepare("DELETE FROM cofre_itens WHERE id = :id AND idusuario = :u")->execute(['id' => $id, 'u' => $u['idusuario']]);
         $this->auditar('cofre:' . $id, 'remover', $u, $request, true);
         return $this->json($response, ['success' => true]);
+    }
+
+    /** POST /v1/admin/cofre/alterar-mestra  {senha_mestra, nova_mestra, codigo} - recifra todos os itens */
+    public function alterarMestra(Request $request, Response $response): Response
+    {
+        if ($r = $this->exigirAdmin($request, $response)) return $r;
+        $u = $this->usuario($request);
+        $in = $this->body($request);
+        if ($r = $this->limiteTentativas($response, $u)) return $r;
+
+        $atual = (string)($in['senha_mestra'] ?? '');
+        $nova = (string)($in['nova_mestra'] ?? '');
+        if ($erro = $this->erroForcaMestra($nova)) {
+            return $this->json($response, ['error' => $erro], 422);
+        }
+        if (hash_equals($atual, $nova)) {
+            return $this->json($response, ['error' => 'A nova senha deve ser diferente da atual'], 422);
+        }
+        $chaveAntiga = $this->chaveDoCofre($u, $atual);
+        if ($chaveAntiga === null) {
+            $this->auditar('cofre', 'alterar-mestra', $u, $request, false);
+            return $this->json($response, ['error' => 'Senha mestra atual incorreta'], 403);
+        }
+        if ($r = $this->validarDoisFatores($request, $response, $u, 'cofre', 'alterar-mestra')) return $r;
+
+        $salt = random_bytes(16);
+        [$chaveNova, $ver] = $this->derivar($nova, $salt);
+
+        $this->pdo->beginTransaction();
+        try {
+            $st = $this->pdo->prepare("SELECT id, dados_cifrados FROM cofre_itens WHERE idusuario = :u FOR UPDATE");
+            $st->execute(['u' => $u['idusuario']]);
+            $up = $this->pdo->prepare("UPDATE cofre_itens SET dados_cifrados = :d WHERE id = :id AND idusuario = :u");
+            foreach ($st->fetchAll(\PDO::FETCH_ASSOC) as $item) {
+                $claro = $this->decifrar($item['dados_cifrados'], $chaveAntiga, $u['idusuario']);
+                if ($claro === '') {
+                    throw new \RuntimeException('Item ' . $item['id'] . ' nao pode ser decifrado');
+                }
+                $up->execute(['d' => $this->cifrar($claro, $chaveNova, $u['idusuario']), 'id' => $item['id'], 'u' => $u['idusuario']]);
+            }
+            $this->pdo->prepare("UPDATE cofre_mestre SET salt = :s, verificador = :v WHERE idusuario = :id")
+                ->execute(['s' => base64_encode($salt), 'v' => $this->verificador($ver), 'id' => $u['idusuario']]);
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            error_log('[Cofre] alterar mestra falhou: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Falha ao recifrar o cofre; nada foi alterado.'], 500);
+        }
+        $this->auditar('cofre', 'alterar-mestra', $u, $request, true);
+        return $this->json($response, ['success' => true]);
+    }
+
+    private function erroForcaMestra(string $s): ?string
+    {
+        if (strlen($s) < self::MIN_MESTRA) {
+            return 'A senha mestra deve ter ao menos ' . self::MIN_MESTRA . ' caracteres';
+        }
+        $classes = (preg_match('/[a-z]/', $s) ? 1 : 0) + (preg_match('/[A-Z]/', $s) ? 1 : 0)
+            + (preg_match('/\d/', $s) ? 1 : 0) + (preg_match('/[^a-zA-Z\d]/', $s) ? 1 : 0);
+        if (strlen($s) < 20 && $classes < 3) {
+            return 'Use ao menos 3 tipos entre minuscula, MAIUSCULA, numero e simbolo (ou uma frase com 20+ caracteres)';
+        }
+        return null;
     }
 
     // ======================================================================
