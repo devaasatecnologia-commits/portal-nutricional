@@ -4,7 +4,7 @@
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 
 // O servidor embutido nao aplica .htaccess: bloqueie arquivos privados aqui.
-if (preg_match('#(^|/)(\.env|\.git|logs|erros_log|backup_limpeza_20260603|temp|cache)(/|$)#i', $path)) {
+if (preg_match('#(^|/)(\.env(\.[^/]*)?|\.git|logs|erros_log|backup_limpeza_20260603|temp|cache)(/|$)#i', $path)) {
     http_response_code(403);
     header('Content-Type: application/json');
     echo json_encode(['error' => 'Recurso privado']);

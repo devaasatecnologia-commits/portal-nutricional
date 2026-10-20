@@ -8,25 +8,93 @@
 use PHPMailer\PHPMailer\PHPMailer;
 use PHPMailer\PHPMailer\Exception;
 
-session_start(); 
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
-// 2. CARREGAMENTO DAS CONFIGURAÇÕES E BIBLIOTECAS
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/vendor/autoload.php'; 
-require_once __DIR__ . '/conect.php';
-require_once __DIR__ . '/uteis.php';
-require_once __DIR__ . '/email_config.php';
-require_once __DIR__ . '/email_listas.php';
+// 2. CARREGAMENTO DAS CONFIGURAÇÕES E BIBLIOTECAS (COMPATÍVEL COM .ENV.API / .ENV E LEGADO)
+require_once __DIR__ . '/vendor/autoload.php';
 
-// 3. DEFINIÇÃO DE CONSTANTES E DOMÍNIO
-if (!defined('CHAVE_SECRETA'))  define('CHAVE_SECRETA', 'alansabe123456');
-if (!defined('TOKEN_EMAIL'))    define('TOKEN_EMAIL', 'TOKEN_PADRAO_REPRE_2026');
-if (!defined('TOKEN_GESTORES')) define('TOKEN_GESTORES', 'TOKEN_PADRAO_GEST_2026');
-if (!defined('API_TOKEN'))      define('API_TOKEN', 'xoUM?va.JNG93v)@#i9FyH@B6n0}H4.yst%s8zV8M}xc+ZrFAz5:y6T07HxyYGE~');
+if (empty($_ENV['DB_HOST'])) {
+    $envDirLeg = __DIR__;
+    $envFileLeg = '.env';
+    $candidatosLeg = [dirname(__DIR__, 2), dirname(__DIR__), __DIR__];
+    foreach (['.env.api', '.env'] as $nomeArqLeg) {
+        foreach ($candidatosLeg as $candLeg) {
+            if (is_file($candLeg . '/' . $nomeArqLeg)) {
+                $envDirLeg = $candLeg;
+                $envFileLeg = $nomeArqLeg;
+                break 2;
+            }
+        }
+    }
+    if (is_file($envDirLeg . '/' . $envFileLeg)) {
+        \Dotenv\Dotenv::createImmutable($envDirLeg, $envFileLeg)->load();
+    }
+}
+
+if (is_file(__DIR__ . '/config.php')) {
+    require_once __DIR__ . '/config.php';
+}
+if (is_file(__DIR__ . '/conect.php')) {
+    require_once __DIR__ . '/conect.php';
+}
+if (is_file(__DIR__ . '/uteis.php')) {
+    require_once __DIR__ . '/uteis.php';
+}
+if (is_file(__DIR__ . '/email_config.php')) {
+    require_once __DIR__ . '/email_config.php';
+}
+if (is_file(__DIR__ . '/email_listas.php')) {
+    require_once __DIR__ . '/email_listas.php';
+}
+
+// 3. DEFINIÇÃO DE CONSTANTES, CONEXÃO PDO E E-MAIL (FALLBACK AUTOMÁTICO DO .ENV.API / COFRE)
+if (!defined('CHAVE_SECRETA'))  define('CHAVE_SECRETA', $_ENV['CHAVE_SECRETA'] ?? '');
+if (!defined('TOKEN_EMAIL'))    define('TOKEN_EMAIL', $_ENV['TOKEN_EMAIL'] ?? 'TOKEN_PADRAO_REPRE_2026');
+if (!defined('TOKEN_GESTORES')) define('TOKEN_GESTORES', $_ENV['TOKEN_GESTORES'] ?? 'TOKEN_PADRAO_GEST_2026');
+if (!defined('API_TOKEN'))      define('API_TOKEN', $_ENV['API_TOKEN'] ?? '');
+if (!defined('CRON_TOKEN'))     define('CRON_TOKEN', $_ENV['CRON_TOKEN'] ?? API_TOKEN);
+
+if (!function_exists('getPDO')) {
+    function getPDO() {
+        static $pdoInstance = null;
+        if ($pdoInstance === null) {
+            $host = $_ENV['DB_HOST'] ?? 'localhost';
+            $port = $_ENV['DB_PORT'] ?? '5432';
+            $name = $_ENV['DB_NAME'] ?? 'ema';
+            $user = $_ENV['DB_USER'] ?? 'postgres';
+            $pass = $_ENV['DB_PASS'] ?? '';
+            $dsn = sprintf("pgsql:host=%s;port=%s;dbname=%s", $host, $port, $name);
+            $pdoInstance = new \PDO($dsn, $user, $pass, [
+                \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
+                \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
+                \PDO::ATTR_EMULATE_PREPARES => false,
+            ]);
+            $pdoInstance->exec("SET client_encoding = 'UTF8'");
+            $pdoInstance->exec("SET standard_conforming_strings = on");
+        }
+        return $pdoInstance;
+    }
+}
+
+if (!isset($pdo) || !($pdo instanceof \PDO)) {
+    $pdo = getPDO();
+}
+
+if (!defined('EMAIL_HOST'))     define('EMAIL_HOST', $_ENV['MAIL_HOST'] ?? 'mail.nutricionalbr.com');
+if (!defined('EMAIL_PORT'))     define('EMAIL_PORT', (int)($_ENV['MAIL_PORT'] ?? 465));
+if (!defined('EMAIL_USERNAME')) define('EMAIL_USERNAME', $_ENV['MAIL_USER'] ?? 'nao-responder@nutricionalbr.com');
+if (!defined('EMAIL_PASSWORD')) {
+    $senhaEmail = class_exists('\Nutricional\Services\SecretVault')
+        ? \Nutricional\Services\SecretVault::get('MAIL_PASS')
+        : ($_ENV['MAIL_PASS'] ?? '');
+    define('EMAIL_PASSWORD', $senhaEmail);
+}
 
 if (!defined('DOMINIO')) {
     $protocolo = (isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on') ? "https://" : "http://";
-    define('DOMINIO', $protocolo . $_SERVER['HTTP_HOST']);
+    define('DOMINIO', $protocolo . ($_SERVER['HTTP_HOST'] ?? 'api.nutricionalbr.com'));
 }
 
 // 4. INSTANCIAÇÃO DO CLIENTE HTTP (GUZZLE)
@@ -41,11 +109,13 @@ $logDir = __DIR__ . '/erros_log';
 if (!file_exists($logDir)) @mkdir($logDir, 0755, true);
 
 // 6. HEADERS DE SEGURANÇA E CORS
-header("Access-Control-Allow-Origin: *"); 
-header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
+if (php_sapi_name() !== 'cli' && !headers_sent()) {
+    header("Access-Control-Allow-Origin: *"); 
+    header("Access-Control-Allow-Methods: GET, POST, OPTIONS");
+    header("Access-Control-Allow-Headers: Content-Type, Authorization");
+}
 
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+if (($_SERVER['REQUEST_METHOD'] ?? 'GET') == 'OPTIONS') {
     http_response_code(200);
     exit;
 }
@@ -93,10 +163,15 @@ function verificarAcesso($strAcao) {
     if (in_array($strAcao, $rotasPublicas)) return true;
 
     // 2. VALIDAÇÃO POR CHAVE DE API (VIA URL)
-    // Correção: Agora pegamos especificamente o $_GET['key'] sem misturar com o t0k3n
+    // Aceita tanto a chave pura quanto com escape de bash do cPanel (\) ou \%)
     $chaveApiEnviada = $_GET['key'] ?? '';
+    $chaveNormalizada = str_replace(['\\)', '\\%'], [')', '%'], $chaveApiEnviada);
     
-    if (defined('API_TOKEN') && !empty($chaveApiEnviada) && $chaveApiEnviada === API_TOKEN) {
+    if (
+        defined('API_TOKEN') &&
+        !empty($chaveApiEnviada) &&
+        ($chaveApiEnviada === API_TOKEN || $chaveNormalizada === API_TOKEN || stripslashes($chaveApiEnviada) === API_TOKEN)
+    ) {
         file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] AUTORIZADO (URL Key) - Ação: $strAcao | IP: $ip\n", FILE_APPEND);
         return true;
     }
@@ -136,8 +211,13 @@ if (!verificarAcesso($strAcao)) {
             die(json_encode(["erro" => "Acesso negado ou Sessão expirada"]));
         }
 
-        // Caso contrário, mostra a tela de login
-        include __DIR__ . '/html/login.html';
+        // Caso contrário, mostra a tela de login se existir ou redireciona para o portal
+        if (is_file(__DIR__ . '/html/login.html')) {
+            include __DIR__ . '/html/login.html';
+        } else {
+            http_response_code(401);
+            echo "Acesso negado";
+        }
         exit;
     }
     
@@ -146,7 +226,9 @@ if (!verificarAcesso($strAcao)) {
     die("Acesso negado");
 }
 // 10. PROCESSAMENTO DE TEMPLATE
-require_once __DIR__ . '/template.php';
+if (is_file(__DIR__ . '/template.php')) {
+    require_once __DIR__ . '/template.php';
+}
 $arrTagEstrutura = ['tituloArea' => '', 'conteudoArea' => '', 'url' => DOMINIO];
 
 $strAcaoId = 0;
@@ -2104,7 +2186,144 @@ case '3M411':
     if ($isCli) exit(1);
     break;
 
+    // =========================================================================
+    // MOTOR DE CRONS DO PORTAL (DISPATCHER UNIFICADO VIA CURL OU CLI)
+    // =========================================================================
+    case 'm0t0rCr0nP0rt4l':
+    case 'motor_cron_portal':
+        header('Content-Type: text/plain; charset=utf-8');
+        try {
+            $logDirPortal = __DIR__ . '/logs';
+            if (!is_dir($logDirPortal)) {
+                @mkdir($logDirPortal, 0755, true);
+            }
+            @file_put_contents($logDirPortal . '/cron_heartbeat.txt', (string)time());
 
+            $pdoPortal = \getPDO();
+            if (!$pdoPortal->query("SELECT pg_try_advisory_lock(727001)")->fetchColumn()) {
+                echo date('Y-m-d H:i:s') . " Dispatcher já em execução.\n";
+                exit(0);
+            }
+
+            $cronCtrl = new \Nutricional\Controllers\CronController();
+            $agora = new \DateTime('now');
+            $jobsAtivos = $pdoPortal->query("
+                SELECT * FROM cron_jobs
+                WHERE ativo = true AND schedule IS NOT NULL AND schedule <> ''
+                ORDER BY id
+            ")->fetchAll(\PDO::FETCH_ASSOC);
+
+            $executados = 0;
+            foreach ($jobsAtivos as $jobItem) {
+                try {
+                    $expr = new \Cron\CronExpression($jobItem['schedule']);
+                    if (!$expr->isDue($agora)) {
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    echo date('Y-m-d H:i:s') . " [job #{$jobItem['id']} {$jobItem['comando']}] schedule inválido ({$jobItem['schedule']})\n";
+                    continue;
+                }
+
+                // Evita rodar duas vezes no mesmo minuto
+                if (!empty($jobItem['ultima_execucao']) && strtotime($jobItem['ultima_execucao']) >= strtotime(date('Y-m-d H:i:00'))) {
+                    continue;
+                }
+
+                $resJob = $cronCtrl->executarJobAgendado($jobItem);
+                $okStr = !empty($resJob['success']) ? 'OK' : 'FALHA';
+                echo sprintf(
+                    "%s [job #%d %s] %s (%ss) - %s\n",
+                    date('Y-m-d H:i:s'),
+                    $jobItem['id'],
+                    $jobItem['comando'],
+                    $okStr,
+                    $resJob['duracao'] ?? 0,
+                    $resJob['message'] ?? ''
+                );
+                $executados++;
+            }
+
+            $pdoPortal->query("SELECT pg_advisory_unlock(727001)");
+            try {
+                $pdoPortal->exec("
+                    CREATE TABLE IF NOT EXISTS cron_dispatcher_status (
+                        id INT PRIMARY KEY DEFAULT 1,
+                        ultimo_batimento TIMESTAMP NOT NULL DEFAULT NOW(),
+                        ip VARCHAR(45),
+                        user_agent VARCHAR(255),
+                        jobs_ativos INT DEFAULT 0,
+                        jobs_disparados INT DEFAULT 0
+                    )
+                ");
+                $stHb = $pdoPortal->prepare("
+                    INSERT INTO cron_dispatcher_status (id, ultimo_batimento, ip, user_agent, jobs_ativos, jobs_disparados)
+                    VALUES (1, NOW(), ?, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        ultimo_batimento = NOW(),
+                        ip = EXCLUDED.ip,
+                        user_agent = EXCLUDED.user_agent,
+                        jobs_ativos = EXCLUDED.jobs_ativos,
+                        jobs_disparados = EXCLUDED.jobs_disparados
+                ");
+                $stHb->execute([
+                    $_SERVER['REMOTE_ADDR'] ?? 'CLI',
+                    substr((string)($_SERVER['HTTP_USER_AGENT'] ?? 'CLI'), 0, 250),
+                    count($jobsAtivos),
+                    $executados
+                ]);
+            } catch (\Throwable $eHb) {
+                // ignora falha de telemetria
+            }
+            echo date('Y-m-d H:i:s') . " Dispatcher finalizado (" . count($jobsAtivos) . " job(s) ativo(s) verificado(s), {$executados} disparado(s)).\n";
+            exit(0);
+        } catch (\Throwable $e) {
+            echo "ERRO CRÍTICO DISPATCHER PORTAL: " . $e->getMessage() . "\n";
+            exit(1);
+        }
+        break;
+
+    // =========================================================================
+    // BONIFICAÇÕES FLEX (CONECTADO AO MOTOR DE CRONS DO PORTAL NOVO)
+    // =========================================================================
+    case 'b0n1f1c4c03sFl3x':
+    case 'bonificacoes_flex':
+        header('Content-Type: text/plain; charset=utf-8');
+        echo "=== INICIANDO BONIFICAÇÕES FLEX (PORTAL CRON) ===\n";
+        try {
+            $pdoPortal = \getPDO();
+            $stmtJob = $pdoPortal->prepare("SELECT * FROM cron_jobs WHERE comando = 'bonificacoes_flex' LIMIT 1");
+            $stmtJob->execute();
+            $jobBonif = $stmtJob->fetch(\PDO::FETCH_ASSOC);
+
+            if ($jobBonif && empty($jobBonif['ativo'])) {
+                echo "PAUSADO: O job 'bonificacoes_flex' está marcado como INATIVO no Painel Admin do Portal.\n";
+                exit(0);
+            }
+
+            if ($jobBonif) {
+                $cronCtrl = new \Nutricional\Controllers\CronController();
+                $resBonif = $cronCtrl->executarJobAgendado($jobBonif);
+            } else {
+                $rotinasCtrl = new \Nutricional\Controllers\CronRotinasController();
+                $resBonif = $rotinasCtrl->executarRotina('bonificacoes_flex', [
+                    'email_notificacao' => 'alan@nutricionalbr.com, robson@nutricionalbr.com',
+                    'notificar_sucesso' => true,
+                    'notificar_falha' => true,
+                ], 'CPANEL', $_SERVER['REMOTE_ADDR'] ?? 'CLI');
+            }
+
+            echo "Status: " . (!empty($resBonif['success']) ? 'SUCESSO' : 'FALHA') . "\n";
+            echo "Mensagem: " . ($resBonif['message'] ?? '') . "\n";
+            if (!empty($resBonif['duracao'])) {
+                echo "Duração: " . $resBonif['duracao'] . "s\n";
+            }
+            exit(!empty($resBonif['success']) ? 0 : 1);
+        } catch (\Throwable $e) {
+            echo "ERRO CRÍTICO BONIFICAÇÕES FLEX: " . $e->getMessage() . "\n";
+            exit(1);
+        }
+        break;
 
     default:
         if (strpos($_SERVER['HTTP_USER_AGENT'] ?? '', 'CronJob') !== false || php_sapi_name() === 'cli') {
@@ -2127,7 +2346,9 @@ case '3M411':
 }
 
 // INSERE CONTEÚDO NA ESTRUTURA
-$objTemplateEstrutura = new templateParser('html/estrutura.html');
-$objTemplateEstrutura->parseTemplate($arrTagEstrutura);
-echo $objTemplateEstrutura->display();
+if (class_exists('templateParser') && is_file(__DIR__ . '/html/estrutura.html')) {
+    $objTemplateEstrutura = new templateParser('html/estrutura.html');
+    $objTemplateEstrutura->parseTemplate($arrTagEstrutura);
+    echo $objTemplateEstrutura->display();
+}
 ?>

@@ -619,7 +619,10 @@ async function segurancaUsuario(idusuario, nome) {
             title: 'Segurança: ' + escapeHtml(nome),
             html: `<div style="text-align:left;font-size:.85rem">
                 <label style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><input type="checkbox" id="sg_2fa" ${s.exige_2fa_login ? 'checked' : ''}> Exigir código do autenticador no login</label>
-                <div style="font-size:.72rem;color:${s.tem_2fa ? '#059669' : '#d97706'};margin-bottom:10px">${s.tem_2fa ? 'O usuário já ativou o autenticador.' : 'O usuário ainda não ativou o autenticador: entra normalmente até cadastrar.'}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                    <span style="font-size:.72rem;color:${s.tem_2fa ? '#059669' : '#d97706'}">${s.tem_2fa ? 'O usuário já ativou o autenticador.' : 'O usuário ainda não ativou o autenticador: entra normalmente até cadastrar.'}</span>
+                    ${s.tem_2fa ? `<button type="button" onclick="resetar2faModal(${idusuario}, '${escapeHtml(nome)}')" style="font-size:.7rem;padding:2px 8px;border-radius:4px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;cursor:pointer;font-weight:600">Resetar 2FA</button>` : ''}
+                </div>
                 <label>Inatividade (minutos, 1 a 480)</label>
                 <input id="sg_inat" type="number" min="1" max="480" class="swal2-input" style="margin:4px 0 10px;width:100%" value="${s.inatividade_min}">
                 <label>Duração do token (minutos, 15 a 1440)</label>
@@ -645,6 +648,30 @@ async function segurancaUsuario(idusuario, nome) {
         if (res.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas em Segredos & 2FA para alterar a segurança dos usuários.');
         if (res.error) throw new Error(res.error);
         showToast('Segurança atualizada');
+    } catch (e) { showError('Erro', e.message); }
+}
+
+async function resetar2faModal(idusuario, nome) {
+    Swal.close();
+    const confirm = await Swal.fire({
+        title: 'Resetar 2FA?',
+        text: `O autenticador de "${nome}" será removido. Ele poderá cadastrar um novo aparelho no próximo login.`,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        confirmButtonText: 'Sim, resetar 2FA',
+        cancelButtonText: 'Cancelar'
+    });
+    if (!confirm.isConfirmed) return;
+
+    const codigo = await pedirCodigo2fa('Confirmar reset de 2FA do usuário');
+    if (codigo === null) return;
+
+    try {
+        const res = await apiFetch('/admin/seguranca-usuarios/' + idusuario + '/2fa/resetar', 'POST', { codigo });
+        if (res.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas em Segredos & 2FA para resetar o 2FA de outros usuários.');
+        if (res.error) throw new Error(res.error);
+        showToast('2FA do usuário resetado com sucesso');
     } catch (e) { showError('Erro', e.message); }
 }
 

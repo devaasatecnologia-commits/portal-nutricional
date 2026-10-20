@@ -1009,10 +1009,12 @@ $protected->group('/cron', function ($group) {
     $group->get('/auditoria', [$controller, 'getAuditoria'])->add($admin);
     $group->get('/auditoria/{id}', [$controller, 'getAuditoriaDetalhes'])->add($admin);
     $group->post('/executar', [$controller, 'executar'])->add($admin);
+    $group->post('/testar', [$controller, 'testar'])->add($admin);
     $group->post('/limpar-links', [$controller, 'limparLinks'])->add($admin);
     $group->get('/dashboard', [$controller, 'getDashboard'])->add($admin);
     $group->get('/jobs', [$controller, 'getJobs'])->add($admin);
     $group->post('/jobs', [$controller, 'salvarJob'])->add($admin);
+    $group->post('/jobs/{id}/toggle', [$controller, 'toggleJob'])->add($admin);
     $group->delete('/jobs/{id}', [$controller, 'deletarJob'])->add($admin);
     $group->get('/rotinas', [$controller, 'getRotinas'])->add($admin);
     $group->get('/servidor', [$controller, 'getServidor'])->add($admin);
@@ -1111,6 +1113,7 @@ $protected->group('/admin', function ($group) {
     $segUsuarios = new \Nutricional\Controllers\AdminSegurancaUsuariosController();
     $group->get('/seguranca-usuarios', [$segUsuarios, 'listarPolitica']);
     $group->post('/seguranca-usuarios/{id}', [$segUsuarios, 'salvarPolitica']);
+    $group->post('/seguranca-usuarios/{id}/2fa/resetar', [$segUsuarios, 'resetar2fa']);
     $cofre = new \Nutricional\Controllers\CofreSenhasController();
     $group->get('/cofre/status', [$cofre, 'status']);
     $group->post('/cofre/criar', [$cofre, 'criar']);

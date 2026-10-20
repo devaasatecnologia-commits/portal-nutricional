@@ -1,16 +1,16 @@
-﻿# Token de continuidade
+# Token de continuidade
 
 O handoff atual fica em
-[docs/tokens/CONTINUATION-2026-10-15.md](tokens/CONTINUATION-2026-10-15.md).
-Ele e um resumo tecnico sem credenciais nem dados reais, nao um meio de
+[docs/tokens/CONTINUATION-2026-10-19.md](tokens/CONTINUATION-2026-10-19.md).
+Ele é um resumo técnico sem credenciais nem dados reais, não um meio de
 conceder acesso.
 
-Para a visao completa de onboarding, consulte [HANDBOOK.md](HANDBOOK.md).
-O Bitwarden da organizacao e restrito a um custodiante; solicite contas
-individuais de desenvolvimento aos donos dos servicos pelo
-[processo documentado](SECRETS_ACCESS.md). Acesso a servicos nao substitui
-aprovacao para acessar dados de producao.
+Para a visão completa de onboarding, consulte [HANDBOOK.md](HANDBOOK.md).
+O Bitwarden da organização é restrito a um custodiante; solicite contas
+individuais de desenvolvimento aos donos dos serviços pelo
+[processo documentado](SECRETS_ACCESS.md). Acesso a serviços não substitui
+aprovação para acessar dados de produção.
 
-Snapshots anteriores em `docs/tokens/` sao historicos e podem estar
-desatualizados. Consulte [o indice dos tokens](tokens/README.md) antes de usar
+Snapshots anteriores em `docs/tokens/` são históricos e podem estar
+desatualizados. Consulte [o índice dos tokens](tokens/README.md) antes de usar
 qualquer registro antigo.

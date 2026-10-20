@@ -1,6 +1,6 @@
 // ==========================================================================
 // CUBO DE VENDAS
-// Base: NFs faturadas + saldo de pedidos em carteira (ver textos nos cards).
+// Base: NFs faturadas + saldo de pedidos em carteira - NFs de devolução.
 // ==========================================================================
 
 function cuboVendasHandler() {
@@ -34,7 +34,7 @@ function cuboVendasHandler() {
         detalhesErro: '',
         detalhesTruncado: false,
         documentosAgrupados: [],
-        detalhesTotais: { valor_bruto: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0 },
+        detalhesTotais: { valor_bruto: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0 },
 
         // Filtros
         filters: {
@@ -55,14 +55,16 @@ function cuboVendasHandler() {
         // Config
         dimensionsDisponiveis: {},
         metricsDisponiveis: {},
-        metricsSelecionadas: ['valor_total', 'quantidade_total', 'peso_total', 'comissao_total'],
+        metricsSelecionadas: ['comissao_total', 'valor_devolvido', 'valor_total', 'quantidade_total', 'peso_total'],
         rowDimension: 'data_documento',
         rowDimensionLabel: 'Data',
 
         // Dados
-        totals: { valor_bruto: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0, ticket_medio: 0 },
+        totals: { valor_bruto: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0, ticket_medio: 0 },
         comparativo: null,
         tableData: [],
+        buscaTabela: '',
+        periodoRapidoAtivo: 'mes_atual',
         ranking: [],
         timeSeriesData: { labels: [], values: [], series: {} },
 
@@ -294,6 +296,53 @@ function cuboVendasHandler() {
             return FILTROS_AVANCADOS.filter(k => this.filters[k] !== '' && this.filters[k] != null).length;
         },
 
+        get linhasFiltradas() {
+            const q = (this.buscaTabela || '').trim().toLowerCase();
+            if (!q) return this.tableData;
+            return this.tableData.filter(r => String(r.dimensao || '').toLowerCase().includes(q));
+        },
+
+        totalColuna(metric) {
+            const rows = this.linhasFiltradas;
+            if (!rows.length) return 0;
+            if (metric === 'ticket_medio') {
+                const v = rows.reduce((s, r) => s + (parseFloat(r.valor_total) || 0), 0);
+                const d = rows.reduce((s, r) => s + (parseFloat(r.qtd_documentos) || 0), 0);
+                return d > 0 ? v / d : 0;
+            }
+            return rows.reduce((s, r) => s + (parseFloat(r[metric]) || 0), 0);
+        },
+
+        async definirPeriodoRapido(tipo) {
+            const ref = new Date();
+            let di, df;
+            if (tipo === 'hoje') {
+                di = iso(ref);
+                df = iso(ref);
+            } else if (tipo === 'mes_atual') {
+                di = iso(new Date(ref.getFullYear(), ref.getMonth(), 1));
+                df = iso(ref);
+            } else if (tipo === 'mes_passado') {
+                di = iso(new Date(ref.getFullYear(), ref.getMonth() - 1, 1));
+                df = iso(new Date(ref.getFullYear(), ref.getMonth(), 0));
+            } else if (tipo === 'ultimos_30') {
+                const d30 = new Date(ref);
+                d30.setDate(d30.getDate() - 29);
+                di = iso(d30);
+                df = iso(ref);
+            } else if (tipo === 'ano_atual') {
+                di = iso(new Date(ref.getFullYear(), 0, 1));
+                df = iso(ref);
+            } else {
+                return;
+            }
+            this.periodoRapidoAtivo = tipo;
+            this.filters.data_inicio = di;
+            this.filters.data_fim = df;
+            this.opcoesCarregadas = false;
+            await this.atualizar();
+        },
+
         // ================================================================
         // DADOS
         // ================================================================
@@ -308,8 +357,12 @@ function cuboVendasHandler() {
                 if (seq !== undefined && seq !== this.reqSeq) return;
 
                 const total = parseFloat(data.totals?.valor_bruto || 0);
+                const isDateDim = this.rowDimension === 'data_documento' || this.rowDimension === 'data_nf';
                 this.tableData = (data.data || []).map(row => {
-                    const r = { dimensao_id: row.dimensao_id, dimensao: row.dimensao };
+                    const r = {
+                        dimensao_id: row.dimensao_id,
+                        dimensao: isDateDim ? this.formatDate(row.dimensao) : row.dimensao
+                    };
                     Object.keys(this.metricsDisponiveis).forEach(m => { r[m] = parseFloat(row[m] || 0); });
                     r.percentual_participacao = total > 0 && row.valor_total !== undefined
                         ? ((parseFloat(row.valor_total || 0) / total) * 100).toFixed(2)
@@ -319,6 +372,7 @@ function cuboVendasHandler() {
 
                 this.totals = {
                     valor_bruto: total,
+                    valor_devolvido: parseFloat(data.totals?.valor_devolvido || 0),
                     quantidade: parseFloat(data.totals?.quantidade || 0),
                     peso: parseFloat(data.totals?.peso || 0),
                     comissao: parseFloat(data.totals?.comissao || 0),
@@ -402,15 +456,29 @@ function cuboVendasHandler() {
             if (!canvas) return;
 
             const metrica = document.getElementById('graficoTipo')?.value || 'valor_total';
-            const rotulos = { valor_total: 'Valor (R$)', quantidade_total: 'Quantidade', peso_total: 'Peso líquido (kg)' };
+            const rotulos = {
+                valor_total: 'Valor Líquido (R$)',
+                comissao_total: 'Comissão Ajustada (R$)',
+                valor_devolvido: 'Devolução (R$)',
+                quantidade_total: 'Quantidade',
+                peso_total: 'Peso líquido (kg)'
+            };
             const labels = this.timeSeriesData.labels || [];
             const serie = this.timeSeriesData.series?.[metrica] || (metrica === 'valor_total' ? this.timeSeriesData.values : []) || [];
             if (!labels.length) return;
 
             const ctx = canvas.getContext('2d');
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            gradient.addColorStop(0, '#059669');
-            gradient.addColorStop(1, '#34d399');
+            if (metrica === 'valor_devolvido') {
+                gradient.addColorStop(0, '#dc2626');
+                gradient.addColorStop(1, '#f87171');
+            } else if (metrica === 'comissao_total') {
+                gradient.addColorStop(0, '#d97706');
+                gradient.addColorStop(1, '#fbbf24');
+            } else {
+                gradient.addColorStop(0, '#059669');
+                gradient.addColorStop(1, '#34d399');
+            }
             window.cuboChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -426,12 +494,29 @@ function cuboVendasHandler() {
         // ================================================================
         getMetricLabel(m) { return this.metricsDisponiveis[m]?.label || m; },
         getMetricClass(m) {
-            const c = { valor_total: 'text-emerald-600 font-bold', quantidade_total: 'text-blue-600', peso_total: 'text-indigo-600', comissao_total: 'text-amber-600', qtd_documentos: 'text-slate-700', ticket_medio: 'text-teal-600' };
+            const c = {
+                valor_total: 'text-emerald-600 font-bold',
+                valor_devolvido: 'text-red-600 font-bold',
+                quantidade_total: 'text-blue-600',
+                peso_total: 'text-indigo-600',
+                comissao_total: 'text-amber-600 font-bold',
+                qtd_documentos: 'text-slate-700',
+                ticket_medio: 'text-teal-600'
+            };
             return c[m] || '';
         },
-        formatMetric(v, m) { return ['valor_total', 'comissao_total', 'ticket_medio'].includes(m) ? this.formatMoney(v) : this.formatNumber(v); },
+        formatMetric(v, m) {
+            return ['valor_total', 'valor_devolvido', 'comissao_total', 'ticket_medio'].includes(m)
+                ? this.formatMoney(v)
+                : this.formatNumber(v);
+        },
         formatMoney(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(parseFloat(v) || 0); },
         formatNumber(v) { const n = parseFloat(v); return isNaN(n) ? '0' : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 }); },
+        formatDate(v) {
+            if (!v) return '';
+            const m = String(v).trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            return m ? `${m[3]}/${m[2]}/${m[1]}` : String(v);
+        },
         variacao(chave) {
             const v = this.comparativo?.[chave]?.variacao_pct;
             if (v === null || v === undefined) return '';
@@ -439,6 +524,9 @@ function cuboVendasHandler() {
         },
         variacaoClasse(chave) {
             const v = this.comparativo?.[chave]?.variacao_pct;
+            if (chave === 'valor_devolvido') {
+                return v > 0 ? 'text-red-500' : v < 0 ? 'text-emerald-600' : 'text-slate-400';
+            }
             return v > 0 ? 'text-emerald-600' : v < 0 ? 'text-red-500' : 'text-slate-400';
         },
 
@@ -494,7 +582,7 @@ function cuboVendasHandler() {
             this.detalhesCarregando = true;
             this.detalhesErro = '';
             this.documentosAgrupados = [];
-            this.detalhesTotais = { valor_bruto: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0 };
+            this.detalhesTotais = { valor_bruto: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0 };
             try {
                 const data = await this.apiFetch('detalhes', {
                     dimensao: dim,
@@ -508,12 +596,13 @@ function cuboVendasHandler() {
                     if (!agrupado[chave]) {
                         agrupado[chave] = {
                             chave, numero_nf: item.numero_nf, numero_fiscal: item.numero_fiscal, cliente: item.cliente,
-                            tipo_documento: item.tipo_documento, valor_bruto: 0, quantidade: 0, peso: 0, comissao: 0,
+                            tipo_documento: item.tipo_documento, valor_bruto: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0,
                             qtd_itens: 0, expandido: false, carregando: false, itens: null
                         };
                     }
                     const d = agrupado[chave];
                     d.valor_bruto += parseFloat(item.valor_bruto || 0);
+                    d.valor_devolvido += parseFloat(item.valor_devolvido || 0);
                     d.quantidade += parseFloat(item.quantidade || 0);
                     d.peso += parseFloat(item.peso || 0);
                     d.comissao += parseFloat(item.comissao || 0);
@@ -523,8 +612,12 @@ function cuboVendasHandler() {
                 this.detalhesTruncado = !!data.truncado;
                 const t = data.totais || {};
                 this.detalhesTotais = {
-                    valor_bruto: parseFloat(t.valor_bruto || 0), quantidade: parseFloat(t.quantidade || 0),
-                    peso: parseFloat(t.peso || 0), comissao: parseFloat(t.comissao || 0), qtd_documentos: parseInt(t.qtd_documentos || 0)
+                    valor_bruto: parseFloat(t.valor_bruto || 0),
+                    valor_devolvido: parseFloat(t.valor_devolvido || 0),
+                    quantidade: parseFloat(t.quantidade || 0),
+                    peso: parseFloat(t.peso || 0),
+                    comissao: parseFloat(t.comissao || 0),
+                    qtd_documentos: parseInt(t.qtd_documentos || 0)
                 };
             } catch (e) {
                 this.detalhesErro = e.message;

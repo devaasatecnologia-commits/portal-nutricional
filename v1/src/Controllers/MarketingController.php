@@ -4648,17 +4648,31 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
     }
 
     /**
-     * Extrai user ID do token
+     * Extrai user ID do token ou dos atributos da requisição
      */
     private function getUserIdFromToken($request): int
     {
+        $user = $request->getAttribute('user');
+        if (is_array($user)) {
+            if (!empty($user['uid'])) {
+                return (int)$user['uid'];
+            }
+            if (!empty($user['idusuario'])) {
+                return (int)$user['idusuario'];
+            }
+        }
+
         $authHeader = $request->getHeaderLine('Authorization');
         if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
             $token = $matches[1];
+            $secret = defined('CHAVE_SECRETA') ? CHAVE_SECRETA : ($_ENV['CHAVE_SECRETA'] ?? ($_ENV['JWT_SECRET'] ?? null));
+            if (empty($secret)) {
+                return 0;
+            }
             try {
-                $decoded = \Firebase\JWT\JWT::decode($token, new \Firebase\JWT\Key($_ENV['JWT_SECRET'] ?? 'chave_super_secreta', 'HS256'));
-                return $decoded->uid ?? 0;
-            } catch (Exception $e) {
+                $decoded = \Firebase\JWT\JWT::decode($token, new \Firebase\JWT\Key($secret, 'HS256'));
+                return (int)($decoded->uid ?? ($decoded->idusuario ?? 0));
+            } catch (\Throwable $e) {
                 return 0;
             }
         }

@@ -25,7 +25,7 @@ RewriteRule .* - [e=HTTP_AUTHORIZATION:%1]
 </FilesMatch>
 
 # Nunca servir ambiente, repositorio, logs, backups ou arquivos temporarios.
-<FilesMatch "^(\.env|\.gitignore|\.git|.*\.log|.*\.bak|.*\.sql|.*\.sqlite)$">
+<FilesMatch "^(\.env(?:\..*)?|\.gitignore|\.git|.*\.log|.*\.bak|.*\.sql|.*\.sqlite)$">
   Require all denied
 </FilesMatch>
 

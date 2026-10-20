@@ -14,8 +14,10 @@ use Psr\Http\Message\ServerRequestInterface as Request;
  *  - Pedido em carteira: pedido.status IN (1 aberto, 4 faturado parcial) e idtransacao IN (1, 17)
  *    (data = pedido.data). Considera apenas o SALDO AINDA NÃO FATURADO (qt - qtfaturado),
  *    pois o que já foi faturado entra via NF (evita dupla contagem em pedidos parcialmente faturados).
+ *  - Devolução: nfe.status = 2, nfe.status_devolucao = 1 e idtransacao IN (8,9,15,1000,1001,1004,1005,1007,1011,1014,1015,1020,1024,1025,1031,1032,1033)
+ *    (data = dataentrada). Abate o valor devolvido do valor total líquido e desconta a comissão da devolução.
  *  - Peso: peso LÍQUIDO (kg) = pesoliquido x quantidade, tanto em pedidos (item) quanto em NFs (nfs_item).
- *  - Comissão: apenas NFs (valor_comissao); pedidos não têm comissão apurada.
+ *  - Comissão: NFs faturadas (valor_comissao) menos a comissão das NFs de devolução (abatimento real por item).
  *  - Escopo (filiais/gestores do usuário) sempre aplicado por interseção com o filtro pedido.
  */
 class VendasCuboController
@@ -26,20 +28,24 @@ class VendasCuboController
 
     private const MSG_NAO_INFORMADO = '(Não informado)';
 
+    /** Transações de devolução na tabela nfe (status = 2 e status_devolucao = 1) */
+    private const TRANS_DEVOLUCAO = '8,9,15,1000,1001,1004,1005,1007,1011,1014,1015,1020,1024,1025,1031,1032,1033';
+
     /** Métricas oficiais: chave => [label, formato, definição, aliases aceitos] */
     private const METRICAS = [
-        'valor_total' => ['label' => 'Valor (R$)', 'format' => 'currency', 'alias' => ['valor_bruto', 'valor']],
+        'valor_total' => ['label' => 'Valor Líquido (R$)', 'format' => 'currency', 'alias' => ['valor_bruto', 'valor']],
+        'valor_devolvido' => ['label' => 'Devolução (R$)', 'format' => 'currency', 'alias' => ['devolucao']],
         'quantidade_total' => ['label' => 'Quantidade', 'format' => 'number', 'alias' => ['quantidade']],
         'peso_total' => ['label' => 'Peso líquido (kg)', 'format' => 'decimal', 'alias' => ['peso']],
-        'comissao_total' => ['label' => 'Comissão (R$)', 'format' => 'currency', 'alias' => ['comissao']],
+        'comissao_total' => ['label' => 'Comissão Ajustada (R$)', 'format' => 'currency', 'alias' => ['comissao', 'comissao_ajustada']],
         'qtd_documentos' => ['label' => 'Nº Documentos', 'format' => 'number', 'alias' => []],
         'ticket_medio' => ['label' => 'Ticket médio (R$)', 'format' => 'currency', 'alias' => []],
     ];
 
     /** Dimensões: id/label são colunas da CTE "base" */
     private const DIMENSOES = [
-        'data_documento' => ['label' => 'Data', 'type' => 'date', 'icon' => 'fa-calendar', 'id' => 'data_documento', 'txt' => "TO_CHAR(data_documento, 'YYYY-MM-DD')", 'kind' => 'date'],
-        'tipo_documento' => ['label' => 'Tipo (Pedido/NF)', 'type' => 'string', 'icon' => 'fa-file-invoice', 'id' => 'tipo_documento', 'txt' => 'tipo_documento', 'kind' => 'string'],
+        'data_documento' => ['label' => 'Data', 'type' => 'date', 'icon' => 'fa-calendar', 'id' => 'data_documento', 'txt' => "TO_CHAR(data_documento, 'DD/MM/YYYY')", 'kind' => 'date'],
+        'tipo_documento' => ['label' => 'Tipo (Pedido/NF/Devolução)', 'type' => 'string', 'icon' => 'fa-file-invoice', 'id' => 'tipo_documento', 'txt' => 'tipo_documento', 'kind' => 'string'],
         'status_descricao' => ['label' => 'Status', 'type' => 'string', 'icon' => 'fa-circle-info', 'id' => 'status_descricao', 'txt' => 'status_descricao', 'kind' => 'string'],
         'cliente' => ['label' => 'Cliente', 'type' => 'string', 'icon' => 'fa-user', 'id' => 'idcliente', 'txt' => 'cliente', 'kind' => 'int'],
         'representante' => ['label' => 'Representante', 'type' => 'string', 'icon' => 'fa-user-tie', 'id' => 'idrepresentante', 'txt' => 'representante', 'kind' => 'int'],
@@ -529,8 +535,12 @@ class VendasCuboController
                     $params['drill'] = (int)$idDrill;
                     $cond = "{$dim['id']} = :drill";
                 } elseif ($dim['kind'] === 'date') {
-                    $this->validarData((string)$idDrill);
-                    $params['drill'] = (string)$idDrill;
+                    $dStr = (string)$idDrill;
+                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dStr, $m)) {
+                        $dStr = "{$m[3]}-{$m[2]}-{$m[1]}";
+                    }
+                    $this->validarData($dStr);
+                    $params['drill'] = $dStr;
                     $cond = "{$dim['id']} = CAST(:drill AS date)";
                 } else {
                     $params['drill'] = (string)$idDrill;
@@ -547,6 +557,7 @@ class VendasCuboController
                        cliente,
                        produto,
                        SUM(valor) AS valor_bruto,
+                       SUM(valor_devolvido) AS valor_devolvido,
                        SUM(qtd) AS quantidade,
                        SUM(peso) AS peso,
                        SUM(comissao) AS comissao,
@@ -563,8 +574,11 @@ class VendasCuboController
 
             $sqlTot = "
                 WITH base AS ($base)
-                SELECT COALESCE(SUM(valor),0) AS valor_bruto, COALESCE(SUM(qtd),0) AS quantidade,
-                       COALESCE(SUM(peso),0) AS peso, COALESCE(SUM(comissao),0) AS comissao,
+                SELECT COALESCE(SUM(valor),0) AS valor_bruto,
+                       COALESCE(SUM(valor_devolvido),0) AS valor_devolvido,
+                       COALESCE(SUM(qtd),0) AS quantidade,
+                       COALESCE(SUM(peso),0) AS peso,
+                       COALESCE(SUM(comissao),0) AS comissao,
                        COUNT(DISTINCT tipo_documento || ':' || documento) AS qtd_documentos
                 FROM base WHERE $cond
             ";
@@ -573,6 +587,7 @@ class VendasCuboController
             $t = $stmt->fetch(\PDO::FETCH_ASSOC);
             $totais = [
                 'valor_bruto' => (float)$t['valor_bruto'],
+                'valor_devolvido' => (float)$t['valor_devolvido'],
                 'quantidade' => (float)$t['quantidade'],
                 'peso' => (float)$t['peso'],
                 'comissao' => (float)$t['comissao'],
@@ -591,7 +606,7 @@ class VendasCuboController
     }
 
     /**
-     * POST /v1/vendas/cubo/itens-documento  {tipo: PEDIDO|NF, numero_documento}
+     * POST /v1/vendas/cubo/itens-documento  {tipo: PEDIDO|NF|DEVOLUCAO, numero_documento}
      */
     public function getItensDocumento(Request $request, Response $response): Response
     {
@@ -600,7 +615,7 @@ class VendasCuboController
             $scope = UserScope::fromRequest($request, $this->pdo);
 
             $tipo = strtoupper((string)($input['tipo'] ?? 'PEDIDO'));
-            if (!in_array($tipo, ['PEDIDO', 'NF'], true)) {
+            if (!in_array($tipo, ['PEDIDO', 'NF', 'DEVOLUCAO'], true)) {
                 throw new \InvalidArgumentException('Tipo de documento inválido.');
             }
             $numero = (int)($input['numero_documento'] ?? 0);
@@ -610,8 +625,10 @@ class VendasCuboController
 
             if ($tipo === 'PEDIDO') {
                 $stmt = $this->pdo->prepare('SELECT idfilial, idsupervisor FROM pedido WHERE idpedido = :n AND status IN (1,4) AND idtransacao IN (1,17)');
-            } else {
+            } elseif ($tipo === 'NF') {
                 $stmt = $this->pdo->prepare('SELECT idfilial, idsupervisor FROM nfs WHERE idnfs = :n AND status = 2 AND idtransacao = 1');
+            } else {
+                $stmt = $this->pdo->prepare('SELECT idfilial, idsupervisor FROM nfe WHERE idnfe = :n AND status = 2 AND status_devolucao = 1 AND idtransacao IN (' . self::TRANS_DEVOLUCAO . ')');
             }
             $stmt->execute(['n' => $numero]);
             $cab = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -641,7 +658,7 @@ class VendasCuboController
                     WHERE pi.idpedido = :n AND pi.ativo = 'S'
                     ORDER BY i.descricao
                 ";
-            } else {
+            } elseif ($tipo === 'NF') {
                 $sql = "
                     SELECT i.descricao AS produto,
                            ni.qt AS quantidade,
@@ -655,6 +672,25 @@ class VendasCuboController
                     LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
                     LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
                     WHERE ni.idnfs = :n
+                    ORDER BY i.descricao
+                ";
+            } else {
+                $valDev = '(ni.valortotal + COALESCE(ni.valoripi, 0) + COALESCE(ni.valorsubsttribicms, 0) + COALESCE(ni.valorfrete, 0) + COALESCE(ni.valorseguro, 0) + COALESCE(ni.valoroutrasdespesas, 0) - COALESCE(ni.valor_desconto, 0))';
+                $comDev = "CASE WHEN COALESCE(ni.valor_comissao, 0) > 0 THEN ni.valor_comissao WHEN COALESCE(ni_orig.perc_comissao, 0) > 0 THEN ROUND($valDev * (ni_orig.perc_comissao / 100.0), 2) ELSE 0 END";
+                $sql = "
+                    SELECT i.descricao AS produto,
+                           ni.qt AS quantidade,
+                           ni.valor AS valor_unitario,
+                           -($valDev) AS valor_total,
+                           (COALESCE(ni.pesoliquido, i.pesoliquido, 0) * ni.qt) AS peso,
+                           COALESCE(gp.descricao, g.descricao) AS grupo,
+                           -($comDev) AS comissao
+                    FROM nfe_item ni
+                    JOIN item i ON i.iditem = ni.iditem
+                    LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+                    LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+                    LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+                    WHERE ni.idnfe = :n AND ni.ativo = 'S'
                     ORDER BY i.descricao
                 ";
             }
@@ -681,8 +717,11 @@ class VendasCuboController
     // ======================================================================
 
     /**
-     * Base única em nível de item: pedidos em carteira (saldo não faturado) UNION ALL NFs faturadas.
-     * Escopo e filtros são aplicados aqui, em ambos os ramos.
+     * Base única em nível de item:
+     *  1) Pedidos em carteira (saldo não faturado)
+     *  2) NFs faturadas (saída)
+     *  3) NFs de devolução (entrada - abate do valor líquido e da comissão)
+     * Escopo e filtros são aplicados aqui, em todos os ramos.
      */
     private function baseSql(array $f, array &$params): string
     {
@@ -722,28 +761,42 @@ class VendasCuboController
 
         $docP = '';
         $docN = '';
+        $docD = '';
         if (!empty($f['filiais'])) {
-            $docP .= ' AND p.idfilial IN (' . $this->inList($f['filiais']) . ')';
-            $docN .= ' AND n.idfilial IN (' . $this->inList($f['filiais']) . ')';
+            $in = $this->inList($f['filiais']);
+            $docP .= " AND p.idfilial IN ($in)";
+            $docN .= " AND n.idfilial IN ($in)";
+            $docD .= " AND n.idfilial IN ($in)";
         }
         if (!empty($f['gestores'])) {
-            $docP .= ' AND p.idsupervisor IN (' . $this->inList($f['gestores']) . ')';
-            $docN .= ' AND n.idsupervisor IN (' . $this->inList($f['gestores']) . ')';
+            $in = $this->inList($f['gestores']);
+            $docP .= " AND p.idsupervisor IN ($in)";
+            $docN .= " AND n.idsupervisor IN ($in)";
+            $docD .= " AND n.idsupervisor IN ($in)";
         }
         if (!empty($f['representantes'])) {
-            $docP .= ' AND p.idvendrepre IN (' . $this->inList($f['representantes']) . ')';
-            $docN .= ' AND n.idvendrepre IN (' . $this->inList($f['representantes']) . ')';
+            $in = $this->inList($f['representantes']);
+            $docP .= " AND p.idvendrepre IN ($in)";
+            $docN .= " AND n.idvendrepre IN ($in)";
+            $docD .= " AND n.idvendrepre IN ($in)";
         }
         if (!empty($f['clientes'])) {
-            $docP .= ' AND p.idcliforemp IN (' . $this->inList($f['clientes']) . ')';
-            $docN .= ' AND n.idcliforemp IN (' . $this->inList($f['clientes']) . ')';
+            $in = $this->inList($f['clientes']);
+            $docP .= " AND p.idcliforemp IN ($in)";
+            $docN .= " AND n.idcliforemp IN ($in)";
+            $docD .= " AND n.idcliforemp IN ($in)";
         }
         if (!empty($f['tipos_pedido'])) {
-            $docP .= ' AND p.idtransacao IN (' . $this->inList($f['tipos_pedido']) . ')';
-            $docN .= ' AND pp.idtransacao IN (' . $this->inList($f['tipos_pedido']) . ')';
+            $in = $this->inList($f['tipos_pedido']);
+            $docP .= " AND p.idtransacao IN ($in)";
+            $docN .= " AND pp.idtransacao IN ($in)";
+            $docD .= " AND pp.idtransacao IN ($in)";
         }
 
         $saldo = 'GREATEST(pi.qt - COALESCE(pi.qtfaturado, 0), 0)';
+        $valDev = '(ni.valortotal + COALESCE(ni.valoripi, 0) + COALESCE(ni.valorsubsttribicms, 0) + COALESCE(ni.valorfrete, 0) + COALESCE(ni.valorseguro, 0) + COALESCE(ni.valoroutrasdespesas, 0) - COALESCE(ni.valor_desconto, 0))';
+        $comDev = "CASE WHEN COALESCE(ni.valor_comissao, 0) > 0 THEN ni.valor_comissao WHEN COALESCE(ni_orig.perc_comissao, 0) > 0 THEN ROUND($valDev * (ni_orig.perc_comissao / 100.0), 2) ELSE 0 END";
+        $transDev = self::TRANS_DEVOLUCAO;
 
         return "
             SELECT 'PEDIDO' AS tipo_documento, p.idpedido AS documento, CAST(NULL AS bigint) AS numero_fiscal,
@@ -762,6 +815,7 @@ class VendasCuboController
                    i.iditem AS iditem, i.descricao AS produto,
                    p.idtransacao AS idtipopedido, pt.descricao AS tipo_pedido,
                    ($saldo * pi.valor) AS valor,
+                   CAST(0 AS numeric) AS valor_devolvido,
                    $saldo AS qtd,
                    ($saldo * COALESCE(i.pesoliquido, 0)) AS peso,
                    CAST(0 AS numeric) AS comissao
@@ -804,6 +858,7 @@ class VendasCuboController
                    i.iditem AS iditem, i.descricao AS produto,
                    pp.idtransacao AS idtipopedido, pt.descricao AS tipo_pedido,
                    (ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete, 0) + COALESCE(ni.valorseguro, 0) + COALESCE(ni.valoroutrasdespesas, 0)) AS valor,
+                   CAST(0 AS numeric) AS valor_devolvido,
                    ni.qt AS qtd,
                    (COALESCE(ni.pesoliquido, 0) * ni.qt) AS peso,
                    COALESCE(ni.valor_comissao, 0) AS comissao
@@ -827,6 +882,52 @@ class VendasCuboController
               AND n.idtransacao = 1
               AND n.dataemissao BETWEEN :di AND :df
               $docN $comum
+
+            UNION ALL
+
+            SELECT 'DEVOLUCAO' AS tipo_documento, n.idnfe AS documento,
+                   CAST(NULLIF(REGEXP_REPLACE(CAST(n.numero AS text), '[^0-9]', '', 'g'), '') AS bigint) AS numero_fiscal,
+                   n.dataentrada AS data_documento,
+                   'DEVOLVIDO' AS status_descricao,
+                   n.idfilial AS idfilial, f.nome AS filial,
+                   n.idcliforemp AS idcliente, c.fantasia AS cliente,
+                   n.idvendrepre AS idrepresentante, vend.fantasia AS representante,
+                   n.idsupervisor AS idsupervisor, sup.razao AS supervisor,
+                   cli.idregiao AS idregiao, rg.descricao AS regiao,
+                   cid.uf AS uf, c.idcidade AS idcidade, cid.descricao AS cidade,
+                   COALESCE(gp.idgrupo, g.idgrupo) AS idgrupo, COALESCE(gp.descricao, g.descricao) AS grupo,
+                   g.idgrupo AS idsubgrupo, g.descricao AS subgrupo,
+                   i.tipo AS idtipoproduto, COALESCE(tp.tipo, 'Tipo ' || i.tipo) AS tipo_produto,
+                   i.idmarca AS idmarca, m.descricao AS marca,
+                   i.iditem AS iditem, i.descricao AS produto,
+                   pp.idtransacao AS idtipopedido, pt.descricao AS tipo_pedido,
+                   -($valDev) AS valor,
+                   $valDev AS valor_devolvido,
+                   -(ni.qt) AS qtd,
+                   -(COALESCE(ni.pesoliquido, i.pesoliquido, 0) * ni.qt) AS peso,
+                   -($comDev) AS comissao
+            FROM nfe n
+            JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+            JOIN item i ON i.iditem = ni.iditem
+            JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp
+            LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+            LEFT JOIN grupo gp ON gp.idgrupo = NULLIF(g.idgrupopai, 0)
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
+            LEFT JOIN tipo_item_produto tp ON tp.idtipo = i.tipo
+            LEFT JOIN cliforemp vend ON vend.idcliforemp = n.idvendrepre
+            LEFT JOIN cliforemp sup ON sup.idcliforemp = n.idsupervisor
+            LEFT JOIN filial f ON f.idfilial = n.idfilial
+            LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+            LEFT JOIN pedido pp ON pp.idpedido = ni_orig.idpedido
+            LEFT JOIN pedido_transacao pt ON pt.idtransacao = pp.idtransacao
+            WHERE n.status = 2
+              AND n.status_devolucao = 1
+              AND n.idtransacao IN ($transDev)
+              AND n.dataentrada BETWEEN :di AND :df
+              $docD $comum
         ";
     }
 
@@ -875,8 +976,11 @@ class VendasCuboController
         $base = $this->baseSql($f, $params);
         $sql = "
             WITH base AS ($base)
-            SELECT COALESCE(SUM(valor), 0) AS valor_total, COALESCE(SUM(qtd), 0) AS quantidade_total,
-                   COALESCE(SUM(peso), 0) AS peso_total, COALESCE(SUM(comissao), 0) AS comissao_total,
+            SELECT COALESCE(SUM(valor), 0) AS valor_total,
+                   COALESCE(SUM(valor_devolvido), 0) AS valor_devolvido,
+                   COALESCE(SUM(qtd), 0) AS quantidade_total,
+                   COALESCE(SUM(peso), 0) AS peso_total,
+                   COALESCE(SUM(comissao), 0) AS comissao_total,
                    COUNT(DISTINCT tipo_documento || ':' || documento) AS qtd_documentos
             FROM base
         ";
@@ -888,6 +992,7 @@ class VendasCuboController
         $docs = (int)$t['qtd_documentos'];
         return [
             'valor_bruto' => $valor,
+            'valor_devolvido' => (float)$t['valor_devolvido'],
             'quantidade' => (float)$t['quantidade_total'],
             'peso' => (float)$t['peso_total'],
             'comissao' => (float)$t['comissao_total'],
@@ -903,6 +1008,7 @@ class VendasCuboController
         $sql = "
             WITH base AS ($base)
             SELECT TO_CHAR(data_documento, 'YYYY-MM') AS periodo, SUM(valor) AS valor,
+                   SUM(valor_devolvido) AS valor_devolvido, SUM(comissao) AS comissao,
                    SUM(qtd) AS quantidade, SUM(peso) AS peso
             FROM base GROUP BY 1 ORDER BY 1
         ";
@@ -915,6 +1021,8 @@ class VendasCuboController
 
         $labels = [];
         $valor = [];
+        $dev = [];
+        $com = [];
         $qtd = [];
         $peso = [];
         $cur = new \DateTime(substr($f['di'], 0, 7) . '-01');
@@ -923,6 +1031,8 @@ class VendasCuboController
             $k = $cur->format('Y-m');
             $labels[] = $k;
             $valor[] = (float)($porMes[$k]['valor'] ?? 0);
+            $dev[] = (float)($porMes[$k]['valor_devolvido'] ?? 0);
+            $com[] = (float)($porMes[$k]['comissao'] ?? 0);
             $qtd[] = (float)($porMes[$k]['quantidade'] ?? 0);
             $peso[] = (float)($porMes[$k]['peso'] ?? 0);
             $cur->modify('+1 month');
@@ -931,7 +1041,13 @@ class VendasCuboController
         return [
             'labels' => $labels,
             'values' => $valor,
-            'series' => ['valor_total' => $valor, 'quantidade_total' => $qtd, 'peso_total' => $peso],
+            'series' => [
+                'valor_total' => $valor,
+                'valor_devolvido' => $dev,
+                'comissao_total' => $com,
+                'quantidade_total' => $qtd,
+                'peso_total' => $peso,
+            ],
         ];
     }
 
@@ -948,9 +1064,9 @@ class VendasCuboController
     private function comparativo(array $atual, array $ant, array $periodo): array
     {
         $out = ['periodo_anterior' => ['data_inicio' => $periodo[0], 'data_fim' => $periodo[1]]];
-        foreach (['valor_bruto', 'quantidade', 'peso', 'comissao', 'qtd_documentos', 'ticket_medio'] as $k) {
-            $a = (float)$atual[$k];
-            $b = (float)$ant[$k];
+        foreach (['valor_bruto', 'valor_devolvido', 'quantidade', 'peso', 'comissao', 'qtd_documentos', 'ticket_medio'] as $k) {
+            $a = (float)($atual[$k] ?? 0);
+            $b = (float)($ant[$k] ?? 0);
             $out[$k] = [
                 'atual' => $a,
                 'anterior' => $b,
@@ -963,10 +1079,15 @@ class VendasCuboController
     private function totalDaMetrica(array $totais, string $metric): float
     {
         $map = [
-            'valor_total' => 'valor_bruto', 'quantidade_total' => 'quantidade', 'peso_total' => 'peso',
-            'comissao_total' => 'comissao', 'qtd_documentos' => 'qtd_documentos', 'ticket_medio' => 'ticket_medio',
+            'valor_total' => 'valor_bruto',
+            'valor_devolvido' => 'valor_devolvido',
+            'quantidade_total' => 'quantidade',
+            'peso_total' => 'peso',
+            'comissao_total' => 'comissao',
+            'qtd_documentos' => 'qtd_documentos',
+            'ticket_medio' => 'ticket_medio',
         ];
-        return (float)$totais[$map[$metric]];
+        return (float)($totais[$map[$metric]] ?? 0);
     }
 
     private function exprMetrica(string $m): string
@@ -974,6 +1095,8 @@ class VendasCuboController
         switch ($m) {
             case 'valor_total':
                 return 'COALESCE(SUM(valor), 0)';
+            case 'valor_devolvido':
+                return 'COALESCE(SUM(valor_devolvido), 0)';
             case 'quantidade_total':
                 return 'COALESCE(SUM(qtd), 0)';
             case 'peso_total':

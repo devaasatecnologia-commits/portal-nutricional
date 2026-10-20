@@ -1,6 +1,6 @@
-﻿# Handoff seguro para assistentes de IA
+# Handoff seguro para assistentes de IA
 
-**Revisado:** 2026-10-06
+**Revisado:** 2026-10-19
 
 **Objetivo:** fornecer contexto reutilizavel sem exportar credenciais, dados
 operacionais ou o repositorio inteiro.
@@ -23,7 +23,7 @@ Comece anexando apenas o minimo:
 1. `README.md`
 2. `docs/HANDBOOK.md`
 3. `docs/ARCHITECTURE.md`
-4. `docs/tokens/CONTINUATION-2026-10-14.md` - token atual; conferir data/estado
+4. `docs/tokens/CONTINUATION-2026-10-19.md` - token atual; conferir data/estado
    antes de cada uso.
 5. `docs/tokens/TOKEN-MANUTENCAO.md` - para diagnosticar erro em um modulo.
 6. `composer.json` - dependencias e autoload, se relevante a tarefa.
@@ -64,7 +64,7 @@ inteiro por conveniencia.
   build ou arquivos locais que nao sejam necessarios a tarefa.
 - Tokens historicos em `docs/tokens/token-*.md`; podem estar desatualizados ou
   conter informacoes que nao foram auditadas. Use somente o token atual
-  `docs/tokens/CONTINUATION-2026-10-14.md`, depois de conferir que continua
+  `docs/tokens/CONTINUATION-2026-10-19.md`, depois de conferir que continua
   atual e que o envio foi aprovado.
 - Em especial, nao envie `token-2026-09-22-parte-13.md` nem
   `token-2026-09-30-parte-05.md` antes da revisao humana: uma verificacao por

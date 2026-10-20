@@ -160,20 +160,33 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 }
             }
             
+            $proxima = null;
+            if (!empty($input['ativo']) && !empty($input['schedule'])) {
+                try {
+                    $proxima = (new CronExpression($input['schedule']))->getNextRunDate()->format('Y-m-d H:i:s');
+                } catch (\Throwable $e) {
+                    $proxima = null;
+                }
+            }
+
             if (isset($input['id']) && $input['id']) {
                 // Atualizar
                 $stmt = $this->pdo->prepare("
                     UPDATE cron_jobs 
-                    SET nome = ?, descricao = ?, categoria_id = ?, ativo = ?, schedule = ?, 
-                        notificar_email = ?, notificar_sucesso = ?, notificar_falha = ?, parametros = ?::jsonb
+                    SET nome = ?, descricao = ?, categoria_id = ?, comando = COALESCE(NULLIF(?, ''), comando),
+                        ativo = ?, schedule = ?, proxima_execucao = ?,
+                        notificar_email = ?, notificar_sucesso = ?, notificar_falha = ?, parametros = ?::jsonb,
+                        updated_at = NOW()
                     WHERE id = ?
                 ");
                 $stmt->execute([
                     $input['nome'],
                     $input['descricao'] ?? '',
                     $input['categoria_id'] ?? null,
+                    $input['comando'] ?? '',
                     $input['ativo'] ? 'true' : 'false',
                     $input['schedule'] ?? null,
+                    $proxima,
                     $input['notificar_email'] ?? null,
                     $input['notificar_sucesso'] ? 'true' : 'false',
                     $input['notificar_falha'] ? 'true' : 'false',
@@ -190,9 +203,9 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 }
                 // Criar
                 $stmt = $this->pdo->prepare("
-                    INSERT INTO cron_jobs (nome, descricao, categoria_id, comando, ativo, schedule, 
+                    INSERT INTO cron_jobs (nome, descricao, categoria_id, comando, ativo, schedule, proxima_execucao,
                                           notificar_email, notificar_sucesso, notificar_falha, parametros)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb)
                     RETURNING id
                 ");
                 $stmt->execute([
@@ -202,6 +215,7 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                     $input['comando'],
                     $input['ativo'] ? 'true' : 'false',
                     $input['schedule'] ?? null,
+                    $proxima,
                     $input['notificar_email'] ?? null,
                     $input['notificar_sucesso'] ? 'true' : 'false',
                     $input['notificar_falha'] ? 'true' : 'false',
@@ -216,6 +230,58 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             ]);
         } catch (\Exception $e) {
             return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /cron/jobs/{id}/toggle - Alterna Ativo/Inativo com 1 clique no painel Admin
+     */
+    public function toggleJob(Request $request, Response $response, array $args): Response
+    {
+        $id = (int)($args['id'] ?? 0);
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+
+        try {
+            $stmt = $this->pdo->prepare("SELECT * FROM cron_jobs WHERE id = ?");
+            $stmt->execute([$id]);
+            $job = $stmt->fetch(\PDO::FETCH_ASSOC);
+
+            if (!$job) {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Job não encontrado'
+                ], 404);
+            }
+
+            $novoStatus = array_key_exists('ativo', $input) ? (bool)$input['ativo'] : !((bool)$job['ativo']);
+            $proxima = null;
+
+            if ($novoStatus && !empty($job['schedule'])) {
+                try {
+                    $proxima = (new CronExpression($job['schedule']))->getNextRunDate()->format('Y-m-d H:i:s');
+                } catch (\Throwable $e) {
+                    $proxima = null;
+                }
+            }
+
+            $upd = $this->pdo->prepare("
+                UPDATE cron_jobs
+                SET ativo = ?, proxima_execucao = ?, updated_at = NOW()
+                WHERE id = ?
+            ");
+            $upd->execute([$novoStatus ? 'true' : 'false', $proxima, $id]);
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'id' => $id,
+                'ativo' => $novoStatus,
+                'proxima_execucao' => $proxima,
+                'message' => $novoStatus
+                    ? "Job \"{$job['nome']}\" ATIVADO! Próxima execução: " . ($proxima ? date('d/m/Y H:i', strtotime($proxima)) : 'Não agendado')
+                    : "Job \"{$job['nome']}\" INATIVADO (pausado)."
+            ]);
+        } catch (\Exception $e) {
+            return $this->jsonResponse($response, ['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
     
@@ -333,10 +399,21 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         $jobData = $job->fetch(\PDO::FETCH_ASSOC);
         
         if (!$jobData) {
-            return $this->jsonResponse($response, [
-                'success' => false,
-                'message' => 'Job não encontrado'
-            ], 404);
+            if (isset(CronRotinasController::ROTINAS[$comando])) {
+                [$nomeDef, $descDef] = CronRotinasController::ROTINAS[$comando];
+                $ins = $this->pdo->prepare("
+                    INSERT INTO cron_jobs (nome, descricao, categoria_id, comando, ativo, schedule, parametros)
+                    VALUES (?, ?, 2, ?, false, '0 6 * * *', '{}'::jsonb)
+                    RETURNING *
+                ");
+                $ins->execute([$nomeDef, $descDef, $comando]);
+                $jobData = $ins->fetch(\PDO::FETCH_ASSOC);
+            } else {
+                return $this->jsonResponse($response, [
+                    'success' => false,
+                    'message' => 'Job não encontrado'
+                ], 404);
+            }
         }
         
         // Criar registro de execução
@@ -365,6 +442,7 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 'success' => $resultado['success'],
                 'message' => $resultado['message'],
                 'detalhes' => $resultado['detalhes'] ?? [],
+                'email_html' => $resultado['email_html'] ?? null,
                 'duracao' => $duracao,
                 'execucao_id' => $execId
             ]);
@@ -376,6 +454,173 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             return $this->jsonResponse($response, [
                 'success' => false,
                 'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /cron/testar - Testa configuração do Cron + executa Simulação (Dry-Run) sem alterar dados
+     */
+    public function testar(Request $request, Response $response): Response
+    {
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $comando = trim((string)($input['comando'] ?? ''));
+        $jobId = isset($input['id']) && $input['id'] ? (int)$input['id'] : null;
+
+        try {
+            $jobBanco = null;
+            if ($jobId) {
+                $st = $this->pdo->prepare("SELECT * FROM cron_jobs WHERE id = ?");
+                $st->execute([$jobId]);
+                $jobBanco = $st->fetch(\PDO::FETCH_ASSOC);
+            } elseif ($comando !== '') {
+                $st = $this->pdo->prepare("SELECT * FROM cron_jobs WHERE comando = ?");
+                $st->execute([$comando]);
+                $jobBanco = $st->fetch(\PDO::FETCH_ASSOC);
+            }
+
+            if ($comando === '' && $jobBanco) {
+                $comando = (string)$jobBanco['comando'];
+            }
+
+            $checks = [];
+            $temErro = false;
+
+            // 1. Verificar se a rotina existe no motor
+            if (isset(CronRotinasController::ROTINAS[$comando])) {
+                [$rotinaNome, $rotinaDesc] = CronRotinasController::ROTINAS[$comando];
+                $checks[] = [
+                    'etapa' => 'Rotina / Comando',
+                    'status' => 'ok',
+                    'detalhe' => "Comando '{$comando}' reconhecido ({$rotinaNome}: {$rotinaDesc})."
+                ];
+            } else {
+                $temErro = true;
+                $checks[] = [
+                    'etapa' => 'Rotina / Comando',
+                    'status' => 'error',
+                    'detalhe' => "Comando '{$comando}' não existe nas rotinas disponíveis."
+                ];
+            }
+
+            // 2. Validar Expressão Cron (Schedule) e calcular próximas 3 execuções
+            $schedule = array_key_exists('schedule', $input)
+                ? trim((string)$input['schedule'])
+                : trim((string)($jobBanco['schedule'] ?? ''));
+
+            $proximasExecucoes = [];
+            if ($schedule !== '') {
+                try {
+                    $cronExpr = new CronExpression($schedule);
+                    for ($i = 0; $i < 3; $i++) {
+                        $proximasExecucoes[] = $cronExpr->getNextRunDate('now', $i)->format('d/m/Y H:i:s');
+                    }
+                    $checks[] = [
+                        'etapa' => 'Expressão Cron (Schedule)',
+                        'status' => 'ok',
+                        'detalhe' => "Expressão '{$schedule}' válida. Próxima execução: " . $proximasExecucoes[0]
+                    ];
+                } catch (\Throwable $e) {
+                    $temErro = true;
+                    $checks[] = [
+                        'etapa' => 'Expressão Cron (Schedule)',
+                        'status' => 'error',
+                        'detalhe' => "Expressão '{$schedule}' inválida: " . $e->getMessage()
+                    ];
+                }
+            } else {
+                $checks[] = [
+                    'etapa' => 'Expressão Cron (Schedule)',
+                    'status' => 'warn',
+                    'detalhe' => 'Nenhum horário (Schedule) definido — este job só rodará manualmente.'
+                ];
+            }
+
+            // 3. Validar E-mails de Notificação
+            $notificarEmail = array_key_exists('notificar_email', $input)
+                ? trim((string)$input['notificar_email'])
+                : trim((string)($jobBanco['notificar_email'] ?? ''));
+
+            if ($notificarEmail !== '') {
+                $lista = array_filter(array_map('trim', explode(',', $notificarEmail)));
+                $invalidos = [];
+                foreach ($lista as $em) {
+                    if (!filter_var($em, FILTER_VALIDATE_EMAIL)) {
+                        $invalidos[] = $em;
+                    }
+                }
+                if (!empty($invalidos)) {
+                    $temErro = true;
+                    $checks[] = [
+                        'etapa' => 'Notificação por E-mail',
+                        'status' => 'error',
+                        'detalhe' => 'E-mail(s) com formato inválido: ' . implode(', ', $invalidos)
+                    ];
+                } else {
+                    $checks[] = [
+                        'etapa' => 'Notificação por E-mail',
+                        'status' => 'ok',
+                        'detalhe' => count($lista) . ' destinatário(s) válido(s): ' . implode(', ', $lista)
+                    ];
+                }
+            } else {
+                $checks[] = [
+                    'etapa' => 'Notificação por E-mail',
+                    'status' => 'warn',
+                    'detalhe' => 'Nenhum e-mail configurado no job (usará padrão da rotina se aplicável).'
+                ];
+            }
+
+            // 4. Validar JSON de Parâmetros
+            $parametros = $input['parametros'] ?? ($jobBanco ? $this->parametrosDoJob($jobBanco) : []);
+            if (is_string($parametros)) {
+                $decoded = json_decode($parametros, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    $temErro = true;
+                    $checks[] = [
+                        'etapa' => 'Parâmetros (JSON)',
+                        'status' => 'error',
+                        'detalhe' => 'JSON de parâmetros inválido: ' . json_last_error_msg()
+                    ];
+                    $parametros = [];
+                } else {
+                    $parametros = is_array($decoded) ? $decoded : [];
+                }
+            }
+
+            // 5. Simulação (Dry-Run) específica da rotina (100% somente leitura)
+            $simulacao = null;
+            if (!$temErro && isset(CronRotinasController::ROTINAS[$comando])) {
+                $inicioSim = microtime(true);
+                $rotinasController = new CronRotinasController();
+                $simulacao = $rotinasController->testarRotina($comando, is_array($parametros) ? $parametros : []);
+                $simulacao['duracao_segundos'] = round(microtime(true) - $inicioSim, 2);
+
+                if (!empty($simulacao['checks']) && is_array($simulacao['checks'])) {
+                    foreach ($simulacao['checks'] as $c) {
+                        $checks[] = $c;
+                        if (($c['status'] ?? '') === 'error') {
+                            $temErro = true;
+                        }
+                    }
+                }
+            }
+
+            return $this->jsonResponse($response, [
+                'success' => !$temErro && ($simulacao['success'] ?? true),
+                'comando' => $comando,
+                'ativo_no_banco' => $jobBanco ? (bool)$jobBanco['ativo'] : null,
+                'message' => !$temErro && ($simulacao['success'] ?? true)
+                    ? ($simulacao['message'] ?? 'Configuração e simulação validadas com sucesso!')
+                    : ($simulacao['message'] ?? 'Foram encontrados alertas ou erros na validação.'),
+                'checks' => $checks,
+                'proximas_execucoes' => $proximasExecucoes,
+                'simulacao' => $simulacao
+            ]);
+        } catch (\Throwable $e) {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Erro ao testar configuração: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -391,7 +636,15 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         if (is_string($p)) {
             $p = json_decode($p, true);
         }
-        return is_array($p) ? $p : [];
+        if (!is_array($p)) {
+            $p = [];
+        }
+        if (!empty($job['notificar_email']) && empty($p['email_notificacao'])) {
+            $p['email_notificacao'] = $job['notificar_email'];
+        }
+        $p['notificar_sucesso'] = (bool)($job['notificar_sucesso'] ?? false);
+        $p['notificar_falha'] = (bool)($job['notificar_falha'] ?? true);
+        return $p;
     }
 
     /**
@@ -449,33 +702,55 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
     {
         $script = realpath(__DIR__ . '/../../cron/run.php') ?: (dirname(__DIR__, 2) . '/cron/run.php');
         $logDir = dirname(__DIR__, 3) . '/logs';
-        $php = '/usr/local/bin/php';
-        $linha = "* * * * * {$php} {$script} >> {$logDir}/cron_run.log 2>&1";
+        $php = '/usr/local/bin/ea-php82';
+        $linha = "{$php} {$script} >> {$logDir}/cron_run.log 2>&1";
+        $rawToken = defined('API_TOKEN') ? (string)API_TOKEN : (string)($_ENV['API_TOKEN'] ?? '');
+        $escapedKey = str_replace(['%', ')'], ['\\%', '\\)'], urlencode($rawToken));
+        $linhaCurlDispatcher = '/usr/bin/curl -k -s -A "CronJob" "https://api.nutricionalbr.com/index.php?acao=m0t0rCr0nP0rt4l&key=' . $escapedKey . '" > /dev/null 2>&1';
+        $linhaCurlBonif = '/usr/bin/curl -k -s -A "CronJob" "https://api.nutricionalbr.com/index.php?acao=b0n1f1c4c03sFl3x&key=' . $escapedKey . '" > /dev/null 2>&1';
 
         $hb = $logDir . '/cron_heartbeat.txt';
         $ultimo = is_file($hb) ? (int)trim((string)@file_get_contents($hb)) : 0;
         $ativo = $ultimo > 0 && (time() - $ultimo) <= 180;
+        $ultimoFormatado = $ultimo ? date('Y-m-d H:i:s', $ultimo) : null;
+
+        try {
+            $hbRow = $this->pdo->query("
+                SELECT ultimo_batimento,
+                       EXTRACT(EPOCH FROM (NOW() - ultimo_batimento))::int AS segundos_atras
+                FROM cron_dispatcher_status
+                WHERE id = 1
+            ")->fetch(\PDO::FETCH_ASSOC);
+            if ($hbRow && !empty($hbRow['ultimo_batimento'])) {
+                $segAtras = (int)$hbRow['segundos_atras'];
+                if ($segAtras <= 180) {
+                    $ativo = true;
+                }
+                $ultimoFormatado = date('Y-m-d H:i:s', strtotime($hbRow['ultimo_batimento']));
+            }
+        } catch (\Throwable $e) {
+            // tabela opcional
+        }
 
         $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
         $execOk = function_exists('exec') && !in_array('exec', $disabled, true);
 
         return $this->jsonResponse($response, [
             'success' => true,
-            'linha_cron' => $linha,
+            'linha_cron' => $linhaCurlDispatcher,
+            'linha_cli' => $linha,
+            'linha_curl_dispatcher' => $linhaCurlDispatcher,
+            'linha_curl_bonificacao' => $linhaCurlBonif,
             'script' => $script,
             'php_sugerido' => $php,
             'edicao_direta' => $execOk,
             'dispatcher_ativo' => $ativo,
-            'ultimo_batimento' => $ultimo ? date('Y-m-d H:i:s', $ultimo) : null,
+            'ultimo_batimento' => $ultimoFormatado,
             'instrucoes' => [
-                'Abra o cPanel da hospedagem > Avancado > Tarefas Cron (Cron Jobs).',
-                'Em "Configuracoes comuns" escolha "A cada minuto (* * * * *)".',
-                'No campo Comando cole a linha abaixo (sem os 5 asteriscos, que o cPanel ja preenche) e clique em "Adicionar nova tarefa cron".',
-                'Confirme o caminho do PHP com o suporte da hospedagem (ex.: /usr/local/bin/php ou /opt/cpanel/ea-php82/root/usr/bin/php).',
-                'Depois disso, crie/edite os jobs aqui no painel: o dispatcher executa cada job no horario do campo Schedule. Nao e preciso mexer mais no servidor.',
-                $execOk
-                    ? 'exec() esta habilitado neste servidor, mas o painel nao altera o crontab sozinho por seguranca.'
-                    : 'exec() esta desabilitado nesta hospedagem: o agendamento deve ser feito manualmente no cPanel (uma unica vez).',
+                'Abra o cPanel > Avançado > Trabalhos Cron (Cron Jobs).',
+                'OPÇÃO A (Motor Unificado do Portal - Recomendado): Em "Configurações comuns" escolha "Uma vez por minuto (* * * * *)" e cole o comando com acao=m0t0rCr0nP0rt4l. Ele respeita o botão Ativo/Inativo e o Schedule (ex.: 0 22 * * *) de cada Job no Portal.',
+                'OPÇÃO B (Job Individual Bonificações às 22:00): Se preferir cadastrar separado no cPanel igual aos antigos, coloque Minuto=0, Hora=22, Dia=*, Mês=*, Dia da semana=* e cole o comando com acao=b0n1f1c4c03sFl3x (ele também respeita o botão Ativo/Inativo do Portal!).',
+                'Os demais jobs no Portal estão marcados como INATIVOS para não conflitar com os seus crons atuais do cPanel enquanto você migra um de cada vez.',
             ],
         ]);
     }

@@ -93,4 +93,32 @@ class AdminSegurancaUsuariosController extends AdminSegredosController
         $this->auditar('seguranca:' . substr((string)$alvoNome, 0, 60), 'politica', $u, $request, true);
         return $this->json($response, ['success' => true]);
     }
+
+    /** POST /v1/admin/seguranca-usuarios/{id}/2fa/resetar  {codigo} */
+    public function resetar2fa(Request $request, Response $response, array $args): Response
+    {
+        if ($r = $this->exigirAdmin($request, $response)) return $r;
+        $u = $this->usuario($request);
+        $alvo = (int)($args['id'] ?? 0);
+
+        $st = $this->pdo->prepare("SELECT username FROM usuario WHERE idusuario = :id");
+        $st->execute(['id' => $alvo]);
+        $alvoNome = $st->fetchColumn();
+        if ($alvo <= 0 || $alvoNome === false) {
+            return $this->json($response, ['error' => 'Usuario nao encontrado'], 404);
+        }
+
+        // Resetar 2FA de usuario e acao sensivel: exige 2FA do admin executor
+        if ($r = $this->validarDoisFatores($request, $response, $u, '2fa:' . substr((string)$alvoNome, 0, 60), 'reset_admin')) {
+            return $r;
+        }
+
+        $this->pdo->prepare("DELETE FROM admin_2fa WHERE idusuario = :id")->execute(['id' => $alvo]);
+        $this->auditar('2fa:' . substr((string)$alvoNome, 0, 60), 'reset_admin', $u, $request, true);
+
+        return $this->json($response, [
+            'success' => true,
+            'message' => 'Autenticador 2FA do usuario resetado com sucesso'
+        ]);
+    }
 }

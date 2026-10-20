@@ -293,8 +293,11 @@ function renderizarSeguranca() {
         <tr class="border-b border-slate-100 text-sm">
             <td class="px-4 py-2 font-semibold">${escapeHtml(u.username)}</td>
             <td class="px-4 py-2 text-center">${u.tem_2fa
-                ? '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Ativo</span>'
-                : '<span class="px-2 py-1 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">Não ativado</span>'}</td>
+                ? `<div class="inline-flex items-center gap-1.5 justify-center">
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Ativo</span>
+                    <button onclick="resetar2faUsuario(${u.idusuario}, '${escapeHtml(u.username)}')" class="px-1.5 py-0.5 text-[10px] font-medium text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded" title="Resetar autenticador deste usuário">Resetar</button>
+                   </div>`
+                : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">Não ativado</span>'}</td>
             <td class="px-4 py-2 text-center"><input type="checkbox" id="seg2fa_${u.idusuario}" ${u.exige_2fa_login ? 'checked' : ''} class="w-4 h-4">
                 ${u.exige_2fa_login && !u.tem_2fa ? '<div class="text-[10px] text-amber-600">aguardando cadastro</div>' : ''}</td>
             <td class="px-4 py-2 text-center"><input type="number" min="1" max="480" id="segInat_${u.idusuario}" value="${u.inatividade_min}" class="w-20 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
@@ -302,6 +305,30 @@ function renderizarSeguranca() {
                         <td class="px-4 py-2 text-center"><input type="tel" id="segWhats_${u.idusuario}" value="${escapeHtml(u.whatsapp)}" placeholder="11999998888" class="w-36 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
                         <td class="px-4 py-2 text-center"><button onclick="salvarSeguranca(${u.idusuario})" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">Salvar</button></td>
                     </tr>`).join('') || '<tr><td colspan="7" class="text-center py-6 text-slate-400">Nenhum usuário</td></tr>';
+            }
+
+            async function resetar2faUsuario(id, username) {
+                const confirm = await Swal.fire({
+                    title: 'Resetar 2FA?',
+                    text: `O autenticador do usuário "${username}" será removido. Ele poderá cadastrar um novo aparelho no próximo login.`,
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#e11d48',
+                    confirmButtonText: 'Sim, resetar 2FA',
+                    cancelButtonText: 'Cancelar'
+                });
+                if (!confirm.isConfirmed) return;
+
+                const codigo = await pedirCodigo2fa('Confirmar reset de 2FA do usuário');
+                if (codigo === null) return;
+
+                try {
+                    const d = await apiFetch('/admin/seguranca-usuarios/' + id + '/2fa/resetar', 'POST', { codigo });
+                    if (d.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas para resetar o 2FA de outros usuários.');
+                    if (d.error) throw new Error(d.error);
+                    showToast('2FA do usuário resetado com sucesso');
+                    carregarSeguranca();
+                } catch (e) { showError('Erro', e.message); }
             }
 
             async function salvarSeguranca(id) {

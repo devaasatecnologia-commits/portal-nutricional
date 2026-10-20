@@ -4,13 +4,24 @@ require_once __DIR__ . '/../../vendor/autoload.php';
 use Dotenv\Dotenv;
 use Slim\Factory\AppFactory;
 
-// Carrega variáveis de ambiente. Procura o .env fora da área pública, nesta ordem:
-// 2 níveis acima do site (home da conta), 1 nível acima e, por fim, a raiz do site.
+// Carrega variáveis de ambiente.
+// 1º Prioridade: arquivo exclusivo ".env.api" (evita conflito com .env de outro sistema no FTP)
+// 2º Fallback: arquivo ".env" tradicional
 $envDir = dirname(__DIR__, 2);
-foreach ([dirname(__DIR__, 4), dirname(__DIR__, 3), dirname(__DIR__, 2)] as $cand) {
-    if (is_file($cand . '/.env')) { $envDir = $cand; break; }
+$envFile = '.env';
+$candidatos = [dirname(__DIR__, 4), dirname(__DIR__, 3), dirname(__DIR__, 2)];
+$encontrado = false;
+foreach (['.env.api', '.env'] as $nomeArquivo) {
+    foreach ($candidatos as $cand) {
+        if (is_file($cand . '/' . $nomeArquivo)) {
+            $envDir = $cand;
+            $envFile = $nomeArquivo;
+            $encontrado = true;
+            break 2;
+        }
+    }
 }
-$dotenv = Dotenv::createImmutable($envDir);
+$dotenv = Dotenv::createImmutable($envDir, $envFile);
 $dotenv->load();
 
 // Timezone

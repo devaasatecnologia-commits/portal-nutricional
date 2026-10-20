@@ -64,32 +64,67 @@ require_once __DIR__ . '/components/sidebar.php';
     </div>
 </div>
 
-<!-- Execução Manual -->
+<!-- Execução Manual & Simulação Rápida -->
 <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-6">
-    <h5 class="text-sm font-bold text-slate-700 mb-4">
-        <i class="fa-solid fa-play mr-2"></i>Execução Manual
-    </h5>
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+        <h5 class="text-sm font-bold text-slate-700">
+            <i class="fa-solid fa-bolt text-amber-500 mr-2"></i>Execução Manual & Simulação de Rotinas
+        </h5>
+        <span class="text-xs text-slate-400">
+            Use <b class="text-indigo-600"><i class="fa-solid fa-vial"></i> Testar</b> para simular sem alterar saldos ou <b class="text-emerald-600"><i class="fa-solid fa-play"></i> Executar</b> para rodar de verdade.
+        </span>
+    </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-        <button onclick="executarCronManual('representantes')" class="p-4 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 transition-all text-sm">
-            <i class="fa-solid fa-users mr-2"></i>Executar Representantes
-        </button>
-        <button onclick="executarCronManual('gestores')" class="p-4 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600 transition-all text-sm">
-            <i class="fa-solid fa-chart-pie mr-2"></i>Executar Gestores
-        </button>
-        <button onclick="executarCronManual('historico_kpi')" class="p-4 bg-sky-500 text-white rounded-xl font-bold hover:bg-sky-600 transition-all text-sm">
-            <i class="fa-solid fa-chart-line mr-2"></i>Executar Histórico KPI
-        </button>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-blue-200">
+            <button onclick="executarCronManual('representantes')" class="flex-1 p-3.5 bg-blue-600 text-white font-bold hover:bg-blue-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-users mr-2"></i>Representantes
+            </button>
+            <button onclick="testarCronRapido('representantes')" class="px-3.5 bg-blue-50 text-blue-700 font-bold hover:bg-blue-100 transition-all text-xs border-l border-blue-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-amber-200">
+            <button onclick="executarCronManual('gestores')" class="flex-1 p-3.5 bg-amber-500 text-white font-bold hover:bg-amber-600 transition-all text-sm text-left">
+                <i class="fa-solid fa-chart-pie mr-2"></i>Gestores
+            </button>
+            <button onclick="testarCronRapido('gestores')" class="px-3.5 bg-amber-50 text-amber-700 font-bold hover:bg-amber-100 transition-all text-xs border-l border-amber-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-sky-200">
+            <button onclick="executarCronManual('historico_kpi')" class="flex-1 p-3.5 bg-sky-500 text-white font-bold hover:bg-sky-600 transition-all text-sm text-left">
+                <i class="fa-solid fa-chart-line mr-2"></i>Histórico KPI
+            </button>
+            <button onclick="testarCronRapido('historico_kpi')" class="px-3.5 bg-sky-50 text-sky-700 font-bold hover:bg-sky-100 transition-all text-xs border-l border-sky-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
     </div>
     <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <button onclick="executarCronManual('notas_nutrire')" class="p-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all text-sm">
-            <i class="fa-solid fa-file-invoice mr-2"></i>Notas Nutrire
-        </button>
-        <button onclick="executarCronManual('flex_minimo_gestor')" class="p-3 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition-all text-sm">
-            <i class="fa-solid fa-coins mr-2"></i>Flex Mínimo Gestor
-        </button>
-        <button onclick="executarCronManual('bonificacoes_flex')" class="p-3 bg-rose-600 text-white rounded-xl font-bold hover:bg-rose-700 transition-all text-sm">
-            <i class="fa-solid fa-gift mr-2"></i>Bonificações Flex
-        </button>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-emerald-200">
+            <button onclick="executarCronManual('notas_nutrire')" class="flex-1 p-3 bg-emerald-600 text-white font-bold hover:bg-emerald-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-file-invoice mr-2"></i>Notas Nutrire
+            </button>
+            <button onclick="testarCronRapido('notas_nutrire')" class="px-3.5 bg-emerald-50 text-emerald-700 font-bold hover:bg-emerald-100 transition-all text-xs border-l border-emerald-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-purple-200">
+            <button onclick="executarCronManual('flex_minimo_gestor')" class="flex-1 p-3 bg-purple-600 text-white font-bold hover:bg-purple-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-coins mr-2"></i>Flex Mínimo Gestor
+            </button>
+            <button onclick="testarCronRapido('flex_minimo_gestor')" class="px-3.5 bg-purple-50 text-purple-700 font-bold hover:bg-purple-100 transition-all text-xs border-l border-purple-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-rose-200">
+            <button onclick="executarCronManual('bonificacoes_flex')" class="flex-1 p-3 bg-rose-600 text-white font-bold hover:bg-rose-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-gift mr-2"></i>Bonificações Flex
+            </button>
+            <button onclick="testarCronRapido('bonificacoes_flex')" class="px-3.5 bg-rose-50 text-rose-700 font-bold hover:bg-rose-100 transition-all text-xs border-l border-rose-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
     </div>
 </div>
 
@@ -223,16 +258,22 @@ require_once __DIR__ . '/components/sidebar.php';
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Schedule (Cron)</label>
-                            <input type="text" id="jobSchedule" class="w-full p-3 border border-slate-200 rounded-xl text-sm font-mono" placeholder="0 9 * * *">
+                            <input type="text" id="jobSchedule" class="w-full p-3 border border-slate-200 rounded-xl text-sm font-mono" placeholder="0 22 * * *">
+                            <div class="flex flex-wrap gap-1 mt-1.5">
+                                <button type="button" onclick="document.getElementById('jobSchedule').value='0 22 * * *'" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-mono text-slate-600" title="Todo dia às 22:00">22:00</button>
+                                <button type="button" onclick="document.getElementById('jobSchedule').value='0 8 * * *'" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-mono text-slate-600" title="Todo dia às 08:00">08:00</button>
+                                <button type="button" onclick="document.getElementById('jobSchedule').value='0 1 * * *'" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-mono text-slate-600" title="Todo dia às 01:00">01:00</button>
+                                <button type="button" onclick="document.getElementById('jobSchedule').value='*/30 * * * *'" class="px-2 py-0.5 bg-slate-100 hover:bg-slate-200 rounded text-[10px] font-mono text-slate-600" title="A cada 30 minutos">30m</button>
+                            </div>
                         </div>
                         <div>
                             <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Status</label>
                             <div class="flex items-center gap-3 mt-3">
                                 <label class="relative inline-flex items-center cursor-pointer">
-                                    <input type="checkbox" id="jobAtivo" checked class="sr-only peer">
+                                    <input type="checkbox" id="jobAtivo" checked onchange="atualizarLabelStatusModal()" class="sr-only peer">
                                     <div class="w-11 h-6 bg-slate-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-emerald-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-600"></div>
                                 </label>
-                                <span class="text-sm font-medium text-slate-600" id="textoStatus">Ativo</span>
+                                <span class="text-sm font-bold text-emerald-600" id="textoStatus">Ativo</span>
                             </div>
                         </div>
                     </div>
@@ -258,7 +299,10 @@ require_once __DIR__ . '/components/sidebar.php';
                         <textarea id="jobParametros" rows="4" class="w-full p-3 border border-slate-200 rounded-xl text-sm font-mono">{}</textarea>
                     </div>
                     
-                    <div class="pt-4 border-t border-slate-100 flex gap-3">
+                    <div class="pt-4 border-t border-slate-100 flex flex-wrap gap-3">
+                        <button type="button" onclick="testarConfiguracaoModal()" class="px-4 py-3 bg-indigo-50 text-indigo-700 border border-indigo-200 rounded-xl font-bold hover:bg-indigo-100 transition-all">
+                            <i class="fa-solid fa-vial mr-2"></i>Testar Configuração
+                        </button>
                         <button type="button" onclick="salvarJob()" class="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all">
                             <i class="fa-solid fa-save mr-2"></i>Salvar Job
                         </button>
@@ -285,20 +329,27 @@ async function mostrarServidor() {
         if (!d.success) throw new Error(d.error || 'Erro');
         const status = d.dispatcher_ativo
             ? `<span class="text-emerald-600 font-bold">Dispatcher ativo</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
-            : '<span class="text-rose-600 font-bold">Dispatcher NÃO detectado</span> — agende no servidor conforme abaixo.';
+            : '<span class="text-amber-600 font-bold">Aguardando primeiro disparo do cPanel</span> — configure uma das opções abaixo.';
         await Swal.fire({
-            title: 'Agendar no servidor',
-            width: 760,
+            title: 'Como configurar no cPanel (Trabalhos Cron)',
+            width: 820,
             html: `<div class="text-left text-sm space-y-3">
                 <p>${status}</p>
-                <ol class="list-decimal pl-5 space-y-1">${d.instrucoes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
-                <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_cron)}</div>
+                <ol class="list-decimal pl-5 space-y-1 text-xs text-slate-600">${d.instrucoes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
+                <div class="mt-2">
+                    <b class="text-xs text-emerald-700 uppercase block mb-1">Opção A — Motor Unificado do Portal (Configurar 1x a cada minuto: * * * * *):</b>
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_dispatcher || d.linha_cron)}</div>
+                </div>
+                ${d.linha_curl_bonificacao ? `<div class="mt-2">
+                    <b class="text-xs text-indigo-700 uppercase block mb-1">Opção B — Somente Bonificações Flex (Horário fixo no cPanel: 0 22 * * *):</b>
+                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_bonificacao)}</div>
+                </div>` : ''}
             </div>`,
             showCancelButton: true,
-            confirmButtonText: 'Copiar linha do cron',
+            confirmButtonText: 'Copiar Comando (Opção A)',
             cancelButtonText: 'Fechar',
             confirmButtonColor: '#274036'
-        }).then(r => { if (r.isConfirmed) { navigator.clipboard.writeText(d.linha_cron); showToast('Linha copiada'); } });
+        }).then(r => { if (r.isConfirmed) { navigator.clipboard.writeText(d.linha_curl_dispatcher || d.linha_cron); showToast('Comando copiado!'); } });
     } catch (e) {
         showError('Erro', e.message);
     }
@@ -319,6 +370,14 @@ document.addEventListener('DOMContentLoaded', carregarRotinas);
 function abrirModalJob() { document.getElementById('modalJob').classList.remove('hidden'); document.body.style.overflow = 'hidden'; }
 function fecharModalJob() { document.getElementById('modalJob').classList.add('hidden'); document.body.style.overflow = ''; }
 
+function atualizarLabelStatusModal() {
+    const chk = document.getElementById('jobAtivo');
+    const lbl = document.getElementById('textoStatus');
+    if (!chk || !lbl) return;
+    lbl.textContent = chk.checked ? 'Ativo' : 'Inativo';
+    lbl.className = chk.checked ? 'text-sm font-bold text-emerald-600' : 'text-sm font-bold text-slate-400';
+}
+
 function novoJob() {
     document.getElementById('modalJobTitulo').innerHTML = '<i class="fa-solid fa-plus-circle mr-2"></i>Novo Job';
     document.getElementById('jobId').value = '';
@@ -326,6 +385,7 @@ function novoJob() {
     document.getElementById('jobAtivo').checked = true;
     document.getElementById('jobNotificarFalha').checked = true;
     document.getElementById('jobParametros').value = '{}';
+    atualizarLabelStatusModal();
     abrirModalJob();
 }
 
@@ -340,16 +400,25 @@ async function editarJob(id) {
     document.getElementById('jobDescricao').value = job.descricao || '';
     document.getElementById('jobCategoria').value = job.categoria_id || '';
     document.getElementById('jobSchedule').value = job.schedule || '';
-    document.getElementById('jobAtivo').checked = job.ativo;
+    document.getElementById('jobAtivo').checked = !!job.ativo;
     document.getElementById('jobNotificarEmail').value = job.notificar_email || '';
-    document.getElementById('jobNotificarSucesso').checked = job.notificar_sucesso;
-    document.getElementById('jobNotificarFalha').checked = job.notificar_falha;
+    document.getElementById('jobNotificarSucesso').checked = !!job.notificar_sucesso;
+    document.getElementById('jobNotificarFalha').checked = !!job.notificar_falha;
     document.getElementById('jobParametros').value = JSON.stringify(job.parametros || {}, null, 2);
+    atualizarLabelStatusModal();
     abrirModalJob();
 }
 
 async function salvarJob() {
     const id = document.getElementById('jobId').value;
+    let parametrosObj = {};
+    try {
+        parametrosObj = JSON.parse(document.getElementById('jobParametros').value || '{}');
+    } catch (err) {
+        showError('JSON Inválido', 'O campo Parâmetros (JSON) não está em formato JSON válido.');
+        return;
+    }
+
     const data = {
         id: id || null,
         nome: document.getElementById('jobNome').value,
@@ -361,7 +430,7 @@ async function salvarJob() {
         notificar_email: document.getElementById('jobNotificarEmail').value || null,
         notificar_sucesso: document.getElementById('jobNotificarSucesso').checked,
         notificar_falha: document.getElementById('jobNotificarFalha').checked,
-        parametros: JSON.parse(document.getElementById('jobParametros').value || '{}')
+        parametros: parametrosObj
     };
 
     if (!data.nome || !data.comando) {
@@ -384,6 +453,21 @@ async function salvarJob() {
         }
     } catch (e) {
         Swal.close();
+        showError('Erro', e.message);
+    }
+}
+
+async function toggleAtivoJob(id, novoStatus) {
+    try {
+        const result = await apiFetch(`/cron/jobs/${id}/toggle`, 'POST', { ativo: !!novoStatus });
+        if (result.success) {
+            showToast(result.message);
+            await carregarJobs();
+            await atualizarDashboard();
+        } else {
+            showError('Erro', result.message || 'Falha ao alterar status do job');
+        }
+    } catch (e) {
         showError('Erro', e.message);
     }
 }
@@ -445,8 +529,12 @@ function renderizarJobs(lista) {
     }
 
     tbody.innerHTML = lista.map(job => {
-        const statusBg = job.ativo ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500';
+        const statusBg = job.ativo
+            ? 'bg-emerald-100 text-emerald-700 border border-emerald-300 hover:bg-emerald-200'
+            : 'bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200';
+        const statusIcon = job.ativo ? 'fa-toggle-on text-emerald-600' : 'fa-toggle-off text-slate-400';
         const ultimaExec = job.ultima_execucao ? formatarData(job.ultima_execucao) : 'Nunca';
+        const proximaExec = job.ativo && job.proxima_execucao ? `<br><small class="text-emerald-600 font-semibold">Próx: ${formatarData(job.proxima_execucao)}</small>` : '';
         const corCategoria = job.cor || '#6c757d';
         const iconeCategoria = job.icone || 'fa-cog';
 
@@ -462,19 +550,25 @@ function renderizarJobs(lista) {
                     </div>
                 </td>
                 <td class="px-4 py-3"><code class="text-xs bg-slate-100 px-2 py-1 rounded">${job.comando}</code></td>
-                <td class="px-4 py-3 text-xs font-mono">${job.schedule || '-'}</td>
+                <td class="px-4 py-3 text-xs font-mono">${job.schedule || '-'}${proximaExec}</td>
                 <td class="px-4 py-3 text-xs text-slate-500">${ultimaExec}</td>
                 <td class="px-4 py-3 text-center">
-                    <span class="px-2 py-1 rounded-full text-[10px] font-bold ${statusBg}">${job.ativo ? 'Ativo' : 'Inativo'}</span>
+                    <button onclick="toggleAtivoJob(${job.id}, ${!job.ativo})" class="px-3 py-1 rounded-full text-xs font-bold inline-flex items-center gap-1.5 transition-all cursor-pointer ${statusBg}" title="Clique para ${job.ativo ? 'Desativar (Pausar)' : 'Ativar'} este Cron">
+                        <i class="fa-solid ${statusIcon} text-sm"></i>
+                        <span>${job.ativo ? 'Ativo' : 'Inativo'}</span>
+                    </button>
                 </td>
-                <td class="px-4 py-3 text-center">
-                    <button onclick="executarCronManual('${job.comando}')" class="px-3 py-1.5 border border-emerald-300 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500 hover:text-white transition-all mr-1" title="Executar">
+                <td class="px-4 py-3 text-center whitespace-nowrap">
+                    <button onclick="testarCronRapido('${job.comando}', ${job.id})" class="px-2.5 py-1.5 border border-indigo-300 text-indigo-600 rounded-lg text-sm hover:bg-indigo-600 hover:text-white transition-all mr-1" title="Testar / Simular Configuração (Dry-Run sem descontar)">
+                        <i class="fa-solid fa-vial"></i>
+                    </button>
+                    <button onclick="executarCronManual('${job.comando}')" class="px-2.5 py-1.5 border border-emerald-300 text-emerald-600 rounded-lg text-sm hover:bg-emerald-500 hover:text-white transition-all mr-1" title="Executar Agora">
                         <i class="fa-solid fa-play"></i>
                     </button>
-                    <button onclick="editarJob(${job.id})" class="px-3 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-700 hover:text-white transition-all mr-1" title="Editar">
+                    <button onclick="editarJob(${job.id})" class="px-2.5 py-1.5 border border-slate-300 text-slate-600 rounded-lg text-sm hover:bg-slate-700 hover:text-white transition-all mr-1" title="Editar Job">
                         <i class="fa-solid fa-edit"></i>
                     </button>
-                    <button onclick="excluirJob(${job.id})" class="px-3 py-1.5 border border-rose-300 text-rose-600 rounded-lg text-sm hover:bg-rose-500 hover:text-white transition-all" title="Excluir">
+                    <button onclick="excluirJob(${job.id})" class="px-2.5 py-1.5 border border-rose-300 text-rose-600 rounded-lg text-sm hover:bg-rose-500 hover:text-white transition-all" title="Excluir Job">
                         <i class="fa-solid fa-trash"></i>
                     </button>
                 </td>
@@ -687,6 +781,103 @@ function atualizarRecentes(execucoes) {
     }).join('');
 }
 
+// ======================================================================
+// TESTAR / SIMULAR CONFIGURAÇÃO E PROCESSO (DRY-RUN)
+// ======================================================================
+async function testarCronRapido(comando, id = null) {
+    return executarTesteConfiguracao({ comando, id });
+}
+
+async function testarConfiguracaoModal() {
+    const comando = document.getElementById('jobComando')?.value?.trim() || '';
+    if (!comando) {
+        showError('Atenção', 'Informe o Comando da rotina antes de testar.');
+        return;
+    }
+    const payload = {
+        id: document.getElementById('jobId')?.value || null,
+        comando: comando,
+        schedule: document.getElementById('jobSchedule')?.value || '',
+        notificar_email: document.getElementById('jobNotificarEmail')?.value || '',
+        parametros: document.getElementById('jobParametros')?.value || '{}'
+    };
+    return executarTesteConfiguracao(payload);
+}
+
+async function executarTesteConfiguracao(payload) {
+    try {
+        Swal.fire({
+            title: 'Testando & Simulando...',
+            html: `<p class="text-sm text-slate-600">Validando configuração, banco de dados e simulando rotina <b>${escapeHtml(payload.comando || '')}</b> (Dry-Run sem alterar saldos)...</p>
+                   <div class="mt-4 flex justify-center">
+                       <i class="fa-solid fa-vial fa-bounce fa-2x text-indigo-600"></i>
+                   </div>`,
+            allowOutsideClick: false,
+            showConfirmButton: false
+        });
+
+        const res = await apiFetch('/cron/testar', 'POST', payload);
+        Swal.close();
+
+        const checksHtml = (res.checks || []).map(c => {
+            const badge = c.status === 'ok'
+                ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">OK</span>'
+                : c.status === 'warn'
+                ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700">AVISO</span>'
+                : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700">ERRO</span>';
+            return `<div class="flex items-start justify-between gap-3 py-2 border-b border-slate-100 last:border-0">
+                <div class="text-xs">
+                    <b class="text-slate-700">${escapeHtml(c.etapa || '')}</b>
+                    <div class="text-slate-500 mt-0.5">${escapeHtml(c.detalhe || '')}</div>
+                </div>
+                <div class="flex-shrink-0">${badge}</div>
+            </div>`;
+        }).join('');
+
+        const proximasHtml = (res.proximas_execucoes && res.proximas_execucoes.length > 0)
+            ? `<div class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs">
+                <b class="text-slate-600 uppercase block mb-1"><i class="fa-regular fa-calendar-check mr-1"></i>Próximos Horários Calculados (Schedule):</b>
+                <div class="flex flex-wrap gap-2 mt-1">
+                    ${res.proximas_execucoes.map(d => `<span class="px-2.5 py-1 bg-white border border-slate-200 rounded-lg font-mono text-slate-700">${escapeHtml(d)}</span>`).join('')}
+                </div>
+               </div>`
+            : '';
+
+        const previewHtml = res.simulacao?.preview_html
+            ? `<div class="mt-3 border border-indigo-100 bg-white rounded-xl p-3 max-h-[260px] overflow-auto">${res.simulacao.preview_html}</div>`
+            : '';
+
+        const resultadoModal = await Swal.fire({
+            title: res.success ? '🧪 Simulação & Configuração OK' : '⚠️ Atenção no Teste',
+            width: 760,
+            html: `
+                <div class="text-left space-y-3">
+                    <div class="p-3 rounded-xl ${res.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'} text-sm font-semibold">
+                        ${escapeHtml(res.message || '')}
+                    </div>
+                    <div class="bg-white border border-slate-200 rounded-xl px-3 py-1 divide-y divide-slate-100 max-h-[220px] overflow-auto">
+                        ${checksHtml}
+                    </div>
+                    ${proximasHtml}
+                    ${previewHtml}
+                </div>
+            `,
+            showCancelButton: true,
+            confirmButtonText: '<i class="fa-solid fa-play mr-2"></i>Executar de Verdade Agora',
+            cancelButtonText: 'Fechar Simulação',
+            confirmButtonColor: '#10b981',
+            cancelButtonColor: '#64748b'
+        });
+
+        if (resultadoModal.isConfirmed && payload.comando) {
+            await executarCronManual(payload.comando);
+        }
+    } catch (e) {
+        Swal.close();
+        showError('Erro ao testar', e.message || 'Falha ao testar configuração');
+    }
+}
+
 async function executarCronManual(comando) {
     const nomes = {
         'representantes': 'Representantes',
@@ -694,25 +885,26 @@ async function executarCronManual(comando) {
         'historico_kpi': 'Histórico KPI',
         'notas_nutrire': 'Notas Nutrire',
         'flex_minimo_gestor': 'Flex Mínimo Gestor',
-        'bonificacoes_flex': 'Bonificações Flex'
+        'bonificacoes_flex': 'Bonificações Flex',
+        'refresh_cubo_vendas': 'Atualizar Cubo de Vendas'
     };
     
     const nomeExibicao = nomes[comando] || comando;
     
     const confirm = await Swal.fire({
-        title: 'Executar Job?',
+        title: 'Executar Job Agora?',
         html: `
             <div class="text-left">
-                <p class="mb-3">Deseja executar o job <b>"${nomeExibicao}"</b> agora?</p>
+                <p class="mb-3">Deseja executar o job <b>"${nomeExibicao}"</b> (<code>${escapeHtml(comando)}</code>) agora?</p>
                 <div class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-sm text-amber-700">
                     <i class="fa-solid fa-triangle-exclamation mr-2"></i>
-                    Esta ação irá disparar o processo imediatamente e pode afetar o sistema.
+                    Esta ação irá disparar o processamento real imediatamente e gravar na auditoria.
                 </div>
             </div>
         `,
         icon: 'warning',
         showCancelButton: true,
-        confirmButtonText: '<i class="fa-solid fa-play mr-2"></i>Sim, executar',
+        confirmButtonText: '<i class="fa-solid fa-play mr-2"></i>Sim, executar agora',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#6c757d'
@@ -739,30 +931,42 @@ async function executarCronManual(comando) {
         Swal.close();
         
         if (result.success) {
-            // Atualiza os dados
             carregarJobs();
             atualizarDashboard();
             
-            // Verifica se tem detalhes para mostrar
             const temDetalhes = result.detalhes && Object.keys(result.detalhes).length > 0;
+            const temRelatorioHtml = !!result.email_html;
             
-            if (temDetalhes) {
-                const detalhesFormatados = JSON.stringify(result.detalhes, null, 2);
+            if (temDetalhes || temRelatorioHtml) {
+                const detalhesFormatados = temDetalhes ? JSON.stringify(result.detalhes, null, 2) : '';
+                const blocoHtml = temRelatorioHtml
+                    ? `<div class="mt-3">
+                        <p class="text-xs font-bold text-slate-500 uppercase mb-1">Relatório Detalhado do Processamento:</p>
+                        <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs max-h-[280px] overflow-auto text-left">${result.email_html}</div>
+                       </div>`
+                    : '';
+                const blocoJson = temDetalhes
+                    ? `<div class="mt-3">
+                        <p class="text-xs font-bold text-slate-500 uppercase mb-1">Resumo Técnico (JSON):</p>
+                        <div class="bg-slate-800 text-emerald-400 p-3 rounded-xl text-xs font-mono max-h-[200px] overflow-auto text-left">
+                            <pre style="margin: 0; white-space: pre-wrap;">${escapeHtml(detalhesFormatados)}</pre>
+                        </div>
+                       </div>`
+                    : '';
                 
                 Swal.fire({
                     title: '✅ Job Executado!',
                     html: `
                         <div class="text-left">
-                            <p class="mb-3 text-emerald-600 font-bold">${result.message}</p>
-                            <div class="bg-slate-800 text-emerald-400 p-4 rounded-xl text-xs font-mono max-h-[300px] overflow-auto text-left">
-                                <pre style="margin: 0; white-space: pre-wrap;">${detalhesFormatados}</pre>
-                            </div>
-                            ${result.duracao ? `<p class="mt-3 text-xs text-slate-400">Duração: ${result.duracao}s</p>` : ''}
+                            <p class="mb-2 text-emerald-600 font-bold">${escapeHtml(result.message || '')}</p>
+                            ${blocoHtml}
+                            ${blocoJson}
+                            ${result.duracao ? `<p class="mt-3 text-xs text-slate-400">Duração: ${result.duracao}s | Execução #${result.execucao_id || '-'}</p>` : ''}
                         </div>
                     `,
                     icon: 'success',
                     confirmButtonColor: '#274036',
-                    width: '700px'
+                    width: '740px'
                 });
             } else {
                 await Swal.fire({
@@ -777,7 +981,7 @@ async function executarCronManual(comando) {
                 title: '❌ Erro',
                 html: `
                     <div class="text-left">
-                        <p class="text-rose-600 font-bold">${result.message || 'Falha na execução'}</p>
+                        <p class="text-rose-600 font-bold">${escapeHtml(result.message || 'Falha na execução')}</p>
                     </div>
                 `,
                 icon: 'error',
@@ -818,9 +1022,17 @@ async function verDetalhesExecucao(id) {
         
         let resultadoHtml = '';
         if (exec.resultado && typeof exec.resultado === 'object') {
-            resultadoHtml = `<pre class="text-xs bg-slate-100 p-3 rounded-xl max-h-[300px] overflow-auto">${JSON.stringify(exec.resultado, null, 2)}</pre>`;
+            const relatorioHtml = exec.resultado.email_html
+                ? `<div class="mb-3">
+                    <p class="text-xs font-bold text-slate-500 uppercase mb-1">Relatório de Execução:</p>
+                    <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs max-h-[240px] overflow-auto">${exec.resultado.email_html}</div>
+                   </div>`
+                : '';
+            const copiaJson = { ...exec.resultado };
+            delete copiaJson.email_html;
+            resultadoHtml = `${relatorioHtml}<pre class="text-xs bg-slate-100 p-3 rounded-xl max-h-[220px] overflow-auto">${escapeHtml(JSON.stringify(copiaJson, null, 2))}</pre>`;
         } else if (exec.resultado) {
-            resultadoHtml = `<p class="text-sm text-slate-600">${exec.resultado}</p>`;
+            resultadoHtml = `<p class="text-sm text-slate-600">${escapeHtml(String(exec.resultado))}</p>`;
         } else {
             resultadoHtml = '<p class="text-sm text-slate-400">Sem resultado detalhado</p>';
         }
@@ -831,23 +1043,23 @@ async function verDetalhesExecucao(id) {
                 <div class="text-left space-y-3">
                     <div class="flex justify-between">
                         <span class="text-slate-500">Job:</span>
-                        <b>${exec.nome || 'N/A'}</b>
+                        <b>${escapeHtml(exec.nome || 'N/A')}</b>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-slate-500">Comando:</span>
-                        <code class="text-xs bg-slate-100 px-2 py-1 rounded">${exec.comando || 'N/A'}</code>
+                        <code class="text-xs bg-slate-100 px-2 py-1 rounded">${escapeHtml(exec.comando || 'N/A')}</code>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-slate-500">Status:</span>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBg}">${exec.status}</span>
+                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBg}">${escapeHtml(exec.status)}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-slate-500">Usuário:</span>
-                        <span>${exec.usuario || '-'}</span>
+                        <span>${escapeHtml(exec.usuario || '-')}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-slate-500">Origem:</span>
-                        <span>${exec.origem || '-'}</span>
+                        <span>${escapeHtml(exec.origem || '-')}</span>
                     </div>
                     <div class="flex justify-between">
                         <span class="text-slate-500">Início:</span>
@@ -864,7 +1076,7 @@ async function verDetalhesExecucao(id) {
             `,
             icon: 'info',
             confirmButtonColor: '#274036',
-            width: '600px'
+            width: '720px'
         });
         
     } catch (e) {

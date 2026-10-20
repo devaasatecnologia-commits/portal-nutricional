@@ -2,6 +2,31 @@
    CUBO VENDAS CSS - Mesmo padrão do Financeiro
    ========================================================================== */
 
+/* Filtro fixo (sticky): permanece visível no topo enquanto a página rola,
+   permitindo alterar período/filtros sem voltar ao topo.
+   - Mobile: abaixo da .mobile-toolbar fixa (56px = h-14).
+   - Desktop (lg >= 1024px): pequena folga do topo da viewport.
+   - z-index 40: abaixo dos modais (z-50) e da toolbar mobile (z-50). */
+#cuboFiltros {
+    position: sticky;
+    top: 56px;
+    z-index: 40;
+    background: #fff;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+}
+
+#cuboFiltros input[type="date"] {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+@media (min-width: 1024px) {
+    #cuboFiltros {
+        top: 12px;
+    }
+}
+
 .modulo-container {
     min-height: 100vh;
     width: 100%;

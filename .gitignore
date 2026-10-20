@@ -1,4 +1,4 @@
-﻿# Dependencias e build
+# Dependencias e build
 vendor/
 *.tar.gz
 *.zip
@@ -6,6 +6,7 @@ composer.phar
 
 # Ambiente (nunca commitar .env real)
 .env
+.env.api
 .env.*.local
 
 # Scripts de deploy e diagnostico
@@ -28,6 +29,7 @@ frota-token*.txt
 verificacao_completa.txt
 
 # Logs e temporarios
+logs/
 *.log
 *.bak
 *.bak_*

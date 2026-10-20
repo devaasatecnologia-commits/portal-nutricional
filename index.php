@@ -18,13 +18,21 @@ require_once __DIR__ . '/vendor/autoload.php';
 
 // Carregar variáveis de ambiente
 use Dotenv\Dotenv;
-// Procura o .env fora da área pública: 2 níveis acima (home), 1 nível acima e a raiz do site
+// Procura primeiro por ".env.api" (exclusivo da API, sem conflito com outro site) e depois por ".env"
 $envDir = __DIR__;
-foreach ([dirname(__DIR__, 2), dirname(__DIR__), __DIR__] as $cand) {
-    if (is_file($cand . '/.env')) { $envDir = $cand; break; }
+$envFile = '.env';
+$candidatos = [dirname(__DIR__, 2), dirname(__DIR__), __DIR__];
+foreach (['.env.api', '.env'] as $nomeArquivo) {
+    foreach ($candidatos as $cand) {
+        if (is_file($cand . '/' . $nomeArquivo)) {
+            $envDir = $cand;
+            $envFile = $nomeArquivo;
+            break 2;
+        }
+    }
 }
-if (file_exists($envDir . '/.env')) {
-    $dotenv = Dotenv::createImmutable($envDir);
+if (is_file($envDir . '/' . $envFile)) {
+    $dotenv = Dotenv::createImmutable($envDir, $envFile);
     $dotenv->load();
 }
 

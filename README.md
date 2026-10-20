@@ -8,9 +8,11 @@ de frotas, entregas, acerto administrativo e aplicativo offline do motorista.
 - Backend: PHP 8.2+, Slim 4 e PostgreSQL.
 - Frontend: PHP, JavaScript, Alpine.js e Tailwind via CDN.
 - API atual: `/v1`.
-- Frota: embarques ERP, rotas, entregas, rastreamento, acerto e motorista offline.
-- App motorista: GPS, fila offline, ordenação de rota, notificações e tema escuro.
-- Gestão de Cargas: problemas, KPIs operacionais e valores reais do ERP.
+- Frota: embarques ERP, rotas otimizadas (Haversine/2-opt), entregas, rastreamento, acerto e motorista offline.
+- App motorista: GPS, fila offline (IndexedDB), ordenação de rota, navegação (Waze/Google Maps) e tema escuro.
+- Gestão de Cargas: problemas operacionais, conferência e valores reais integrados ao ERP.
+- Segurança: cofre de segredos (AES-256-GCM), 2FA por TOTP (RFC 6238) para todos os usuários com autoatendimento e reset administrativo auditado.
+- Motor de Crons: execução minuto a minuto via CLI (`v1/cron/run.php`) com lock consultivo PostgreSQL (`pg_try_advisory_lock`).
 - Branch principal: `main`.
 
 ## Desenvolvimento local
