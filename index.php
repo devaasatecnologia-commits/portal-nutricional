@@ -34,6 +34,17 @@ foreach (['.env.api', '.env'] as $nomeArquivo) {
 if (is_file($envDir . '/' . $envFile)) {
     $dotenv = Dotenv::createImmutable($envDir, $envFile);
     $dotenv->load();
+    foreach (file($envDir . '/' . $envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $envLine) {
+        $envLine = trim($envLine);
+        if (strpos($envLine, 'API_TOKEN=') === 0) {
+            $rawTokenVal = trim(substr($envLine, 10));
+            if ($rawTokenVal !== '' && $rawTokenVal[0] !== '"' && $rawTokenVal[0] !== "'") {
+                $_ENV['API_TOKEN'] = $rawTokenVal;
+                $_SERVER['API_TOKEN'] = $rawTokenVal;
+            }
+            break;
+        }
+    }
 }
 
 // Configurar timezone

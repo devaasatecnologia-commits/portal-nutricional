@@ -328,8 +328,10 @@ async function mostrarServidor() {
         const d = await apiFetch('/cron/servidor', 'GET');
         if (!d.success) throw new Error(d.error || 'Erro');
         const status = d.dispatcher_ativo
-            ? `<span class="text-emerald-600 font-bold">Dispatcher ativo</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
-            : '<span class="text-amber-600 font-bold">Aguardando primeiro disparo do cPanel</span> — configure uma das opções abaixo.';
+            ? `<span class="text-emerald-600 font-bold"><i class="fa-solid fa-circle-check mr-1"></i>Dispatcher ativo</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
+            : (d.ultimo_batimento
+                ? `<span class="text-rose-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Dispatcher sem batimento nos últimos 3 min</span> (último registro: ${formatarData(d.ultimo_batimento)})`
+                : '<span class="text-amber-600 font-bold">Aguardando primeiro disparo do cPanel</span> — configure uma das opções abaixo.');
         await Swal.fire({
             title: 'Como configurar no cPanel (Trabalhos Cron)',
             width: 820,

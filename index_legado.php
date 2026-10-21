@@ -15,21 +15,33 @@ if (session_status() === PHP_SESSION_NONE) {
 // 2. CARREGAMENTO DAS CONFIGURAÇÕES E BIBLIOTECAS (COMPATÍVEL COM .ENV.API / .ENV E LEGADO)
 require_once __DIR__ . '/vendor/autoload.php';
 
-if (empty($_ENV['DB_HOST'])) {
-    $envDirLeg = __DIR__;
-    $envFileLeg = '.env';
-    $candidatosLeg = [dirname(__DIR__, 2), dirname(__DIR__), __DIR__];
-    foreach (['.env.api', '.env'] as $nomeArqLeg) {
-        foreach ($candidatosLeg as $candLeg) {
-            if (is_file($candLeg . '/' . $nomeArqLeg)) {
-                $envDirLeg = $candLeg;
-                $envFileLeg = $nomeArqLeg;
-                break 2;
-            }
+$envDirLeg = __DIR__;
+$envFileLeg = '.env';
+$candidatosLeg = [dirname(__DIR__, 2), dirname(__DIR__), __DIR__];
+foreach (['.env.api', '.env'] as $nomeArqLeg) {
+    foreach ($candidatosLeg as $candLeg) {
+        if (is_file($candLeg . '/' . $nomeArqLeg)) {
+            $envDirLeg = $candLeg;
+            $envFileLeg = $nomeArqLeg;
+            break 2;
         }
     }
-    if (is_file($envDirLeg . '/' . $envFileLeg)) {
-        \Dotenv\Dotenv::createImmutable($envDirLeg, $envFileLeg)->load();
+}
+if (empty($_ENV['DB_HOST']) && is_file($envDirLeg . '/' . $envFileLeg)) {
+    \Dotenv\Dotenv::createImmutable($envDirLeg, $envFileLeg)->load();
+}
+// Corrige truncamento do Dotenv quando API_TOKEN possui '#' sem aspas no .env.api/.env
+if (is_file($envDirLeg . '/' . $envFileLeg)) {
+    foreach (file($envDirLeg . '/' . $envFileLeg, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $envLineLeg) {
+        $envLineLeg = trim($envLineLeg);
+        if (strpos($envLineLeg, 'API_TOKEN=') === 0) {
+            $rawTokenLeg = trim(substr($envLineLeg, strlen('API_TOKEN=')));
+            if ($rawTokenLeg !== '' && $rawTokenLeg[0] !== '"' && $rawTokenLeg[0] !== "'") {
+                $_ENV['API_TOKEN'] = $rawTokenLeg;
+                $_SERVER['API_TOKEN'] = $rawTokenLeg;
+            }
+            break;
+        }
     }
 }
 
@@ -163,15 +175,38 @@ function verificarAcesso($strAcao) {
     if (in_array($strAcao, $rotasPublicas)) return true;
 
     // 2. VALIDAÇÃO POR CHAVE DE API (VIA URL)
-    // Aceita tanto a chave pura quanto com escape de bash do cPanel (\) ou \%)
+    // Aceita tanto a chave pura quanto com escape de bash do cPanel (\) ou \%) e também CRON_TOKEN
     $chaveApiEnviada = $_GET['key'] ?? '';
     $chaveNormalizada = str_replace(['\\)', '\\%'], [')', '%'], $chaveApiEnviada);
-    
-    if (
-        defined('API_TOKEN') &&
-        !empty($chaveApiEnviada) &&
-        ($chaveApiEnviada === API_TOKEN || $chaveNormalizada === API_TOKEN || stripslashes($chaveApiEnviada) === API_TOKEN)
-    ) {
+    $chaveSemBarras = stripslashes($chaveApiEnviada);
+    $tokensValidos = array_filter(array_unique([
+        defined('API_TOKEN') ? (string)API_TOKEN : '',
+        (string)($_ENV['API_TOKEN'] ?? ''),
+        defined('CRON_TOKEN') ? (string)CRON_TOKEN : '',
+        (string)($_ENV['CRON_TOKEN'] ?? ''),
+    ]), fn($t) => strlen($t) >= 12);
+
+    $tokenMatch = false;
+    if (!empty($chaveApiEnviada)) {
+        foreach ($tokensValidos as $tokValido) {
+            if (
+                $chaveApiEnviada === $tokValido ||
+                $chaveNormalizada === $tokValido ||
+                $chaveSemBarras === $tokValido ||
+                // Caso o Dotenv do index.php tenha truncado API_TOKEN no caractere '#'
+                (strlen($tokValido) >= 15 && (
+                    strpos($chaveApiEnviada, $tokValido . '#') === 0 ||
+                    strpos($chaveNormalizada, $tokValido . '#') === 0 ||
+                    strpos($chaveSemBarras, $tokValido . '#') === 0
+                ))
+            ) {
+                $tokenMatch = true;
+                break;
+            }
+        }
+    }
+
+    if ($tokenMatch) {
         file_put_contents($logFile, "[" . date('Y-m-d H:i:s') . "] AUTORIZADO (URL Key) - Ação: $strAcao | IP: $ip\n", FILE_APPEND);
         return true;
     }
