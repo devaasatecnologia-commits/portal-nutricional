@@ -39,3 +39,6 @@ fonts/
 
 # Branches de sessao de agente (nao subir para o GitHub)
 # (nao ha como ignorar branch pelo .gitignore; veja procedimento abaixo)
+
+# IDE
+.vscode/

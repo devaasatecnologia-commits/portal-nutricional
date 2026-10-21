@@ -17,6 +17,138 @@ class RetornoController
         16688 => ['nome' => 'TROCAS FORNECEDOR', 'cor' => '#8b5cf6']
     ];
     
+    /** Item placeholder (X-ITEM) que mantém o pedido de estoque nunca vazio */
+    private const ITEM_PLACEHOLDER = 2181;
+
+    /**
+     * Regra do X-ITEM: havendo qualquer item real no pedido, o 2181 é removido;
+     * sem nenhum item real, o 2181 (qt 1) é inserido para o pedido não ficar vazio.
+     */
+    private function sincronizarPlaceholder(int $idpedido): void
+    {
+        $stmt = $this->pdo->prepare("SELECT COUNT(*) FROM pedido_item WHERE idpedido = ? AND ativo = 'S' AND iditem <> ?");
+        $stmt->execute([$idpedido, self::ITEM_PLACEHOLDER]);
+        $reais = (int)$stmt->fetchColumn();
+
+        if ($reais > 0) {
+            $stmt = $this->pdo->prepare("DELETE FROM pedido_item WHERE idpedido = ? AND iditem = ?");
+            $stmt->execute([$idpedido, self::ITEM_PLACEHOLDER]);
+            return;
+        }
+
+        $stmt = $this->pdo->prepare("SELECT 1 FROM pedido_item WHERE idpedido = ? AND iditem = ? AND ativo = 'S'");
+        $stmt->execute([$idpedido, self::ITEM_PLACEHOLDER]);
+        if (!$stmt->fetchColumn()) {
+            $dados = $this->getDadosItemCompleto(self::ITEM_PLACEHOLDER, 1);
+            $this->inserirItemCompleto($idpedido, self::ITEM_PLACEHOLDER, 1, $dados);
+        }
+    }
+
+    /**
+     * POST /v1/retorno/criar-estoque
+     * Cria um novo pedido de estoque (status 1) para o destino, copiando o último pedido
+     * do cliente (preferindo o faturado/status 5) com todos os dados e a observação,
+     * contendo apenas o X-ITEM (2181) para não ficar vazio.
+     */
+    public function criarEstoque(Request $request, Response $response): Response
+    {
+        $input = json_decode($request->getBody()->getContents(), true);
+        $idcliforemp = (int)($input['idcliforemp'] ?? 0);
+
+        if (!isset($this->destinos[$idcliforemp])) {
+            $response->getBody()->write(json_encode(['error' => 'Destino não permitido']));
+            return $response->withStatus(422)->withHeader('Content-Type', 'application/json');
+        }
+
+        try {
+            $this->pdo->beginTransaction();
+
+            // Evita duplicar se já existir pedido aberto
+            $stmt = $this->pdo->prepare("SELECT idpedido FROM pedido WHERE idcliforemp = ? AND status = 1 AND idempresa = 1 AND idfilial = 1 ORDER BY idpedido DESC LIMIT 1 FOR UPDATE");
+            $stmt->execute([$idcliforemp]);
+            if ($existente = $stmt->fetchColumn()) {
+                $this->pdo->commit();
+                $response->getBody()->write(json_encode(['success' => true, 'criado' => false, 'idpedido' => (int)$existente, 'message' => 'Já existe pedido aberto para este destino.']));
+                return $response->withHeader('Content-Type', 'application/json');
+            }
+
+            // Modelo: último faturado (status 5); sem faturado, o último pedido do cliente
+            $stmt = $this->pdo->prepare("
+                SELECT idpedido FROM pedido
+                WHERE idcliforemp = ? AND idempresa = 1 AND idfilial = 1
+                ORDER BY (status = 5) DESC, idpedido DESC
+                LIMIT 1
+            ");
+            $stmt->execute([$idcliforemp]);
+            $idModelo = (int)$stmt->fetchColumn();
+            if ($idModelo <= 0) {
+                throw new \DomainException('Não há pedido anterior deste destino para servir de modelo. Crie o primeiro pedido no ERP.');
+            }
+
+            $novoId = (int)$this->pdo->query("SELECT nextval('gi_pedido')")->fetchColumn();
+
+            // Colunas que não devem ser herdadas do modelo (usam o DEFAULT da tabela)
+            $omitir = ['idpedido', 'idmotivocancelamento', 'numero_nf_e', 'numeroprotocolo_nf_e', 'idpedidopda'];
+            // Totais zerados; serão recalculados após inserir o X-ITEM
+            $zerar = [
+                'valortotalitens', 'valortotalpedido', 'valortotalsaldo', 'valortotalcalculado', 'pesobruto', 'pesoliquido',
+                'quantidadetotal', 'valorbaseicms', 'valoricms', 'valorbasepis', 'valorpis', 'valorbasecofins', 'valorcofins',
+                'valortotalcustoreposicao', 'valortotalcustogerencial', 'quantmoedatotal', 'valorbaseisentoicms',
+                'valortotalbasecbsibs', 'valortotalcbs', 'valortotalibsuf', 'valortotalibs', 'valortotalcbsibs',
+            ];
+            $fixos = [
+                'status' => '1', 'situacao' => '2', 'data' => 'CURRENT_DATE', 'datahora' => 'NOW()',
+                'iniciodigitacao' => 'NOW()', 'datahoraultimaatualizacao' => 'NOW()', 'dataentrega' => 'CURRENT_DATE',
+                'datacotacao' => 'CURRENT_DATE', 'pex_datafase' => 'CURRENT_DATE',
+                'idpedidotransf' => '0', 'idpedido_emapda_matriz' => (string)$novoId,
+                'codigo_barras' => $this->pdo->quote(sprintf('001%010d', $novoId)),
+            ];
+
+            $colunas = $this->pdo->query("SELECT column_name FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pedido' ORDER BY ordinal_position")->fetchAll(\PDO::FETCH_COLUMN);
+            $nomes = [];
+            $valores = [];
+            foreach ($colunas as $col) {
+                if (in_array($col, $omitir, true)) continue;
+                $nomes[] = '"' . $col . '"';
+                if (isset($fixos[$col])) {
+                    $valores[] = $fixos[$col];
+                } elseif (in_array($col, $zerar, true)) {
+                    $valores[] = '0';
+                } else {
+                    $valores[] = 'm."' . $col . '"';
+                }
+            }
+            $nomes[] = 'idpedido';
+            $valores[] = (string)$novoId;
+
+            $sql = 'INSERT INTO pedido (' . implode(', ', $nomes) . ') SELECT ' . implode(', ', $valores) . ' FROM pedido m WHERE m.idpedido = ' . $idModelo;
+            $this->pdo->exec($sql);
+
+            // Pedido nasce com o X-ITEM e totais/parcela calculados
+            $this->sincronizarPlaceholder($novoId);
+            $this->atualizarTotaisPedido($novoId);
+
+            $this->pdo->commit();
+
+            $response->getBody()->write(json_encode([
+                'success' => true,
+                'criado' => true,
+                'idpedido' => $novoId,
+                'idpedido_modelo' => $idModelo,
+                'message' => 'Estoque criado com sucesso para ' . $this->destinos[$idcliforemp]['nome'] . '!',
+            ]));
+            return $response->withHeader('Content-Type', 'application/json');
+
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            error_log('[RetornoController] Erro em criarEstoque: ' . $e->getMessage());
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus($e instanceof \DomainException ? 409 : 500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
     public function __construct()
     {
         $this->pdo = \getPDO();
@@ -461,7 +593,7 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         $in = implode(',', array_fill(0, count($ids), '?'));
         $stmt = $this->pdo->prepare("
             SELECT p.idpedido, p.idcliforemp, c.fantasia, p.observacao, p.data,
-                   (SELECT COUNT(*) FROM pedido_item i WHERE i.idpedido = p.idpedido AND i.ativo = 'S') AS itens
+                   (SELECT COUNT(*) FROM pedido_item i WHERE i.idpedido = p.idpedido AND i.ativo = 'S' AND i.iditem <> 2181) AS itens
             FROM pedido p
             JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
             WHERE p.status = 1 AND p.idcliforemp IN ($in)
@@ -869,6 +1001,7 @@ public function movimentar(Request $request, Response $response): Response
         // ================================================================
         // ATUALIZA TOTAIS DO PEDIDO
         // ================================================================
+        $this->sincronizarPlaceholder((int)$idpedido);
         $this->atualizarTotaisPedido($idpedido);
         
         $this->pdo->commit();
@@ -1064,7 +1197,7 @@ public function movimentar(Request $request, Response $response): Response
                 FROM pedido_item pi
                 JOIN item i ON i.iditem = pi.iditem
                 LEFT JOIN codigo_barra cb ON cb.iditem = i.iditem AND cb.principal = 'S'
-                WHERE pi.idpedido = ? AND pi.ativo = 'S' AND i.inativo = 'N'
+                WHERE pi.idpedido = ? AND pi.ativo = 'S' AND i.inativo = 'N' AND pi.iditem <> 2181
                 ORDER BY pi.iditempedido
             ");
             $stmt->execute([$pedido['idpedido']]);
@@ -1289,6 +1422,7 @@ public function ajustarProduto(Request $request, Response $response): Response
         $idMovimentacao = $stmt->fetch()['id'];
         
         // Atualiza totais do pedido
+        $this->sincronizarPlaceholder((int)$idpedido);
         $this->atualizarTotaisPedido($idpedido);
         
         $this->pdo->commit();
@@ -1422,6 +1556,8 @@ public function moverProduto(Request $request, Response $response): Response
         ]);
         
         // Atualiza totais dos pedidos
+        $this->sincronizarPlaceholder((int)$idpedido_origem);
+        $this->sincronizarPlaceholder((int)$idpedido_destino);
         $this->atualizarTotaisPedido($idpedido_origem);
         $this->atualizarTotaisPedido($idpedido_destino);
         
@@ -1504,7 +1640,7 @@ public function moverProduto(Request $request, Response $response): Response
                 FROM pedido_item pi
                 JOIN item i ON i.iditem = pi.iditem
                 LEFT JOIN codigo_barra cb ON cb.iditem = i.iditem AND cb.principal = 'S'
-                WHERE pi.idpedido = ? AND pi.ativo = 'S' AND i.inativo = 'N'
+                WHERE pi.idpedido = ? AND pi.ativo = 'S' AND i.inativo = 'N' AND pi.iditem <> 2181
                 ORDER BY pi.iditempedido
             ");
             $stmt->execute([$idpedido]);

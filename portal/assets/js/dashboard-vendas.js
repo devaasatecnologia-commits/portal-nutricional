@@ -27,7 +27,11 @@ function dashboardVendasHandler() {
         modalCardOpen: false,
         modalCardTitulo: '',
         modalCardTipo: '',
+        cardAba: 'resumo',
+        cardBusca: '',
         cardDetalhes: [],
+        cardPorDia: [],
+        cardRastreio: [],
         cardTotal: null,
         cardRotulo: 'Docs',
         cardExtra: {},
@@ -35,6 +39,9 @@ function dashboardVendasHandler() {
         cardErro: '',
         modalRepresentanteOpen: false,
         modalFunilOpen: false,
+        modalRiscoOpen: false,
+        filtroRiscoRep: '',
+        buscaRiscoCliente: '',
         representanteDetalhes: { nome: '', clientes: [], produtos: [], evolucao: { itens: [] }, total: null },
         repLoading: false,
         repErro: '',
@@ -43,6 +50,7 @@ function dashboardVendasHandler() {
         funilErro: '',
 
         // Filtros
+        periodoRapidoAtivo: 'mes_atual',
         filters: {
             data_inicio: '',
             data_fim: '',
@@ -272,6 +280,7 @@ function dashboardVendasHandler() {
 
         mudarPeriodo() {
             if (this.carregamentoInicial) return;
+            this.periodoRapidoAtivo = '';
             this.carregarDados();
         },
 
@@ -385,7 +394,7 @@ function dashboardVendasHandler() {
                 this.margemProdutos = dados.margem_produtos || [];
                 this.matrizCrossSelling = dados.matriz_cross_selling || [];
                 this.projecao = this.formatarProjecao(dados.projecao_vendas || []);
-                this.maxProjecao = this.projecao.length > 0 ? Math.max(...this.projecao.map(p => p.valor), 1) : 1;
+                this.maxProjecao = this.projecao.length > 0 ? Math.max(...this.projecao.map(p => Math.max(p.valor || 0, p.valor_projetado || 0)), 1) : 1;
                 this.mensagemPesados = dados.mensagem || '';
             } catch (e) {
                 if (e.name === 'AbortError' || !this.atual('pesados', id)) return;
@@ -611,16 +620,34 @@ function dashboardVendasHandler() {
 
         async abrirDetalhesCard(tipo, titulo) {
             this.modalCardTitulo = titulo || tipo;
-            this.modalCardTipo = tipo;
+            const mapaTipos = {
+                'Faturamento': 'faturamento',
+                'Notas': 'notas',
+                'Pedidos': 'notas',
+                'Ticket Médio': 'ticket_medio',
+                'Vendas por Dia': 'vendas_dia',
+                'Carteira': 'carteira',
+                'Cancelados': 'cancelados',
+                'Devoluções': 'devolucoes',
+                'Positivação': 'positivacao'
+            };
+            this.modalCardTipo = mapaTipos[tipo] || String(tipo).toLowerCase();
             this.modalCardOpen = true;
             this.cardLoading = true;
             this.cardErro = '';
+            this.cardBusca = '';
+            this.cardAba = 'resumo';
             this.cardDetalhes = [];
+            this.cardPorDia = [];
+            this.cardRastreio = [];
             this.cardTotal = null;
             this.cardExtra = {};
             try {
                 const dados = await this.apiFetch('/v1/vendas/dashboard/detalhes-card', this.corpoFiltros({ tipo }));
                 this.cardDetalhes = dados.dados || [];
+                this.cardPorDia = dados.por_dia || [];
+                this.cardRastreio = dados.rastreio || [];
+                this.cardAba = dados.aba_padrao || 'resumo';
                 this.cardTotal = dados.total || null;
                 this.cardRotulo = dados.rotulo_documentos || 'Docs';
                 this.cardExtra = { por_dia_semana: dados.por_dia_semana || [], positivacao: dados.positivacao || null };
@@ -632,18 +659,119 @@ function dashboardVendasHandler() {
             }
         },
 
+        cardListaResumoFiltrada() {
+            const q = (this.cardBusca || '').trim().toLowerCase();
+            if (!q) return this.cardDetalhes || [];
+            return (this.cardDetalhes || []).filter(item => {
+                const texto = `${item.label || ''} ${item.sublabel || ''}`.toLowerCase();
+                return texto.includes(q);
+            });
+        },
+
+        cardListaPorDiaFiltrada() {
+            const q = (this.cardBusca || '').trim().toLowerCase();
+            if (!q) return this.cardPorDia || [];
+            return (this.cardPorDia || []).filter(item => {
+                const texto = `${item.label || ''} ${item.sublabel || ''}`.toLowerCase();
+                return texto.includes(q);
+            });
+        },
+
+        cardListaRastreioFiltrada() {
+            const q = (this.cardBusca || '').trim().toLowerCase();
+            if (!q) return this.cardRastreio || [];
+            return (this.cardRastreio || []).filter(item => {
+                const texto = `${item.numero || ''} ${item.documento || ''} ${item.pedido || ''} ${item.data || ''} ${item.situacao || ''} ${item.cliente || ''} ${item.representante || ''} ${item.filial || ''}`.toLowerCase();
+                return texto.includes(q);
+            });
+        },
+
+        representantesRisco() {
+            const mapa = new Map();
+            for (const c of (this.clientesRisco || [])) {
+                const id = String(c.idrepresentante || 0);
+                const nome = c.representante || ('REP ' + id);
+                if (!mapa.has(id)) {
+                    mapa.set(id, { id, nome, qtd: 0, valor: 0 });
+                }
+                const item = mapa.get(id);
+                item.qtd += 1;
+                item.valor += parseFloat(c.valor_historico || 0);
+            }
+            return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+        },
+
+        clientesRiscoFiltrados() {
+            const repFiltro = String(this.filtroRiscoRep || '').trim();
+            const q = (this.buscaRiscoCliente || '').trim().toLowerCase();
+            return (this.clientesRisco || []).filter(c => {
+                if (repFiltro) {
+                    const matchId = String(c.idrepresentante || 0) === repFiltro;
+                    const matchNome = String(c.representante || '').trim() === repFiltro;
+                    if (!matchId && !matchNome) return false;
+                }
+                if (!q) return true;
+                const texto = `${c.nome || ''} ${c.representante || ''} ${c.cidade_uf || ''} ${c.ultima_fmt || ''}`.toLowerCase();
+                return texto.includes(q);
+            });
+        },
+
+        definirPeriodoRapido(tipo) {
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = hoje.getMonth();
+            let ini, fim;
+
+            switch (tipo) {
+                case 'hoje':
+                    ini = new Date(ano, mes, hoje.getDate());
+                    fim = new Date(ano, mes, hoje.getDate());
+                    break;
+                case 'mes_atual':
+                    ini = new Date(ano, mes, 1);
+                    fim = new Date(ano, mes + 1, 0);
+                    break;
+                case 'mes_passado':
+                    ini = new Date(ano, mes - 1, 1);
+                    fim = new Date(ano, mes, 0);
+                    break;
+                case 'ultimos_30':
+                    fim = new Date(ano, mes, hoje.getDate());
+                    ini = new Date(ano, mes, hoje.getDate() - 29);
+                    break;
+                case 'ultimos_90':
+                    fim = new Date(ano, mes, hoje.getDate());
+                    ini = new Date(ano, mes, hoje.getDate() - 89);
+                    break;
+                case 'ano_atual':
+                    ini = new Date(ano, 0, 1);
+                    fim = new Date(ano, mes, hoje.getDate());
+                    break;
+                default:
+                    return;
+            }
+
+            this.periodoRapidoAtivo = tipo;
+            this.filters.data_inicio = this.toISO(ini);
+            this.filters.data_fim = this.toISO(fim);
+            this.carregarDados();
+        },
+
         // ======================================================================
         // UTILITÁRIOS
         // ======================================================================
         formatarProjecao(projecao) {
             return (projecao || [])
-                .filter(item => item?.mes)
+                .filter(item => item?.mes && item.tipo !== "projecao")
                 .map(item => {
                     const [ano, mes] = String(item.mes).split('-');
                     return {
                         mes_label: `${MESES[parseInt(mes, 10) - 1]}/${ano}`,
                         valor: parseFloat(item.valor || 0),
-                        realizado: item.tipo === 'realizado'
+                        valor_projetado: parseFloat(item.valor_projetado || item.valor || 0),
+                        tipo: item.tipo || 'projecao',
+                        realizado: item.tipo === 'realizado',
+                        atual: item.tipo === 'atual'
                     };
                 });
         },

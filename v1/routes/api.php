@@ -144,6 +144,7 @@ $app->group('/v1', function ($group) {
             $g->post('/buscar-produto', [$ctl, 'buscarProduto']);
             $g->get('/produto-existe/{idpedido}/{iditem}', [$ctl, 'produtoExisteNoPedido']);
             $g->post('/movimentar', [$ctl, 'movimentar']);
+            $g->post('/criar-estoque', [$ctl, 'criarEstoque']);
             $g->post('/upload-foto', [$ctl, 'uploadFoto']);
             $g->get('/movimentacoes-hoje', [$ctl, 'getMovimentacoesHoje']);
         });

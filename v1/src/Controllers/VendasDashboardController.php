@@ -19,14 +19,18 @@ class VendasDashboardController
     private const MAX_DIAS = 400;
     private const MAX_DIAS_PESADO = 90;
     private const DIAS_EVOLUCAO_DIARIA = 62;
-    private const JANELA_RISCO = 180;
+    private const JANELA_RISCO = 365;
     private const DIAS_RISCO = 30;
 
     /** Valor faturado do item: idêntico ao Cubo de Vendas. */
     private const VAL = "(ni.valor_total_com_ipi_st + COALESCE(ni.valorfrete,0) + COALESCE(ni.valorseguro,0) + COALESCE(ni.valoroutrasdespesas,0))";
 
-    /** Transações de devolução de venda (tabela nfe). Bonificações (21, 1010, 1011, 1016, 1028) ficam de fora. */
-    private const TRANS_DEVOLUCAO = '8,9,1000,1004,1005,1007,1015,1020,1024,1025,1031,1032,1033';
+    /** Valor devolvido e comissão devolvida por item: idênticos ao Cubo de Vendas. */
+    private const VAL_DEV = "(ni.valortotal + COALESCE(ni.valoripi, 0) + COALESCE(ni.valorsubsttribicms, 0) + COALESCE(ni.valorfrete, 0) + COALESCE(ni.valorseguro, 0) + COALESCE(ni.valoroutrasdespesas, 0) - COALESCE(ni.valor_desconto, 0))";
+    private const COM_DEV = "CASE WHEN COALESCE(ni.valor_comissao, 0) > 0 THEN ni.valor_comissao WHEN COALESCE(ni_orig.perc_comissao, 0) > 0 THEN ROUND(" . self::VAL_DEV . " * (ni_orig.perc_comissao / 100.0), 2) ELSE 0 END";
+
+    /** Transações de devolução de venda (tabela nfe, status=2 e status_devolucao=1), alinhadas ao Cubo de Vendas. */
+    private const TRANS_DEVOLUCAO = '8,9,15,1000,1001,1004,1005,1007,1011,1014,1015,1020,1024,1025,1031,1032,1033';
 
     private const ETAPAS_FUNIL = [
         'Abertos' => 1,
@@ -143,12 +147,23 @@ class VendasDashboardController
             $w = $this->w($e, 'n');
             $from = $this->nfFrom() . $w . ' AND ni.iditem = :it';
 
-            $r = $this->one("SELECT SUM(" . self::VAL . ") AS valor, SUM(ni.qt) AS quantidade,
+            $r = $this->one("SELECT COALESCE(SUM(" . self::VAL . "),0) AS valor, COALESCE(SUM(ni.qt),0) AS quantidade,
                     COUNT(DISTINCT n.idcliforemp) AS total_clientes, COUNT(DISTINCT n.idnfs) AS total_notas,
-                    SUM(COALESCE(ni.valor_comissao,0)) AS comissao
+                    COALESCE(SUM(COALESCE(ni.valor_comissao,0)),0) AS comissao
                 $from", $p);
-            $valor = (float)$r['valor'];
-            $qt = (float)$r['quantidade'];
+            $dev = $this->one("SELECT COALESCE(SUM(" . self::VAL_DEV . "),0) AS valor_dev,
+                    COALESCE(SUM(ni.qt),0) AS qt_dev,
+                    COALESCE(SUM(" . self::COM_DEV . "),0) AS com_dev
+                FROM nfe n
+                JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+                LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+                WHERE n.status = 2 AND n.status_devolucao = 1
+                  AND n.idtransacao IN (" . self::TRANS_DEVOLUCAO . ")
+                  AND n.dataentrada BETWEEN :di AND :df" . $w . " AND ni.iditem = :it", $p);
+
+            $valor = (float)$r['valor'] - (float)($dev['valor_dev'] ?? 0);
+            $qt = (float)$r['quantidade'] - (float)($dev['qt_dev'] ?? 0);
+            $comissaoAjustada = (float)$r['comissao'] - (float)($dev['com_dev'] ?? 0);
 
             $clientes = $this->all("SELECT c.fantasia AS cliente, SUM(" . self::VAL . ") AS valor, SUM(ni.qt) AS quantidade
                 $from GROUP BY c.idcliforemp, c.fantasia ORDER BY valor DESC LIMIT 10", $p, 'valor', 'quantidade');
@@ -168,7 +183,7 @@ class VendasDashboardController
                     'preco_medio' => $qt > 0 ? round($valor / $qt, 2) : 0,
                     'total_clientes' => (int)$r['total_clientes'],
                     'total_notas' => (int)$r['total_notas'],
-                    'comissao' => round((float)$r['comissao'], 2),
+                    'comissao' => round($comissaoAjustada, 2),
                 ],
                 'clientes' => $clientes,
                 'evolucao' => $evo,
@@ -253,70 +268,363 @@ class VendasDashboardController
             $tipo = (string)($in['tipo'] ?? '');
             $p = ['di' => $ini->format('Y-m-d'), 'df' => $fim->format('Y-m-d')];
             $fmtDia = "to_char(%s, 'DD/MM/YYYY')";
+            $wN = $this->w($e, 'n');
+            $wP = $this->w($e, 'p');
             $extra = [];
+            $rastreio = [];
+            $porDia = [];
+            $abaPadrao = 'resumo';
+            $nomesDow = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
             switch ($tipo) {
                 case 'Faturamento':
+                    $abaPadrao = 'resumo';
+                    $rows = $this->all("SELECT COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS label,
+                            SUM(" . self::VAL . ") AS valor,
+                            SUM(COALESCE(ni.valor_comissao, 0)) AS comissao,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        " . $this->nfFrom() . $wN . "
+                        GROUP BY n.idvendrepre, v.fantasia ORDER BY valor DESC", $p,
+                        'valor', 'comissao', 'documentos', 'clientes');
+                    $totGeral = array_sum(array_column($rows, 'valor'));
+                    foreach ($rows as &$r) {
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
+                        $r['percentual'] = $totGeral > 0 ? round($r['valor'] / $totGeral * 100, 1) : 0;
+                    }
+                    unset($r);
+
+                    $porDia = $this->all("SELECT " . sprintf($fmtDia, 'n.dataemissao') . " AS label,
+                            EXTRACT(DOW FROM n.dataemissao)::int AS dow,
+                            SUM(" . self::VAL . ") AS valor,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        " . $this->nfFrom() . $wN . "
+                        GROUP BY n.dataemissao ORDER BY n.dataemissao DESC", $p,
+                        'valor', 'documentos', 'clientes');
+                    foreach ($porDia as &$d) {
+                        $d['sublabel'] = $nomesDow[(int)$d['dow']] ?? '';
+                        $d['clientes'] = (int)$d['clientes'];
+                        $d['ticket_medio'] = $d['documentos'] > 0 ? round($d['valor'] / $d['documentos'], 2) : 0;
+                    }
+                    unset($d);
+
+                    $rastreio = $this->rastreioNfsFaturadas($wN, $p, 'n.dataemissao DESC, n.idnfs DESC');
+                    $rotulo = 'NFs';
+                    break;
+
                 case 'Notas':
                 case 'Pedidos':
-                case 'Ticket Médio':
-                case 'Vendas por Dia':
+                    $abaPadrao = 'rastreio';
                     $rows = $this->all("SELECT " . sprintf($fmtDia, 'n.dataemissao') . " AS label,
-                            SUM(" . self::VAL . ") AS valor, SUM(ni.qt) AS quantidade, COUNT(DISTINCT n.idnfs) AS documentos
-                        " . $this->nfFrom() . $this->w($e, 'n') . " GROUP BY n.dataemissao ORDER BY n.dataemissao", $p,
-                        'valor', 'quantidade', 'documentos');
-                    $rotulo = 'NFs';
-                    if ($tipo === 'Vendas por Dia') {
-                        $extra['por_dia_semana'] = $this->porDiaSemana($e, $ini, $fim);
+                            EXTRACT(DOW FROM n.dataemissao)::int AS dow,
+                            SUM(" . self::VAL . ") AS valor,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        " . $this->nfFrom() . $wN . "
+                        GROUP BY n.dataemissao ORDER BY n.dataemissao DESC", $p,
+                        'valor', 'documentos', 'clientes');
+                    foreach ($rows as &$r) {
+                        $r['sublabel'] = $nomesDow[(int)$r['dow']] ?? '';
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
                     }
+                    unset($r);
+
+                    $rastreio = $this->rastreioNfsFaturadas($wN, $p, 'n.dataemissao DESC, n.idnfs DESC');
+                    $rotulo = 'NFs Emitidas';
                     break;
+
+                case 'Ticket Médio':
+                    $abaPadrao = 'resumo';
+                    $rows = $this->all("WITH nf_tot AS (
+                            SELECT n.idnfs, n.idvendrepre, n.idcliforemp,
+                                   COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS rep_nome,
+                                   SUM(" . self::VAL . ") AS valor_nf
+                            " . $this->nfFrom() . $wN . "
+                            GROUP BY n.idnfs, n.idvendrepre, n.idcliforemp, v.fantasia
+                        )
+                        SELECT rep_nome AS label,
+                               SUM(valor_nf) AS valor,
+                               COUNT(DISTINCT idnfs) AS documentos,
+                               COUNT(DISTINCT idcliforemp) AS clientes,
+                               MIN(valor_nf) AS menor_nf,
+                               MAX(valor_nf) AS maior_nf,
+                               AVG(valor_nf) AS ticket_medio
+                        FROM nf_tot
+                        GROUP BY idvendrepre, rep_nome
+                        ORDER BY ticket_medio DESC", $p,
+                        'valor', 'documentos', 'clientes', 'menor_nf', 'maior_nf', 'ticket_medio');
+                    foreach ($rows as &$r) {
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['menor_nf'] = round($r['menor_nf'], 2);
+                        $r['maior_nf'] = round($r['maior_nf'], 2);
+                        $r['ticket_medio'] = round($r['ticket_medio'], 2);
+                    }
+                    unset($r);
+
+                    $rastreio = $this->rastreioNfsFaturadas($wN, $p, 'valor DESC, n.dataemissao DESC');
+                    $rotulo = 'NFs';
+                    break;
+
+                case 'Vendas por Dia':
+                    $abaPadrao = 'resumo';
+                    $rows = $this->all("SELECT " . sprintf($fmtDia, 'n.dataemissao') . " AS label,
+                            EXTRACT(DOW FROM n.dataemissao)::int AS dow,
+                            SUM(" . self::VAL . ") AS valor,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        " . $this->nfFrom() . $wN . "
+                        GROUP BY n.dataemissao ORDER BY n.dataemissao DESC", $p,
+                        'valor', 'documentos', 'clientes');
+                    foreach ($rows as &$r) {
+                        $r['sublabel'] = $nomesDow[(int)$r['dow']] ?? '';
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
+                    }
+                    unset($r);
+
+                    $extra['por_dia_semana'] = $this->porDiaSemana($e, $ini, $fim);
+                    $rastreio = $this->rastreioNfsFaturadas($wN, $p, 'n.dataemissao DESC, valor DESC');
+                    $rotulo = 'NFs';
+                    break;
+
                 case 'Carteira':
-                    $rows = $this->all("SELECT " . sprintf($fmtDia, 'p.data') . " AS label,
-                            SUM(pi.qt * pi.valor) AS valor, SUM(pi.qt) AS quantidade, COUNT(DISTINCT p.idpedido) AS documentos
-                        " . $this->pedFrom('p.status IN (1,4)') . $this->w($e, 'p') . " GROUP BY p.data ORDER BY p.data", $p,
-                        'valor', 'quantidade', 'documentos');
+                    $abaPadrao = 'rastreio';
+                    $saldoExpr = 'GREATEST(pi.qt - COALESCE(pi.qtfaturado, 0), 0)';
+                    $rows = $this->all("SELECT COALESCE(vend.fantasia, 'REP ' || p.idvendrepre) AS label,
+                            SUM($saldoExpr * pi.valor) AS valor,
+                            COUNT(DISTINCT p.idpedido) AS documentos,
+                            COUNT(DISTINCT p.idcliforemp) AS clientes
+                        " . $this->pedFrom("p.status IN (1,4) AND $saldoExpr > 0") . $wP . "
+                        GROUP BY p.idvendrepre, vend.fantasia ORDER BY valor DESC", $p,
+                        'valor', 'documentos', 'clientes');
+                    $totCart = array_sum(array_column($rows, 'valor'));
+                    foreach ($rows as &$r) {
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
+                        $r['percentual'] = $totCart > 0 ? round($r['valor'] / $totCart * 100, 1) : 0;
+                    }
+                    unset($r);
+
+                    $rastreio = $this->all("SELECT '#' || p.idpedido AS numero,
+                            p.idpedido AS id_doc,
+                            p.idcliforemp AS idcliente,
+                            " . sprintf($fmtDia, 'p.data') . " AS data,
+                            CASE p.status WHEN 1 THEN 'ABERTO' WHEN 4 THEN 'PARCIAL' ELSE 'CARTEIRA' END AS situacao,
+                            c.fantasia AS cliente,
+                            COALESCE(vend.fantasia, 'REP ' || p.idvendrepre) AS representante,
+                            COALESCE(f.nome, 'Filial ' || p.idfilial) AS filial,
+                            SUM($saldoExpr * pi.valor) AS valor
+                        " . $this->pedFrom("p.status IN (1,4) AND $saldoExpr > 0") . $wP . "
+                        GROUP BY p.idpedido, p.idcliforemp, p.data, p.status, c.fantasia, vend.fantasia, p.idvendrepre, f.nome, p.idfilial
+                        ORDER BY p.data DESC, valor DESC LIMIT 200", $p, 'valor');
                     $rotulo = 'Pedidos';
                     break;
+
                 case 'Cancelados':
-                    $rows = $this->all("SELECT " . sprintf($fmtDia, 'n.dataemissao') . " AS label,
-                            SUM(n.valortotalnota) AS valor, 0 AS quantidade, COUNT(*) AS documentos
-                        FROM nfs n WHERE n.status = 3 AND n.idtransacao = 1 AND n.dataemissao BETWEEN :di AND :df"
-                        . $this->w($e, 'n') . " GROUP BY n.dataemissao ORDER BY n.dataemissao", $p, 'valor', 'quantidade', 'documentos');
-                    $rotulo = 'NFs';
-                    break;
-                case 'Devoluções':
-                    $rows = $this->all("SELECT " . sprintf($fmtDia, 'n.dataemissao') . " AS label,
-                            SUM(n.valortotalnota) AS valor, 0 AS quantidade, COUNT(*) AS documentos
-                        " . $this->devFrom() . $this->w($e, 'n') . " GROUP BY n.dataemissao ORDER BY n.dataemissao", $p,
-                        'valor', 'quantidade', 'documentos');
-                    $rotulo = 'NFs de devolução';
-                    break;
-                case 'Positivação':
-                    $base = $this->baseClientesSql($e);
+                    $abaPadrao = 'rastreio';
                     $rows = $this->all("SELECT COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS label,
-                            SUM(" . self::VAL . ") AS valor, SUM(ni.qt) AS quantidade, COUNT(DISTINCT n.idcliforemp) AS documentos
-                        " . $this->nfFrom() . $this->w($e, 'n') . " AND n.idcliforemp IN ($base)
-                        GROUP BY n.idvendrepre, v.fantasia ORDER BY valor DESC", $p, 'valor', 'quantidade', 'documentos', true);
-                    $rotulo = 'Clientes';
+                            SUM(n.valortotalnota) AS valor,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        FROM nfs n
+                        LEFT JOIN cliforemp v ON v.idcliforemp = n.idvendrepre
+                        WHERE n.status = 3 AND n.idtransacao = 1 AND n.dataemissao BETWEEN :di AND :df"
+                        . $wN . " GROUP BY n.idvendrepre, v.fantasia ORDER BY valor DESC", $p,
+                        'valor', 'documentos', 'clientes');
+                    foreach ($rows as &$r) {
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
+                    }
+                    unset($r);
+
+                    $rastreio = $this->all("SELECT COALESCE(CAST(n.numeronf AS text), '#' || n.idnfs) AS numero,
+                            n.idnfs AS id_doc,
+                            n.idcliforemp AS idcliente,
+                            " . sprintf($fmtDia, 'n.dataemissao') . " AS data,
+                            'CANCELADA' AS situacao,
+                            c.fantasia AS cliente,
+                            COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS representante,
+                            COALESCE(f.nome, 'Filial ' || n.idfilial) AS filial,
+                            n.valortotalnota AS valor
+                        FROM nfs n
+                        JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+                        LEFT JOIN cliforemp v ON v.idcliforemp = n.idvendrepre
+                        LEFT JOIN filial f ON f.idfilial = n.idfilial
+                        WHERE n.status = 3 AND n.idtransacao = 1 AND n.dataemissao BETWEEN :di AND :df"
+                        . $wN . " ORDER BY n.dataemissao DESC, n.idnfs DESC LIMIT 200", $p, 'valor');
+                    $rotulo = 'NFs Canceladas';
+                    break;
+
+                case 'Devoluções':
+                    $abaPadrao = 'rastreio';
+                    $rows = $this->all("SELECT COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS label,
+                            SUM(" . self::VAL_DEV . ") AS valor,
+                            SUM(" . self::COM_DEV . ") AS comissao,
+                            COUNT(DISTINCT n.idnfe) AS documentos,
+                            COUNT(DISTINCT n.idcliforemp) AS clientes
+                        FROM nfe n
+                        JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+                        LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+                        LEFT JOIN cliforemp v ON v.idcliforemp = n.idvendrepre
+                        WHERE n.status = 2 AND n.status_devolucao = 1 AND n.idtransacao IN (" . self::TRANS_DEVOLUCAO . ")
+                          AND n.dataentrada BETWEEN :di AND :df" . $wN . "
+                        GROUP BY n.idvendrepre, v.fantasia ORDER BY valor DESC", $p,
+                        'valor', 'comissao', 'documentos', 'clientes');
+                    foreach ($rows as &$r) {
+                        $r['clientes'] = (int)$r['clientes'];
+                        $r['ticket_medio'] = $r['documentos'] > 0 ? round($r['valor'] / $r['documentos'], 2) : 0;
+                    }
+                    unset($r);
+
+                    $rastreio = $this->all("SELECT COALESCE(CAST(n.numero AS text), '#' || n.idnfe) AS numero,
+                            n.idnfe AS id_doc,
+                            n.idcliforemp AS idcliente,
+                            " . sprintf($fmtDia, 'n.dataentrada') . " AS data,
+                            COALESCE(nt.descricao, 'DEVOLUÇÃO') AS situacao,
+                            c.fantasia AS cliente,
+                            COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS representante,
+                            COALESCE(f.nome, 'Filial ' || n.idfilial) AS filial,
+                            SUM(" . self::COM_DEV . ") AS comissao,
+                            SUM(" . self::VAL_DEV . ") AS valor
+                        FROM nfe n
+                        JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+                        LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+                        JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+                        LEFT JOIN cliforemp v ON v.idcliforemp = n.idvendrepre
+                        LEFT JOIN filial f ON f.idfilial = n.idfilial
+                        LEFT JOIN nfe_transacao nt ON nt.idtransacao = n.idtransacao
+                        WHERE n.status = 2 AND n.status_devolucao = 1 AND n.idtransacao IN (" . self::TRANS_DEVOLUCAO . ")
+                          AND n.dataentrada BETWEEN :di AND :df" . $wN . "
+                        GROUP BY n.idnfe, n.numero, n.idcliforemp, n.dataentrada, nt.descricao, c.fantasia, v.fantasia, n.idvendrepre, f.nome, n.idfilial
+                        ORDER BY n.dataentrada DESC, valor DESC LIMIT 200", $p, 'comissao', 'valor');
+                    $rotulo = 'NFs de Devolução';
+                    break;
+
+                case 'Positivação':
+                    $abaPadrao = 'resumo';
+                    $base = $this->baseClientesSql($e);
+                    $rows = $this->all("WITH carteira_rep AS (
+                            SELECT cl.idvendedor AS idrep, COUNT(DISTINCT cl.idcliforemp) AS qt_carteira
+                            FROM cliente cl
+                            JOIN cliforemp cf ON cf.idcliforemp = cl.idcliforemp AND cf.inativo = 'N'
+                            WHERE cl.idvendedor IS NOT NULL
+                            GROUP BY cl.idvendedor
+                        ),
+                        vendas_rep AS (
+                            SELECT n.idvendrepre AS idrep,
+                                   COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS label,
+                                   SUM(" . self::VAL . ") AS valor,
+                                   COUNT(DISTINCT n.idcliforemp) AS documentos,
+                                   COUNT(DISTINCT n.idnfs) AS notas
+                            " . $this->nfFrom() . $wN . " AND n.idcliforemp IN ($base)
+                            GROUP BY n.idvendrepre, v.fantasia
+                        )
+                        SELECT vr.idrep,
+                               vr.label,
+                               vr.valor,
+                               vr.documentos,
+                               vr.notas,
+                               COALESCE(cr.qt_carteira, 0) AS qt_carteira_bruta
+                        FROM vendas_rep vr
+                        LEFT JOIN carteira_rep cr ON cr.idrep = vr.idrep
+                        ORDER BY vr.valor DESC", $p, 'valor', 'documentos', 'notas', 'qt_carteira_bruta');
+
+                    foreach ($rows as &$r) {
+                        $pos = (int)$r['documentos'];
+                        $cart = max((int)$r['qt_carteira_bruta'], $pos);
+                        $r['positivados'] = $pos;
+                        $r['qt_carteira'] = $cart;
+                        $r['clientes'] = $cart;
+                        $r['notas'] = (int)$r['notas'];
+                        $r['ticket_medio'] = $pos > 0 ? round($r['valor'] / $pos, 2) : 0;
+                        $r['percentual'] = $cart > 0 ? round($pos / $cart * 100, 1) : 0.0;
+                        unset($r['qt_carteira_bruta']);
+                    }
+                    unset($r);
+
+                    $rastreio = $this->all("SELECT c.idcliforemp AS id_doc,
+                            c.idcliforemp AS idcliente,
+                            COALESCE(CAST(MAX(n.numeronf) AS text), '#' || c.idcliforemp) AS numero,
+                            COALESCE(CAST(MAX(n.numeronf) AS text), '#' || c.idcliforemp) AS documento,
+                            c.fantasia AS cliente,
+                            COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS representante,
+                            " . sprintf($fmtDia, 'MAX(n.dataemissao)') . " AS data,
+                            COUNT(DISTINCT n.idnfs) AS notas,
+                            COUNT(DISTINCT n.idnfs) AS documentos,
+                            SUM(" . self::VAL . ") AS valor
+                        " . $this->nfFrom() . $wN . " AND n.idcliforemp IN ($base)
+                        GROUP BY c.idcliforemp, c.fantasia, v.fantasia, n.idvendrepre
+                        ORDER BY valor DESC LIMIT 200", $p, 'valor', 'notas', 'documentos');
+                    foreach ($rastreio as &$rc) {
+                        $rc['notas'] = (int)$rc['notas'];
+                        $rc['documentos'] = (int)$rc['documentos'];
+                    }
+                    unset($rc);
+
+                    $rotulo = 'Clientes Positivados';
                     $extra['positivacao'] = $this->resumoPositivacao($e, $ini, $fim);
                     break;
+
                 default:
                     throw new \InvalidArgumentException('Tipo de card inválido.');
             }
 
-            $tv = 0.0; $tq = 0.0; $td = 0;
+            $tv = 0.0; $td = 0; $tCart = 0;
             foreach ($rows as $r) {
-                $tv += $r['valor']; $tq += $r['quantidade']; $td += $r['documentos'];
+                $tv += $r['valor'];
+                $td += $r['documentos'];
+                $tCart += (int)($r['qt_carteira'] ?? 0);
             }
-            $total = ['valor' => round($tv, 2), 'quantidade' => $tq, 'documentos' => $td];
+            $total = ['valor' => round($tv, 2), 'documentos' => $td];
             if ($tipo !== 'Positivação') {
                 $total['ticket_medio'] = $td > 0 ? round($tv / $td, 2) : 0;
             } else {
-                $total['documentos'] = $extra['positivacao']['positivados'];
+                $posInfo = $extra['positivacao'];
+                $total['documentos'] = (int)$posInfo['positivados'];
+                $total['qt_carteira'] = max((int)$posInfo['base'], $tCart, (int)$posInfo['positivados']);
+                $total['percentual'] = $total['qt_carteira'] > 0
+                    ? round($total['documentos'] / $total['qt_carteira'] * 100, 1)
+                    : 0;
+                $total['ticket_medio'] = $total['documentos'] > 0 ? round($tv / $total['documentos'], 2) : 0;
             }
 
-            return ['tipo' => $tipo, 'rotulo_documentos' => $rotulo, 'dados' => $rows, 'total' => $total] + $extra;
+            return [
+                'tipo' => $tipo,
+                'aba_padrao' => $abaPadrao,
+                'rotulo_documentos' => $rotulo,
+                'dados' => $rows,
+                'por_dia' => $porDia,
+                'rastreio' => $rastreio,
+                'total' => $total,
+            ] + $extra;
         });
+    }
+
+    /** Lista rastreável de NFs faturadas no período e escopo. */
+    private function rastreioNfsFaturadas(string $wN, array $p, string $orderBy = 'n.dataemissao DESC, n.idnfs DESC'): array
+    {
+        $rows = $this->all("SELECT COALESCE(CAST(n.numeronf AS text), '#' || n.idnfs) AS numero,
+                n.idnfs AS id_doc,
+                n.idcliforemp AS idcliente,
+                MAX(ni.idpedido) AS idpedido,
+                to_char(n.dataemissao, 'DD/MM/YYYY') AS data,
+                c.fantasia AS cliente,
+                COALESCE(v.fantasia, 'REP ' || n.idvendrepre) AS representante,
+                COALESCE(f.nome, 'Filial ' || n.idfilial) AS filial,
+                SUM(COALESCE(ni.valor_comissao, 0)) AS comissao,
+                SUM(" . self::VAL . ") AS valor
+            " . $this->nfFrom() . $wN . "
+            GROUP BY n.idnfs, n.numeronf, n.idcliforemp, n.dataemissao, c.fantasia, v.fantasia, n.idvendrepre, f.nome, n.idfilial
+            ORDER BY $orderBy LIMIT 200", $p, 'comissao', 'valor');
+        foreach ($rows as &$r) {
+            $r['valor'] = round($r['valor'], 2);
+            $r['comissao'] = round($r['comissao'], 2);
+            $r['pedido'] = !empty($r['idpedido']) ? '#' . $r['idpedido'] : '—';
+        }
+        return $rows;
     }
 
     /** POST /v1/vendas/dashboard/detalhes-representante */
@@ -528,7 +836,7 @@ class VendasDashboardController
     // SQL BASES E HELPERS DE CONSULTA
     // ======================================================================
 
-    /** NFs faturadas (mesma regra do Cubo). Aliases: n, ni, i, c (cliente), v (representante). */
+    /** NFs faturadas (mesma regra do Cubo). Aliases: n, ni, i, c (cliente), v (representante), f (filial). */
     private function nfFrom(string $periodo = 'n.dataemissao BETWEEN :di AND :df'): string
     {
         return "FROM nfs n
@@ -536,6 +844,7 @@ class VendasDashboardController
             JOIN item i ON i.iditem = ni.iditem
             JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
             LEFT JOIN cliforemp v ON v.idcliforemp = n.idvendrepre
+            LEFT JOIN filial f ON f.idfilial = n.idfilial
             WHERE n.status = 2 AND n.idtransacao = 1 AND $periodo";
     }
 
@@ -546,12 +855,13 @@ class VendasDashboardController
             JOIN pedido_item pi ON pi.idpedido = p.idpedido" . ($apenasAtivos ? " AND pi.ativo = 'S'" : '') . "
             JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
             LEFT JOIN cliforemp vend ON vend.idcliforemp = p.idvendrepre
+            LEFT JOIN filial f ON f.idfilial = p.idfilial
             WHERE $status AND p.idtransacao IN (1,17) AND p.data BETWEEN :di AND :df";
     }
 
     private function devFrom(): string
     {
-        return 'FROM nfe n WHERE n.status = 2 AND n.idtransacao IN (' . self::TRANS_DEVOLUCAO . ') AND n.dataemissao BETWEEN :di AND :df';
+        return 'FROM nfe n WHERE n.status = 2 AND n.status_devolucao = 1 AND n.idtransacao IN (' . self::TRANS_DEVOLUCAO . ') AND n.dataentrada BETWEEN :di AND :df';
     }
 
     private function pp(\DateTimeImmutable $ini, \DateTimeImmutable $fim): array
@@ -599,9 +909,10 @@ class VendasDashboardController
 
     private function resumoCarteira(array $e, \DateTimeImmutable $ini, \DateTimeImmutable $fim): array
     {
-        $r = $this->one("SELECT COALESCE(SUM(pi.qt * pi.valor),0) AS valor, COALESCE(SUM(pi.qt),0) AS quantidade,
+        $saldo = 'GREATEST(pi.qt - COALESCE(pi.qtfaturado, 0), 0)';
+        $r = $this->one("SELECT COALESCE(SUM($saldo * pi.valor),0) AS valor, COALESCE(SUM($saldo),0) AS quantidade,
                 COUNT(DISTINCT p.idpedido) AS pedidos
-            " . $this->pedFrom('p.status IN (1,4)') . $this->w($e, 'p'), $this->pp($ini, $fim));
+            " . $this->pedFrom("p.status IN (1,4) AND $saldo > 0") . $this->w($e, 'p'), $this->pp($ini, $fim));
         return ['valor' => round((float)$r['valor'], 2), 'quantidade' => (float)$r['quantidade'], 'pedidos' => (int)$r['pedidos']];
     }
 
@@ -614,7 +925,11 @@ class VendasDashboardController
 
     private function resumoDevolucoes(array $e, \DateTimeImmutable $ini, \DateTimeImmutable $fim): array
     {
-        $r = $this->one("SELECT COALESCE(SUM(n.valortotalnota),0) AS valor, COUNT(*) AS notas " . $this->devFrom() . $this->w($e, 'n'), $this->pp($ini, $fim));
+        $r = $this->one("SELECT COALESCE(SUM(" . self::VAL_DEV . "),0) AS valor, COUNT(DISTINCT n.idnfe) AS notas
+            FROM nfe n
+            JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+            WHERE n.status = 2 AND n.status_devolucao = 1 AND n.idtransacao IN (" . self::TRANS_DEVOLUCAO . ")
+              AND n.dataentrada BETWEEN :di AND :df" . $this->w($e, 'n'), $this->pp($ini, $fim));
         return ['valor' => round((float)$r['valor'], 2), 'notas' => (int)$r['notas']];
     }
 
@@ -767,18 +1082,57 @@ class VendasDashboardController
     // DADOS DETALHADOS (periodo <= 90 dias)
     // ======================================================================
 
-    /** Comissão ÷ receita (% Comissão) e margem gerencial real = (receita - custo gerencial) ÷ receita. */
+    /**
+     * Receita líquida e Comissão Ajustada (mesma lógica do Cubo de Vendas: abate devoluções e comissão de devolução).
+     * % Comissão = comissão ajustada ÷ receita líquida.
+     * Margem gerencial = (receita − custo gerencial) ÷ receita.
+     */
     private function margemProdutos(array $e, \DateTimeImmutable $ini, \DateTimeImmutable $fim): array
     {
-        $rows = $this->all("SELECT i.iditem, i.descricao AS produto, i.referencia,
-                SUM(" . self::VAL . ") AS receita, SUM(ni.qt) AS quantidade,
-                SUM(COALESCE(ni.valor_comissao,0)) AS comissao,
-                SUM(ni.valor_total) AS receita_itens,
-                SUM(ni.qt * COALESCE(ni.valorcustogerencial,0)) AS custo
-            " . $this->nfFrom() . $this->w($e, 'n') . "
-            GROUP BY i.iditem, i.descricao, i.referencia ORDER BY receita DESC LIMIT 15", $this->pp($ini, $fim),
-            'receita', 'quantidade', 'comissao', 'receita_itens', 'custo');
+        $wN = $this->w($e, 'n');
+        $rows = $this->all("WITH mov AS (
+                SELECT i.iditem, i.descricao AS produto, i.referencia,
+                       " . self::VAL . " AS receita_bruta,
+                       CAST(0 AS numeric) AS valor_devolvido,
+                       " . self::VAL . " AS receita,
+                       ni.qt AS quantidade,
+                       COALESCE(ni.valor_comissao, 0) AS comissao,
+                       ni.valor_total AS receita_itens,
+                       (ni.qt * COALESCE(ni.valorcustogerencial, 0)) AS custo
+                " . $this->nfFrom() . $wN . "
+                UNION ALL
+                SELECT i.iditem, i.descricao AS produto, i.referencia,
+                       CAST(0 AS numeric) AS receita_bruta,
+                       " . self::VAL_DEV . " AS valor_devolvido,
+                       -(" . self::VAL_DEV . ") AS receita,
+                       -(ni.qt) AS quantidade,
+                       -(" . self::COM_DEV . ") AS comissao,
+                       -(ni.valortotal) AS receita_itens,
+                       -(ni.qt * COALESCE(ni_orig.valorcustogerencial, 0)) AS custo
+                FROM nfe n
+                JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.ativo = 'S'
+                JOIN item i ON i.iditem = ni.iditem
+                LEFT JOIN nfs_item ni_orig ON ni_orig.idnfs = ni.idnfsdevolvida AND ni_orig.iditemnfs = ni.idnfsitem_dev
+                WHERE n.status = 2 AND n.status_devolucao = 1
+                  AND n.idtransacao IN (" . self::TRANS_DEVOLUCAO . ")
+                  AND n.dataentrada BETWEEN :di AND :df" . $wN . "
+            )
+            SELECT iditem, produto, referencia,
+                   SUM(receita_bruta) AS receita_bruta,
+                   SUM(valor_devolvido) AS valor_devolvido,
+                   SUM(receita) AS receita,
+                   SUM(quantidade) AS quantidade,
+                   SUM(comissao) AS comissao,
+                   SUM(receita_itens) AS receita_itens,
+                   SUM(custo) AS custo
+            FROM mov
+            GROUP BY iditem, produto, referencia
+            HAVING SUM(receita) > 0 OR SUM(valor_devolvido) > 0
+            ORDER BY receita DESC LIMIT 15", $this->pp($ini, $fim),
+            'receita_bruta', 'valor_devolvido', 'receita', 'quantidade', 'comissao', 'receita_itens', 'custo');
         foreach ($rows as &$r) {
+            $r['receita_bruta'] = round($r['receita_bruta'], 2);
+            $r['valor_devolvido'] = round($r['valor_devolvido'], 2);
             $r['receita'] = round($r['receita'], 2);
             $r['comissao'] = round($r['comissao'], 2);
             $r['comissao_percentual'] = $r['receita'] > 0 ? round($r['comissao'] / $r['receita'] * 100, 2) : 0;
@@ -813,34 +1167,51 @@ class VendasDashboardController
     }
 
     /**
-     * Média móvel de 3 meses sobre os 3 últimos meses fechados anteriores a data_fim
-     * (o próprio mês de data_fim conta como fechado se já terminou).
+     * Projeção de 3 meses SEMPRE relacionada ao mês atual (hoje):
+     * - 3 últimos meses fechados anteriores ao mês atual (tipo = 'realizado')
+     * - Mês atual em curso (tipo = 'atual', exibe o realizado até hoje e a projeção de fechamento do mês)
+     * - 3 próximos meses subsequentes ao mês atual (tipo = 'projecao', média móvel ancorada no mês atual)
      */
     private function projecaoProximosMeses(array $e, \DateTimeImmutable $fim): array
     {
         $hoje = new \DateTimeImmutable('today');
-        $ref = $fim < $hoje ? $fim : $hoje;
-        $ultimo = $ref->modify('last day of this month');
-        $mesFim = ($ref->format('Y-m-d') === $ultimo->format('Y-m-d')) ? $ref->modify('first day of this month')
-            : $ref->modify('first day of last month');
-        $mIni = $mesFim->modify('-2 month');
+        $mesAtualIni = $hoje->modify('first day of this month');
+        $mesAtualFim = $hoje->modify('last day of this month');
+        $mIni = $mesAtualIni->modify('-3 month');
+
         $rows = $this->all("SELECT to_char(date_trunc('month', n.dataemissao), 'YYYY-MM') AS periodo, SUM(" . self::VAL . ") AS valor
             " . $this->nfFrom('n.dataemissao BETWEEN :di AND :df') . $this->w($e, 'n') . " GROUP BY 1",
-            ['di' => $mIni->format('Y-m-d'), 'df' => $mesFim->modify('last day of this month')->format('Y-m-d')], 'valor');
+            ['di' => $mIni->format('Y-m-d'), 'df' => $hoje->format('Y-m-d')], 'valor');
         $mapa = array_column($rows, 'valor', 'periodo');
+
+        // Projeção de fechamento do mês atual (realizado + média por dia útil × dias úteis restantes)
+        $realizadoAtual = round((float)($mapa[$mesAtualIni->format('Y-m')] ?? 0), 2);
+        $decorridos = $this->diasUteis($mesAtualIni, $hoje);
+        $restantes = $hoje < $mesAtualFim ? $this->diasUteis($hoje->modify('+1 day'), $mesAtualFim) : 0;
+        $mediaDiaUtil = $decorridos > 0 ? ($realizadoAtual / $decorridos) : 0;
+        $fechamentoEstimadoAtual = round($realizadoAtual + ($mediaDiaUtil * $restantes), 2);
 
         $vals = [];
         $out = [];
-        for ($d = $mIni; $d <= $mesFim; $d = $d->modify('first day of next month')) {
-            $v = round($mapa[$d->format('Y-m')] ?? 0, 2);
+        // 3 meses fechados anteriores ao mês atual
+        for ($k = 3; $k >= 1; $k--) {
+            $d = $mesAtualIni->modify("-$k month");
+            $v = round((float)($mapa[$d->format('Y-m')] ?? 0), 2);
             $vals[] = $v;
             $out[] = ['mes' => $d->format('Y-m-01'), 'valor' => $v, 'tipo' => 'realizado'];
         }
-        for ($k = 1; $k <= 3; $k++) {
-            $v = round(array_sum(array_slice($vals, -3)) / 3, 2);
-            $vals[] = $v;
-            $out[] = ['mes' => $mesFim->modify("+$k month")->format('Y-m-01'), 'valor' => $v, 'tipo' => 'projecao'];
-        }
+
+        // Mês atual (referência central)
+        $baseMesAtual = $fechamentoEstimadoAtual > 0 ? $fechamentoEstimadoAtual : (count($vals) ? round(array_sum($vals) / count($vals), 2) : 0);
+        $vals[] = $baseMesAtual;
+        $out[] = [
+            'mes' => $mesAtualIni->format('Y-m-01'),
+            'valor' => $realizadoAtual,
+            'valor_projetado' => $fechamentoEstimadoAtual,
+            'tipo' => 'atual',
+        ];
+
+        // Projeção futura suprimida conforme solicitação (exibe apenas meses fechados + mês atual)
         return $out;
     }
 
@@ -896,15 +1267,16 @@ class VendasDashboardController
         ];
     }
 
-    /** Projeção do mês de referência (NF faturadas, média por dia útil decorrido x dias úteis restantes). */
+    /** Projeção do mês corrente (NF faturadas, média por dia útil decorrido x dias úteis restantes). */
     private function projecaoFechamento(array $e, \DateTimeImmutable $ref): array
     {
-        $mIni = $ref->modify('first day of this month');
-        $mFim = $ref->modify('last day of this month');
-        $r = $this->one("SELECT COALESCE(SUM(" . self::VAL . "),0) AS valor " . $this->nfFrom() . $this->w($e, 'n'), $this->pp($mIni, $ref));
+        $hoje = new \DateTimeImmutable('today');
+        $mIni = $hoje->modify('first day of this month');
+        $mFim = $hoje->modify('last day of this month');
+        $r = $this->one("SELECT COALESCE(SUM(" . self::VAL . "),0) AS valor " . $this->nfFrom() . $this->w($e, 'n'), $this->pp($mIni, $hoje));
         $realizado = (float)$r['valor'];
-        $decorridos = $this->diasUteis($mIni, $ref);
-        $restantes = $ref < $mFim ? $this->diasUteis($ref->modify('+1 day'), $mFim) : 0;
+        $decorridos = $this->diasUteis($mIni, $hoje);
+        $restantes = $hoje < $mFim ? $this->diasUteis($hoje->modify('+1 day'), $mFim) : 0;
         $media = $decorridos > 0 ? $realizado / $decorridos : 0;
         $adicional = $media * $restantes;
         return [
@@ -919,26 +1291,57 @@ class VendasDashboardController
         ];
     }
 
+    /**
+     * Todos os clientes ativos com 30+ dias sem comprar no escopo selecionado, identificados por representante.
+     */
     private function clientesRisco(array $e, \DateTimeImmutable $ref): array
     {
-        $jIni = $ref->modify('-' . self::JANELA_RISCO . ' day');
-        $limite = $ref->modify('-' . self::DIAS_RISCO . ' day');
+        $hoje = new \DateTimeImmutable('today');
+        $jIni = $hoje->modify('-' . self::JANELA_RISCO . ' day');
+        $limite = $hoje->modify('-' . self::DIAS_RISCO . ' day');
+        $repFiltroSql = '';
+        $params = ['ji' => $jIni->format('Y-m-d'), 'ref' => $hoje->format('Y-m-d'), 'lim' => $limite->format('Y-m-d')];
+        if (!empty($e['rep']) && (int)$e['rep'] > 0) {
+            $repFiltroSql = ' AND COALESCE(cl.idvendedor, u.ult_rep) = :rep_escopo ';
+            $params['rep_escopo'] = (int)$e['rep'];
+        }
         $rows = $this->all("WITH compras AS (
-                SELECT n.idcliforemp, n.dataemissao AS d, SUM(" . self::VAL . ") AS v
+                SELECT n.idcliforemp, n.idvendrepre, n.dataemissao AS d, SUM(" . self::VAL . ") AS v
                 FROM nfs n JOIN nfs_item ni ON ni.idnfs = n.idnfs JOIN item i ON i.iditem = ni.iditem
                 WHERE n.status = 2 AND n.idtransacao = 1 AND n.dataemissao BETWEEN :ji AND :ref" . $this->w($e, 'n') . "
-                GROUP BY n.idcliforemp, n.dataemissao
+                GROUP BY n.idcliforemp, n.idvendrepre, n.dataemissao
                 UNION ALL
-                SELECT p.idcliforemp, p.data, 0 FROM pedido p
-                WHERE p.status IN (1,4,5) AND p.idtransacao IN (1,17) AND p.data BETWEEN :ji AND :ref" . $this->w($e, 'p') . "),
-            ult AS (SELECT idcliforemp, MAX(d) AS ultima, SUM(v) AS historico FROM compras GROUP BY idcliforemp)
-            SELECT u.idcliforemp AS id, c.fantasia AS nome, u.ultima, u.historico AS valor_historico,
-                (:ref::date - u.ultima) AS dias_sem_comprar
-            FROM ult u JOIN cliforemp c ON c.idcliforemp = u.idcliforemp AND c.inativo = 'N'
-            WHERE u.ultima < :lim
-            ORDER BY u.historico DESC LIMIT 10",
-            ['ji' => $jIni->format('Y-m-d'), 'ref' => $ref->format('Y-m-d'), 'lim' => $limite->format('Y-m-d')], 'valor_historico');
+                SELECT p.idcliforemp, p.idvendrepre, p.data AS d, 0 AS v
+                FROM pedido p
+                WHERE p.status IN (1,4,5) AND p.idtransacao IN (1,17) AND p.data BETWEEN :ji AND :ref" . $this->w($e, 'p') . "
+            ),
+            ult AS (
+                SELECT idcliforemp,
+                       MAX(d) AS ultima,
+                       SUM(v) AS historico,
+                       (ARRAY_AGG(idvendrepre ORDER BY d DESC))[1] AS ult_rep
+                FROM compras
+                GROUP BY idcliforemp
+            )
+            SELECT u.idcliforemp AS id,
+                   c.fantasia AS nome,
+                   COALESCE(cid.descricao || '/' || cid.uf, '') AS cidade_uf,
+                   COALESCE(cl.idvendedor, u.ult_rep) AS idrepresentante,
+                   COALESCE(v.fantasia, 'REP ' || COALESCE(cl.idvendedor, u.ult_rep)) AS representante,
+                   to_char(u.ultima, 'DD/MM/YYYY') AS ultima_fmt,
+                   u.ultima,
+                   u.historico AS valor_historico,
+                   (:ref::date - u.ultima) AS dias_sem_comprar
+            FROM ult u
+            JOIN cliforemp c ON c.idcliforemp = u.idcliforemp AND c.inativo = 'N'
+            LEFT JOIN cliente cl ON cl.idcliforemp = u.idcliforemp
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN cliforemp v ON v.idcliforemp = COALESCE(cl.idvendedor, u.ult_rep)
+            WHERE u.ultima <= :lim" . $repFiltroSql . "
+            ORDER BY v.fantasia ASC, u.historico DESC",
+            $params, 'valor_historico');
         foreach ($rows as &$r) {
+            $r['idrepresentante'] = (int)$r['idrepresentante'];
             $r['dias_sem_comprar'] = (int)$r['dias_sem_comprar'];
             $r['valor_historico'] = round($r['valor_historico'], 2);
         }

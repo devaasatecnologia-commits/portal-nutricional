@@ -309,7 +309,28 @@ async function selecionarDestino(id, nome, cor) {
         
         if (response && response.error) {
             document.getElementById('areaOperacao').style.display = 'none';
-            Swal.fire({ icon: 'warning', title: 'Sem pedido aberto', text: response.error, confirmButtonText: 'OK' });
+            if (response.codigo === 'SEM_PEDIDO_ABERTO') {
+                const conf = await Swal.fire({
+                    icon: 'question',
+                    title: 'Sem pedido aberto',
+                    html: `${response.error}<br><br><b>Deseja criar um novo "Estoque" para ${nome}?</b><br><small>Será gerado no ERP uma cópia do último pedido deste destino, com o item X-ITEM.</small>`,
+                    showCancelButton: true,
+                    confirmButtonText: 'Sim, criar estoque',
+                    cancelButtonText: 'Não'
+                });
+                if (conf.isConfirmed) {
+                    Swal.fire({ title: 'Criando estoque...', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+                    const criado = await apiFetch('v1/retorno/criar-estoque', 'POST', { idcliforemp: id });
+                    Swal.close();
+                    if (criado && criado.success) {
+                        showToast(criado.message || 'Estoque criado!', 'success');
+                        return selecionarDestino(id, nome, cor);
+                    }
+                    Swal.fire({ icon: 'error', title: 'Não foi possível criar', text: (criado && criado.error) || 'Erro desconhecido' });
+                }
+            } else {
+                Swal.fire({ icon: 'warning', title: 'Atenção', text: response.error, confirmButtonText: 'OK' });
+            }
             return;
         }
         
