@@ -62,6 +62,49 @@ require_once __DIR__ . '/components/sidebar.php';
         <div id="estadoFlex" class="text-sm text-slate-400 py-3">Carregando configurações...</div>
         <div id="listaFlex" class="space-y-4"></div>
     </section>
+
+    <section class="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-100">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <div>
+                <h3 class="text-base font-extrabold text-slate-800"><i class="fa-solid fa-gift text-emerald-600 mr-2"></i>Material de Apoio & Amostras · Estoque Filial PR (6)</h3>
+                <p class="text-xs text-slate-400 mt-1">Como o estoque físico fica na Matriz (1), as solicitações da Filial PR (6) consultam a Matriz aplicando retenção percentual padrão e regras personalizadas por item.</p>
+            </div>
+            <button id="btnNovaRegraAmostra" class="px-4 py-2.5 rounded-xl bg-emerald-700 text-white text-sm font-bold hover:bg-emerald-800 transition">
+                <i class="fa-solid fa-plus mr-1"></i>Nova Regra por Item
+            </button>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-3">
+            <div class="md:col-span-1 rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
+                <div class="text-xs font-bold text-emerald-800 uppercase tracking-wider mb-1">Percentual Padrão para Filial PR</div>
+                <div class="text-[11px] text-slate-500 mb-3">Estoque Matriz liberado para a Filial 6 quando o item não tiver regra específica.</div>
+                
+                <form id="formAmostraGeral" class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <div class="relative flex-1">
+                            <input id="amostraPercPadrao" type="number" min="0" max="100" step="0.5" class="config-field text-lg font-black text-emerald-700 pr-8" required>
+                            <span class="absolute right-3 top-3 text-sm font-black text-slate-400">%</span>
+                        </div>
+                        <button type="submit" class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 transition">
+                            Salvar
+                        </button>
+                    </div>
+                    <div id="amostraResumoPadrao" class="text-xs font-semibold text-emerald-900 bg-white/80 p-2.5 rounded-xl border border-emerald-200/50">
+                        Carregando...
+                    </div>
+                </form>
+            </div>
+
+            <div class="md:col-span-2 rounded-2xl border border-slate-100 bg-slate-50/50 p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <div class="text-xs font-bold text-slate-700 uppercase tracking-wider">Regras Específicas por Item</div>
+                    <span id="contRegrasAmostra" class="text-xs font-bold text-slate-500">0 regras</span>
+                </div>
+                <div id="estadoAmostra" class="text-sm text-slate-400 py-3">Carregando regras...</div>
+                <div id="listaAmostraRegras" class="space-y-2 max-h-96 overflow-y-auto pr-1"></div>
+            </div>
+        </div>
+    </section>
 </div>
 
 <script>
@@ -71,7 +114,7 @@ const configDate = (v) => {
     const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
     return m ? `${m[3]}/${m[2]}/${m[1]}` : '—';
 };
-const configState = { regras: [], ncms: [], impostos: [], flex: [] };
+const configState = { regras: [], ncms: [], impostos: [], flex: [], amostraGeral: null, amostraRegras: [] };
 
 async function configRequest(path, method = 'GET', body = null) {
     const data = await apiFetch(`${configApi}/${path}`, method, body);
@@ -129,6 +172,188 @@ function renderFlex() {
         </form>`).join('');
 }
 
+function renderAmostra() {
+    const geral = configState.amostraGeral || { percentual_padrao: 30 };
+    const perc = Number(geral.percentual_padrao) || 0;
+    const inp = document.getElementById('amostraPercPadrao');
+    if (inp) inp.value = perc;
+
+    const resEl = document.getElementById('amostraResumoPadrao');
+    if (resEl) {
+        resEl.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-600 mr-1"></i><b>${perc}% liberado</b> para Filial PR · <b>${(100 - perc).toFixed(1).replace('.0', '')}% retido</b> na Matriz`;
+    }
+
+    const host = document.getElementById('listaAmostraRegras');
+    const estadoEl = document.getElementById('estadoAmostra');
+    const contEl = document.getElementById('contRegrasAmostra');
+    const regras = configState.amostraRegras || [];
+
+    if (contEl) contEl.textContent = `${regras.length} regra(s) cadastrada(s)`;
+    if (estadoEl) estadoEl.textContent = regras.length ? '' : 'Nenhuma regra específica cadastrada. Todos os itens usam o percentual padrão.';
+
+    if (host) {
+        host.innerHTML = regras.map(r => `
+            <div class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-xs ${r.ativo ? '' : 'opacity-60 bg-slate-50'}">
+                <img src="${configEsc(r.foto_url || 'https://placehold.co/100x100?text=S/F')}" 
+                     class="w-12 h-12 object-contain rounded-xl bg-slate-50 border border-slate-100 flex-none" 
+                     onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs font-bold text-slate-800 truncate">${configEsc(r.descricao)}</span>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-600">#${configEsc(r.iditem)}</span>
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-500">Ref: ${configEsc(r.referencia || '---')}</span>
+                    </div>
+                    <div class="flex items-center gap-2 mt-1">
+                        <span class="px-2 py-0.5 rounded-lg text-xs font-extrabold ${Number(r.percentual_liberado) === 0 ? 'bg-rose-100 text-rose-700 border border-rose-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}">
+                            ${Number(r.percentual_liberado)}% Liberado
+                        </span>
+                        ${r.motivo ? `<span class="text-[11px] text-slate-400 italic truncate">${configEsc(r.motivo)}</span>` : ''}
+                    </div>
+                </div>
+                <div class="flex items-center gap-1.5 flex-none">
+                    <button type="button" data-toggle-amostra="${configEsc(r.id)}" data-item="${configEsc(r.iditem)}" data-perc="${configEsc(r.percentual_liberado)}" data-ativo="${r.ativo ? '1' : '0'}"
+                            class="px-2.5 py-1.5 rounded-xl text-xs font-bold ${r.ativo ? 'bg-slate-100 text-slate-600 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'}">
+                        ${r.ativo ? 'Pausar' : 'Ativar'}
+                    </button>
+                    <button type="button" data-delete-amostra="${configEsc(r.id)}"
+                            class="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `).join('');
+    }
+}
+
+async function novaRegraAmostra() {
+    let itensEncontrados = [];
+    let itemSelecionado = null;
+
+    const htmlModal = `
+        <div class="text-left space-y-4">
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Buscar Item (Material / Amostra)</label>
+                <div class="relative">
+                    <input id="buscaItemAmostraModal" type="search" placeholder="Código, referência ou descrição..." 
+                           class="w-full px-3 py-2 border rounded-xl text-sm focus:outline-emerald-600">
+                    <div id="resultadoBuscaAmostra" class="hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-56 overflow-y-auto z-50"></div>
+                </div>
+            </div>
+
+            <div id="previewItemAmostra" class="hidden p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center gap-3">
+                <img id="prevImgAmostra" src="" class="w-12 h-12 object-contain rounded-xl bg-white border border-slate-200">
+                <div class="flex-1 min-w-0">
+                    <div id="prevDescAmostra" class="text-xs font-bold text-emerald-950 truncate"></div>
+                    <div id="prevRefAmostra" class="text-[11px] text-emerald-700"></div>
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">% Liberado para Filial PR (6)</label>
+                <div class="relative">
+                    <input id="percLiberadoAmostraModal" type="number" min="0" max="100" step="0.5" value="50"
+                           class="w-full px-3 py-2 border rounded-xl text-base font-bold text-emerald-800 focus:outline-emerald-600 pr-8">
+                    <span class="absolute right-3 top-2.5 text-sm font-bold text-slate-400">%</span>
+                </div>
+                <div class="text-[11px] text-slate-400 mt-1">Informe 0% para bloquear este item para a Filial PR, ou 50%, 100%, etc.</div>
+            </div>
+
+            <div>
+                <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Motivo / Observação (Opcional)</label>
+                <input id="motivoAmostraModal" type="text" maxlength="200" placeholder="Ex: Material exclusivo, lote restrito..."
+                       class="w-full px-3 py-2 border rounded-xl text-xs focus:outline-emerald-600">
+            </div>
+        </div>
+    `;
+
+    const res = await Swal.fire({
+        title: 'Nova Regra por Item',
+        html: htmlModal,
+        showCancelButton: true,
+        confirmButtonText: 'Salvar Regra',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        focusConfirm: false,
+        didOpen: () => {
+            const inputBusca = document.getElementById('buscaItemAmostraModal');
+            const resBox = document.getElementById('resultadoBuscaAmostra');
+            let timerBusca = null;
+
+            inputBusca.addEventListener('input', () => {
+                clearTimeout(timerBusca);
+                const q = inputBusca.value.trim();
+                if (q.length < 2) {
+                    resBox.classList.add('hidden');
+                    return;
+                }
+                timerBusca = setTimeout(async () => {
+                    resBox.innerHTML = '<div class="p-3 text-center text-xs text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Buscando...</div>';
+                    resBox.classList.remove('hidden');
+                    try {
+                        const data = await configRequest(`amostra/itens-busca?q=${encodeURIComponent(q)}`);
+                        itensEncontrados = data.itens || [];
+                        if (!itensEncontrados.length) {
+                            resBox.innerHTML = '<div class="p-3 text-center text-xs text-slate-400">Nenhum item encontrado</div>';
+                            return;
+                        }
+                        resBox.innerHTML = itensEncontrados.map((it, idx) => `
+                            <div class="flex items-center gap-2 p-2 hover:bg-emerald-50 cursor-pointer border-b last:border-0 text-left" data-item-idx="${idx}">
+                                <img src="${configEsc(it.foto_url)}" class="w-8 h-8 object-contain rounded bg-white border" onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-xs font-bold text-slate-800 truncate">${configEsc(it.descricao)}</div>
+                                    <div class="text-[10px] text-slate-500">Cód: ${it.iditem} · Ref: ${configEsc(it.referencia || '---')}</div>
+                                </div>
+                            </div>
+                        `).join('');
+
+                        resBox.querySelectorAll('[data-item-idx]').forEach(el => {
+                            el.addEventListener('click', () => {
+                                const it = itensEncontrados[Number(el.dataset.itemIdx)];
+                                itemSelecionado = it;
+                                document.getElementById('prevImgAmostra').src = it.foto_url || 'https://placehold.co/100x100?text=S/F';
+                                document.getElementById('prevDescAmostra').textContent = it.descricao;
+                                document.getElementById('prevRefAmostra').textContent = `Cód: ${it.iditem} · Ref: ${it.referencia || '---'}`;
+                                document.getElementById('previewItemAmostra').classList.remove('hidden');
+                                resBox.classList.add('hidden');
+                                inputBusca.value = it.descricao;
+                            });
+                        });
+                    } catch (err) {
+                        resBox.innerHTML = `<div class="p-3 text-center text-xs text-rose-500">${configEsc(err.message)}</div>`;
+                    }
+                }, 300);
+            });
+        },
+        preConfirm: () => {
+            if (!itemSelecionado) {
+                Swal.showValidationMessage('Selecione um item da lista!');
+                return false;
+            }
+            const perc = Number(document.getElementById('percLiberadoAmostraModal').value);
+            if (isNaN(perc) || perc < 0 || perc > 100) {
+                Swal.showValidationMessage('O percentual deve estar entre 0% e 100%!');
+                return false;
+            }
+            return {
+                iditem: itemSelecionado.iditem,
+                percentual_liberado: perc,
+                motivo: document.getElementById('motivoAmostraModal').value.trim(),
+                ativo: true,
+            };
+        }
+    });
+
+    if (!res.isConfirmed || !res.value) return;
+
+    try {
+        await configRequest('amostra/regra-item', 'POST', res.value);
+        showToast('Regra de item salva com sucesso!');
+        await carregarConfiguracoes();
+    } catch (e) {
+        showError('Erro ao salvar regra', e.message);
+    }
+}
+
 async function carregarConfiguracoes() {
     document.getElementById('estadoGuia').textContent = 'Carregando regras...';
     document.getElementById('estadoFlex').textContent = 'Carregando configurações...';
@@ -136,6 +361,7 @@ async function carregarConfiguracoes() {
         configRequest('guia'),
         configRequest('guia/ncms'),
         configRequest('flex-minimo'),
+        configRequest('amostra'),
     ]);
     if (results[0].status === 'fulfilled') {
         configState.regras = results[0].value.regras || [];
@@ -153,7 +379,15 @@ async function carregarConfiguracoes() {
     if (results[2].status === 'fulfilled') {
         configState.flex = results[2].value.configuracoes || [];
         renderFlex();
-    } else {
+    }
+    if (results[3] && results[3].status === 'fulfilled') {
+        configState.amostraGeral = results[3].value.geral || null;
+        configState.amostraRegras = results[3].value.regras || [];
+        renderAmostra();
+    } else if (results[3]) {
+        document.getElementById('estadoAmostra').innerHTML = `<span class="text-rose-600">${configEsc(results[3].reason.message)}</span>`;
+    }
+    if (results[2].status !== "fulfilled") {
         document.getElementById('estadoFlex').innerHTML = `<span class="text-rose-600">${configEsc(results[2].reason.message)}</span>`;
     }
 }
@@ -364,6 +598,60 @@ document.getElementById('listaFlex').addEventListener('submit', async (event) =>
         showToast('Configuração do Flex Mínimo salva.');
     } catch (e) {
         showError('Não foi possível salvar', e.message);
+    }
+});
+
+
+document.getElementById('btnNovaRegraAmostra')?.addEventListener('click', novaRegraAmostra);
+
+document.getElementById('formAmostraGeral')?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const perc = Number(document.getElementById('amostraPercPadrao').value);
+    if (isNaN(perc) || perc < 0 || perc > 100) {
+        showError('Valor inválido', 'O percentual padrão deve ser entre 0% e 100%.');
+        return;
+    }
+    try {
+        await configRequest('amostra/geral', 'POST', { percentual_padrao: perc });
+        showToast('Percentual padrão salvo com sucesso!');
+        await carregarConfiguracoes();
+    } catch (err) {
+        showError('Erro ao salvar', err.message);
+    }
+});
+
+document.getElementById('listaAmostraRegras')?.addEventListener('click', async (e) => {
+    const btnToggle = e.target.closest('[data-toggle-amostra]');
+    if (btnToggle) {
+        const iditem = Number(btnToggle.dataset.item);
+        const perc = Number(btnToggle.dataset.perc);
+        const novoAtivo = btnToggle.dataset.ativo !== '1';
+        try {
+            await configRequest('amostra/regra-item', 'POST', {
+                iditem,
+                percentual_liberado: perc,
+                ativo: novoAtivo,
+            });
+            showToast(`Regra ${novoAtivo ? 'ativada' : 'pausada'}.`);
+            await carregarConfiguracoes();
+        } catch (err) {
+            showError('Erro ao atualizar regra', err.message);
+        }
+        return;
+    }
+
+    const btnDel = e.target.closest('[data-delete-amostra]');
+    if (btnDel) {
+        const id = Number(btnDel.dataset.deleteAmostra);
+        const confirm = await confirmar('Excluir regra deste item?', 'O item voltará a seguir o percentual padrão da Filial PR.', 'Excluir');
+        if (!confirm.isConfirmed) return;
+        try {
+            await configRequest(`amostra/regra-item/${id}`, 'DELETE');
+            showToast('Regra excluída.');
+            await carregarConfiguracoes();
+        } catch (err) {
+            showError('Erro ao excluir regra', err.message);
+        }
     }
 });
 

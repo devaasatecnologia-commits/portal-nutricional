@@ -930,6 +930,7 @@ $protected->group('/amostras', function ($group) {
     $group->get('/itens', [$controller, 'itens']);
     $group->get('/clientes', [$controller, 'clientes']);
     $group->get('/pedidos', [$controller, 'pedidos']);
+    $group->get('/pedidos/{id:[0-9]+}', [$controller, 'detalhesPedido']);
     $group->post('/pedidos', [$controller, 'criar']);
 })->add(new ModulePermissionMiddleware('pedido-amostra'));
 
@@ -1080,6 +1081,11 @@ $protected->group('/admin', function ($group) {
     $group->post('/config-modulos/guia', [$configModulos, 'salvarGuia']);
     $group->get('/config-modulos/flex-minimo', [$configModulos, 'listarFlexMinimo']);
     $group->post('/config-modulos/flex-minimo', [$configModulos, 'salvarFlexMinimo']);
+    $group->get('/config-modulos/amostra', [$configModulos, 'listarAmostraConfig']);
+    $group->post('/config-modulos/amostra/geral', [$configModulos, 'salvarAmostraGeral']);
+    $group->get('/config-modulos/amostra/itens-busca', [$configModulos, 'buscarItensAmostra']);
+    $group->post('/config-modulos/amostra/regra-item', [$configModulos, 'salvarAmostraRegraItem']);
+    $group->delete('/config-modulos/amostra/regra-item/{id:[0-9]+}', [$configModulos, 'excluirAmostraRegraItem']);
     $group->get('/modulos', [$controller, 'getModulos']);
     $group->post('/modulos', [$controller, 'salvarModulo']);
     $group->get('/menu-visual', [$controller, 'getMenuVisual']);

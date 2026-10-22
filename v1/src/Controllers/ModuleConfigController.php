@@ -385,4 +385,220 @@ class ModuleConfigController
             return $this->json($response, ['success' => false, 'error' => 'Não foi possível salvar a configuração do Flex Mínimo.'], 500);
         }
     }
+
+    private function processarImagem(?string $path_foto_master): string
+    {
+        $sem = 'https://placehold.co/100x100?text=S/F';
+        if (empty($path_foto_master) || in_array(trim($path_foto_master), ['.', '-', 'null', 'undefined'], true)) {
+            return $sem;
+        }
+        $n = str_replace('\\', '/', trim($path_foto_master));
+        if (preg_match('/^https?:\/\//i', $n)) {
+            return str_replace(' ', '%20', $n);
+        }
+        $marker = 'fotos para o site/';
+        $pos = stripos($n, $marker);
+        $rel = $pos !== false ? substr($n, $pos + strlen($marker)) : ltrim(preg_replace('/^fotos\//i', '', $n), '/');
+        if (empty($rel)) {
+            return $sem;
+        }
+        $parts = array_map('rawurlencode', explode('/', $rel));
+        return 'https://acesso.nutricionalbr.com:2053/fotos/' . implode('/', $parts);
+    }
+
+    /** GET /v1/admin/config-modulos/amostra */
+    public function listarAmostraConfig(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        try {
+            $stmt = $this->pdo->query('
+                SELECT id, filial_origem, filial_destino, percentual_padrao, atualizado_por, atualizado_em
+                FROM amostra_estoque_config
+                WHERE filial_origem = 1 AND filial_destino = 6
+                ORDER BY id LIMIT 1
+            ');
+            $geral = $stmt->fetch(PDO::FETCH_ASSOC) ?: [
+                'filial_origem' => 1,
+                'filial_destino' => 6,
+                'percentual_padrao' => 30.00,
+                'atualizado_por' => 'SISTEMA',
+                'atualizado_em' => null,
+            ];
+
+            $regras = $this->pdo->query('
+                SELECT r.id, r.iditem, r.filial_destino, r.percentual_liberado, r.ativo, r.motivo,
+                       r.atualizado_por, r.atualizado_em,
+                       i.descricao, i.referencia, i.path_foto_master
+                FROM amostra_estoque_regra_item r
+                JOIN item i ON i.iditem = r.iditem
+                WHERE r.filial_destino = 6
+                ORDER BY r.ativo DESC, i.descricao ASC
+            ')->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($regras as &$reg) {
+                $reg['foto_url'] = $this->processarImagem($reg['path_foto_master'] ?? null);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'geral' => $geral,
+                'regras' => $regras,
+            ]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao listar config amostra: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao carregar configurações de amostra.'], 500);
+        }
+    }
+
+    /** POST /v1/admin/config-modulos/amostra/geral */
+    public function salvarAmostraGeral(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        $b = $this->body($request);
+        $percentual = (float)($b['percentual_padrao'] ?? 30.00);
+        if ($percentual < 0 || $percentual > 100) {
+            return $this->json($response, ['success' => false, 'error' => 'O percentual padrão deve estar entre 0% e 100%.'], 422);
+        }
+
+        try {
+            $user = $request->getAttribute('user') ?? [];
+            $user = is_object($user) ? (array)$user : (array)$user;
+            $usuario = $user['username'] ?? 'ADMIN';
+
+            $stmt = $this->pdo->prepare('
+                UPDATE amostra_estoque_config
+                SET percentual_padrao = :perc, atualizado_por = :usuario, atualizado_em = NOW()
+                WHERE filial_origem = 1 AND filial_destino = 6
+            ');
+            $stmt->execute(['perc' => round($percentual, 2), 'usuario' => $usuario]);
+
+            if ($stmt->rowCount() === 0) {
+                $stmtIns = $this->pdo->prepare('
+                    INSERT INTO amostra_estoque_config (filial_origem, filial_destino, percentual_padrao, atualizado_por)
+                    VALUES (1, 6, :perc, :usuario)
+                ');
+                $stmtIns->execute(['perc' => round($percentual, 2), 'usuario' => $usuario]);
+            }
+
+            return $this->json($response, ['success' => true, 'percentual_padrao' => $percentual]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao salvar geral amostra: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Não foi possível salvar a configuração.'], 500);
+        }
+    }
+
+    /** GET /v1/admin/config-modulos/amostra/itens-busca */
+    public function buscarItensAmostra(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        $q = trim((string)($request->getQueryParams()['q'] ?? ''));
+        try {
+            $sql = "
+                SELECT i.iditem, i.descricao, i.referencia, i.path_foto_master
+                FROM item i
+                WHERE i.tipo = 11 AND i.inativo = 'N'
+            ";
+            $params = [];
+            if ($q !== '') {
+                $sql .= " AND (i.iditem::text = :exato OR i.referencia ILIKE :parcial OR i.descricao ILIKE :parcial)";
+                $params['exato'] = $q;
+                $params['parcial'] = '%' . $q . '%';
+            }
+            $sql .= " ORDER BY i.descricao LIMIT 40";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($itens as &$it) {
+                $it['foto_url'] = $this->processarImagem($it['path_foto_master'] ?? null);
+            }
+
+            return $this->json($response, ['success' => true, 'itens' => $itens]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao buscar itens amostra: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao buscar itens.'], 500);
+        }
+    }
+
+    /** POST /v1/admin/config-modulos/amostra/regra-item */
+    public function salvarAmostraRegraItem(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        $b = $this->body($request);
+        $iditem = (int)($b['iditem'] ?? 0);
+        $percentual = (float)($b['percentual_liberado'] ?? 0);
+        $ativo = $this->pgBool($b['ativo'] ?? true);
+        $motivo = trim((string)($b['motivo'] ?? ''));
+
+        if ($iditem <= 0) {
+            return $this->json($response, ['success' => false, 'error' => 'Item inválido.'], 422);
+        }
+        if ($percentual < 0 || $percentual > 100) {
+            return $this->json($response, ['success' => false, 'error' => 'O percentual liberado deve estar entre 0% e 100%.'], 422);
+        }
+
+        try {
+            $user = $request->getAttribute('user') ?? [];
+            $user = is_object($user) ? (array)$user : (array)$user;
+            $usuario = $user['username'] ?? 'ADMIN';
+
+            $stmt = $this->pdo->prepare('
+                INSERT INTO amostra_estoque_regra_item (iditem, filial_destino, percentual_liberado, ativo, motivo, atualizado_por, atualizado_em)
+                VALUES (:iditem, 6, :perc, :ativo, :motivo, :usuario, NOW())
+                ON CONFLICT (iditem, filial_destino) DO UPDATE
+                SET percentual_liberado = EXCLUDED.percentual_liberado,
+                    ativo = EXCLUDED.ativo,
+                    motivo = EXCLUDED.motivo,
+                    atualizado_por = EXCLUDED.atualizado_por,
+                    atualizado_em = NOW()
+            ');
+            $stmt->execute([
+                'iditem' => $iditem,
+                'perc' => round($percentual, 2),
+                'ativo' => $ativo ? 'true' : 'false',
+                'motivo' => $motivo,
+                'usuario' => $usuario,
+            ]);
+
+            return $this->json($response, ['success' => true]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao salvar regra de item amostra: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Não foi possível salvar a regra do item.'], 500);
+        }
+    }
+
+    /** DELETE /v1/admin/config-modulos/amostra/regra-item/{id} */
+    public function excluirAmostraRegraItem(Request $request, Response $response, array $args): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        $id = (int)($args['id'] ?? 0);
+        if ($id <= 0) {
+            return $this->json($response, ['success' => false, 'error' => 'ID inválido.'], 422);
+        }
+
+        try {
+            $stmt = $this->pdo->prepare('DELETE FROM amostra_estoque_regra_item WHERE id = :id');
+            $stmt->execute(['id' => $id]);
+            return $this->json($response, ['success' => true]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao excluir regra de item amostra: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Não foi possível excluir a regra.'], 500);
+        }
+    }
 }
