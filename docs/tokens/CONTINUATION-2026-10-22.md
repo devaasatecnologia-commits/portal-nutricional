@@ -38,15 +38,34 @@
 
 ---
 
+### 1.4 Módulo Retorno de Carga / Revenda (`retorno.php`, `retorno.js`, `RetornoController.php`)
+- **Correção Crítica de Quantidade no ERP (`quant_impressao`):**
+  - Identificado que o ERP exibe e opera a quantidade comercial na coluna `quant_impressao` da tabela `pedido_item`.
+  - O método `aplicarQuantidadePedidoItem` atualizava apenas `qt = :qt`, deixando `quant_impressao` com o valor antigo (gerando divergência entre o que o portal mostrava e o que o ERP exibia).
+  - O método `inserirItemCompleto` chumbava `'quant_impressao' => 1`.
+  - Corrigidos ambos os métodos para sincronizarem rigorosamente `quant_impressao = :qt`.
+  - Sincronizado o item 2152 no pedido 152057 (cliente 16596 - REVENDA) para 2 UN reais ($296,16 e 20,20 kg).
+- **Correção da Soma do Peso Total e Unitário:**
+  - Corrigido o erro nas consultas `produtoExisteNoPedido` e `getEstoqueAtivo`, que faziam `(qt * qtpesoliquido) as peso_total`, multiplicando o peso pela quantidade ao quadrado.
+  - Ajustado para utilizar o peso real cadastrado no item (`i.pesoliquido`) e o peso da linha (`pi.qtpesoliquido`).
+- **Panorama Instantâneo ao Bipar:**
+  - Ao bipar o código de barras ou informar a referência, o backend agora busca a situação do produto em **todos os 4 destinos** (Container, Matéria-Prima, Revenda e Trocas Fornecedor) em pedidos abertos (`status = 1`).
+  - O frontend exibe no cabeçalho o peso líquido/bruto unitário e nos 4 cards de destino exibe badges em tempo real de saldo (quantidade em UN e peso em KG), além do número do pedido aberto.
+
+---
+
 ## 2. Arquivos para Deploy FTP
 
 Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
 
 1. `v1/routes/api.php`
 2. `v1/src/Controllers/TransferenciaCompraController.php`
-3. `portal/modules/transferencia-compra.php`
-4. `portal/assets/js/transferencia-compra.js`
-5. `index_legado.php` (Tolerância inteligente de 5 min para o motor de crons unificado)
-6. `docs/CONTINUATION_TOKEN.md`
-7. `docs/tokens/CONTINUATION-2026-10-22.md`
+3. `v1/src/Controllers/RetornoController.php`
+4. `portal/modules/transferencia-compra.php`
+5. `portal/assets/js/transferencia-compra.js`
+6. `portal/modules/retorno.php`
+7. `portal/assets/js/retorno.js`
+8. `index_legado.php` (Tolerância inteligente de 5 min para o motor de crons unificado)
+9. `docs/CONTINUATION_TOKEN.md`
+10. `docs/tokens/CONTINUATION-2026-10-22.md`
 

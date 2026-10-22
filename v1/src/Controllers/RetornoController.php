@@ -447,7 +447,7 @@ private function getDadosItemCompleto($iditem, $quantidade)
         $d = $this->getDadosItemCompleto($iditem, $qt);
         $stmt = $this->pdo->prepare("
             UPDATE pedido_item SET
-                qt = :qt, qtsaldo = :qt, quant_original = :qt, quant_reserva = :qt,
+                qt = :qt, quant_impressao = :qt, qtsaldo = :qt, quant_original = :qt, quant_reserva = :qt,
                 qtsaldoconvertido = :qt, qtsaldogerouop = :qt,
                 qtpesoliquido = :pl, qtpesobruto = :pb, pesoliquidooriginal = :pl, pesobrutooriginal = :pb,
                 valortotal = :vt, valortotalcomdesconto = :vt, valor_total_com_campanha = :vt,
@@ -529,7 +529,7 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         'codigolido' => $referencia, 'complemento' => $complemento,
         'perc_margem' => $percmargem, 'perc_margem_cg' => $percmargem, 'perc_margem_cm' => 100,
         'valorcustogerencial' => $custogerencial,
-        'valorprecominimo' => $valorUnitario, 'quant_impressao' => 1, 'fator_conversao' => $fatorConversao ?: 1,
+        'valorprecominimo' => $valorUnitario, 'quant_impressao' => $qt, 'fator_conversao' => $fatorConversao ?: 1,
         'valorunitarioimpressao' => $valorUnitario, 'valorsugerido' => $valorUnitario, 'valorprecovendadia' => $valorUnitario,
         'valor_total_com_campanha' => $valortotal, 'valorunit_comst' => $valorUnitario, 'valortotal_comst' => $valortotal,
         'tipo_conversao' => 1, 'quant_original' => $qt, 'quant_reserva' => $qt, 'qtsaldoconvertido' => $qt, 'qtsaldogerouop' => $qt,
@@ -780,6 +780,50 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
             $produto['foto_url'] = $this->processarImagem($produto['path_foto_master'] ?? null);
             $produto['foto'] = $produto['path_foto_master'] ?? null;
             unset($produto['path_foto_master']);
+
+            // Busca situação do produto em todos os 4 destinos com pedido em aberto
+            $stmtDestinos = $this->pdo->prepare("
+                SELECT p.idcliforemp, p.idpedido, p.numero,
+                       COALESCE(pi.qt, 0) as quantidade,
+                       COALESCE(pi.quant_impressao, 0) as quant_impressao,
+                       COALESCE(pi.qtpesoliquido, 0) as peso_total,
+                       (pi.iditempedido IS NOT NULL AND pi.qt > 0) as tem_item
+                FROM pedido p
+                LEFT JOIN pedido_item pi ON pi.idpedido = p.idpedido AND pi.iditem = ? AND pi.ativo = 'S'
+                WHERE p.status = 1 AND p.idcliforemp IN (10117, 16595, 16596, 16688) AND p.idempresa = 1 AND p.idfilial = 1
+                ORDER BY p.idcliforemp, p.idpedido DESC
+            ");
+            $stmtDestinos->execute([$produto['iditem']]);
+            $rowsDest = $stmtDestinos->fetchAll(\PDO::FETCH_ASSOC);
+            $destMap = [];
+            foreach ($rowsDest as $rd) {
+                $destMap[(int)$rd['idcliforemp']] = $rd;
+            }
+
+            $destinosStatus = [];
+            $estoqueTotalQtd = 0.0;
+            $estoqueTotalPeso = 0.0;
+            foreach ($this->destinos as $idDest => $info) {
+                $rd = $destMap[$idDest] ?? null;
+                $qtd = (float)($rd['quantidade'] ?? 0);
+                $peso = (float)($rd['peso_total'] ?? 0);
+                $estoqueTotalQtd += $qtd;
+                $estoqueTotalPeso += $peso;
+                $destinosStatus[] = [
+                    'idcliforemp' => $idDest,
+                    'nome' => $info['nome'],
+                    'cor' => $info['cor'],
+                    'idpedido' => $rd['idpedido'] ?? null,
+                    'pedido_numero' => $rd['numero'] ?? null,
+                    'quantidade' => $qtd,
+                    'quant_impressao' => (float)($rd['quant_impressao'] ?? 0),
+                    'peso_total' => $peso,
+                    'tem_item' => !empty($rd['tem_item']),
+                ];
+            }
+            $produto['destinos_status'] = $destinosStatus;
+            $produto['estoque_total_qtd'] = $estoqueTotalQtd;
+            $produto['estoque_total_peso'] = $estoqueTotalPeso;
             
             $payload = json_encode($produto);
             $response->getBody()->write($payload);
@@ -807,9 +851,9 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         
         try {
             $stmt = $this->pdo->prepare("
-                SELECT iditempedido, qt as quantidade_atual, 
-                       (qt * qtpesoliquido) as peso_total,
-                       qtpesoliquido as peso_unitario,
+                SELECT iditempedido, qt as quantidade_atual, quant_impressao,
+                       qtpesoliquido as peso_total,
+                       ROUND(qtpesoliquido / NULLIF(qt, 0), 4) as peso_unitario,
                        valortotal as valor_total
                 FROM pedido_item 
                 WHERE idpedido = ? AND iditem = ? AND ativo = 'S'
@@ -1188,10 +1232,11 @@ public function movimentar(Request $request, Response $response): Response
             // Busca produtos
             $stmt = $this->pdo->prepare("
                 SELECT 
-                    pi.iditem, pi.iditempedido, pi.qt as quantidade_atual,
-                    pi.qtpesoliquido as peso_unitario, (pi.qt * pi.qtpesoliquido) as peso_total,
+                    pi.iditem, pi.iditempedido, pi.qt as quantidade_atual, pi.quant_impressao,
+                    ROUND(pi.qtpesoliquido / NULLIF(pi.qt, 0), 4) as peso_unitario,
+                    pi.qtpesoliquido as peso_total,
                     pi.valor as valor_unitario, pi.valortotal as valor_total,
-                    i.descricao as nome_item, i.referencia,
+                    i.descricao as nome_item, i.referencia, i.pesoliquido as peso_cadastro,
                     COALESCE(cb.idbarra, 'S/COD') as cod_barras,
                     i.path_foto_master as foto
                 FROM pedido_item pi

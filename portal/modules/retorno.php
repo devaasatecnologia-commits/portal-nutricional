@@ -97,24 +97,43 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ====================================================================== -->
     <!-- PRODUTO ENCONTRADO -->
     <!-- ====================================================================== -->
-    <div id="produtoEncontrado" style="display:none;" class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-        <div class="bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-3">
-            <div class="flex items-center gap-2 text-white">
-                <i class="fa-solid fa-box-open"></i>
-                <span class="font-bold text-sm">PRODUTO ENCONTRADO</span>
+    <div id="produtoEncontrado" style="display:none;" class="bg-white rounded-3xl shadow-sm border border-slate-100 mb-6 overflow-hidden animate-in fade-in duration-200">
+        <div class="bg-gradient-to-r from-slate-800 to-slate-900 px-5 py-3.5 flex items-center justify-between text-white">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-box-open text-amber-400"></i>
+                <span class="font-extrabold text-sm tracking-wide">PRODUTO IDENTIFICADO</span>
             </div>
+            <span class="text-xs text-slate-300 font-mono" id="produtoBadgeItem">#--</span>
         </div>
         <div class="p-5">
-            <div class="flex gap-4">
-                <img id="produtoFoto" src="" class="w-20 h-20 object-contain rounded-xl bg-slate-50 p-2 border">
-                <div class="flex-1">
-                    <div class="font-black text-lg text-slate-800" id="produtoNome">--</div>
-                    <div class="text-sm text-slate-500 mt-1">
-                        <span id="produtoCodigo">--</span> | 
-                        <span id="produtoReferencia">--</span>
+            <div class="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+                <img id="produtoFoto" src="" class="w-24 h-24 object-contain rounded-2xl bg-slate-50 p-2 border border-slate-200 shadow-sm flex-shrink-0">
+                <div class="flex-1 min-w-0">
+                    <div class="font-black text-lg sm:text-xl text-slate-800 leading-snug" id="produtoNome">--</div>
+                    <div class="text-xs sm:text-sm text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <span id="produtoCodigo" class="font-mono bg-slate-100 px-2 py-0.5 rounded-md font-bold">--</span>
+                        <span>•</span>
+                        <span id="produtoReferencia" class="font-semibold text-slate-600">--</span>
                     </div>
-                    <div class="text-xs text-slate-400 mt-2">
-                        <i class="fa-solid fa-weight-hanging"></i> Peso: <span id="produtoPeso">--</span> kg/un
+
+                    <!-- Mini painel de pesos e totais cadastrais -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3 pt-3 border-t border-slate-100 text-xs">
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <span class="text-slate-400 block text-[10px] uppercase font-black tracking-wider">Peso Líquido Unit.</span>
+                            <b class="text-slate-700 text-sm" id="produtoPeso">0.00 kg</b>
+                        </div>
+                        <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                            <span class="text-slate-400 block text-[10px] uppercase font-black tracking-wider">Peso Bruto Unit.</span>
+                            <b class="text-slate-700 text-sm" id="produtoPesoBruto">0.00 kg</b>
+                        </div>
+                        <div class="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-100">
+                            <span class="text-emerald-700 block text-[10px] uppercase font-black tracking-wider">Total nos Estoques</span>
+                            <b class="text-emerald-800 text-sm" id="produtoTotalEstoqueQtd">0 un</b>
+                        </div>
+                        <div class="bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-100">
+                            <span class="text-emerald-700 block text-[10px] uppercase font-black tracking-wider">Peso Total nos Estoques</span>
+                            <b class="text-emerald-800 text-sm" id="produtoTotalEstoquePeso">0.00 kg</b>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -122,49 +141,77 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- ====================================================================== -->
-    <!-- DESTINOS (3 CARDS) -->
+    <!-- DESTINOS (4 CARDS COM SITUAÇÃO EM TEMPO REAL) -->
     <!-- ====================================================================== -->
-    <div id="areaDestinos" style="display:none;" class="mb-6">
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="bg-gradient-to-r from-slate-700 to-slate-800 px-5 py-3">
-                <div class="flex items-center gap-2 text-white">
-                    <i class="fa-solid fa-warehouse"></i>
-                    <span class="font-bold text-sm">PARA ONDE DESEJA DESTINAR?</span>
+    <div id="areaDestinos" style="display:none;" class="mb-6 animate-in fade-in duration-200">
+        <div class="bg-white rounded-3xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="bg-gradient-to-r from-slate-800 to-slate-900 px-5 py-3.5 flex items-center justify-between text-white">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-warehouse text-sky-400"></i>
+                    <span class="font-extrabold text-sm tracking-wide">PANORAMA DOS ESTOQUES / SELECIONE O DESTINO</span>
                 </div>
+                <span class="text-xs text-slate-300">Clique para movimentar</span>
             </div>
             <div class="p-5">
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4" id="cardsDestinosContainer">
+                    <!-- CONTAINER -->
                     <div onclick="selecionarDestino(10117, 'CONTAINER', '#10b981')" 
-                         class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-green-500 transition-all shadow-sm" data-destino="10117">
-                        <div class="w-12 h-12 bg-green-100 text-green-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+                         class="destino-card bg-white rounded-2xl p-4 text-center cursor-pointer border-2 border-slate-200/80 hover:border-emerald-500 hover:shadow-md transition-all relative overflow-hidden" data-destino="10117">
+                        <div class="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
                             <i class="fa-solid fa-boxes-packing text-xl"></i>
                         </div>
-                        <div class="font-bold text-slate-800">CONTAINER</div>
-                        <div class="text-xs text-slate-400">Produtos avariados</div>
+                        <div class="font-black text-slate-800 text-sm">CONTAINER</div>
+                        <div class="text-[11px] text-slate-400">Produtos avariados</div>
+                        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col items-center">
+                            <span class="dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-black bg-slate-100 text-slate-500" id="destQtd_10117">—</span>
+                            <span class="text-[11px] text-slate-500 font-semibold mt-1" id="destPeso_10117">Peso: —</span>
+                            <span class="text-[10px] text-slate-400 font-mono mt-0.5" id="destPed_10117"></span>
+                        </div>
                     </div>
+
+                    <!-- MATÉRIA-PRIMA -->
                     <div onclick="selecionarDestino(16595, 'MATÉRIA-PRIMA', '#3b82f6')" 
-                         class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-blue-500 transition-all shadow-sm" data-destino="16595">
-                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+                         class="destino-card bg-white rounded-2xl p-4 text-center cursor-pointer border-2 border-slate-200/80 hover:border-blue-500 hover:shadow-md transition-all relative overflow-hidden" data-destino="16595">
+                        <div class="w-12 h-12 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
                             <i class="fa-solid fa-industry text-xl"></i>
                         </div>
-                        <div class="font-bold text-slate-800">MATÉRIA-PRIMA</div>
-                        <div class="text-xs text-slate-400">Aproveitamento produção</div>
+                        <div class="font-black text-slate-800 text-sm">MATÉRIA-PRIMA</div>
+                        <div class="text-[11px] text-slate-400">Aproveitamento produção</div>
+                        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col items-center">
+                            <span class="dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-black bg-slate-100 text-slate-500" id="destQtd_16595">—</span>
+                            <span class="text-[11px] text-slate-500 font-semibold mt-1" id="destPeso_16595">Peso: —</span>
+                            <span class="text-[10px] text-slate-400 font-mono mt-0.5" id="destPed_16595"></span>
+                        </div>
                     </div>
+
+                    <!-- REVENDA -->
                     <div onclick="selecionarDestino(16596, 'REVENDA', '#f59e0b')" 
-                         class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-amber-500 transition-all shadow-sm" data-destino="16596">
-                        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+                         class="destino-card bg-white rounded-2xl p-4 text-center cursor-pointer border-2 border-slate-200/80 hover:border-amber-500 hover:shadow-md transition-all relative overflow-hidden" data-destino="16596">
+                        <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
                             <i class="fa-solid fa-store text-xl"></i>
                         </div>
-                        <div class="font-bold text-slate-800">REVENDA</div>
-                        <div class="text-xs text-slate-400">Produtos aptos revenda</div>
+                        <div class="font-black text-slate-800 text-sm">REVENDA</div>
+                        <div class="text-[11px] text-slate-400">Produtos aptos revenda</div>
+                        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col items-center">
+                            <span class="dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-black bg-slate-100 text-slate-500" id="destQtd_16596">—</span>
+                            <span class="text-[11px] text-slate-500 font-semibold mt-1" id="destPeso_16596">Peso: —</span>
+                            <span class="text-[10px] text-slate-400 font-mono mt-0.5" id="destPed_16596"></span>
+                        </div>
                     </div>
+
+                    <!-- TROCAS FORNECEDOR -->
                     <div onclick="selecionarDestino(16688, 'TROCAS FORNECEDOR', '#8b5cf6')" 
-                         class="destino-card bg-white rounded-xl p-4 text-center cursor-pointer border-2 border-transparent hover:border-violet-500 transition-all shadow-sm" data-destino="16688">
-                        <div class="w-12 h-12 bg-violet-100 text-violet-600 rounded-xl flex items-center justify-center mx-auto mb-2">
+                         class="destino-card bg-white rounded-2xl p-4 text-center cursor-pointer border-2 border-slate-200/80 hover:border-violet-500 hover:shadow-md transition-all relative overflow-hidden" data-destino="16688">
+                        <div class="w-12 h-12 bg-violet-100 text-violet-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
                             <i class="fa-solid fa-right-left text-xl"></i>
                         </div>
-                        <div class="font-bold text-slate-800">TROCAS FORNECEDOR</div>
-                        <div class="text-xs text-slate-400">Devolução ao fornecedor</div>
+                        <div class="font-black text-slate-800 text-sm">TROCAS FORNECEDOR</div>
+                        <div class="text-[11px] text-slate-400">Devolução ao fornecedor</div>
+                        <div class="mt-3 pt-2.5 border-t border-slate-100 flex flex-col items-center">
+                            <span class="dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-black bg-slate-100 text-slate-500" id="destQtd_16688">—</span>
+                            <span class="text-[11px] text-slate-500 font-semibold mt-1" id="destPeso_16688">Peso: —</span>
+                            <span class="text-[10px] text-slate-400 font-mono mt-0.5" id="destPed_16688"></span>
+                        </div>
                     </div>
                 </div>
             </div>

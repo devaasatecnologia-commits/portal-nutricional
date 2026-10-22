@@ -239,7 +239,19 @@ async function processarLeitura(codigo, doEmbarque = false) {
         if (refEl) refEl.innerHTML = `<i class="fa-solid fa-tag"></i> Ref: ${produto.referencia || '---'}`;
         
         const pesoEl = document.getElementById('produtoPeso');
-        if (pesoEl) pesoEl.innerText = formatarPeso(produto.pesoliquido);
+        if (pesoEl) pesoEl.innerText = formatarPeso(produto.pesoliquido) + ' kg';
+
+        const badgeItem = document.getElementById('produtoBadgeItem');
+        if (badgeItem) badgeItem.innerText = '#' + produto.iditem;
+
+        const pesoBrutoEl = document.getElementById('produtoPesoBruto');
+        if (pesoBrutoEl) pesoBrutoEl.innerText = formatarPeso(produto.pesobruto) + ' kg';
+
+        const totalQtdEl = document.getElementById('produtoTotalEstoqueQtd');
+        if (totalQtdEl) totalQtdEl.innerText = formatarQuantidade(produto.estoque_total_qtd || 0) + ' un';
+
+        const totalPesoEl = document.getElementById('produtoTotalEstoquePeso');
+        if (totalPesoEl) totalPesoEl.innerText = formatarPeso(produto.estoque_total_peso || 0) + ' kg';
         
         const fotoUrl = getImageUrl(produto.foto || produto.foto_url);
         const fotoEl = document.getElementById('produtoFoto');
@@ -248,6 +260,42 @@ async function processarLeitura(codigo, doEmbarque = false) {
             fotoEl.onerror = function() {
                 this.src = 'https://placehold.co/100x100?text=S/F';
             };
+        }
+
+        // Atualiza os 4 cards de destinos com a situação em tempo real
+        if (Array.isArray(produto.destinos_status)) {
+            produto.destinos_status.forEach(st => {
+                const qtdEl = document.getElementById(`destQtd_${st.idcliforemp}`);
+                const pesoDestEl = document.getElementById(`destPeso_${st.idcliforemp}`);
+                const pedEl = document.getElementById(`destPed_${st.idcliforemp}`);
+                const cardEl = document.querySelector(`.destino-card[data-destino="${st.idcliforemp}"]`);
+
+                if (qtdEl) {
+                    if (st.quantidade > 0) {
+                        qtdEl.innerText = `${formatarQuantidade(st.quantidade)} UN no Estoque`;
+                        qtdEl.className = 'dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm';
+                    } else {
+                        qtdEl.innerText = 'Sem saldo neste pedido';
+                        qtdEl.className = 'dest-qtd-badge px-2.5 py-1 rounded-xl text-xs font-semibold bg-slate-100 text-slate-400';
+                    }
+                }
+
+                if (pesoDestEl) {
+                    pesoDestEl.innerText = st.quantidade > 0 ? `Peso: ${formatarPeso(st.peso_total)} kg` : 'Peso: 0 kg';
+                }
+
+                if (pedEl) {
+                    pedEl.innerText = st.idpedido ? `Pedido #${st.idpedido}` : 'Sem pedido aberto';
+                }
+
+                if (cardEl) {
+                    if (st.quantidade > 0) {
+                        cardEl.classList.add('ring-2', 'ring-emerald-400/40');
+                    } else {
+                        cardEl.classList.remove('ring-2', 'ring-emerald-400/40');
+                    }
+                }
+            });
         }
         
         document.getElementById('produtoEncontrado').style.display = 'block';
