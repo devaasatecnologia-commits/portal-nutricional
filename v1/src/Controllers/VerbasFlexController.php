@@ -320,8 +320,50 @@ class VerbasFlexController
 
             [$d, $pd] = $this->baseDebitos($f, $usuario);
             $ranking = $this->consultar(
-                "SELECT lfb.idvendrepre AS id, vend.fantasia AS nome, SUM(lfb.valor_tirado) AS total, COUNT(*) AS qtd $d
-                 GROUP BY 1, 2 ORDER BY 3 DESC LIMIT 5",
+                "SELECT lfb.idvendrepre AS id, vend.fantasia AS nome,
+                        ABS(SUM(lfb.valor_tirado)) AS total,
+                        COUNT(*) AS qtd,
+                        ABS(MIN(lfb.valor_tirado)) AS maior_retirada
+                 $d
+                 GROUP BY 1, 2
+                 ORDER BY total DESC",
+                $pd
+            );
+
+            $totalDeb = abs((float)($atual['debitos'] ?? 0));
+            foreach ($ranking as &$rk) {
+                $rk['total'] = (float)$rk['total'];
+                $rk['qtd'] = (int)$rk['qtd'];
+                $rk['maior_retirada'] = (float)$rk['maior_retirada'];
+                $rk['percentual'] = $totalDeb > 0 ? round(($rk['total'] / $totalDeb) * 100, 1) : 0.0;
+            }
+
+            // Estatísticas detalhadas
+            $statsDebitos = $this->consultar(
+                "SELECT COUNT(*) AS qtd,
+                        ABS(COALESCE(MIN(lfb.valor_tirado), 0)) AS maior_debito,
+                        ABS(COALESCE(AVG(lfb.valor_tirado), 0)) AS ticket_medio
+                 $d",
+                $pd
+            )[0] ?? ['qtd' => 0, 'maior_debito' => 0, 'ticket_medio' => 0];
+
+            [$c, $pc] = $this->baseCreditos($f);
+            $statsCreditos = $this->consultar(
+                "SELECT COUNT(*) AS qtd,
+                        COALESCE(MAX(ldfg.valor_emprestimo), 0) AS maior_credito,
+                        COALESCE(AVG(ldfg.valor_emprestimo), 0) AS media_credito
+                 $c AND ldfg.valor_emprestimo > 0",
+                $pc
+            )[0] ?? ['qtd' => 0, 'maior_credito' => 0, 'media_credito' => 0];
+
+            // Série diária no período para gráficos de linha/área
+            $serieDiaria = $this->consultar(
+                "SELECT date_trunc('day', nfs.datahora)::date AS dia,
+                        ABS(SUM(lfb.valor_tirado)) AS debito,
+                        COUNT(*) AS qtd
+                 $d
+                 GROUP BY 1
+                 ORDER BY 1",
                 $pd
             );
 
@@ -331,7 +373,17 @@ class VerbasFlexController
                 'atual' => $atual,
                 'anterior' => $anterior,
                 'serie' => $serie,
+                'serie_diaria' => $serieDiaria,
                 'ranking' => $ranking,
+                'estatisticas' => [
+                    'qtd_debitos' => (int)$statsDebitos['qtd'],
+                    'ticket_medio' => (float)$statsDebitos['ticket_medio'],
+                    'maior_debito' => (float)$statsDebitos['maior_debito'],
+                    'qtd_creditos' => (int)$statsCreditos['qtd'],
+                    'maior_credito' => (float)$statsCreditos['maior_credito'],
+                    'media_credito' => (float)$statsCreditos['media_credito'],
+                    'total_representantes' => count($ranking),
+                ],
             ]);
         } catch (\DomainException $e) {
             return $this->erro($response, $e->getMessage(), 403);

@@ -6,13 +6,16 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 use PDO;
 
 /**
- * Transferencia de saldo Flex entre representantes (equivalente ao processo do ERP).
+ * Transferência de saldo Flex entre representantes (equivalente ao processo do ERP).
  *
  * Regras:
- *  - o usuario so enxerga representantes (usuarios_mercos) das filiais de usuario.dash_filiais
+ *  - O usuário só enxerga representantes das filiais liberadas (usuario.dash_filiais)
  *    e, se tiver dash_gestores, apenas dos gestores liberados (usuarios_mercos.cdgestor);
- *  - saldo e movimentacao ficam na API Mercos de cada filial (/saldo_flex);
- *  - cada transferencia gera registro em transferencias_flex_mercos_log.
+ *  - Apenas representantes ATIVOS no ERP (cliforemp.inativo <> 'S') e com CONTA/VÍNCULO ATIVO
+ *    na API Mercos (/saldo_flex, excluido = false) aparecem nas seleções DE e PARA;
+ *  - Observação no Mercos registra explicitamente de quem saiu, para quem foi e o usuário operador;
+ *  - Saldo e movimentação comunicam diretamente com a API Mercos de cada filial;
+ *  - Cada transferência gera registro detalhado em transferencias_flex_mercos_log.
  */
 class FlexTransferenciaController
 {
@@ -56,43 +59,97 @@ class FlexTransferenciaController
         }
 
         return [
+            'idusuario' => $idusuario,
             'username' => strtoupper((string)($row['username'] ?? ($user['username'] ?? ''))),
             'filiais' => $filiais,
             'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
+            'is_admin' => $isAdmin,
         ];
-    }
-
-    /** Representantes liberados para o usuario (opcionalmente de uma filial). */
-    private function representantes(array $usuario, ?int $filial = null): array
-    {
-        $filiais = $filial !== null ? array_values(array_intersect($usuario['filiais'], [$filial])) : $usuario['filiais'];
-        if ($filiais === []) {
-            return [];
-        }
-
-        $sql = 'SELECT DISTINCT ON (filial, idcolaborador) idcolaborador, username, nome, filial, cdgestor, gestor
-                FROM usuarios_mercos
-                WHERE idcolaborador IS NOT NULL AND filial IN (' . implode(',', array_map('intval', $filiais)) . ')';
-        if ($usuario['gestores'] !== []) {
-            $sql .= ' AND cdgestor IN (' . implode(',', $usuario['gestores']) . ')';
-        }
-        $sql .= ' ORDER BY filial, idcolaborador';
-
-        $rows = $this->pdo->query($sql)->fetchAll(PDO::FETCH_ASSOC);
-        $out = array_map(static fn (array $r): array => [
-            'id' => (int)$r['idcolaborador'],
-            'nome' => trim((string)($r['username'] ?: $r['nome'])),
-            'filial' => (int)$r['filial'],
-            'gestor' => (string)$r['gestor'],
-        ], $rows);
-        usort($out, static fn (array $a, array $b): int => strcasecmp($a['nome'], $b['nome']));
-        return $out;
     }
 
     private function flex(int $filial): \Nutricional\Services\MercosFlexService
     {
         return new \Nutricional\Services\MercosFlexService($filial);
     }
+
+    /**
+     * Representantes liberados para o usuário, ATIVOS no ERP e com VÍNCULO/CONTA ATIVA no Mercos.
+     * Retorna os saldos atualizados diretamente da API Mercos anexados a cada representante.
+     */
+    private function representantes(array $usuario, int $filial): array
+    {
+        if (!in_array($filial, $usuario['filiais'], true)) {
+            return [];
+        }
+
+        // 1. Busca representantes ATIVOS no ERP vinculados à filial
+        $sql = 'SELECT DISTINCT ON (um.idcolaborador) 
+                    um.idcolaborador, um.username, um.nome, um.filial, um.cdgestor, um.gestor,
+                    c.razao, c.fantasia
+                FROM usuarios_mercos um
+                INNER JOIN cliforemp c ON c.idcliforemp = um.idcolaborador
+                WHERE um.idcolaborador IS NOT NULL 
+                  AND um.filial = :filial
+                  AND COALESCE(c.inativo, \'N\') <> \'S\'';
+        if ($usuario['gestores'] !== []) {
+            $sql .= ' AND um.cdgestor IN (' . implode(',', array_map('intval', $usuario['gestores'])) . ')';
+        }
+        $sql .= ' ORDER BY um.idcolaborador';
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['filial' => $filial]);
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($rows)) {
+            return [];
+        }
+
+        // 2. Consulta a API Mercos para checar vínculo e saldo
+        $saldosMercos = [];
+        try {
+            $saldosMercos = $this->flex($filial)->saldos(false);
+        } catch (\Throwable $e) {
+            error_log(sprintf('[flex] Falha ao consultar saldos mercos filial %d: %s', $filial, $e->getMessage()));
+        }
+
+        // 3. Filtra apenas os que possuem vínculo real e conta ativa na API Mercos
+        $out = [];
+        foreach ($rows as $r) {
+            $id = (int)$r['idcolaborador'];
+
+            // Se a API Mercos respondeu com sucesso, exige presença no mapa de saldos e não excluído
+            if (!empty($saldosMercos)) {
+                if (!isset($saldosMercos[$id])) {
+                    continue; // Sem conta flex na API Mercos
+                }
+                $itemMercos = $saldosMercos[$id];
+                if (!empty($itemMercos['excluido'])) {
+                    continue; // Excluído / inativo na API Mercos
+                }
+                $saldo = (float)($itemMercos['saldo_atual'] ?? 0.0);
+            } else {
+                // Se a API Mercos estiver temporariamente fora, mantém os representantes ativos com saldo 0
+                $saldo = 0.0;
+            }
+
+            $nomeExibicao = trim((string)($r['username'] ?: ($r['fantasia'] ?: $r['razao'])));
+
+            $out[] = [
+                'id' => $id,
+                'nome' => $nomeExibicao,
+                'razao' => trim((string)$r['razao']),
+                'fantasia' => trim((string)$r['fantasia']),
+                'filial' => (int)$r['filial'],
+                'cdgestor' => (int)$r['cdgestor'],
+                'gestor' => (string)$r['gestor'],
+                'saldo' => $saldo,
+            ];
+        }
+
+        usort($out, static fn (array $a, array $b): int => strcasecmp($a['nome'], $b['nome']));
+        return $out;
+    }
+
     private function permitido(array $usuario, int $filial, int $id): ?array
     {
         foreach ($this->representantes($usuario, $filial) as $r) {
@@ -103,7 +160,82 @@ class FlexTransferenciaController
         return null;
     }
 
-    /** GET /v1/flex/contexto */
+    /** Calcula KPIs e métricas do mês para a visão transparente do Gestor */
+    private function calcularResumo(array $usuario, int $filial, array $reps = []): array
+    {
+        if ($reps === []) {
+            $reps = $this->representantes($usuario, $filial);
+        }
+
+        // Estatísticas das transferências do mês corrente
+        $sql = 'SELECT 
+                    COUNT(*) as qtd_mes,
+                    COALESCE(SUM(valor), 0) as total_mes,
+                    COUNT(CASE WHEN sucesso THEN 1 END) as qtd_sucesso,
+                    COUNT(CASE WHEN NOT sucesso THEN 1 END) as qtd_falhas
+                FROM transferencias_flex_mercos_log
+                WHERE filial = :filial
+                  AND sucesso = true
+                  AND data_transferencia >= DATE_TRUNC(\'month\', CURRENT_DATE)';
+        $params = ['filial' => $filial];
+
+        if ($usuario['gestores'] !== []) {
+            $idsReps = array_map(static fn (array $r): int => $r['id'], $reps);
+            $listaIds = $idsReps === [] ? '0' : implode(',', $idsReps);
+            $sql .= ' AND (usuario = :user OR colaborador_de IN (' . $listaIds . ') OR colaborador_para IN (' . $listaIds . '))';
+            $params['user'] = $usuario['username'];
+        }
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $stats = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+
+        // Última transferência com sucesso realizada
+        $sqlUltima = 'SELECT data_transferencia, nome_de, nome_para, valor, usuario, motivo
+                      FROM transferencias_flex_mercos_log
+                      WHERE filial = :filial AND sucesso = true';
+        if ($usuario['gestores'] !== []) {
+            $sqlUltima .= ' AND (usuario = :user OR colaborador_de IN (' . $listaIds . ') OR colaborador_para IN (' . $listaIds . '))';
+        }
+        $sqlUltima .= ' ORDER BY data_transferencia DESC LIMIT 1';
+
+        $stmtUltima = $this->pdo->prepare($sqlUltima);
+        $stmtUltima->execute($params);
+        $ultima = $stmtUltima->fetch(PDO::FETCH_ASSOC) ?: null;
+
+        // Saldo total da equipe e saldo do gestor logado
+        $saldoEquipe = 0.0;
+        $saldoGestor = null;
+        $nomeGestor = null;
+        $usernameUpper = $usuario['username'];
+
+        foreach ($reps as $r) {
+            $saldoEquipe += $r['saldo'];
+            // Identifica se este registro é a conta própria do gestor/usuário
+            if ($saldoGestor === null) {
+                $nomeU = strtoupper($r['nome']);
+                if (str_contains($nomeU, $usernameUpper) || str_contains($nomeU, '(GESTOR)')) {
+                    if (str_contains($nomeU, $usernameUpper)) {
+                        $saldoGestor = $r['saldo'];
+                        $nomeGestor = $r['nome'];
+                    }
+                }
+            }
+        }
+
+        return [
+            'total_mes' => (float)($stats['total_mes'] ?? 0.0),
+            'qtd_mes' => (int)($stats['qtd_mes'] ?? 0),
+            'qtd_sucesso' => (int)($stats['qtd_sucesso'] ?? 0),
+            'saldo_equipe' => round($saldoEquipe, 2),
+            'total_representantes' => count($reps),
+            'saldo_gestor' => $saldoGestor,
+            'nome_gestor' => $nomeGestor,
+            'ultima_transferencia' => $ultima,
+        ];
+    }
+
+    /** GET /v1/flex/contexto?filial=X */
     public function contexto(Request $request, Response $response): Response
     {
         try {
@@ -114,14 +246,73 @@ class FlexTransferenciaController
                 $filiais = $this->pdo->query("SELECT idfilial, razao FROM filial WHERE idfilial IN ($in) ORDER BY idfilial")
                     ->fetchAll(PDO::FETCH_ASSOC);
             }
+
+            $q = $request->getQueryParams();
+            $filialPadrao = !empty($filiais) ? (int)$filiais[0]['idfilial'] : 1;
+            $filial = (int)($q['filial'] ?? $filialPadrao);
+            if (!in_array($filial, $usuario['filiais'], true) && !empty($usuario['filiais'])) {
+                $filial = (int)$usuario['filiais'][0];
+            }
+
+            $reps = $this->representantes($usuario, $filial);
+            $resumo = $this->calcularResumo($usuario, $filial, $reps);
+
             return $this->json($response, [
                 'success' => true,
                 'usuario' => $usuario['username'],
+                'is_admin' => $usuario['is_admin'],
                 'filiais' => $filiais,
-                'representantes' => $this->representantes($usuario),
+                'filial_atual' => $filial,
+                'representantes' => $reps,
+                'resumo' => $resumo,
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao carregar contexto: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /v1/flex/representantes?filial=X */
+    public function listarRepresentantes(Request $request, Response $response): Response
+    {
+        try {
+            $q = $request->getQueryParams();
+            $filial = (int)($q['filial'] ?? 0);
+            $usuario = $this->usuario($request);
+
+            if (!in_array($filial, $usuario['filiais'], true)) {
+                return $this->erro($response, 'Filial não liberada para o seu usuário.', 403);
+            }
+
+            $reps = $this->representantes($usuario, $filial);
+            $resumo = $this->calcularResumo($usuario, $filial, $reps);
+
+            return $this->json($response, [
+                'success' => true,
+                'filial' => $filial,
+                'representantes' => $reps,
+                'resumo' => $resumo,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao listar representantes: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /v1/flex/resumo?filial=X */
+    public function resumo(Request $request, Response $response): Response
+    {
+        try {
+            $q = $request->getQueryParams();
+            $filial = (int)($q['filial'] ?? 0);
+            $usuario = $this->usuario($request);
+
+            if (!in_array($filial, $usuario['filiais'], true)) {
+                return $this->erro($response, 'Filial não liberada para o seu usuário.', 403);
+            }
+
+            $resumo = $this->calcularResumo($usuario, $filial);
+            return $this->json($response, ['success' => true, 'resumo' => $resumo]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao carregar resumo: ' . $e->getMessage(), 500);
         }
     }
 
@@ -134,11 +325,11 @@ class FlexTransferenciaController
             $id = (int)($q['id'] ?? 0);
             $rep = $this->permitido($this->usuario($request), $filial, $id);
             if ($rep === null) {
-                return $this->erro($response, 'Representante nao liberado para o seu usuario.', 403);
+                return $this->erro($response, 'Representante não liberado, inativo no ERP ou sem vínculo no Mercos.', 403);
             }
-            $item = $this->flex($filial)->saldos()[$id] ?? null;
+            $item = $this->flex($filial)->saldos(true)[$id] ?? null;
             if ($item === null) {
-                return $this->erro($response, 'Representante sem saldo Flex na API.', 404);
+                return $this->erro($response, 'Representante sem saldo Flex na API Mercos.', 404);
             }
             return $this->json($response, [
                 'success' => true,
@@ -180,13 +371,13 @@ class FlexTransferenciaController
         $motivo = trim((string)($b['motivo'] ?? ''));
 
         if ($de <= 0 || $para <= 0 || $de === $para) {
-            return $this->erro($response, 'Escolha dois representantes diferentes (DE e PARA).');
+            return $this->erro($response, 'Escolha dois representantes diferentes (origem DE e destino PARA).');
         }
         if ($valor <= 0) {
             return $this->erro($response, 'Informe um valor maior que zero.');
         }
         if (mb_strlen($motivo) < 4) {
-            return $this->erro($response, 'Informe um motivo com pelo menos 4 caracteres.');
+            return $this->erro($response, 'Informe um motivo claro com pelo menos 4 caracteres.');
         }
         $motivo = mb_substr($motivo, 0, 255);
 
@@ -194,14 +385,14 @@ class FlexTransferenciaController
         $repDe = $this->permitido($usuario, $filial, $de);
         $repPara = $this->permitido($usuario, $filial, $para);
         if ($repDe === null || $repPara === null) {
-            return $this->erro($response, 'Representante nao liberado para o seu usuario nesta filial.', 403);
+            return $this->erro($response, 'Um dos representantes selecionados não está liberado, está inativo no ERP ou sem vínculo no Mercos.', 403);
         }
 
-        // evita duas transferencias simultaneas do mesmo representante
+        // Evita transferências simultâneas concorrentes do mesmo representante emissor
         $lock = $this->pdo->prepare('SELECT pg_try_advisory_lock(:k)');
         $lock->execute(['k' => crc32('flex:' . $filial . ':' . $de)]);
         if (!$lock->fetchColumn()) {
-            return $this->erro($response, 'Ja existe uma transferencia em andamento para este representante.', 409);
+            return $this->erro($response, 'Já existe uma transferência em andamento para este representante. Aguarde alguns instantes.', 409);
         }
 
         $log = [
@@ -218,26 +409,35 @@ class FlexTransferenciaController
             $sDe = $saldos[$de] ?? null;
             $sPara = $saldos[$para] ?? null;
             if ($sDe === null || $sPara === null) {
-                throw new \DomainException('Representante sem saldo Flex cadastrado na API.');
+                throw new \DomainException('Representante sem saldo Flex cadastrado na API Mercos.');
             }
             if (!empty($sDe['excluido']) || !empty($sPara['excluido'])) {
-                throw new \DomainException('Representante inativo/excluido nao pode transferir ou receber.');
+                throw new \DomainException('Representante inativo ou excluído no Mercos não pode transferir ou receber.');
             }
             $log['saldo_ant_de'] = (float)$sDe['saldo_atual'];
             $log['saldo_ant_para'] = (float)$sPara['saldo_atual'];
             if ($log['saldo_ant_de'] < $valor) {
-                throw new \DomainException('O representante ' . $repDe['nome'] . ' nao possui saldo suficiente para transferir.');
+                throw new \DomainException('O representante ' . $repDe['nome'] . ' não possui saldo suficiente para transferir (Saldo: R$ ' . number_format($log['saldo_ant_de'], 2, ',', '.') . ').');
             }
 
-            $flex->movimentar($de, -$valor, $motivo);
+            // Observação transparente enviada para a API Mercos com DE, PARA e Usuário Solicitante
+            $prefixoMercos = sprintf('Transf: %s (#%d) -> %s (#%d) por %s | ', $repDe['nome'], $de, $repPara['nome'], $para, $usuario['username']);
+            $maxDisponivel = 250 - mb_strlen($prefixoMercos);
+            $motivoTruncado = mb_strlen($motivo) > $maxDisponivel ? (mb_substr($motivo, 0, max(1, $maxDisponivel - 3)) . '...') : $motivo;
+            $obsMercos = $prefixoMercos . $motivoTruncado;
+
+            // 1. Débito no emissor
+            $flex->movimentar($de, -$valor, $obsMercos);
             $debitado = true;
-            $flex->movimentar($para, $valor, $motivo);
+
+            // 2. Crédito no destinatário
+            $flex->movimentar($para, $valor, $obsMercos);
 
             $novos = [];
             try {
                 $novos = $flex->saldos(true);
             } catch (\Throwable $e) {
-                // transferencia ja aplicada: usa saldos calculados
+                // Transferência já aplicada no Mercos: fallback para saldos calculados
             }
             $log['saldo_novo_de'] = isset($novos[$de]) ? (float)$novos[$de]['saldo_atual'] : round($log['saldo_ant_de'] - $valor, 2);
             $log['saldo_novo_para'] = isset($novos[$para]) ? (float)$novos[$para]['saldo_atual'] : round($log['saldo_ant_para'] + $valor, 2);
@@ -248,12 +448,13 @@ class FlexTransferenciaController
             try {
                 $this->registrarLog($log);
             } catch (\Throwable $e) {
-                $aviso = 'Transferencia feita, mas o registro no log falhou: ' . $e->getMessage();
+                $aviso = 'Transferência aplicada no Mercos, mas o registro no log interno falhou: ' . $e->getMessage();
             }
 
             return $this->json($response, [
                 'success' => true,
-                'message' => "Transferência de R$ " . number_format($valor, 2, ',', '.') . " de {$repDe['nome']} para {$repPara['nome']} realizada.",
+                'message' => "Transferência de R$ " . number_format($valor, 2, ',', '.') . " de {$repDe['nome']} para {$repPara['nome']} concluída com sucesso.",
+                'obs_mercos' => $obsMercos,
                 'saldo_de' => $log['saldo_novo_de'],
                 'saldo_para' => $log['saldo_novo_para'],
                 'aviso' => $aviso,
@@ -262,15 +463,16 @@ class FlexTransferenciaController
             $log['msg'] = $e->getMessage();
             $status = 422;
         } catch (\Throwable $e) {
-            $log['msg'] = 'Erro ao enviar saldo flex: ' . $e->getMessage();
+            $log['msg'] = 'Erro ao processar transferência no Mercos: ' . $e->getMessage();
             $status = 502;
             if ($debitado) {
-                // o debito passou e o credito falhou: devolve para quem enviou
+                // Se o débito passou mas o crédito falhou: estorno automático com observação explicativa
                 try {
-                    $flex->movimentar($de, $valor, 'ESTORNO: ' . $motivo);
-                    $log['msg'] .= ' (débito estornado automaticamente)';
+                    $obsEstorno = mb_substr(sprintf('ESTORNO Transf. p/ %s (#%d) por %s falhou: %s', $repPara['nome'], $para, $usuario['username'], $motivo), 0, 250);
+                    $flex->movimentar($de, $valor, $obsEstorno);
+                    $log['msg'] .= ' (débito de origem foi estornado automaticamente no Mercos)';
                 } catch (\Throwable $e2) {
-                    $log['msg'] .= ' (ATENCAO: debito de ' . $repDe['nome'] . ' NAO foi estornado - conferir manualmente)';
+                    $log['msg'] .= ' (ATENÇÃO CRÍTICA: débito de ' . $repDe['nome'] . ' NÃO pôde ser estornado automaticamente - conferir no Mercos)';
                 }
             }
         } finally {
@@ -281,14 +483,13 @@ class FlexTransferenciaController
         try {
             $this->registrarLog($log);
         } catch (\Throwable $e) {
-            // falha de log nao esconde o erro principal
+            // Falha ao registrar log de erro não mascara a mensagem original
         }
         return $this->erro($response, $log['msg'], $status);
     }
 
     /**
-     * GET /v1/flex/movimentacoes?filial=1[&de=ID][&para=ID][&inicio=YYYY-MM-DD][&fim=YYYY-MM-DD][&limite=10]
-     * Sem filtros: ultimas transferencias (limite padrao 10). Com filtros: ate 2000 registros.
+     * GET /v1/flex/movimentacoes?filial=1[&de=ID][&para=ID][&inicio=YYYY-MM-DD][&fim=YYYY-MM-DD][&status=ok|falha][&q=termo][&limite=10]
      */
     public function movimentacoes(Request $request, Response $response): Response
     {
@@ -297,7 +498,7 @@ class FlexTransferenciaController
             $usuario = $this->usuario($request);
             $filial = (int)($q['filial'] ?? 0);
             if (!in_array($filial, $usuario['filiais'], true)) {
-                return $this->erro($response, 'Filial nao liberada para o seu usuario.', 403);
+                return $this->erro($response, 'Filial não liberada para o seu usuário.', 403);
             }
 
             $ok = static fn (string $d): bool => (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
@@ -305,10 +506,14 @@ class FlexTransferenciaController
             $fim = $ok((string)($q['fim'] ?? '')) ? $q['fim'] : null;
             $de = (int)($q['de'] ?? 0);
             $para = (int)($q['para'] ?? 0);
+            $statusFiltro = trim((string)($q['status'] ?? ''));
+            $buscaTexto = trim((string)($q['q'] ?? ''));
             $limite = max(1, min(2000, (int)($q['limite'] ?? 10)));
 
-            $sql = 'SELECT data_transferencia, nome_de, nome_para, valor, valor_saldo_anterior_de, valor_novo_saldo_de,
-                           valor_saldo_anterior_para, valor_novo_saldo_para, motivo, usuario, sucesso, mensagem
+            $sql = 'SELECT id, data_transferencia, colaborador_de, colaborador_para, nome_de, nome_para, valor,
+                           valor_saldo_anterior_de, valor_novo_saldo_de,
+                           valor_saldo_anterior_para, valor_novo_saldo_para,
+                           motivo, usuario, sucesso, mensagem, filial
                     FROM transferencias_flex_mercos_log
                     WHERE filial = :filial';
             $params = ['filial' => $filial];
@@ -329,9 +534,19 @@ class FlexTransferenciaController
                 $sql .= ' AND colaborador_para = :para';
                 $params['para'] = $para;
             }
+            if ($statusFiltro === 'ok') {
+                $sql .= ' AND sucesso = true';
+            } elseif ($statusFiltro === 'falha') {
+                $sql .= ' AND sucesso = false';
+            }
+            if ($buscaTexto !== '') {
+                $sql .= ' AND (nome_de ILIKE :q OR nome_para ILIKE :q OR motivo ILIKE :q OR usuario ILIKE :q)';
+                $params['q'] = '%' . $buscaTexto . '%';
+            }
 
             if ($usuario['gestores'] !== []) {
-                $ids = array_map(static fn (array $r): int => $r['id'], $this->representantes($usuario, $filial));
+                $reps = $this->representantes($usuario, $filial);
+                $ids = array_map(static fn (array $r): int => $r['id'], $reps);
                 $lista = $ids === [] ? '0' : implode(',', $ids);
                 $sql .= " AND (usuario = :usuario OR colaborador_de IN ($lista) OR colaborador_para IN ($lista))";
                 $params['usuario'] = $usuario['username'];
@@ -342,9 +557,15 @@ class FlexTransferenciaController
             $stmt->execute($params);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            return $this->json($response, ['success' => true, 'inicio' => $inicio, 'fim' => $fim, 'movimentacoes' => $rows]);
+            return $this->json($response, [
+                'success' => true,
+                'inicio' => $inicio,
+                'fim' => $fim,
+                'total' => count($rows),
+                'movimentacoes' => $rows,
+            ]);
         } catch (\Throwable $e) {
-            return $this->erro($response, 'Erro ao buscar movimentacoes: ' . $e->getMessage(), 500);
+            return $this->erro($response, 'Erro ao buscar movimentações: ' . $e->getMessage(), 500);
         }
     }
 }

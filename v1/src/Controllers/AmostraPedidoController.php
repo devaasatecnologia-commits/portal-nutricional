@@ -149,7 +149,7 @@ class AmostraPedidoController
                        a.codigobarra,
                        a.saldo_estoque AS saldo_matriz,
                        i.path_foto_master
-                FROM amostra_brindes_com_saldo a
+                FROM amostra_brindes_saldo a
                 JOIN item i ON i.iditem = a.iditem
                 WHERE a.idimposto = :imposto 
                   AND a.filial = 1 

@@ -937,6 +937,8 @@ $protected->group('/amostras', function ($group) {
 $protected->group('/flex', function ($group) {
     $controller = new \Nutricional\Controllers\FlexTransferenciaController();
     $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/representantes', [$controller, 'listarRepresentantes']);
+    $group->get('/resumo', [$controller, 'resumo']);
     $group->get('/saldo', [$controller, 'saldo']);
     $group->get('/movimentacoes', [$controller, 'movimentacoes']);
     $group->post('/transferir', [$controller, 'transferir']);
@@ -1067,6 +1069,8 @@ $protected->group('/analise-carteira', function ($group) {
     $group->post('/resumo-gestor', [$controller, 'getResumoGestor']);
     $group->post('/tabela-gestor', [$controller, 'getTabelaGestor']);
     $group->post('/titulos-representante', [$controller, 'getTitulosRepresentante']);
+    $group->get('/cliente/{id:[0-9]+}/detalhes', [$controller, 'getClienteDetalhes']);
+    $group->post('/cliente/{id:[0-9]+}/eventos', [$controller, 'criarEventoCliente']);
     $group->post('/exportar', [$controller, 'exportar']);
 })->add(new ModulePermissionMiddleware('analise_carteira'));
 

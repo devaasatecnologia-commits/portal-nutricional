@@ -52,9 +52,6 @@ class AnaliseCarteiraController
     {
         return $this->executar($response, function () use ($request) {
             $scope = UserScope::fromRequest($request, $this->pdo);
-            if (!$scope->isAdmin && empty($scope->gestores)) {
-                return [];
-            }
             return $this->listarGestores(
                 $scope->resolverGestores(null),
                 $scope->resolverFiliais(null)
@@ -91,6 +88,231 @@ class AnaliseCarteiraController
         return $this->executar($response, function () use ($request, $input) {
             return $this->montarTitulos($this->escopo($request, $input), $input);
         }, 'getTitulosRepresentante');
+    }
+
+    /** GET /v1/analise-carteira/cliente/{id}/detalhes */
+    public function getClienteDetalhes(Request $request, Response $response, array $args): Response
+    {
+        $idcliente = (int)($args['id'] ?? 0);
+        return $this->executar($response, function () use ($request, $idcliente) {
+            if ($idcliente <= 0) {
+                throw new \InvalidArgumentException('Cliente inválido.');
+            }
+
+            // 1. Dados cadastrais do cliente
+            $stmtCli = $this->pdo->prepare("
+                SELECT c.idcliforemp, c.razao, c.fantasia, COALESCE(c.cnpj, c.cpf) as cnpj_cpf,
+                       c.fone, c.tipocliforemp, c.idfilial, cid.descricao as cidade, cid.uf
+                FROM cliforemp c
+                LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+                WHERE c.idcliforemp = :id
+            ");
+            $stmtCli->execute(['id' => $idcliente]);
+            $cliente = $stmtCli->fetch(PDO::FETCH_ASSOC);
+
+            if (!$cliente) {
+                throw new \DomainException('Cliente não encontrado.');
+            }
+
+            // 2. Títulos em aberto do cliente
+            $stmtTit = $this->pdo->prepare("
+                SELECT r.idreceber, r.documento, r.vencimento::text as vencimento,
+                       r.valorsaldo::float as valorsaldo,
+                       (CURRENT_DATE - r.vencimento)::int as dias_atraso,
+                       r.idfilial, r.observacao as historico
+                FROM receber r
+                WHERE r.idcliforemp = :id
+                  AND r.excluido = 'N'
+                  AND r.status IN (2, 3)
+                  AND r.tipodoc_fixo <> 4
+                  AND r.simulacao = 'N'
+                  AND r.valorsaldo > 0
+                ORDER BY r.vencimento ASC
+            ");
+            $stmtTit->execute(['id' => $idcliente]);
+            $titulos = $stmtTit->fetchAll(PDO::FETCH_ASSOC);
+
+            $totalVencido = 0.0;
+            $totalAVencer = 0.0;
+            foreach ($titulos as $t) {
+                if ($t['dias_atraso'] > 3) {
+                    $totalVencido += $t['valorsaldo'];
+                } else {
+                    $totalAVencer += $t['valorsaldo'];
+                }
+            }
+            $cliente['total_vencido'] = round($totalVencido, 2);
+            $cliente['total_a_vencer'] = round($totalAVencer, 2);
+            $cliente['total_carteira'] = round($totalVencido + $totalAVencer, 2);
+
+            // 3. Tipos de Eventos de Contato permitidos
+            $stmtTipos = $this->pdo->query("
+                SELECT idtipoevento, descricao, cor 
+                FROM tipo_evento_contato 
+                WHERE idtipoevento NOT IN (2, 8) AND inativo = 'N' 
+                ORDER BY descricao
+            ");
+            $tiposEvento = $stmtTipos->fetchAll(PDO::FETCH_ASSOC);
+
+            // 4. Últimos Eventos de Cobrança / Contato do Cliente
+            $stmtEv = $this->pdo->prepare("
+                SELECT ce.sequencial, ce.idtipoevento, tec.descricao as tipo_evento,
+                       COALESCE(tec.cor, ce.corevento, '#000000') as cor_evento,
+                       ce.data::text as data, ce.hora::text as hora, ce.usuario,
+                       ce.descricao as motivo, ce.local as documento
+                FROM contato_evento ce
+                LEFT JOIN tipo_evento_contato tec ON tec.idtipoevento = ce.idtipoevento
+                WHERE ce.idcliforemp = :id
+                ORDER BY ce.datahora DESC, ce.sequencial DESC
+                LIMIT 30
+            ");
+            $stmtEv->execute(['id' => $idcliente]);
+            $eventos = $stmtEv->fetchAll(PDO::FETCH_ASSOC);
+
+            return [
+                'cliente' => $cliente,
+                'titulos' => $titulos,
+                'tipos_evento' => $tiposEvento,
+                'eventos' => $eventos,
+            ];
+        }, 'getClienteDetalhes');
+    }
+
+    /** POST /v1/analise-carteira/cliente/{id}/eventos */
+    public function criarEventoCliente(Request $request, Response $response, array $args): Response
+    {
+        $idcliente = (int)($args['id'] ?? 0);
+        $input = $this->lerCorpo($request);
+        return $this->executar($response, function () use ($request, $idcliente, $input) {
+            if ($idcliente <= 0) {
+                throw new \InvalidArgumentException('Cliente não identificado.');
+            }
+
+            $tipoevento = (int)($input['tipoevento'] ?? 0);
+            if ($tipoevento <= 0) {
+                throw new \InvalidArgumentException('Tipo de evento não selecionado.');
+            }
+
+            $motivo = trim((string)($input['motivo'] ?? ''));
+            if (mb_strlen($motivo) < 3) {
+                throw new \InvalidArgumentException('Motivo/observação não preenchido ou muito curto.');
+            }
+
+            // Tipos de evento que permitem título vazio: 9, 8, 2, 10, 4
+            $tiposPermitemVazio = [9, 8, 2, 10, 4];
+            $permiteTituloVazio = in_array($tipoevento, $tiposPermitemVazio, true);
+
+            $titulos = (array)($input['titulos'] ?? []);
+            $titulosValidos = array_values(array_filter(array_map('trim', $titulos), fn($t) => $t !== ''));
+
+            if (empty($titulosValidos) && !$permiteTituloVazio) {
+                throw new \InvalidArgumentException('Nenhum título foi selecionado e o tipo de evento exige título vinculado.');
+            }
+
+            // Dados adicionais do cliente
+            $stmtDados = $this->pdo->prepare("
+                SELECT c.tipocliforemp, c.idfilial,
+                       (SELECT cor FROM tipo_evento_contato WHERE idtipoevento = :tipoevento) as cor
+                FROM cliforemp c
+                WHERE c.idcliforemp = :id
+            ");
+            $stmtDados->execute(['tipoevento' => $tipoevento, 'id' => $idcliente]);
+            $dados = $stmtDados->fetch(PDO::FETCH_ASSOC);
+
+            if (!$dados) {
+                throw new \DomainException('Cliente não encontrado na base de dados.');
+            }
+
+            $corEvento = !empty($dados['cor']) ? $dados['cor'] : '#000000';
+
+            // Dados do operador criador
+            $user = $request->getAttribute('user') ?? [];
+            $nomeusuario = strtoupper((string)($user['username'] ?? 'PORTAL'));
+            $cdusuario = (int)($user['idusuario'] ?? 0);
+
+            // Documentos para gravar
+            $documentosParaInserir = empty($titulosValidos) ? ['.'] : $titulosValidos;
+
+            $sqlInsert = "
+                INSERT INTO public.contato_evento
+                (
+                    idcontato, sequencial, idtipoevento, \"data\", datahora, hora, 
+                    usuario, descricao, idcliforemp, ok, dataok, tipocliforemp, 
+                    origem, \"local\", datahorainicio, datahorafim, titulo, horafim, 
+                    agendardiatodo, particular, idempresa, idfilial, televenda, 
+                    usuariocriador, idcriador, idorigem, corevento, idprocesso, 
+                    datahoraultimaatualizacao, descricaohint, status, geolocalizacao
+                )
+                VALUES (
+                    0,
+                    nextval('gi_contato_evento'),
+                    :tipoevento,
+                    CURRENT_DATE,
+                    CURRENT_TIMESTAMP,
+                    CURRENT_TIME,
+                    :usuario,
+                    :descricao,
+                    :idcliforemp,
+                    'N',
+                    '1900-01-01',
+                    :tipocliforemp,
+                    1,
+                    :local,
+                    '1900-01-01 00:00:00',
+                    '1900-01-01 00:00:00',
+                    'Evento vindo pelo Portal',
+                    '00:00:00',
+                    'N',
+                    'N',
+                    1,
+                    :idfilial,
+                    'N',
+                    :usuariocriador,
+                    :idcriador,
+                    1,
+                    :corevento,
+                    0,
+                    CURRENT_TIMESTAMP,
+                    '.',
+                    0,
+                    '.'
+                )
+                RETURNING sequencial
+            ";
+            $stmtIns = $this->pdo->prepare($sqlInsert);
+
+            $sucessos = 0;
+            $sequenciais = [];
+
+            foreach ($documentosParaInserir as $doc) {
+                $stmtIns->execute([
+                    'tipoevento' => $tipoevento,
+                    'usuario' => $nomeusuario,
+                    'descricao' => $motivo,
+                    'idcliforemp' => $idcliente,
+                    'tipocliforemp' => (int)($dados['tipocliforemp'] ?? 0),
+                    'local' => $doc,
+                    'idfilial' => (int)($dados['idfilial'] ?? 1),
+                    'usuariocriador' => $nomeusuario,
+                    'idcriador' => $cdusuario,
+                    'corevento' => $corEvento,
+                ]);
+                $seq = $stmtIns->fetchColumn();
+                if ($seq) {
+                    $sucessos++;
+                    $sequenciais[] = (int)$seq;
+                }
+            }
+
+            return [
+                'success' => true,
+                'message' => $sucessos === 1
+                    ? 'Evento cadastrado com sucesso!'
+                    : "Foram cadastrados {$sucessos} eventos com sucesso para os títulos selecionados!",
+                'sucessos' => $sucessos,
+                'sequenciais' => $sequenciais,
+            ];
+        }, 'criarEventoCliente');
     }
 
     /** POST /v1/analise-carteira/exportar  (tipo: representantes | titulos) */
@@ -333,9 +555,6 @@ class AnaliseCarteiraController
     private function escopo(Request $request, array $input): array
     {
         $scope = UserScope::fromRequest($request, $this->pdo);
-        if (!$scope->isAdmin && empty($scope->gestores)) {
-            throw new \DomainException('Sem permissão.');
-        }
 
         $raw = $input['id_gestor'] ?? null;
         $semGestor = false;

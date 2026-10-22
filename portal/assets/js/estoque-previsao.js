@@ -1,30 +1,25 @@
 // ==========================================================================
-// MÓDULO ESTOQUE COM PREVISÃO - COMPLETO
+// MÓDULO ESTOQUE COM PREVISÃO — VISÃO ESPECIALIZADA UNIFICADA (MATRIZ + FILIAL PR)
 // ==========================================================================
 
 const estoquePrevisaoApp = {
-    uid: (() => {
-        try {
-            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-            return userData.idusuario || userData.uid || 5166;
-        } catch {
-            return 5166;
-        }
-    })(),
-    
-    currentFilial: null,
+    currentFilial: 0, // 0 = Unificado (Matriz 1 + Filial PR 6)
     currentPage: 1,
+    currentLimit: 50,
     currentOrder: 'produto',
     currentOrderDir: 'ASC',
+    currentSearch: '',
+    currentMarca: '',
+    currentStatus: '',
     totalPages: 0,
-    chart: null,
-    
+    chartDetalhe: null,
+    debounceTimer: null,
+
     // ==========================================================================
-    // FUNÇÃO PARA FORMATAR URL DA IMAGEM (mesma lógica da separação)
+    // FORMATAÇÃO DE URL DE IMAGEM VIA CDN
     // ==========================================================================
     formatarUrlImagem(path_foto_master) {
         if (!path_foto_master) return null;
-
         const normalized = String(path_foto_master).trim().replace(/\\/g, '/');
         if (!normalized || ['.', '-', 'null', 'undefined'].includes(normalized.toLowerCase())) return null;
         if (/^https?:\/\//i.test(normalized)) return normalized.replace(/ /g, '%20');
@@ -34,659 +29,720 @@ const estoquePrevisaoApp = {
         if (markerIndex < 0) return null;
 
         const relativePath = normalized.substring(markerIndex + marker.length)
-            .split('/').map(segment => encodeURIComponent(segment)).join('/');
+            .split('/').map((segment) => encodeURIComponent(segment)).join('/');
         return relativePath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath : null;
     },
-    
-    async init() {
-        console.log('Inicializando módulo Estoque com Previsão...');
-        await this.carregarFiliais();
-        this.bindEvents();
-        this.iniciarRelogio();
+
+    formatNumber(n) {
+        return Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 2 });
     },
-    
-    getToken() {
-        return localStorage.getItem('authToken');
+
+    escapeHtml(text) {
+        return String(text ?? '').replace(/[&<>"']/g, (c) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        }[c]));
     },
-    
-    async fetchWithAuth(url, options = {}) {
-        const token = this.getToken();
-        if (!token) {
-            window.location.href = '/portal/login.php';
-            throw new Error('Token não encontrado');
-        }
-        
-        const defaultOptions = {
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
-            }
-        };
-        
-        const mergedOptions = {
-            ...defaultOptions,
-            ...options,
-            headers: {
-                ...defaultOptions.headers,
-                ...(options.headers || {})
-            }
-        };
-        
-        const response = await fetch(url, mergedOptions);
-        
-        if (response.status === 401) {
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('userData');
-            window.location.href = '/portal/login.php';
-            throw new Error('Sessão expirada');
-        }
-        
-        return response;
-    },
-    
+
+    // ==========================================================================
+    // COMUNICAÇÃO COM A API REST
+    // ==========================================================================
     async api(endpoint, body = null, method = 'POST') {
-        const url = `${API_URL}/estoque-previsao/${endpoint}`;
-        
-        if (method === 'GET') {
-            const resp = await this.fetchWithAuth(url, { method: 'GET' });
-            return resp.json();
-        } else {
-            const resp = await this.fetchWithAuth(url, {
-                method: 'POST',
-                body: JSON.stringify(body)
+        const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
+        let url = `${apiRoot}/estoque-previsao/${endpoint.replace(/^\/+/, '')}`;
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+
+        const headers = { 'Accept': 'application/json' };
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+
+        const options = { method, headers, credentials: 'include' };
+
+        if (method === 'GET' && body) {
+            url += (url.includes('?') ? '&' : '?') + new URLSearchParams(body).toString();
+        } else if (body) {
+            headers['Content-Type'] = 'application/json';
+            options.body = JSON.stringify(body);
+        }
+
+        const resp = await fetch(url, options);
+        if (resp.status === 401) {
+            window.location.href = '/portal/login.php';
+            throw new Error('Sessão expirada. Faça login novamente.');
+        }
+
+        const text = await resp.text();
+        let data = {};
+        try {
+            data = text ? JSON.parse(text) : {};
+        } catch {
+            data = { error: text || 'Resposta inválida do servidor' };
+        }
+        if (!resp.ok) throw new Error(data.error || `Erro HTTP ${resp.status}`);
+        return data;
+    },
+
+    // ==========================================================================
+    // INICIALIZAÇÃO DO MÓDULO
+    // ==========================================================================
+    async init() {
+        this.iniciarRelogio();
+        this.bindEvents();
+        await this.carregarFiliais();
+        await this.carregarTudo();
+    },
+
+    bindEvents() {
+        const selFilial = document.getElementById('select-filial');
+        if (selFilial) {
+            selFilial.addEventListener('change', () => {
+                this.currentFilial = Number(selFilial.value);
+                this.atualizarBadgeUnificado();
+                this.currentPage = 1;
+                this.carregarTudo();
             });
-            return resp.json();
+        }
+
+        const searchInput = document.getElementById('search-produto');
+        const btnLimparBusca = document.getElementById('btn-limpar-busca');
+        if (searchInput) {
+            searchInput.addEventListener('input', () => {
+                clearTimeout(this.debounceTimer);
+                if (btnLimparBusca) btnLimparBusca.classList.toggle('hidden', !searchInput.value);
+                this.debounceTimer = setTimeout(() => {
+                    this.currentSearch = searchInput.value.trim();
+                    this.currentPage = 1;
+                    this.carregarProdutos();
+                }, 300);
+            });
+        }
+
+        const selMarca = document.getElementById('filter-marca');
+        if (selMarca) {
+            selMarca.addEventListener('change', () => {
+                this.currentMarca = selMarca.value;
+                this.currentPage = 1;
+                this.carregarProdutos();
+            });
+        }
+
+        const selStatus = document.getElementById('filter-status');
+        if (selStatus) {
+            selStatus.addEventListener('change', () => {
+                this.currentStatus = selStatus.value;
+                this.currentPage = 1;
+                this.carregarProdutos();
+            });
         }
     },
-    
-async carregarFiliais() {
-    try {
-        const response = await this.api('resumo', { 
-            idusuario: this.uid,
-            filtro_id: 0,
-            nivel: 'filial'
-        });
-        
-        const select = document.getElementById('select-filial');
-        if (select && response.config?.filiais && response.config.filiais.length > 0) {
-            select.innerHTML = '';
-            response.config.filiais.forEach(f => {
-                const opt = document.createElement('option');
-                opt.value = f.idfilial;
-                opt.innerText = f.nome;
-                select.appendChild(opt);
-            });
-            
-            if (response.config.filial_padrao) {
-                select.value = response.config.filial_padrao;
-                this.currentFilial = response.config.filial_padrao;
-            } else if (response.config.filiais[0]) {
-                select.value = response.config.filiais[0].idfilial;
-                this.currentFilial = response.config.filiais[0].idfilial;
-            }
-            
-            const userDisplay = document.getElementById('user-display');
-            if (userDisplay) {
-                userDisplay.innerText = response.config?.usuario || 'USUÁRIO';
-            }
+
+    atualizarBadgeUnificado() {
+        const badge = document.getElementById('badgeUnificado');
+        if (!badge) return;
+        if (this.currentFilial === 0) {
+            badge.innerHTML = '<span class="pulse-dot"></span> Visão Unificada Matriz + PR';
+            badge.className = 'ep-chip bg-emerald-400/25 text-emerald-100 border border-emerald-300/30';
+        } else if (this.currentFilial === 1) {
+            badge.innerHTML = '<i class="fa-solid fa-building mr-1"></i> Matriz 1 (Santa Catarina)';
+            badge.className = 'ep-chip bg-white/20 text-white';
+        } else {
+            badge.innerHTML = '<i class="fa-solid fa-truck-ramp-box mr-1"></i> Filial 6 (Paraná)';
+            badge.className = 'ep-chip bg-amber-400/25 text-amber-100 border border-amber-300/30';
         }
-        
-        // Se ainda não tem currentFilial, define um padrão
-        if (!this.currentFilial) {
-            this.currentFilial = 1;
-        }
-        
-        // Agora carrega os dados que dependem da filial
-        await this.carregarResumo();
-        await this.carregarMarcas();
-        await this.carregarProdutos();
-        
-    } catch (e) {
-        console.error('Erro ao carregar filiais:', e);
-        // Fallback: define filial padrão
-        this.currentFilial = 1;
-        await this.carregarResumo();
-        await this.carregarMarcas();
-        await this.carregarProdutos();
-    }
-},
-    
-    async carregarMarcas() {
+    },
+
+    iniciarRelogio() {
+        const relogio = document.getElementById('relogio');
+        if (!relogio) return;
+        const atualizar = () => {
+            const d = new Date();
+            relogio.textContent = d.toLocaleTimeString('pt-BR');
+        };
+        atualizar();
+        setInterval(atualizar, 1000);
+    },
+
+    async carregarTudo() {
+        await Promise.all([
+            this.carregarResumo(),
+            this.carregarMarcas(),
+            this.carregarProdutos(),
+        ]);
+    },
+
+    // ==========================================================================
+    // CARREGAR FILIAIS
+    // ==========================================================================
+    async carregarFiliais() {
         try {
-            const url = `${API_URL}/estoque-previsao/marcas?idusuario=${this.uid}&idfilial=${this.currentFilial}`;
-            const resp = await this.fetchWithAuth(url, { method: 'GET' });
-            const data = await resp.json();
-            
-            if (data.success && data.data) {
-                const select = document.getElementById('filter-marca');
-                if (select) {
-                    select.innerHTML = '<option value="">Todas as marcas</option>';
-                    data.data.forEach(marca => {
-                        const opt = document.createElement('option');
-                        opt.value = marca.nome;
-                        opt.innerText = marca.nome;
-                        select.appendChild(opt);
-                    });
-                }
+            const res = await this.api('filiais', null, 'GET');
+            const select = document.getElementById('select-filial');
+            if (select && res.data && res.data.length > 0) {
+                select.innerHTML = res.data.map((f) => `
+                    <option value="${f.idfilial}" ${f.idfilial === this.currentFilial ? 'selected' : ''} class="text-slate-800 font-bold">
+                        ${this.escapeHtml(f.nome)}
+                    </option>
+                `).join('');
             }
         } catch (e) {
-            console.error('Erro ao carregar marcas:', e);
+            console.warn('Falha ao carregar filiais:', e.message);
         }
     },
-    
+
+    // ==========================================================================
+    // CARREGAR RESUMO / KPIS
+    // ==========================================================================
     async carregarResumo() {
-        if (!this.currentFilial) return;
-        
         try {
-            const resumo = await this.api('resumo', {
-                idusuario: this.uid,
-                filtro_id: parseInt(this.currentFilial),
-                nivel: 'filial'
-            });
-            
-            if (resumo.success && resumo.data) {
-                const d = resumo.data;
-                this.atualizarElemento('total-estoque', this.formatNumber(d.total_estoque));
-                this.atualizarElemento('total-reservado', this.formatNumber(d.total_reservado));
-                this.atualizarElemento('total-previsao', this.formatNumber(d.total_previsao));
-                this.atualizarElemento('total-futuro', this.formatNumber(d.total_futuro));
-                this.atualizarElemento('total-zerados', this.formatNumber(d.produtos_zerados));
-                
-                this.atualizarGraficoResumo(d);
+            const res = await this.api('resumo', { filtro_id: this.currentFilial });
+            if (!res.success) return;
+
+            const d = res.data;
+            const det = d.detalhes || {};
+
+            const setTxt = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = val;
+            };
+
+            setTxt('total-estoque', this.formatNumber(d.total_estoque));
+            setTxt('total-reservado', this.formatNumber(d.total_reservado));
+            setTxt('total-livre', this.formatNumber(d.total_livre));
+            setTxt('total-previsao', this.formatNumber(d.total_previsao));
+            setTxt('total-futuro', this.formatNumber(d.total_futuro));
+            setTxt('total-zerados', this.formatNumber(d.produtos_zerados));
+
+            setTxt('kpiDetalheEstoque', `M: ${this.formatNumber(det.estoque_matriz)} · PR: ${this.formatNumber(det.estoque_filial)}`);
+            setTxt('kpiDetalheReservado', `M: ${this.formatNumber(det.reservado_matriz)} · PR: ${this.formatNumber(det.reservado_filial)}`);
+            setTxt('kpiDetalhePrevisao', `${d.total_ocs_abertas || 0} OCs · ${d.produtos_com_previsao || 0} itens`);
+            setTxt('kpiDetalheCriticos', `${d.produtos_criticos || 0} críticos (≤10)`);
+
+            const userEl = document.getElementById('user-display');
+            if (userEl && res.config && res.config.usuario) {
+                userEl.textContent = res.config.usuario;
             }
         } catch (e) {
             console.error('Erro ao carregar resumo:', e);
         }
     },
-    
-    atualizarGraficoResumo(dados) {
-        const canvas = document.getElementById('chartResumo');
-        if (!canvas) return;
-        
-        const ctx = canvas.getContext('2d');
-        
-        if (this.chart) {
-            this.chart.destroy();
-        }
-        
-        this.chart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: ['Estoque Disponível', 'Reservado', 'Previsão', 'Zerados'],
-                datasets: [{
-                    data: [
-                        dados.total_estoque || 0,
-                        dados.total_reservado || 0,
-                        dados.total_previsao || 0,
-                        dados.produtos_zerados || 0
-                    ],
-                    backgroundColor: ['#10b981', '#f59e0b', '#3b82f6', '#ef4444'],
-                    borderWidth: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { position: 'bottom' },
-                    tooltip: {
-                        callbacks: {
-                            label: (context) => {
-                                const label = context.label || '';
-                                const value = context.raw || 0;
-                                return `${label}: ${this.formatNumber(value)}`;
-                            }
-                        }
-                    }
-                }
-            }
-        });
-    },
-    
-    async carregarProdutos() {
-        if (!this.currentFilial) return;
-        
-        const shimmer = document.getElementById('shimmer');
-        if (shimmer) shimmer.style.display = 'block';
-        
+
+    // ==========================================================================
+    // CARREGAR MARCAS
+    // ==========================================================================
+    async carregarMarcas() {
         try {
-            const search = document.getElementById('search-produto')?.value || '';
-            const marca = document.getElementById('filter-marca')?.value || '';
-            const status = document.getElementById('filter-status')?.value || '';
-            
-            const body = {
-                idusuario: this.uid,
-                filtro_id: parseInt(this.currentFilial),
-                nivel: 'filial',
-                page: this.currentPage,
-                limit: 20,
-                search: search,
-                marca: marca,
-                status: status,
-                order_by: this.currentOrder,
-                order_dir: this.currentOrderDir
-            };
-            
-            const resp = await this.api('produtos', body);
-            
-            if (resp.success) {
-                this.renderTable(resp.data || []);
-                this.renderPagination(resp.pagination);
-            } else {
-                this.renderTable([]);
-                this.mostrarErro(resp.error || 'Erro ao carregar produtos');
+            const res = await this.api('marcas', null, 'GET');
+            const select = document.getElementById('filter-marca');
+            if (select && res.data) {
+                const selAtual = select.value;
+                select.innerHTML = '<option value="">Todas as marcas</option>' + res.data.map((m) => `
+                    <option value="${this.escapeHtml(m.nome)}" ${m.nome === selAtual ? 'selected' : ''}>
+                        ${this.escapeHtml(m.nome)}
+                    </option>
+                `).join('');
             }
         } catch (e) {
-            console.error('Erro ao carregar produtos:', e);
-            this.mostrarErro('Erro ao carregar produtos: ' + e.message);
-        } finally {
-            if (shimmer) shimmer.style.display = 'none';
+            console.warn('Erro ao carregar marcas:', e);
         }
     },
-    
-    renderTable(produtos) {
+
+    // ==========================================================================
+    // CARREGAR PRODUTOS (TABELA)
+    // ==========================================================================
+    async carregarProdutos() {
         const tbody = document.getElementById('table-body');
-        
         if (!tbody) return;
-        
-        if (!produtos || produtos.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-12 text-slate-400">Nenhum produto encontrado</td</tr>';
+
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="10" class="py-12 text-center text-slate-400">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600 block"></i>
+                    Carregando estoque com previsão...
+                </td>
+            </tr>
+        `;
+
+        try {
+            const payload = {
+                filtro_id: this.currentFilial,
+                page: this.currentPage,
+                limit: this.currentLimit,
+                search: this.currentSearch,
+                marca: this.currentMarca,
+                status: this.currentStatus,
+                order_by: this.currentOrder,
+                order_dir: this.currentOrderDir,
+            };
+
+            const res = await this.api('produtos', payload);
+            if (!res.success) throw new Error(res.error || 'Erro ao carregar produtos');
+
+            this.renderTabela(res.data || []);
+            this.renderPaginacao(res.pagination || {});
+        } catch (e) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="py-10 text-center text-red-500 font-bold text-xs">
+                        <i class="fa-solid fa-triangle-exclamation mr-1 text-base block mb-1"></i>
+                        ${this.escapeHtml(e.message)}
+                    </td>
+                </tr>
+            `;
+        }
+    },
+
+    renderTabela(produtos) {
+        const tbody = document.getElementById('table-body');
+        if (!tbody) return;
+
+        if (!produtos.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="10" class="py-12 text-center text-slate-400">
+                        <i class="fa-solid fa-box-open text-2xl mb-2 text-slate-300 block"></i>
+                        Nenhum produto encontrado com os filtros atuais.
+                    </td>
+                </tr>
+            `;
             return;
         }
-        
-        tbody.innerHTML = produtos.map(p => {
-            const estoque = p['Estoque Disponível'] || 0;
-            // Usa a mesma lógica de imagem da separação
-            const fotoUrl = this.formatarUrlImagem(p['Foto']);
-            
-            let statusClass = '', statusText = '';
-            
-            if (estoque <= 0) {
-                statusClass = 'bg-rose-100 text-rose-700';
-                statusText = 'Zerado';
-            } else if (estoque <= 10) {
-                statusClass = 'bg-rose-100 text-rose-700';
-                statusText = 'Crítico';
-            } else if (estoque <= 50) {
-                statusClass = 'bg-amber-100 text-amber-700';
-                statusText = 'Baixo';
+
+        tbody.innerHTML = produtos.map((p) => {
+            const idItem = p.id_item || p['ID Item'];
+            const ref = p.referencia || p['Referência'] || '-';
+            const nome = p.produto || p['Produto'] || '-';
+            const marca = p.marca || p['Marca'] || '-';
+            const fotoUrl = this.formatarUrlImagem(p.foto || p['Foto']);
+
+            const estMatriz = Number(p.estoque_matriz || 0);
+            const estFilial = Number(p.estoque_filial || 0);
+            const estTotal = Number(p.estoque_total || p['Estoque Disponível'] || 0);
+            const cartReservado = Number(p.qtd_reservada || p['Quantidade em Carteira'] || 0);
+            const estLivre = Number(p.estoque_livre || p['Estoque Líquido (s/ Previsão)'] || 0);
+            const prevChegada = Number(p.qtd_previsao || p['Previsão de Compra Total'] || 0);
+            const estFuturo = Number(p.estoque_futuro || p['Estoque Líquido (c/ Previsão)'] || 0);
+
+            // Badge Status
+            let statusPill = '';
+            if (estLivre <= 0) {
+                statusPill = '<span class="ep-chip bg-rose-50 text-rose-700 border border-rose-200">❌ Zerado</span>';
+            } else if (estLivre <= 10) {
+                statusPill = '<span class="ep-chip bg-rose-50 text-rose-700 border border-rose-200">⚠️ Crítico</span>';
+            } else if (estLivre <= 50) {
+                statusPill = '<span class="ep-chip bg-amber-50 text-amber-700 border border-amber-200">📉 Baixo</span>';
             } else {
-                statusClass = 'bg-emerald-100 text-emerald-700';
-                statusText = 'Ok';
+                statusPill = '<span class="ep-chip bg-emerald-50 text-emerald-700 border border-emerald-200">✅ Ok</span>';
             }
-            
+
             return `
-                <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer" onclick="estoquePrevisaoApp.abrirModalDetalhe(${p['ID Item']})">
-                    <td class="px-4 py-3">
+                <tr class="table-row-hover border-b border-slate-100" onclick="estoquePrevisaoApp.abrirModalDetalhe(${idItem})">
+                    <!-- Produto e Foto -->
+                    <td class="py-3 px-4">
                         <div class="flex items-center gap-3">
-                            ${fotoUrl ? `<img src="${fotoUrl}" class="w-10 h-10 rounded-lg object-cover" onerror="this.style.display='none'">` : '<div class="w-10 h-10 bg-slate-100 rounded-lg flex items-center justify-center"><i class="fa-solid fa-box text-slate-400"></i></div>'}
-                            <div>
-                                <div class="font-medium text-slate-800">${this.escapeHtml(p['Produto'] || '-')}</div>
-                                <div class="text-xs text-slate-400">Ref: ${this.escapeHtml(p['Referência'] || '-')}</div>
+                            ${fotoUrl ? `
+                                <img src="${fotoUrl}" class="w-10 h-10 rounded-xl object-contain bg-slate-50 border p-0.5 flex-none" onerror="this.src='/portal/assets/img/sem-foto.png'">
+                            ` : `
+                                <div class="w-10 h-10 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center flex-none">
+                                    <i class="fa-solid fa-box text-sm"></i>
+                                </div>
+                            `}
+                            <div class="min-w-0">
+                                <div class="font-extrabold text-slate-800 hover:text-emerald-700 transition leading-snug truncate max-w-sm" title="${this.escapeHtml(nome)}">
+                                    ${this.escapeHtml(nome)}
+                                </div>
+                                <div class="flex items-center gap-2 mt-0.5">
+                                    <span class="text-[0.65rem] font-bold text-slate-400">Ref: <b class="text-slate-600">${this.escapeHtml(ref)}</b></span>
+                                    <span class="text-[0.65rem] font-bold text-slate-400">ID: <b class="text-slate-600">${idItem}</b></span>
+                                </div>
                             </div>
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-slate-600">${this.escapeHtml(p['Marca'] || '-')}</td>
-                    <td class="px-4 py-3 text-right font-bold ${estoque <= 10 ? 'text-rose-600' : 'text-slate-700'}">
-                        ${this.formatNumber(estoque)}
+
+                    <!-- Marca -->
+                    <td class="py-3 px-3">
+                        <span class="ep-chip bg-slate-100 text-slate-700 font-bold">${this.escapeHtml(marca)}</span>
                     </td>
-                    <td class="px-4 py-3 text-right text-amber-600">${this.formatNumber(p['Quantidade em Carteira'] || 0)}</td>
-                    <td class="px-4 py-3 text-right font-semibold">${this.formatNumber(p['Estoque Líquido (s/ Previsão)'] || 0)}</td>
-                    <td class="px-4 py-3 text-right text-blue-600">${this.formatNumber(p['Previsão de Compra Total'] || 0)}</td>
-                    <td class="px-4 py-3 text-right font-bold text-purple-600">${this.formatNumber(p['Estoque Líquido (c/ Previsão)'] || 0)}</td>
-                    <td class="px-4 py-3 text-center">
-                        <span class="inline-flex px-2 py-1 rounded-full text-xs font-medium ${statusClass}">${statusText}</span>
+
+                    <!-- Matriz 1 -->
+                    <td class="py-3 px-2 text-right">
+                        <span class="font-bold ${estMatriz > 0 ? 'text-slate-700' : 'text-slate-300'}">${this.formatNumber(estMatriz)}</span>
+                    </td>
+
+                    <!-- Filial PR -->
+                    <td class="py-3 px-2 text-right">
+                        <span class="font-bold ${estFilial > 0 ? 'text-emerald-700' : 'text-slate-300'}">${this.formatNumber(estFilial)}</span>
+                    </td>
+
+                    <!-- Total Físico -->
+                    <td class="py-3 px-3 text-right">
+                        <span class="font-black text-slate-800">${this.formatNumber(estTotal)}</span>
+                    </td>
+
+                    <!-- Carteira Reservada -->
+                    <td class="py-3 px-3 text-right">
+                        <span class="font-black ${cartReservado > 0 ? 'text-amber-600' : 'text-slate-300'}">${this.formatNumber(cartReservado)}</span>
+                    </td>
+
+                    <!-- Livre Disponível -->
+                    <td class="py-3 px-3 text-right">
+                        <span class="font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'}">${this.formatNumber(estLivre)}</span>
+                    </td>
+
+                    <!-- A Chegar (OCs Matriz + Filial) -->
+                    <td class="py-3 px-3 text-right">
+                        ${prevChegada > 0 ? `
+                            <span class="ep-chip bg-blue-50 text-blue-700 border border-blue-200 font-black">
+                                <i class="fa-solid fa-truck-fast text-[0.65rem]"></i> ${this.formatNumber(prevChegada)}
+                            </span>
+                        ` : '<span class="text-slate-300 font-bold">--</span>'}
+                    </td>
+
+                    <!-- Estoque Futuro -->
+                    <td class="py-3 px-3 text-right">
+                        <span class="font-black ${estFuturo > 0 ? 'text-purple-700' : 'text-slate-400'}">${this.formatNumber(estFuturo)}</span>
+                    </td>
+
+                    <!-- Status -->
+                    <td class="py-3 px-3 text-center">
+                        ${statusPill}
                     </td>
                 </tr>
             `;
         }).join('');
     },
-    
-    renderPagination(pagination) {
+
+    renderPaginacao(pag) {
         const info = document.getElementById('pagination-info');
-        const buttons = document.getElementById('pagination-buttons');
-        
-        if (!pagination || !info || !buttons) return;
-        
-        this.totalPages = pagination.pages || 0;
-        
-        const inicio = ((pagination.page - 1) * pagination.limit) + 1;
-        const fim = Math.min(pagination.page * pagination.limit, pagination.total);
-        
-        info.innerText = `Mostrando ${inicio} a ${fim} de ${pagination.total} produtos`;
-        
+        const btns = document.getElementById('pagination-buttons');
+        if (!info || !btns) return;
+
+        const total = pag.total || 0;
+        const page = pag.page || 1;
+        const pages = pag.pages || 1;
+        const limit = pag.limit || this.currentLimit;
+
+        const ini = total === 0 ? 0 : (page - 1) * limit + 1;
+        const fim = Math.min(page * limit, total);
+
+        info.textContent = `Mostrando ${ini} a ${fim} de ${this.formatNumber(total)} produtos`;
+
         let html = '';
-        if (pagination.page > 1) {
-            html += `<button onclick="estoquePrevisaoApp.goToPage(${pagination.page - 1})" class="px-3 py-1 border rounded-lg text-sm hover:bg-slate-50">Anterior</button>`;
+        if (page > 1) {
+            html += `<button class="py-1 px-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold" onclick="estoquePrevisaoApp.irPagina(${page - 1})"><i class="fa-solid fa-chevron-left"></i></button>`;
         }
-        html += `<span class="px-3 py-1 text-sm">Pág. ${pagination.page} de ${pagination.pages}</span>`;
-        if (pagination.page < pagination.pages) {
-            html += `<button onclick="estoquePrevisaoApp.goToPage(${pagination.page + 1})" class="px-3 py-1 border rounded-lg text-sm hover:bg-slate-50">Próxima</button>`;
+        html += `<span class="py-1 px-3 text-xs font-black text-slate-700">Pág ${page} / ${pages}</span>`;
+        if (page < pages) {
+            html += `<button class="py-1 px-2.5 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 font-bold" onclick="estoquePrevisaoApp.irPagina(${page + 1})"><i class="fa-solid fa-chevron-right"></i></button>`;
         }
-        buttons.innerHTML = html;
+        btns.innerHTML = html;
     },
-    
-    goToPage(page) {
-        this.currentPage = page;
+
+    irPagina(p) {
+        this.currentPage = p;
         this.carregarProdutos();
     },
-    
+
+    mudarLimite(l) {
+        this.currentLimit = Number(l);
+        this.currentPage = 1;
+        this.carregarProdutos();
+    },
+
+    ordenar(col) {
+        if (this.currentOrder === col) {
+            this.currentOrderDir = this.currentOrderDir === 'ASC' ? 'DESC' : 'ASC';
+        } else {
+            this.currentOrder = col;
+            this.currentOrderDir = 'ASC';
+        }
+        this.carregarProdutos();
+    },
+
+    limparBusca() {
+        const input = document.getElementById('search-produto');
+        if (input) input.value = '';
+        this.currentSearch = '';
+        const btn = document.getElementById('btn-limpar-busca');
+        if (btn) btn.classList.add('hidden');
+        this.carregarProdutos();
+    },
+
+    reset() {
+        this.currentSearch = '';
+        this.currentMarca = '';
+        this.currentStatus = '';
+        this.currentFilial = 0;
+        this.currentPage = 1;
+
+        const sBusca = document.getElementById('search-produto');
+        if (sBusca) sBusca.value = '';
+        const sMarca = document.getElementById('filter-marca');
+        if (sMarca) sMarca.value = '';
+        const sStatus = document.getElementById('filter-status');
+        if (sStatus) sStatus.value = '';
+        const sFilial = document.getElementById('select-filial');
+        if (sFilial) sFilial.value = '0';
+
+        this.atualizarBadgeUnificado();
+        this.carregarTudo();
+    },
+
+    // ==========================================================================
+    // MODAL DETALHE DO ITEM (RAIO-X COM PREVISÃO E HISTÓRICO)
+    // ==========================================================================
     async abrirModalDetalhe(iditem) {
         Swal.fire({
-            title: 'Carregando...',
+            title: 'Carregando Raio-X do Produto...',
+            text: 'Buscando saldos nas filiais, ordens de compra e histórico...',
+            allowOutsideClick: false,
             didOpen: () => Swal.showLoading(),
-            allowOutsideClick: false
+            customClass: { popup: 'rounded-3xl' }
         });
-        
+
         try {
-            const response = await this.fetchWithAuth(`${API_URL}/estoque-previsao/item/${iditem}?idusuario=${this.uid}&idfilial=${this.currentFilial}`, { method: 'GET' });
-            const data = await response.json();
-            
-            if (!data.success) {
-                throw new Error(data.error || 'Erro ao carregar detalhes');
-            }
-            
-            const item = data.data.item;
-            const previsoes = data.data.previsoes || [];
-            const historico = data.data.historico || [];
-            
-            // Usa a mesma lógica de imagem da separação
+            const res = await this.api(`item/${iditem}`, null, 'GET');
+            if (!res.success) throw new Error(res.error || 'Erro ao carregar detalhes');
+
+            const item = res.data.item;
+            const previsoes = res.data.previsoes || [];
+            const historico = res.data.historico || [];
             const fotoUrl = this.formatarUrlImagem(item.foto);
-            
-            // Montar tabela de previsões
-            let htmlPrevisoes = '<div class="max-h-64 overflow-y-auto">';
-            if (previsoes.length === 0) {
-                htmlPrevisoes += '<p class="text-center text-slate-400 py-4">Nenhuma previsão de compra encontrada</p>';
+
+            // Montar Tabela de Previsão de Entregas (OCs Matriz + Filial PR)
+            let htmlPrevisoes = '';
+            if (!previsoes.length) {
+                htmlPrevisoes = '<div class="text-center py-6 text-slate-400 text-xs font-semibold">Nenhuma ordem de compra pendente para este item nas filiais.</div>';
             } else {
-                htmlPrevisoes += `
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50">
-                            <tr>
-                                <th class="px-2 py-1 text-left">OC</th>
-                                <th class="px-2 py-1 text-left">Fornecedor</th>
-                                <th class="px-2 py-1 text-right">Qtd</th>
-                                <th class="px-2 py-1 text-right">Previsão</th>
-                                <th class="px-2 py-1 text-center">Dias</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+                htmlPrevisoes = `
+                    <div class="overflow-x-auto max-h-56 overflow-y-auto">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-100 text-[0.65rem] uppercase tracking-wider text-slate-500 font-black sticky top-0">
+                                <tr>
+                                    <th class="py-2 px-2.5">OC #</th>
+                                    <th class="py-2 px-2.5">Destino</th>
+                                    <th class="py-2 px-2.5">Fornecedor</th>
+                                    <th class="py-2 px-2.5 text-right">Qtd Saldo</th>
+                                    <th class="py-2 px-2.5 text-center">Previsão</th>
+                                    <th class="py-2 px-2.5 text-center">Prazo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100">
+                                ${previsoes.map((oc) => {
+                                    const dias = Number(oc.dias_para_chegada ?? oc['Dias para Chegada'] ?? 0);
+                                    let corPrazo = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                                    let txtPrazo = `${dias} dias`;
+                                    if (dias < 0) {
+                                        corPrazo = 'bg-rose-50 text-rose-700 border-rose-200';
+                                        txtPrazo = `${Math.abs(dias)}d atrasado`;
+                                    } else if (dias === 0) {
+                                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
+                                        txtPrazo = 'Hoje';
+                                    } else if (dias <= 7) {
+                                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
+                                    }
+
+                                    const isMatriz = (Number(oc.idfilial) === 1);
+
+                                    return `
+                                        <tr class="hover:bg-slate-50">
+                                            <td class="py-2 px-2.5 font-black text-slate-800">#${oc.numero_oc || oc['Número OC']}</td>
+                                            <td class="py-2 px-2.5">
+                                                <span class="ep-chip ${isMatriz ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700'}">
+                                                    ${isMatriz ? 'Matriz 1' : 'Filial PR 6'}
+                                                </span>
+                                            </td>
+                                            <td class="py-2 px-2.5 font-bold text-slate-700 truncate max-w-xs">${this.escapeHtml(oc.fornecedor || oc['Fornecedor'])}</td>
+                                            <td class="py-2 px-2.5 text-right font-black text-blue-700">${this.formatNumber(oc.quantidade_saldo || oc['Quantidade Saldo'])}</td>
+                                            <td class="py-2 px-2.5 text-center font-bold text-slate-600">${oc.data_prevista || oc['Data Prevista'] || '-'}</td>
+                                            <td class="py-2 px-2.5 text-center">
+                                                <span class="ep-chip border ${corPrazo}">${txtPrazo}</span>
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
                 `;
-                previsoes.forEach(p => {
-                    const dias = p['Dias para Chegada'] || 0;
-                    const corDias = dias <= 7 ? 'text-rose-600 font-bold' : (dias <= 15 ? 'text-amber-600' : 'text-emerald-600');
-                    htmlPrevisoes += `
-                        <tr class="border-b">
-                            <td class="px-2 py-2">${p['Número OC']}</td>
-                            <td class="px-2 py-2 text-left">${this.escapeHtml(p['Fornecedor'])}</td>
-                            <td class="px-2 py-2 text-right">${this.formatNumber(p['Quantidade Saldo'])}</td>
-                            <td class="px-2 py-2 text-right">${p['Data Prevista'] || '-'}</td>
-                            <td class="px-2 py-2 text-center ${corDias}">${dias}d</td>
-                        </tr>
-                    `;
-                });
-                htmlPrevisoes += '</tbody></table>';
             }
-            htmlPrevisoes += '</div>';
-            
-            // Montar gráfico de histórico
-            let labels = [];
-            let entradas = [];
-            let saidas = [];
-            
-            historico.forEach(h => {
-                labels.push(h.data);
-                entradas.push(h.entradas || 0);
-                saidas.push(h.saidas || 0);
-            });
-            
+
             Swal.fire({
-                title: `<div class="flex items-center gap-3"><div class="w-12 h-12 bg-emerald-100 rounded-xl flex items-center justify-center"><i class="fa-solid fa-box text-emerald-600 text-xl"></i></div><div class="text-left"><span class="text-sm text-slate-500">${item.referencia || '---'}</span><br><span class="text-base font-bold">${this.escapeHtml(item.nome)}</span></div></div>`,
+                showConfirmButton: false,
+                showCloseButton: true,
+                width: '850px',
+                customClass: { popup: 'rounded-3xl p-5' },
                 html: `
-                    <div class="text-left space-y-4 max-h-[70vh] overflow-y-auto">
-                        ${fotoUrl ? `<div class="flex justify-center"><img src="${fotoUrl}" class="max-w-full max-h-48 rounded-lg shadow" onerror="this.style.display='none'"></div>` : ''}
-                        
-                        <div class="bg-slate-50 rounded-xl p-4">
-                            <div class="grid grid-cols-2 gap-3 text-sm">
-                                <div><span class="font-bold text-slate-500">Marca:</span> ${item.marca || '-'}</div>
-                                <div><span class="font-bold text-slate-500">Saldo Disponível:</span> <span class="text-emerald-600 font-bold">${this.formatNumber(item.saldo)}</span></div>
-                                <div class="col-span-2"><span class="font-bold text-slate-500">Endereços:</span> ${item.enderecos || 'Nenhum'}</div>
+                    <div class="text-left space-y-4">
+                        <!-- HEADER DO ITEM -->
+                        <div class="flex items-start gap-4 pb-3 border-b border-slate-100">
+                            ${fotoUrl ? `
+                                <img src="${fotoUrl}" class="w-16 h-16 rounded-2xl object-contain bg-slate-50 border p-1 shadow-sm flex-none">
+                            ` : `
+                                <div class="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none">
+                                    <i class="fa-solid fa-boxes-packing text-2xl"></i>
+                                </div>
+                            `}
+                            <div class="flex-1 min-w-0">
+                                <div class="flex flex-wrap items-center gap-2">
+                                    <span class="ep-chip bg-slate-100 text-slate-700 font-black">ID: ${item.id}</span>
+                                    <span class="ep-chip bg-slate-100 text-slate-700 font-bold">Ref: ${this.escapeHtml(item.referencia)}</span>
+                                    <span class="ep-chip bg-emerald-100 text-emerald-800 font-bold">${this.escapeHtml(item.marca || 'SEM MARCA')}</span>
+                                </div>
+                                <h3 class="text-base sm:text-lg font-black text-slate-800 mt-1 leading-snug">${this.escapeHtml(item.nome)}</h3>
+                                <div class="text-xs text-slate-500 font-semibold mt-0.5">
+                                    <i class="fa-solid fa-location-dot text-rose-500 mr-1"></i> Endereço Depósito: <b>${this.escapeHtml(item.enderecos || 'Nenhum')}</b>
+                                </div>
                             </div>
                         </div>
-                        
-                        <div>
-                            <h4 class="font-bold text-slate-700 mb-2">📊 Movimentação (últimos 30 dias)</h4>
-                            <div style="height: 200px;">
-                                <canvas id="graficoHistoricoModal"></canvas>
+
+                        <!-- GRID COMPARATIVO DE SALDOS -->
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <!-- Matriz 1 -->
+                            <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                                <div class="text-[0.65rem] font-black uppercase text-slate-500 tracking-wider mb-1">Matriz 1 (SC)</div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_matriz)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_matriz)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_matriz)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-slate-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_matriz)}</b></div>
+                            </div>
+
+                            <!-- Filial 6 PR -->
+                            <div class="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200">
+                                <div class="text-[0.65rem] font-black uppercase text-emerald-700 tracking-wider mb-1">Filial 6 (PR)</div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_filial)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_filial)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_filial)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-emerald-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_filial)}</b></div>
+                            </div>
+
+                            <!-- Total Consolidado -->
+                            <div class="p-3 rounded-2xl bg-purple-50/60 border border-purple-200">
+                                <div class="text-[0.65rem] font-black uppercase text-purple-700 tracking-wider mb-1">Consolidado Total (1 + 6)</div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Total Físico:</span><b class="text-slate-900">${this.formatNumber(item.estoque_total)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Total Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_total)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5"><span>Total Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_total)}</b></div>
+                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-purple-200"><span class="font-extrabold text-purple-900">Estoque Futuro:</span><b class="text-purple-700 text-sm">${this.formatNumber(item.estoque_futuro)}</b></div>
                             </div>
                         </div>
-                        
-                        <div>
-                            <h4 class="font-bold text-slate-700 mb-2">📦 Previsões de Compra</h4>
+
+                        <!-- TABELA DE ORDENS DE COMPRA / PREVISÃO -->
+                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                            <div class="flex justify-between items-center mb-2">
+                                <div class="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-truck-fast text-blue-600"></i> Ordens de Compra com Saldo a Chegar (Matriz + Filial PR)
+                                </div>
+                                <span class="ep-chip bg-blue-100 text-blue-800 font-bold">${this.formatNumber(item.previsao_total)} un. a caminho</span>
+                            </div>
                             ${htmlPrevisoes}
+                        </div>
+
+                        <!-- HISTÓRICO 30 DIAS (CHART.JS) -->
+                        <div class="bg-white p-3.5 rounded-2xl border border-slate-200">
+                            <div class="text-xs font-black text-slate-700 mb-2 flex items-center gap-1.5">
+                                <i class="fa-solid fa-chart-line text-emerald-600"></i> Movimentação Física nos Últimos 30 Dias (Entradas vs Saídas)
+                            </div>
+                            <div style="height: 140px;">
+                                <canvas id="chartModalHistorico"></canvas>
+                            </div>
                         </div>
                     </div>
                 `,
-                width: '800px',
-                showCloseButton: true,
-                showConfirmButton: false,
                 didOpen: () => {
-                    if (labels.length > 0) {
-                        const ctx = document.getElementById('graficoHistoricoModal').getContext('2d');
+                    // Renderiza o gráfico do modal
+                    const ctx = document.getElementById('chartModalHistorico');
+                    if (ctx && historico.length) {
+                        const labels = historico.map((h) => {
+                            const p = String(h.data).split('-');
+                            return p.length === 3 ? `${p[2]}/${p[1]}` : h.data;
+                        });
+                        const entradas = historico.map((h) => Number(h.entradas || 0));
+                        const saidas = historico.map((h) => Number(h.saidas || 0));
+
                         new Chart(ctx, {
-                            type: 'line',
+                            type: 'bar',
                             data: {
-                                labels: labels,
+                                labels,
                                 datasets: [
-                                    {
-                                        label: 'Entradas',
-                                        data: entradas,
-                                        borderColor: '#10b981',
-                                        backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                                        fill: true,
-                                        tension: 0.4
-                                    },
-                                    {
-                                        label: 'Saídas',
-                                        data: saidas,
-                                        borderColor: '#ef4444',
-                                        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                                        fill: true,
-                                        tension: 0.4
-                                    }
+                                    { label: 'Entradas', data: entradas, backgroundColor: '#10b981', borderRadius: 4 },
+                                    { label: 'Saídas', data: saidas, backgroundColor: '#f43f5e', borderRadius: 4 },
                                 ]
                             },
                             options: {
                                 responsive: true,
-                                maintainAspectRatio: true,
-                                plugins: {
-                                    legend: { position: 'top' },
-                                    tooltip: {
-                                        callbacks: {
-                                            label: (context) => {
-                                                return `${context.dataset.label}: ${this.formatNumber(context.raw)}`;
-                                            }
-                                        }
-                                    }
-                                },
+                                maintainAspectRatio: false,
+                                plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 10 } } } },
                                 scales: {
-                                    y: { beginAtZero: true, title: { display: true, text: 'Quantidade' } },
-                                    x: { title: { display: true, text: 'Data' } }
+                                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { font: { size: 9 } } },
+                                    x: { grid: { display: false }, ticks: { font: { size: 9 } } }
                                 }
                             }
                         });
                     }
                 }
             });
-            
         } catch (e) {
-            console.error('Erro ao carregar detalhes:', e);
-            Swal.fire('Erro', 'Falha ao carregar detalhes do item.', 'error');
+            Swal.fire({
+                icon: 'error',
+                title: 'Erro ao abrir detalhes',
+                text: e.message,
+                customClass: { popup: 'rounded-3xl' }
+            });
         }
     },
-    
-    async exportarCSV() {
-        const search = document.getElementById('search-produto')?.value || '';
-        const marca = document.getElementById('filter-marca')?.value || '';
-        
+
+    // ==========================================================================
+    // EXPORTAÇÃO CSV
+    // ==========================================================================
+    async exportarCsv() {
         Swal.fire({
-            title: 'Exportando...',
-            text: 'Aguarde enquanto preparamos seu arquivo',
+            title: 'Gerando Exportação...',
+            text: 'Preparando dados consolidados de estoque e previsões...',
+            allowOutsideClick: false,
             didOpen: () => Swal.showLoading(),
-            allowOutsideClick: false
+            customClass: { popup: 'rounded-3xl' }
         });
-        
+
         try {
-            const body = {
-                idusuario: this.uid,
-                filtro_id: parseInt(this.currentFilial),
-                search: search,
-                marca: marca
+            const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
+            const url = `${apiRoot}/estoque-previsao/exportar`;
+            const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+
+            const payload = {
+                filtro_id: this.currentFilial,
+                search: this.currentSearch,
+                marca: this.currentMarca,
+                status: this.currentStatus,
             };
-            
-            const response = await this.fetchWithAuth(`${API_URL}/estoque-previsao/exportar`, {
+
+            const resp = await fetch(url, {
                 method: 'POST',
-                body: JSON.stringify(body)
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': token ? `Bearer ${token}` : ''
+                },
+                body: JSON.stringify(payload),
             });
-            
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
+
+            if (!resp.ok) throw new Error('Falha ao exportar dados do servidor');
+
+            const blob = await resp.blob();
             const a = document.createElement('a');
-            a.href = url;
-            a.download = `estoque_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.csv`;
-            document.body.appendChild(a);
+            a.href = URL.createObjectURL(blob);
+            a.download = `estoque_previsao_${new Date().toISOString().slice(0, 10)}.csv`;
             a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            
-            Swal.fire('Sucesso!', 'Arquivo exportado com sucesso.', 'success');
+            URL.revokeObjectURL(a.href);
+
+            Swal.close();
         } catch (e) {
-            console.error('Erro ao exportar:', e);
-            Swal.fire('Erro', 'Falha ao exportar o arquivo.', 'error');
-        }
-    },
-    
-    changeFilial() {
-        const select = document.getElementById('select-filial');
-        if (select && select.value) {
-            this.currentFilial = select.value;
-            this.currentPage = 1;
-            this.carregarResumo();
-            this.carregarMarcas();
-            this.carregarProdutos();
-        }
-    },
-    
-    reset() {
-        document.getElementById('search-produto').value = '';
-        document.getElementById('filter-marca').value = '';
-        document.getElementById('filter-status').value = '';
-        this.currentPage = 1;
-        this.currentOrder = 'produto';
-        this.currentOrderDir = 'ASC';
-        this.carregarProdutos();
-    },
-    
-    bindEvents() {
-        const selectFilial = document.getElementById('select-filial');
-        if (selectFilial) {
-            selectFilial.addEventListener('change', () => this.changeFilial());
-        }
-        
-        const searchInput = document.getElementById('search-produto');
-        if (searchInput) {
-            searchInput.addEventListener('input', () => {
-                this.currentPage = 1;
-                this.carregarProdutos();
+            Swal.fire({
+                icon: 'error',
+                title: 'Erro ao exportar',
+                text: e.message,
+                customClass: { popup: 'rounded-3xl' }
             });
         }
-        
-        const marcaSelect = document.getElementById('filter-marca');
-        if (marcaSelect) {
-            marcaSelect.addEventListener('change', () => {
-                this.currentPage = 1;
-                this.carregarProdutos();
-            });
-        }
-        
-        const statusSelect = document.getElementById('filter-status');
-        if (statusSelect) {
-            statusSelect.addEventListener('change', () => {
-                this.currentPage = 1;
-                this.carregarProdutos();
-            });
-        }
-        
-        const btnLimpar = document.getElementById('btn-limpar');
-        if (btnLimpar) {
-            btnLimpar.addEventListener('click', () => this.reset());
-        }
-        
-        const btnExportar = document.getElementById('btn-exportar');
-        if (btnExportar) {
-            btnExportar.addEventListener('click', () => this.exportarCSV());
-        }
-        
-        document.querySelectorAll('[data-order]').forEach(th => {
-            th.addEventListener('click', () => {
-                const order = th.getAttribute('data-order');
-                if (this.currentOrder === order) {
-                    this.currentOrderDir = this.currentOrderDir === 'ASC' ? 'DESC' : 'ASC';
-                } else {
-                    this.currentOrder = order;
-                    this.currentOrderDir = 'ASC';
-                }
-                this.currentPage = 1;
-                this.carregarProdutos();
-            });
-        });
-    },
-    
-    atualizarElemento(id, valor) {
-        const el = document.getElementById(id);
-        if (el) el.innerText = valor;
-    },
-    
-    formatNumber(value) {
-        if (value === undefined || value === null) return '0';
-        return Math.round(value).toLocaleString('pt-BR');
-    },
-    
-    escapeHtml(text) {
-        if (!text) return '';
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
-    },
-    
-    mostrarErro(mensagem) {
-        console.error(mensagem);
-        const tbody = document.getElementById('table-body');
-        if (tbody) {
-            tbody.innerHTML = `<tr><td colspan="8" class="text-center py-12 text-rose-500">${mensagem}</td></tr>`;
-        }
-    },
-    
-    iniciarRelogio() {
-        const atualizar = () => {
-            const agora = new Date();
-            const horaFormatada = agora.toLocaleTimeString('pt-br');
-            const dataFormatada = agora.toLocaleDateString('pt-br', { weekday: 'long', day: '2-digit', month: 'long' });
-            
-            const relogio = document.getElementById('relogio');
-            const dataTopo = document.getElementById('data-topo');
-            
-            if (relogio) relogio.innerText = horaFormatada;
-            if (dataTopo) dataTopo.innerText = dataFormatada;
-        };
-        
-        atualizar();
-        setInterval(atualizar, 1000);
     }
 };
 
-// Inicialização
-document.addEventListener('DOMContentLoaded', () => {
+// Auto inicialização
+window.addEventListener('DOMContentLoaded', () => {
     estoquePrevisaoApp.init();
 });
-
-window.estoquePrevisaoApp = estoquePrevisaoApp;

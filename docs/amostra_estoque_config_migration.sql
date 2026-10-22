@@ -25,3 +25,4 @@ CREATE TABLE IF NOT EXISTS amostra_estoque_regra_item (
     atualizado_em TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT unq_amostra_regra_item UNIQUE (iditem, filial_destino)
 );
+
