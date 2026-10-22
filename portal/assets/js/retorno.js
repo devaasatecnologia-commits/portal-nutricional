@@ -239,19 +239,19 @@ async function processarLeitura(codigo, doEmbarque = false) {
         if (refEl) refEl.innerHTML = `<i class="fa-solid fa-tag"></i> Ref: ${produto.referencia || '---'}`;
         
         const pesoEl = document.getElementById('produtoPeso');
-        if (pesoEl) pesoEl.innerText = formatarPeso(produto.pesoliquido) + ' kg';
+        if (pesoEl) pesoEl.innerText = formatarPeso(produto.pesoliquido);
 
         const badgeItem = document.getElementById('produtoBadgeItem');
         if (badgeItem) badgeItem.innerText = '#' + produto.iditem;
 
         const pesoBrutoEl = document.getElementById('produtoPesoBruto');
-        if (pesoBrutoEl) pesoBrutoEl.innerText = formatarPeso(produto.pesobruto) + ' kg';
+        if (pesoBrutoEl) pesoBrutoEl.innerText = formatarPeso(produto.pesobruto);
 
         const totalQtdEl = document.getElementById('produtoTotalEstoqueQtd');
         if (totalQtdEl) totalQtdEl.innerText = formatarQuantidade(produto.estoque_total_qtd || 0) + ' un';
 
         const totalPesoEl = document.getElementById('produtoTotalEstoquePeso');
-        if (totalPesoEl) totalPesoEl.innerText = formatarPeso(produto.estoque_total_peso || 0) + ' kg';
+        if (totalPesoEl) totalPesoEl.innerText = formatarPeso(produto.estoque_total_peso || 0);
         
         const fotoUrl = getImageUrl(produto.foto || produto.foto_url);
         const fotoEl = document.getElementById('produtoFoto');
@@ -281,7 +281,7 @@ async function processarLeitura(codigo, doEmbarque = false) {
                 }
 
                 if (pesoDestEl) {
-                    pesoDestEl.innerText = st.quantidade > 0 ? `Peso: ${formatarPeso(st.peso_total)} kg` : 'Peso: 0 kg';
+                    pesoDestEl.innerText = st.quantidade > 0 ? `Peso: ${formatarPeso(st.peso_total)}` : 'Peso: 0 kg';
                 }
 
                 if (pedEl) {
