@@ -2252,7 +2252,28 @@ case '3M411':
             foreach ($jobsAtivos as $jobItem) {
                 try {
                     $expr = new \Cron\CronExpression($jobItem['schedule']);
-                    if (!$expr->isDue($agora)) {
+                    
+                    // Verificação com tolerância inteligente:
+                    // 1. Minuto exato ($expr->isDue)
+                    // 2. OU se atrasou até 5 minutos no cPanel e ainda não rodou no horário de hoje
+                    $deveRodar = $expr->isDue($agora);
+                    if (!$deveRodar) {
+                        try {
+                            $prevRun = $expr->getPreviousRunDate($agora);
+                            $difSeg = $agora->getTimestamp() - $prevRun->getTimestamp();
+                            // Se a execução programada era há menos de 5 minutos (300 segundos)
+                            if ($difSeg >= 0 && $difSeg <= 300) {
+                                // Verifica se já rodou recentemente (nos últimos 10 minutos)
+                                $jaRodouRecente = !empty($jobItem['ultima_execucao']) && 
+                                    (strtotime($jobItem['ultima_execucao']) >= $prevRun->getTimestamp() - 60);
+                                if (!$jaRodouRecente) {
+                                    $deveRodar = true;
+                                }
+                            }
+                        } catch (\Throwable $ePrev) {}
+                    }
+
+                    if (!$deveRodar) {
                         continue;
                     }
                 } catch (\Throwable $e) {

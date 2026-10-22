@@ -46,5 +46,7 @@ Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
 2. `v1/src/Controllers/TransferenciaCompraController.php`
 3. `portal/modules/transferencia-compra.php`
 4. `portal/assets/js/transferencia-compra.js`
-5. `docs/CONTINUATION_TOKEN.md`
-6. `docs/tokens/CONTINUATION-2026-10-22.md`
+5. `index_legado.php` (Tolerância inteligente de 5 min para o motor de crons unificado)
+6. `docs/CONTINUATION_TOKEN.md`
+7. `docs/tokens/CONTINUATION-2026-10-22.md`
+
