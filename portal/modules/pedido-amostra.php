@@ -46,7 +46,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div class="flex items-center gap-2 mb-1">
                         <span class="px-2.5 py-0.5 rounded-lg bg-emerald-400/30 text-emerald-200 text-xs font-black uppercase tracking-wider">Gestão Comercial</span>
                         <span id="badgeRegraEstoque" class="px-2.5 py-0.5 rounded-lg bg-emerald-950/40 text-emerald-100 text-xs font-bold border border-emerald-400/30">
-                            <i class="fa-solid fa-warehouse mr-1"></i>Estoque Matriz
+                            <i class="fa-solid fa-boxes-stacked mr-1"></i>Material de Apoio
                         </span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-black tracking-tight leading-tight">Material de Apoio & Amostras</h1>
@@ -82,9 +82,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <p class="text-xs text-slate-400">Selecione a filial operativa, o tipo de transação e o cliente destinatário</p>
                     </div>
                 </div>
-                <div id="infoRegraFilial" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                    <i class="fa-solid fa-circle-info"></i>
-                    <span id="txtInfoRegraFilial">Carregando regra...</span>
+                <div id="infoRegraFilial" class="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                    <i class="fa-solid fa-boxes-stacked"></i>
+                    <span id="txtInfoRegraFilial">Disponibilidade de Estoque em Tempo Real</span>
                 </div>
             </div>
 

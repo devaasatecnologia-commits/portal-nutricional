@@ -139,22 +139,14 @@ function atualizarRegraEstoqueVisual() {
     const filial = Number($('selFilial').value);
     const badge = $('badgeRegraEstoque');
     const txtInfo = $('txtInfoRegraFilial');
-    const perc = estado.configFilialPr.percentual_padrao || 30;
 
-    if (filial === 6) {
-        if (badge) {
-            badge.innerHTML = `<i class="fa-solid fa-calculator mr-1"></i>Filial PR (-70% Matriz · ${perc}% liberado)`;
-        }
-        if (txtInfo) {
-            txtInfo.innerHTML = `Estoque consultado na <b>Matriz 1</b> com <b>${perc}% liberado</b> (${(100 - perc).toFixed(0)}% retido)`;
-        }
-    } else {
-        if (badge) {
-            badge.innerHTML = `<i class="fa-solid fa-warehouse mr-1"></i>Matriz 1 (100% Estoque)`;
-        }
-        if (txtInfo) {
-            txtInfo.innerHTML = `Estoque integral da <b>Matriz 1 (100% disponível)</b>`;
-        }
+    if (badge) {
+        badge.innerHTML = filial === 6
+            ? `<i class="fa-solid fa-location-dot mr-1"></i>Filial 6 (PR)`
+            : `<i class="fa-solid fa-location-dot mr-1"></i>Matriz 1`;
+    }
+    if (txtInfo) {
+        txtInfo.innerHTML = `Disponibilidade de Estoque em Tempo Real`;
     }
 }
 
@@ -167,7 +159,7 @@ function setQtd(id, valor, max) {
             toast: true,
             position: 'top',
             icon: 'warning',
-            title: `Saldo máximo liberado: ${num(max)} un.`,
+            title: `Saldo máximo disponível: ${num(max)} un.`,
             showConfirmButton: false,
             timer: 2000
         });
@@ -204,12 +196,9 @@ async function carregarItens() {
             return;
         }
 
-        const isFilial6 = Number($('selFilial').value) === 6;
-
         box.innerHTML = estado.itensCatalogo.map((i) => {
             const fotoUrl = i.foto_url || getImageUrl(i.foto);
             const saldoLiberado = Number(i.saldo_estoque || 0);
-            const saldoMatriz = Number(i.saldo_matriz || 0);
 
             return `
             <div class="pa-item-card p-3.5 flex flex-col justify-between" data-id="${i.iditem}" data-max="${saldoLiberado}">
@@ -227,18 +216,9 @@ async function carregarItens() {
                     </div>
                 </div>
 
-                <div class="bg-slate-50 rounded-xl p-2 mb-3 border border-slate-100/80">
-                    <div class="flex items-center justify-between text-[11px] mb-1">
-                        <span class="text-slate-400 font-semibold">Estoque Matriz:</span>
-                        <span class="font-bold text-slate-700">${num(saldoMatriz)} un.</span>
-                    </div>
-                    <div class="flex items-center justify-between text-xs">
-                        <span class="text-emerald-800 font-extrabold flex items-center gap-1">
-                            <span>Liberado Filial:</span>
-                            ${isFilial6 ? `<span class="px-1.5 py-0.2 rounded text-[10px] ${i.is_regra_custom ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-800'} font-bold">${i.percentual_liberado}%</span>` : ''}
-                        </span>
-                        <b class="text-emerald-700 font-black text-sm">${num(saldoLiberado)} un.</b>
-                    </div>
+                <div class="bg-slate-50 rounded-xl p-2.5 mb-3 border border-slate-100 flex items-center justify-between">
+                    <span class="text-xs font-bold text-slate-500">Saldo Disponível:</span>
+                    <b class="text-emerald-700 font-black text-sm">${num(saldoLiberado)} un.</b>
                 </div>
 
                 <div class="flex items-center justify-between pt-1 border-t border-slate-100">

@@ -461,7 +461,8 @@ class AmostraPedidoController
             if ($pedido) {
                 $stmtItens = $this->pdo->prepare("
                     SELECT pi.iditem, i.descricao, i.referencia, pi.qt,
-                           pi.vlrunitario, pi.valortotalitem, i.path_foto_master
+                           ROUND(pi.valortotal / NULLIF(pi.qt, 0), 2) as valor_unitario,
+                           pi.valortotal, i.path_foto_master
                     FROM pedido_item pi
                     JOIN item i ON i.iditem = pi.iditem
                     WHERE pi.idpedido = :id
@@ -492,7 +493,7 @@ class AmostraPedidoController
             if ($pedidoPp) {
                 $stmtItensPp = $this->pdo->prepare("
                     SELECT ppi.iditem, ppi.descricao, i.referencia, ppi.qt,
-                           ppi.vlrunitario, (ppi.qt * ppi.vlrunitario) as valortotalitem, i.path_foto_master
+                           ppi.valor as valor_unitario, ppi.valortotal, i.path_foto_master
                     FROM palmtop_pedido_item ppi
                     LEFT JOIN item i ON i.iditem = ppi.iditem
                     WHERE ppi.idpedidopda = :id
