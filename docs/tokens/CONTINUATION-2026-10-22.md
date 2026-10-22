@@ -69,3 +69,29 @@ Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
 9. `docs/CONTINUATION_TOKEN.md`
 10. `docs/tokens/CONTINUATION-2026-10-22.md`
 
+
+
+---
+
+### 1.5 Módulo Pedido de Amostra / Material de Apoio (`pedido-amostra.php`, `configuracoes-modulos.php`)
+- **Regra de Estoque Matriz (1) vs Filial PR (6):**
+  - Como o estoque físico de materiais e brindes fica centralizado na Matriz (1), as solicitações geradas para a Filial 6 (PR) agora consultam diretamente a Matriz aplicando uma retenção padrão configurável de -70% do estoque (ou seja, **30% liberado** para a filial PR).
+  - Para a Matriz (1), o saldo consultado é integral (100% liberado).
+- **Área Administrativa (`portal/modules/admin/configuracoes-modulos.php`):**
+  - Criada nova seção dedicada: **Material de Apoio & Amostras · Estoque Filial PR (6)**.
+  - **Configuração Geral:** Campo numérico para ajustar livremente o percentual padrão liberado para a Filial PR (ex: 30%, 50%, etc.), com cálculo visual automático do percentual retido na Matriz.
+  - **Exceções & Regras por Item:** Sistema com busca interativa de produtos com fotos, permitindo definir um percentual customizado para qualquer item (inclusive 0% para bloquear um item específico para a Filial PR), com botão de pausar/ativar e exclusão.
+- **Backend (`AmostraPedidoController.php` & `ModuleConfigController.php`):**
+  - Novas tabelas criadas: `amostra_estoque_config` e `amostra_estoque_regra_item` (migração versionada em `docs/amostra_estoque_config_migration.sql`).
+  - `itensDisponiveis()` calcula dinamicamente o estoque liberado para a filial de acordo com a regra geral ou override por item, retornando foto e metadados.
+  - Validação rigorosa em `criar()` garantindo que o pedido não exceda o limite liberado para a filial.
+  - Rota de detalhes de pedido (`GET /v1/amostras/pedidos/{id}`) para carregamento sob demanda com itens e fotos.
+- **Frontend & Rastreamento Premium (`portal/modules/pedido-amostra.php` e `portal/assets/js/pedido-amostra.js`):**
+  - **Design com Abas:** Aba 1 ("Nova Solicitação") e Aba 2 ("Histórico & Rastreamento").
+  - **Catálogo com Fotos:** Grid moderno com foto real de cada produto via CDN (`getImageUrl`), tags de código/ref, estoque matriz, saldo liberado com badge de `%` e seletores de quantidade com limites validados em tempo real.
+  - **Painel & Relatórios:** 4 KPI Cards (Total de Pedidos, Aguardando Importação ERP, Em Aberto, Faturados).
+  - **Rastreabilidade Completa:**
+    - Exibição destacada da **Origem**: Badge Roxa `PORTAL` vs Badge Azul `ERP`.
+    - Exibição do **Solicitante**: Nome do operador/gestor que solicitou (inclusive capturando o usuário do portal via Palmtop).
+    - Filtros por Origem, Status e busca textual livre.
+  - **Modal de Detalhes:** Exibe dados completos do pedido, observação e grid de itens com fotos e quantidades.
