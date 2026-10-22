@@ -71,3 +71,4 @@ Os seguintes arquivos devem ser enviados ao servidor de produção via FTP:
    - Revisar rotas e controllers de transferência e compras (`v1/src/Controllers/TransferenciaCompraController.php` ou correlatos).
    - Realizar os ajustes operacionais pendentes.
    - **Implementar novas situações e regras de negócio** solicitadas pelo usuário para o fluxo de transferências e ordens de compra.
+

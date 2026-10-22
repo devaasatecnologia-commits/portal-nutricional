@@ -956,6 +956,7 @@ $protected->group('/transf-compras', function ($group) {
     $group->group('/matriz-filial', function ($g) use ($c) {
         $g->get('', [$c, 'matrizFilial']);
         $g->get('/pendentes', [$c, 'embarquesPendentes']);
+        $g->get('/previa/{embarque}', [$c, 'previaEmbarque']);
     })->add(new ModulePermissionMiddleware('transferencia-matriz-filial'));
     $group->group('/filial-matriz', function ($g) use ($c) {
         $g->get('', [$c, 'filialMatriz']);

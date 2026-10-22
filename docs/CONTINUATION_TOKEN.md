@@ -1,7 +1,7 @@
 # Token de continuidade
 
 O handoff atual fica em
-[docs/tokens/CONTINUATION-2026-10-21.md](tokens/CONTINUATION-2026-10-21.md).
+[docs/tokens/CONTINUATION-2026-10-22.md](tokens/CONTINUATION-2026-10-22.md).
 Ele é um resumo técnico sem credenciais nem dados reais, não um meio de
 conceder acesso.
 

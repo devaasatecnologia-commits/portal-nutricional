@@ -232,24 +232,209 @@ class TransferenciaCompraController
         }
     }
 
-    /** GET /v1/transf-compras/embarques-pendentes : vw_pex_embarque (filial 6, nao faturado) */
+    /** GET /v1/transf-compras/matriz-filial/pendentes : vw_pex_embarque (filial 6) */
     public function embarquesPendentes(Request $request, Response $response): Response
     {
         try {
+            $params = $request->getQueryParams();
+            $incluirFaturados = !empty($params['faturados']) || !empty($params['todos']);
+            $busca = trim((string)($params['q'] ?? ''));
+
+            $where = "v.filial = 6";
+            if (!$incluirFaturados) {
+                $where .= " AND v.faturado = 'N'";
+            }
+
+            $sqlParams = [];
+            if ($busca !== '') {
+                $where .= " AND (v.novo_idembarque::text = :bx OR v.nova_placa ILIKE :b OR v.nome_embarque ILIKE :b)";
+                $sqlParams['bx'] = $busca;
+                $sqlParams['b'] = '%' . $busca . '%';
+            }
+
             $rows = $this->consultar(
                 "SELECT v.novo_idembarque AS embarque, v.nome_embarque, v.nova_placa AS placa, v.data,
-                        v.qt_pedido, v.totalpesoliquido AS peso,
-                        EXISTS (SELECT 1 FROM solicitacao_compra sc
-                                WHERE sc.status <> 3
-                                  AND (substring(sc.observacao FROM 'Embarque: ([0-9]+)') = v.novo_idembarque::text
-                                    OR substring(sc.observacao FROM 'Remessa: ([0-9]+)') = v.novo_idembarque::text)) AS ja_solicitado
+                        v.qt_pedido, v.totalpesoliquido AS peso, v.faturado,
+                        sol.idsolicitacaocompra AS idsolicitacao,
+                        sol.status AS status_solicitacao,
+                        (sol.idsolicitacaocompra IS NOT NULL) AS ja_solicitado
                  FROM vw_pex_embarque v
-                 WHERE v.filial = 6 AND v.faturado = 'N'
-                 ORDER BY v.novo_idembarque DESC LIMIT 50"
+                 LEFT JOIN LATERAL (
+                     SELECT sc.idsolicitacaocompra, sc.status
+                     FROM solicitacao_compra sc
+                     WHERE sc.status <> 3
+                       AND (substring(sc.observacao FROM 'Embarque: ([0-9]+)') = v.novo_idembarque::text
+                         OR substring(sc.observacao FROM 'Remessa: ([0-9]+)') = v.novo_idembarque::text)
+                     ORDER BY sc.idsolicitacaocompra DESC
+                     LIMIT 1
+                 ) sol ON TRUE
+                 WHERE {$where}
+                 ORDER BY v.novo_idembarque DESC LIMIT 100",
+                $sqlParams
             );
             return $this->json($response, ['success' => true, 'registros' => $rows]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao buscar embarques: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /v1/transf-compras/matriz-filial/previa/{embarque} : Análise detalhada prévia da transferência */
+    public function previaEmbarque(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $embarqueId = (int)($args['embarque'] ?? 0);
+            if ($embarqueId <= 0) {
+                return $this->erro($response, 'ID de embarque inválido.', 400);
+            }
+
+            // Dados do Embarque
+            $stmtEmb = $this->pdo->prepare('
+                SELECT ep.idembarque, ep.data, ep.observacao, ep.placa, ep.gerou_nf,
+                       ep.qt_pedido, ep.totalpesoliquido, ep.valortotal
+                FROM embarque_pedido ep
+                WHERE ep.idembarque = :emb
+            ');
+            $stmtEmb->execute(['emb' => $embarqueId]);
+            $embarque = $stmtEmb->fetch(PDO::FETCH_ASSOC);
+
+            if (!$embarque) {
+                return $this->erro($response, "Embarque {$embarqueId} não encontrado.", 404);
+            }
+
+            // Solicitações de compra vinculadas a este embarque
+            $stmtSol = $this->pdo->prepare("
+                SELECT sc.idsolicitacaocompra, sc.data, sc.status, sc.observacao
+                FROM solicitacao_compra sc
+                WHERE (
+                        substring(sc.observacao FROM 'Embarque: ([0-9]+)') = :emb
+                     OR substring(sc.observacao FROM 'Remessa: ([0-9]+)') = :emb
+                )
+                AND sc.status <> 3
+                ORDER BY sc.idsolicitacaocompra DESC
+            ");
+            $stmtSol->execute(['emb' => (string)$embarqueId]);
+            $solicitacoes = $stmtSol->fetchAll(PDO::FETCH_ASSOC);
+
+            // Itens com cálculo da necessidade, estoque PR e reserva do cliente 14523 (Nutricional Filial PR)
+            $sqlItens = '
+                WITH itens_embarque AS (
+                    SELECT 
+                        pi.iditem,
+                        i.referencia,
+                        i.descricao,
+                        i.complemento,
+                        u.sigla AS unidade,
+                        i.idmarca,
+                        m.descricao AS marca,
+                        SUM(pi.quant_impressao) AS qtd_embarque
+                    FROM embarque_pedido_item epi
+                    JOIN embarque_pedido ep ON ep.idembarque = epi.idembarque
+                    JOIN pedido p ON p.idpedido = epi.idpedido
+                    JOIN pedido_item pi ON pi.idpedido = p.idpedido
+                    JOIN item i ON i.iditem = pi.iditem
+                    LEFT JOIN unidade u ON u.idunidade = i.idunidadebasica
+                    LEFT JOIN marca m ON m.idmarca = i.idmarca
+                    WHERE ep.idembarque = :emb
+                    GROUP BY pi.iditem, i.referencia, i.descricao, i.complemento, u.sigla, i.idmarca, m.descricao
+                ),
+                reserva_14523 AS (
+                    SELECT 
+                        pi.iditem,
+                        SUM(COALESCE(pi.qtsaldo, pi.qt - COALESCE(pi.qtfaturado, 0))) AS qtd_reservada
+                    FROM pedido p
+                    JOIN pedido_item pi ON pi.idpedido = p.idpedido
+                    WHERE p.idcliforemp = 14523
+                      AND p.idfilial = 6
+                      AND p.status = 1
+                    GROUP BY pi.iditem
+                ),
+                estoque_pr AS (
+                    SELECT 
+                        ef.iditem,
+                        COALESCE(ef.saldoatual, 0) AS saldo_fisico
+                    FROM estoque_filial ef
+                    WHERE ef.idfilial = 6
+                )
+                SELECT 
+                    ie.iditem,
+                    ie.referencia,
+                    ie.descricao,
+                    ie.complemento,
+                    ie.unidade,
+                    ie.idmarca,
+                    ie.marca,
+                    (ie.idmarca = 60) AS is_remessa,
+                    ROUND(ie.qtd_embarque::numeric, 2) AS qtd_embarque,
+                    ROUND(COALESCE(ep.saldo_fisico, 0)::numeric, 2) AS estoque_pr,
+                    ROUND(COALESCE(res.qtd_reservada, 0)::numeric, 2) AS reserva_14523,
+                    ROUND(GREATEST(COALESCE(ep.saldo_fisico, 0) - COALESCE(res.qtd_reservada, 0), 0)::numeric, 2) AS estoque_livre_pr,
+                    ROUND(GREATEST(ie.qtd_embarque - GREATEST(COALESCE(ep.saldo_fisico, 0) - COALESCE(res.qtd_reservada, 0), 0), 0)::numeric, 2) AS qtd_solicitar,
+                    (COALESCE(res.qtd_reservada, 0) > 0) AS ajustado_reserva
+                FROM itens_embarque ie
+                LEFT JOIN estoque_pr ep ON ep.iditem = ie.iditem
+                LEFT JOIN reserva_14523 res ON res.iditem = ie.iditem
+                ORDER BY is_remessa DESC, ie.descricao ASC
+            ';
+            $stmtItens = $this->pdo->prepare($sqlItens);
+            $stmtItens->execute(['emb' => $embarqueId]);
+            $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
+
+            // Totalizadores de auditoria e decisão
+            $totalItens = count($itens);
+            $itensASolicitar = 0;
+            $qtdTotalSolicitar = 0.0;
+            $normaisItens = 0;
+            $normaisUnidades = 0.0;
+            $remessaItens = 0;
+            $remessaUnidades = 0.0;
+            $itensComReserva = 0;
+
+            foreach ($itens as &$it) {
+                $it['qtd_embarque'] = (float)$it['qtd_embarque'];
+                $it['estoque_pr'] = (float)$it['estoque_pr'];
+                $it['reserva_14523'] = (float)$it['reserva_14523'];
+                $it['estoque_livre_pr'] = (float)$it['estoque_livre_pr'];
+                $it['qtd_solicitar'] = (float)$it['qtd_solicitar'];
+                $it['is_remessa'] = (bool)$it['is_remessa'];
+                $it['ajustado_reserva'] = (bool)$it['ajustado_reserva'];
+
+                if ($it['ajustado_reserva']) {
+                    $itensComReserva++;
+                }
+
+                if ($it['qtd_solicitar'] > 0) {
+                    $itensASolicitar++;
+                    $qtdTotalSolicitar += $it['qtd_solicitar'];
+                    if ($it['is_remessa']) {
+                        $remessaItens++;
+                        $remessaUnidades += $it['qtd_solicitar'];
+                    } else {
+                        $normaisItens++;
+                        $normaisUnidades += $it['qtd_solicitar'];
+                    }
+                }
+            }
+            unset($it);
+
+            return $this->json($response, [
+                'success' => true,
+                'embarque' => $embarque,
+                'solicitacoes_existentes' => $solicitacoes,
+                'resumo' => [
+                    'total_itens' => $totalItens,
+                    'itens_a_solicitar' => $itensASolicitar,
+                    'qtd_total_solicitar' => $qtdTotalSolicitar,
+                    'normais_itens' => $normaisItens,
+                    'normais_unidades' => $normaisUnidades,
+                    'remessa_itens' => $remessaItens,
+                    'remessa_unidades' => $remessaUnidades,
+                    'itens_ajustados_reserva' => $itensComReserva,
+                    'ja_solicitado' => count($solicitacoes) > 0,
+                ],
+                'itens' => $itens
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao gerar prévia da solicitação: ' . $e->getMessage(), 500);
         }
     }
 
