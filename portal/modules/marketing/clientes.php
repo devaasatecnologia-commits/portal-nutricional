@@ -387,6 +387,74 @@ require_once __DIR__ . '/../../estrutura/header.php';
 <div class="bg-gradient-to-r from-slate-50 to-slate-100/50 p-4 border-b border-slate-200">
 
     <!-- ================================================================
+    BARRA DE HIERARQUIA & ESCOPO (FILIAL / GESTOR / REPRESENTANTE)
+    ================================================================ -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
+        <!-- SELETOR DE FILIAL -->
+        <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span><i class="fa-solid fa-store text-emerald-600 mr-1.5"></i> Filial</span>
+                <span x-show="filialRestrita" class="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">Restrito</span>
+            </label>
+            <div class="relative">
+                <select x-model="filtros.filial" @change="onFilialChange()"
+                    class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-200 transition-all cursor-pointer">
+                    <template x-if="todasFiliaisPermitido">
+                        <option value="">🏢 Todas as Filiais</option>
+                    </template>
+                    <template x-for="f in filiaisDisponiveis" :key="f.id">
+                        <option :value="f.id" x-text="f.nome"></option>
+                    </template>
+                </select>
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- SELETOR DE GESTOR -->
+        <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span><i class="fa-solid fa-user-tie text-blue-600 mr-1.5"></i> Gestor Responsável</span>
+                <span x-show="gestorRestrito" class="text-[10px] text-amber-700 font-semibold bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded">Restrito</span>
+            </label>
+            <div class="relative">
+                <select x-model="filtros.gestor" @change="onGestorChange()"
+                    class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 transition-all cursor-pointer">
+                    <template x-if="todosGestoresPermitido">
+                        <option value="">👔 Todos os Gestores</option>
+                    </template>
+                    <template x-for="g in gestoresDisponiveis" :key="g.id">
+                        <option :value="g.id" x-text="g.nome"></option>
+                    </template>
+                </select>
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- SELETOR DE REPRESENTANTE COMERCIAL -->
+        <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">
+                <i class="fa-solid fa-id-badge text-purple-600 mr-1.5"></i> Representante Comercial
+            </label>
+            <div class="relative">
+                <select x-model="filtros.representante" @change="carregarClientes()"
+                    class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-purple-500 focus:bg-white focus:ring-2 focus:ring-purple-200 transition-all cursor-pointer">
+                    <option value="">🤝 Todos os Representantes</option>
+                    <template x-for="r in representantesDisponiveis" :key="r.id">
+                        <option :value="r.id" x-text="r.nome"></option>
+                    </template>
+                </select>
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================================================================
     LINHA 1: BUSCA PRINCIPAL + BOTÕES
     ================================================================ -->
     <div class="flex flex-col md:flex-row gap-3 mb-3">
@@ -1045,7 +1113,17 @@ title="Limpar datas">
             alertas: [],
             proximosCompromissos: [],
             lembretesHoje: [],
+            filiaisDisponiveis: [],
+            gestoresDisponiveis: [],
+            representantesDisponiveis: [],
+            filialRestrita: false,
+            gestorRestrito: false,
+            todasFiliaisPermitido: true,
+            todosGestoresPermitido: true,
             filtros: {
+                filial: '',
+                gestor: '',
+                representante: '',
                 status: '',
                 termometro: '',
                 busca: '',
@@ -2693,6 +2771,7 @@ abrirAgendamentoRapido(start, end) {
             const temClienteURL = this.carregarClienteDaURL();
             
             await this.carregarDashboard();
+            await this.carregarFiliaisEGestores();
             
             if (temClienteURL) {
                 console.log('🚀 Cliente carregado da URL, pulando carregamento completo');
@@ -2731,6 +2810,77 @@ abrirAgendamentoRapido(start, end) {
             this.verificarParametrosBusca();
         },
 
+
+        // ====================================================================
+        // GESTÃO DE ESCOPO / HIERARQUIA (FILIAIS, GESTORES, REPRESENTANTES)
+        // ====================================================================
+        async carregarFiliaisEGestores() {
+            try {
+                const respF = await this.fetchWithAuth('/v1/marketing/filiais');
+                const dataF = await respF.json();
+                if (dataF.success) {
+                    this.filiaisDisponiveis = dataF.filiais || [];
+                    this.filialRestrita = !!dataF.filial_restrita;
+                    this.todasFiliaisPermitido = !!dataF.todas_permitido;
+                    if (this.filialRestrita && this.filiaisDisponiveis.length > 0) {
+                        this.filtros.filial = String(this.filiaisDisponiveis[0].id);
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao carregar filiais CRM:', e);
+            }
+
+            await this.carregarGestores();
+            await this.carregarRepresentantes();
+        },
+
+        async carregarGestores() {
+            try {
+                const filialQuery = this.filtros.filial ? `?filial=${this.filtros.filial}` : '';
+                const respG = await this.fetchWithAuth(`/v1/marketing/gestores${filialQuery}`);
+                const dataG = await respG.json();
+                if (dataG.success) {
+                    this.gestoresDisponiveis = dataG.gestores || [];
+                    this.gestorRestrito = !!dataG.gestor_restrito;
+                    this.todosGestoresPermitido = !!dataG.todos_permitido;
+                    if (this.gestorRestrito && this.gestoresDisponiveis.length > 0) {
+                        this.filtros.gestor = String(this.gestoresDisponiveis[0].id);
+                    }
+                }
+            } catch (e) {
+                console.error('Erro ao carregar gestores CRM:', e);
+            }
+        },
+
+        async carregarRepresentantes() {
+            try {
+                const params = new URLSearchParams();
+                if (this.filtros.filial) params.append('filial', this.filtros.filial);
+                if (this.filtros.gestor) params.append('gestor', this.filtros.gestor);
+                const resp = await this.fetchWithAuth(`/v1/marketing/representantes?${params.toString()}`);
+                const data = await resp.json();
+                if (data.success) {
+                    this.representantesDisponiveis = data.representantes || [];
+                }
+            } catch (e) {
+                console.error('Erro ao carregar representantes CRM:', e);
+            }
+        },
+
+        async onFilialChange() {
+            this.filtros.representante = '';
+            await this.carregarGestores();
+            await this.carregarRepresentantes();
+            this.pagination.atual = 1;
+            this.carregarClientes();
+        },
+
+        async onGestorChange() {
+            this.filtros.representante = '';
+            await this.carregarRepresentantes();
+            this.pagination.atual = 1;
+            this.carregarClientes();
+        },
 
         // ====================================================================
         // DASHBOARD E STATS
@@ -2788,6 +2938,9 @@ abrirAgendamentoRapido(start, end) {
               const params = new URLSearchParams({
                 pagina: this.pagination.atual,
                 limite: this.pagination.limite,
+                filial: this.filtros.filial || '',
+                gestor: this.filtros.gestor || '',
+                representante: this.filtros.representante || '',
                 status: this.filtros.status_list ? this.filtros.status_list.join(',') : '',
                 termometro: this.filtros.termometro_list ? this.filtros.termometro_list.join(',') : '',
                 busca: this.filtros.busca || '',
@@ -2848,6 +3001,12 @@ abrirAgendamentoRapido(start, end) {
                 nome: c.nome || '—',
                 empresa: c.empresa || '',
                 telefone: c.telefone || '',
+                idfilial: c.idfilial,
+                nome_filial: c.nome_filial || '',
+                idvendedor: c.idvendedor,
+                nome_vendedor: c.nome_vendedor || '',
+                idgestor: c.idgestor,
+                nome_gestor: c.nome_gestor || '',
                 email: c.email || '',
                 cidade: c.cidade || '',
                 uf: c.uf || '',
@@ -2980,19 +3139,33 @@ abrirAgendamentoRapido(start, end) {
 
         const clienteId = c.id_crm || c.id_erp || c.id;
 
+        const filialBadge = c.idfilial == 6 ? 
+            '<span class="ml-2 text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-sky-600"></i>PR (Filial 6)</span>' : 
+            '<span class="ml-2 text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-emerald-600"></i>SC (Filial 1)</span>';
+
+        let gestorRepreInfo = '';
+        if (c.nome_gestor) {
+            gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded mr-2 mt-1"><i class="fa-solid fa-user-tie text-blue-600 mr-1"></i>Gestor: ${this.escapeHtml(c.nome_gestor)}</span>`;
+        }
+        if (c.nome_vendedor) {
+            gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded mt-1"><i class="fa-solid fa-id-badge text-purple-600 mr-1"></i>Rep: ${this.escapeHtml(c.nome_vendedor)}</span>`;
+        }
+
         return `
             <tr class="border-b hover:bg-slate-50 cursor-pointer transition-colors" 
                 data-cliente-id="${clienteId}"
             onclick="${c.id_crm ? `window.editarCliente(${c.id_crm}, 'CRM')` : `window.visualizarClienteUnificado(${c.id_erp}, '${c.origem_dados}')`}">
                 <td class="px-4 py-3">
-                    <div class="font-bold text-slate-800">
-                        ${this.escapeHtml(c.nome)}${origemBadge}
-                        ${!c.id_crm ? '<span class="ml-2 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
+                    <div class="font-bold text-slate-800 flex items-center flex-wrap gap-1">
+                        ${this.escapeHtml(c.nome)}
+                        ${filialBadge}
+                        ${origemBadge}
+                        ${!c.id_crm ? '<span class="ml-1 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
                     </div>
-                    <div class="text-xs text-slate-400">
+                    <div class="text-xs text-slate-400 mt-0.5">
                         ${c.empresa || ''} ${c.telefone ? '• ' + c.telefone : ''}
-                        ${c.nome_vendedor ? '<br><span class="text-[10px]">Vend: ' + this.escapeHtml(c.nome_vendedor) + '</span>' : ''}
                     </div>
+                    ${gestorRepreInfo ? `<div class="mt-1">${gestorRepreInfo}</div>` : ''}
                 </td>
                 <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded-lg text-xs font-bold ${statusClass}">${c.status}</span></td>
                 <td class="px-4 py-3 text-center text-xl">${termoIcon}</td>

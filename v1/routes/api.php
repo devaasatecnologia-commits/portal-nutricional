@@ -752,6 +752,13 @@ $protected->group('/marketing', function ($group) {
     $controller = new MarketingController();
     $pedidosController = new ClientePedidosController();
 
+    // ======================================================================
+    // FILIAIS, GESTORES E REPRESENTANTES (CRM ESCOPO / HIERARQUIA)
+    // ======================================================================
+    $group->get('/filiais', [$controller, 'getFiliaisCRM']);
+    $group->get('/gestores', [$controller, 'getGestoresCRM']);
+    $group->get('/representantes', [$controller, 'getRepresentantesCRM']);
+
             // ======================================================================
             // PEDIDOS ERP (NOVAS ROTAS)
             // ======================================================================

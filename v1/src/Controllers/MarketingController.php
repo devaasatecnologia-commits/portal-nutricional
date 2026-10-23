@@ -6,6 +6,7 @@ use Exception;
 use PHPMailer\PHPMailer\PHPMailer;
 use Psr\Http\Message\RequestInterface as Request;
 use Psr\Http\Message\ResponseInterface as Response;
+use Nutricional\Utils\UserScope;
 
 /**
  * MarketingController - Versão Refatorada Completa
@@ -2174,11 +2175,40 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
         'offset' => $p_offset
     ]));
     
+    // ================================================================
+    // ESCOPO DO USUÁRIO E FILTROS DE HIERARQUIA (FILIAL, GESTOR, VENDEDOR)
+    // ================================================================
+    $scope = UserScope::fromRequest($request, $this->pdo);
+
+    $p_filiais = null;
+    $filialParam = isset($params['filial']) && trim($params['filial']) !== '' ? trim($params['filial']) : null;
+    try {
+        $filiaisEfetivas = $scope->resolverFiliais($filialParam);
+        if (!empty($filiaisEfetivas)) {
+            $p_filiais = implode(',', $filiaisEfetivas);
+        }
+    } catch (\Exception $e) {
+        $p_filiais = !empty($scope->filiais) ? implode(',', $scope->filiais) : null;
+    }
+
+    $p_gestores = null;
+    $gestorParam = isset($params['gestor']) && trim($params['gestor']) !== '' ? trim($params['gestor']) : null;
+    try {
+        $gestoresEfetivos = $scope->resolverGestores($gestorParam);
+        if (!empty($gestoresEfetivos)) {
+            $p_gestores = implode(',', $gestoresEfetivos);
+        }
+    } catch (\Exception $e) {
+        $p_gestores = !empty($scope->gestores) ? implode(',', $scope->gestores) : null;
+    }
+
+    $p_vendedor = isset($params['representante']) && (int)$params['representante'] > 0 ? (int)$params['representante'] : null;
+
     try {
         $pdo = $this->pdo;
         
         // ================================================================
-        // 4. CHAMAR A FUNÇÃO POSTGRESQL
+        // 4. CHAMAR A FUNÇÃO POSTGRESQL (COM FILIAL, GESTOR E REPRE)
         // ================================================================
         $sql = "SELECT consultar_clientes_otimizado_v2(
             :p_busca,
@@ -2193,7 +2223,10 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
             :p_data_fim,
             :p_limite,
             :p_offset,
-            :p_origem_cliente
+            :p_origem_cliente,
+            :p_filiais,
+            :p_gestores,
+            :p_vendedor
         ) as resultado";
         
         $stmt = $pdo->prepare($sql);
@@ -2210,7 +2243,10 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
             'p_data_fim' => $p_data_fim,
             'p_limite' => $p_limite,
             'p_offset' => $p_offset,
-            'p_origem_cliente' => $p_origem_cliente
+            'p_origem_cliente' => $p_origem_cliente,
+            'p_filiais' => $p_filiais,
+            'p_gestores' => $p_gestores,
+            'p_vendedor' => $p_vendedor
         ]);
         
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -2249,6 +2285,13 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
                 'tipo' => $p_busca_id ? 'ID' : ($p_busca ? 'TEXTO' : 'VAZIO'),
                 'id_buscado' => $p_busca_id
             ],
+            'escopo_usuario' => [
+                'is_admin' => $scope->isAdmin,
+                'filial_restrita' => $scope->filialRestrita(),
+                'filiais_permitidas' => $scope->filiais,
+                'gestor_restrito' => $scope->gestorRestrito(),
+                'gestores_permitidos' => $scope->gestores
+            ],
             'filtros_aplicados' => [
                 'busca' => $buscaOriginal,
                 'origem' => $params['origem'] ?? null,
@@ -2260,6 +2303,9 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
                 'data_inicio' => $p_data_inicio,
                 'data_fim' => $p_data_fim,
                 'origem_cliente' => $p_origem_cliente,
+                'filial' => $p_filiais,
+                'gestor' => $p_gestores,
+                'representante' => $p_vendedor,
                 'limite' => $p_limite,
                 'pagina' => $pagina
             ],
@@ -5179,4 +5225,124 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
         if ($ultimo < $penultimo * 0.95) return 'diminuindo';
         return 'estavel';
     }
+
+    /**
+     * GET /v1/marketing/filiais
+     * Retorna filiais liberadas para o usuário (respeitando UserScope).
+     */
+    public function getFiliaisCRM(Request $request, Response $response): Response
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        
+        $filiaisDisponiveis = [
+            ['id' => 1, 'nome' => 'Filial 1 - Matriz (SC)', 'sigla' => 'SC', 'uf' => 'SC'],
+            ['id' => 6, 'nome' => 'Filial 6 - Filial (PR)', 'sigla' => 'PR', 'uf' => 'PR']
+        ];
+
+        if ($scope->filialRestrita()) {
+            $permitidas = $scope->filiais;
+            $filiaisDisponiveis = array_values(array_filter($filiaisDisponiveis, function($f) use ($permitidas) {
+                return in_array($f['id'], $permitidas, true);
+            }));
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'filiais' => $filiaisDisponiveis,
+            'is_admin' => $scope->isAdmin,
+            'filial_restrita' => $scope->filialRestrita(),
+            'todas_permitido' => !$scope->filialRestrita()
+        ]);
+    }
+
+    /**
+     * GET /v1/marketing/gestores
+     * Retorna gestores liberados para o usuário (respeitando UserScope e filial).
+     */
+    public function getGestoresCRM(Request $request, Response $response): Response
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        $params = $request->getQueryParams();
+        $filial = isset($params['filial']) && (int)$params['filial'] > 0 ? (int)$params['filial'] : null;
+
+        $where = "WHERE g.inativo = 'N'";
+        $bindings = [];
+
+        if ($scope->gestorRestrito()) {
+            $inGestores = implode(',', array_map('intval', $scope->gestores));
+            $where .= " AND g.idcliforemp IN ($inGestores)";
+        }
+
+        if ($filial !== null) {
+            $where .= " AND (EXISTS (SELECT 1 FROM usuarios_mercos um WHERE um.cdgestor = g.idcliforemp AND um.filial = :filial) OR g.idcliforemp IN (11371, 13878, 15520, 5297, 11258))";
+            $bindings['filial'] = $filial;
+        }
+
+        $sql = "
+            SELECT DISTINCT 
+                g.idcliforemp as id,
+                TRIM(REPLACE(g.fantasia, '*', '')) as nome
+            FROM vw_gestores g
+            $where
+            ORDER BY nome
+        ";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($bindings);
+        $gestores = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return $this->json($response, [
+            'success' => true,
+            'gestores' => $gestores,
+            'is_admin' => $scope->isAdmin,
+            'gestor_restrito' => $scope->gestorRestrito(),
+            'todos_permitido' => !$scope->gestorRestrito()
+        ]);
+    }
+
+    /**
+     * GET /v1/marketing/representantes
+     * Retorna representantes/vendedores ativos liberados para filial/gestor.
+     */
+    public function getRepresentantesCRM(Request $request, Response $response): Response
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        $params = $request->getQueryParams();
+        $filial = isset($params['filial']) && (int)$params['filial'] > 0 ? (int)$params['filial'] : null;
+        $gestor = isset($params['gestor']) && (int)$params['gestor'] > 0 ? (int)$params['gestor'] : null;
+
+        $filiais = $scope->resolverFiliais($filial);
+        $gestores = $scope->resolverGestores($gestor);
+
+        $where = "WHERE um.idcolaborador IS NOT NULL AND COALESCE(c.inativo, 'N') <> 'S'";
+
+        if (!empty($filiais)) {
+            $where .= " AND um.filial IN (" . implode(',', array_map('intval', $filiais)) . ")";
+        }
+
+        if (!empty($gestores)) {
+            $where .= " AND um.cdgestor IN (" . implode(',', array_map('intval', $gestores)) . ")";
+        }
+
+        $sql = "
+            SELECT DISTINCT 
+                um.idcolaborador as id,
+                c.fantasia as nome,
+                um.cdgestor as idgestor,
+                um.filial
+            FROM usuarios_mercos um
+            JOIN cliforemp c ON c.idcliforemp = um.idcolaborador
+            $where
+            ORDER BY c.fantasia
+        ";
+
+        $stmt = $this->pdo->query($sql);
+        $representantes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        return $this->json($response, [
+            'success' => true,
+            'representantes' => $representantes
+        ]);
+    }
+
 }
