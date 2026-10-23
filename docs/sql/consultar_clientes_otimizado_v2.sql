@@ -1,11 +1,16 @@
 -- ============================================================================
 -- FUNCTION: public.consultar_clientes_otimizado_v2
 -- Atualizada em: 23/10/2026
--- Objetivo: Consulta unificada de clientes CRM + ERP com suporte a filtros
---           de Filial, Gestor e Representante/Vendedor Comercial (UserScope).
+-- Objetivo: Consulta unificada de clientes CRM + ERP com:
+--           1. Filtro estrito: apenas clientes ATIVOS no ERP (se existir no ERP).
+--           2. Filtro de Status de Pedido: 'abertos_ou_faturados' (padrão),
+--              'abertos', 'faturados', 'sem_pedidos', 'todos'.
+--           3. Suporte a Filial, Gestor e Representante/Vendedor (UserScope).
+--           4. Retorno de status_erp, qtd_pedidos_abertos, qtd_pedidos_faturados.
 -- ============================================================================
 
-DROP FUNCTION IF EXISTS public.consultar_clientes_otimizado_v2(text, integer, text, text, text, text, text, text, date, date, integer, integer, text);
+DROP FUNCTION IF EXISTS public.consultar_clientes_otimizado_v2(text, integer, text, text, text, text, text, text, date, date, integer, integer, text, text, text, integer);
+DROP FUNCTION IF EXISTS public.consultar_clientes_otimizado_v2(text, integer, text, text, text, text, text, text, date, date, integer, integer, text, text, text, integer, text);
 
 CREATE OR REPLACE FUNCTION public.consultar_clientes_otimizado_v2(
     p_busca text DEFAULT NULL::text, 
@@ -23,7 +28,8 @@ CREATE OR REPLACE FUNCTION public.consultar_clientes_otimizado_v2(
     p_origem_cliente text DEFAULT NULL::text,
     p_filiais text DEFAULT NULL::text,
     p_gestores text DEFAULT NULL::text,
-    p_vendedor integer DEFAULT NULL::integer
+    p_vendedor integer DEFAULT NULL::integer,
+    p_status_pedido text DEFAULT 'abertos_ou_faturados'::text
 )
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -38,6 +44,26 @@ DECLARE
     v_tem_periodo BOOLEAN := FALSE;
     v_campos_extra TEXT := '';
 BEGIN
+    -- ================================================================
+    -- FILTRO ESTRITO: APENAS CLIENTES ATIVOS NO ERP (SE EXISTIR NO ERP)
+    -- ================================================================
+    v_where := v_where || ' AND (v.id_erp IS NULL OR COALESCE(e.inativo, ''N'') <> ''S'') ';
+
+    -- ================================================================
+    -- FILTRO POR STATUS DE PEDIDOS (ABERTOS=1, FATURADOS=5)
+    -- ================================================================
+    IF p_status_pedido IS NOT NULL AND p_status_pedido != '' AND p_status_pedido != 'todos' THEN
+        IF p_status_pedido = 'abertos_ou_faturados' THEN
+            v_where := v_where || ' AND EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status IN (1, 5)) ';
+        ELSIF p_status_pedido = 'abertos' THEN
+            v_where := v_where || ' AND EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status = 1) ';
+        ELSIF p_status_pedido = 'faturados' THEN
+            v_where := v_where || ' AND EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status = 5) ';
+        ELSIF p_status_pedido = 'sem_pedidos' THEN
+            v_where := v_where || ' AND NOT EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status IN (1, 5)) ';
+        END IF;
+    END IF;
+
     -- ================================================================
     -- DETERMINAR DATAS DO PERIODO
     -- ================================================================
@@ -225,7 +251,7 @@ BEGIN
     END IF;
     
     -- ================================================================
-    -- FILTRO POR COMPRA - SUPORTE A MULTIPLOS
+    -- FILTRO POR COMPRA
     -- ================================================================
     IF p_ja_comprou IS NOT NULL AND p_ja_comprou != '' THEN
         IF p_ja_comprou LIKE '%,%' THEN
@@ -358,6 +384,9 @@ BEGIN
                         v.data_ultima_compra,
                         COALESCE(v.total_pedidos, 0) as total_pedidos,
                         COALESCE(v.total_compras, 0) as total_compras,
+                        CASE WHEN COALESCE(e.inativo, ''N'') = ''S'' THEN ''Inativo'' ELSE ''Ativo'' END AS status_erp,
+                        COALESCE((SELECT COUNT(*) FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status = 1), 0) AS qtd_pedidos_abertos,
+                        COALESCE((SELECT COUNT(*) FROM pedido p WHERE p.idcliforemp = v.id_erp AND p.status = 5), 0) AS qtd_pedidos_faturados,
                         COALESCE(NULLIF(e.idfilial, 0), um.filial, 1) as idfilial,
                         CASE WHEN COALESCE(NULLIF(e.idfilial, 0), um.filial, 1) = 6 THEN ''NUTRICIONAL (FILIAL 6 - PR)'' ELSE ''NUTRICIONAL (FILIAL 1 - SC)'' END as nome_filial,
                         v.idvendedor,

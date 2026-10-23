@@ -389,7 +389,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
     <!-- ================================================================
     BARRA DE HIERARQUIA & ESCOPO (FILIAL / GESTOR / REPRESENTANTE)
     ================================================================ -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4 p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 p-3 bg-white rounded-2xl border border-slate-200 shadow-sm">
         <!-- SELETOR DE FILIAL -->
         <div>
             <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -446,6 +446,27 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <template x-for="r in representantesDisponiveis" :key="r.id">
                         <option :value="r.id" x-text="r.nome"></option>
                     </template>
+                </select>
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- SELETOR DE STATUS DE PEDIDOS (ABERTOS / FATURADOS / ATIVOS ERP) -->
+        <div>
+            <label class="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                <span><i class="fa-solid fa-boxes-stacked text-amber-600 mr-1.5"></i> Status Pedidos</span>
+                <span class="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ativos ERP</span>
+            </label>
+            <div class="relative">
+                <select x-model="filtros.status_pedido" @change="carregarClientes()"
+                    class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all cursor-pointer">
+                    <option value="abertos_ou_faturados">📦 Abertos ou Faturados (Padrão)</option>
+                    <option value="abertos">⏳ Apenas com Pedidos em Aberto</option>
+                    <option value="faturados">✅ Apenas com Pedidos Faturados</option>
+                    <option value="sem_pedidos">❌ Sem Pedidos Recentes</option>
+                    <option value="todos">📋 Todos os Clientes Ativos</option>
                 </select>
                 <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                     <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
@@ -1124,6 +1145,7 @@ title="Limpar datas">
                 filial: '',
                 gestor: '',
                 representante: '',
+                status_pedido: 'abertos_ou_faturados',
                 status: '',
                 termometro: '',
                 busca: '',
@@ -2941,6 +2963,7 @@ abrirAgendamentoRapido(start, end) {
                 filial: this.filtros.filial || '',
                 gestor: this.filtros.gestor || '',
                 representante: this.filtros.representante || '',
+                status_pedido: this.filtros.status_pedido || 'abertos_ou_faturados',
                 status: this.filtros.status_list ? this.filtros.status_list.join(',') : '',
                 termometro: this.filtros.termometro_list ? this.filtros.termometro_list.join(',') : '',
                 busca: this.filtros.busca || '',
@@ -3007,6 +3030,9 @@ abrirAgendamentoRapido(start, end) {
                 nome_vendedor: c.nome_vendedor || '',
                 idgestor: c.idgestor,
                 nome_gestor: c.nome_gestor || '',
+                status_erp: c.status_erp || 'Ativo',
+                qtd_pedidos_abertos: parseInt(c.qtd_pedidos_abertos || 0),
+                qtd_pedidos_faturados: parseInt(c.qtd_pedidos_faturados || 0),
                 email: c.email || '',
                 cidade: c.cidade || '',
                 uf: c.uf || '',
@@ -3143,12 +3169,25 @@ abrirAgendamentoRapido(start, end) {
             '<span class="ml-2 text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-sky-600"></i>PR (Filial 6)</span>' : 
             '<span class="ml-2 text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-emerald-600"></i>SC (Filial 1)</span>';
 
+        let erpBadge = '';
+        if (c.id_erp) {
+            erpBadge = `<span class="ml-1 text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded-full border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-check text-emerald-600 text-[8px]"></i>ERP: ${c.status_erp || 'Ativo'}</span>`;
+        }
+
         let gestorRepreInfo = '';
         if (c.nome_gestor) {
             gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded mr-2 mt-1"><i class="fa-solid fa-user-tie text-blue-600 mr-1"></i>Gestor: ${this.escapeHtml(c.nome_gestor)}</span>`;
         }
         if (c.nome_vendedor) {
             gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded mt-1"><i class="fa-solid fa-id-badge text-purple-600 mr-1"></i>Rep: ${this.escapeHtml(c.nome_vendedor)}</span>`;
+        }
+
+        let badgesPedidosStatus = '';
+        if (c.qtd_pedidos_abertos > 0) {
+            badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-xs"><i class="fa-solid fa-box-open mr-1"></i>${c.qtd_pedidos_abertos} Aberto(s)</span>`;
+        }
+        if (c.qtd_pedidos_faturados > 0) {
+            badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs"><i class="fa-solid fa-receipt mr-1"></i>${c.qtd_pedidos_faturados} Faturado(s)</span>`;
         }
 
         return `
@@ -3159,6 +3198,7 @@ abrirAgendamentoRapido(start, end) {
                     <div class="font-bold text-slate-800 flex items-center flex-wrap gap-1">
                         ${this.escapeHtml(c.nome)}
                         ${filialBadge}
+                        ${erpBadge}
                         ${origemBadge}
                         ${!c.id_crm ? '<span class="ml-1 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
                     </div>
@@ -3176,7 +3216,8 @@ abrirAgendamentoRapido(start, end) {
                 </td>
                 <td class="px-4 py-3 text-center text-xs">${this.formatarDataRelativa(c.ultima_interacao || c.data_ultima_compra || c.data_cadastro)}</td>
                 <td class="px-4 py-3 text-center">
-                    <div class="flex flex-col items-center gap-0.5">
+                    <div class="flex flex-col items-center gap-1">
+                        <div class="flex flex-wrap justify-center gap-1">${badgesPedidosStatus}</div>
                         <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCompraClass}">${statusCompra}</span>
             ${(c.total_pedidos_periodo > 0 || c.total_pedidos > 0) ? `<span class="text-[9px] text-slate-400">Último: ${ultimoValor}</span>` : ''}
             ${c.total_pedidos_periodo > 0 && c.total_pedidos > 0 ? `<span class="text-[8px] text-slate-400">(${c.total_pedidos_periodo} de ${c.total_pedidos} pedidos no período)</span>` : ''}

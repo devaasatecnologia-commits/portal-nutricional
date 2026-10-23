@@ -2203,12 +2203,13 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
     }
 
     $p_vendedor = isset($params['representante']) && (int)$params['representante'] > 0 ? (int)$params['representante'] : null;
+    $p_status_pedido = isset($params['status_pedido']) && trim($params['status_pedido']) !== '' ? trim($params['status_pedido']) : 'abertos_ou_faturados';
 
     try {
         $pdo = $this->pdo;
         
         // ================================================================
-        // 4. CHAMAR A FUNÇÃO POSTGRESQL (COM FILIAL, GESTOR E REPRE)
+        // 4. CHAMAR A FUNÇÃO POSTGRESQL (COM FILIAL, GESTOR, REPRE E STATUS PEDIDO)
         // ================================================================
         $sql = "SELECT consultar_clientes_otimizado_v2(
             :p_busca,
@@ -2226,7 +2227,8 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
             :p_origem_cliente,
             :p_filiais,
             :p_gestores,
-            :p_vendedor
+            :p_vendedor,
+            :p_status_pedido
         ) as resultado";
         
         $stmt = $pdo->prepare($sql);
@@ -2246,7 +2248,8 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
             'p_origem_cliente' => $p_origem_cliente,
             'p_filiais' => $p_filiais,
             'p_gestores' => $p_gestores,
-            'p_vendedor' => $p_vendedor
+            'p_vendedor' => $p_vendedor,
+            'p_status_pedido' => $p_status_pedido
         ]);
         
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -2306,6 +2309,7 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
                 'filial' => $p_filiais,
                 'gestor' => $p_gestores,
                 'representante' => $p_vendedor,
+                'status_pedido' => $p_status_pedido,
                 'limite' => $p_limite,
                 'pagina' => $pagina
             ],
