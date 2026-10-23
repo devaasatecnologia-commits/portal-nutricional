@@ -7,6 +7,7 @@ use Nutricional\Middleware\RateLimitMiddleware;
 use Nutricional\Middleware\LoggingMiddleware;
 use Nutricional\Middleware\CsrfMiddleware;
 use Nutricional\Middleware\ModulePermissionMiddleware;
+use Nutricional\Middleware\CronAuthMiddleware;
 use Nutricional\Controllers\SeparacaoController;
 use Nutricional\Controllers\CarregamentoController;
 use Nutricional\Controllers\MonitorController;
@@ -118,6 +119,16 @@ $app->group('/v1', function ($group) {
     // 🔥 NOVO 2026-09-30 (Fase 1.5): Health check público
     //    Adicionado em $publicRoutes do JwtMiddleware (não exige token).
     $group->get('/frota/health', [new HealthController(), 'check']);
+
+    // ==========================================================================
+    // ⚙️ ROTAS DE CRON / DISPATCHER UNIFICADO (PROTEGIDAS POR CRON_TOKEN SEGURO)
+    // Chamadas periodicamente pelo cPanel via curl com header X-Cron-Token ou ?token=
+    // ==========================================================================
+    $group->group('/cron', function ($cronGroup) {
+        $cronCtrl = new CronController();
+        $cronGroup->map(['GET', 'POST'], '/dispatcher', [$cronCtrl, 'dispatcherPublico']);
+        $cronGroup->map(['GET', 'POST'], '/executar/{comando}', [$cronCtrl, 'executarComandoPublico']);
+    })->add(new CronAuthMiddleware());
 
     // ==========================================================================
     // GRUPO PROTEGIDO (TODAS AS ROTAS AQUI DENTRO EXIGEM AUTENTICAÇÃO)

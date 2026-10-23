@@ -126,6 +126,32 @@ require_once __DIR__ . '/components/sidebar.php';
             </button>
         </div>
     </div>
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-red-200">
+            <button onclick="executarCronManual('alerta_certificado')" class="flex-1 p-3 bg-red-600 text-white font-bold hover:bg-red-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-certificate mr-2"></i>Alerta Certificado Digital
+            </button>
+            <button onclick="testarCronRapido('alerta_certificado')" class="px-3.5 bg-red-50 text-red-700 font-bold hover:bg-red-100 transition-all text-xs border-l border-red-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-teal-200">
+            <button onclick="executarCronManual('clientes_isentos')" class="flex-1 p-3 bg-teal-600 text-white font-bold hover:bg-teal-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-file-excel mr-2"></i>Clientes Isentos ST
+            </button>
+            <button onclick="testarCronRapido('clientes_isentos')" class="px-3.5 bg-teal-50 text-teal-700 font-bold hover:bg-teal-100 transition-all text-xs border-l border-teal-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-indigo-200">
+            <button onclick="executarCronManual('representantes_mensal')" class="flex-1 p-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 transition-all text-sm text-left">
+                <i class="fa-solid fa-envelope-open-text mr-2"></i>Representantes Mensal
+            </button>
+            <button onclick="testarCronRapido('representantes_mensal')" class="px-3.5 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 transition-all text-xs border-l border-indigo-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+    </div>
 </div>
 
 <!-- Gráfico + Lista de Jobs -->

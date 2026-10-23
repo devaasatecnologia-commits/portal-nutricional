@@ -735,12 +735,19 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         $disabled = array_map('trim', explode(',', (string)ini_get('disable_functions')));
         $execOk = function_exists('exec') && !in_array('exec', $disabled, true);
 
+        $cronToken = defined('CRON_TOKEN') ? (string)CRON_TOKEN : (string)($_ENV['CRON_TOKEN'] ?? '');
+        $linhaCurlModerna = '/usr/bin/curl -k -s -H "X-Cron-Token: ' . $cronToken . '" "https://api.nutricionalbr.com/v1/cron/dispatcher" > /dev/null 2>&1';
+        $linhaCurlModernaQuery = '/usr/bin/curl -k -s "https://api.nutricionalbr.com/v1/cron/dispatcher?token=' . urlencode($cronToken) . '" > /dev/null 2>&1';
+
         return $this->jsonResponse($response, [
             'success' => true,
-            'linha_cron' => $linhaCurlDispatcher,
+            'linha_cron' => $linhaCurlModerna,
+            'linha_cron_header' => $linhaCurlModerna,
+            'linha_cron_query' => $linhaCurlModernaQuery,
             'linha_cli' => $linha,
-            'linha_curl_dispatcher' => $linhaCurlDispatcher,
+            'linha_curl_dispatcher' => $linhaCurlModerna,
             'linha_curl_bonificacao' => $linhaCurlBonif,
+            'cron_token' => $cronToken,
             'script' => $script,
             'php_sugerido' => $php,
             'edicao_direta' => $execOk,
@@ -748,10 +755,185 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             'ultimo_batimento' => $ultimoFormatado,
             'instrucoes' => [
                 'Abra o cPanel > Avançado > Trabalhos Cron (Cron Jobs).',
-                'OPÇÃO A (Motor Unificado do Portal - Recomendado): Em "Configurações comuns" escolha "Uma vez por minuto (* * * * *)" e cole o comando com acao=m0t0rCr0nP0rt4l. Ele respeita o botão Ativo/Inativo e o Schedule (ex.: 0 22 * * *) de cada Job no Portal.',
-                'OPÇÃO B (Job Individual Bonificações às 22:00): Se preferir cadastrar separado no cPanel igual aos antigos, coloque Minuto=0, Hora=22, Dia=*, Mês=*, Dia da semana=* e cole o comando com acao=b0n1f1c4c03sFl3x (ele também respeita o botão Ativo/Inativo do Portal!).',
-                'Os demais jobs no Portal estão marcados como INATIVOS para não conflitar com os seus crons atuais do cPanel enquanto você migra um de cada vez.',
+                'NOVA ROTA ESPECIAL E SEGURA (Recomendado): Em "Configurações comuns" escolha "Uma vez por minuto (* * * * *)" e cole a linha moderna do Dispatcher Slim (usando Header ou Token).',
+                'Com essa linha única, você NÃO precisa mais de várias entradas no cPanel: todos os horários e ativações são controlados 100% pelo painel do Portal!',
+                'As URLs legadas antigas continuam funcionando durante o período de transição para evitar interrupções.',
             ],
+        ]);
+    }
+
+    // ======================================================================
+    // DISPATCHER PÚBLICO SEGURO (Chamado a cada minuto pelo cPanel)
+    // Rota: GET|POST /v1/cron/dispatcher (Protegida por CronAuthMiddleware)
+    // ======================================================================
+    public function dispatcherPublico(Request $request, Response $response): Response
+    {
+        try {
+            $logDir = dirname(__DIR__, 2) . '/logs';
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0755, true);
+            }
+            @file_put_contents($logDir . '/cron_heartbeat.txt', (string)time());
+
+            // Advisory lock para evitar corrida entre instâncias do dispatcher
+            $lockStmt = $this->pdo->query("SELECT pg_try_advisory_lock(727001)");
+            if (!$lockStmt || !$lockStmt->fetchColumn()) {
+                return $this->jsonResponse($response, [
+                    'success' => true,
+                    'status' => 'busy',
+                    'message' => 'Dispatcher já em execução em outro processo.',
+                    'timestamp' => date('Y-m-d H:i:s')
+                ]);
+            }
+
+            $agora = new \DateTime('now');
+            $jobsAtivos = $this->pdo->query("
+                SELECT * FROM cron_jobs
+                WHERE ativo = true AND schedule IS NOT NULL AND schedule <> ''
+                ORDER BY id
+            ")->fetchAll(\PDO::FETCH_ASSOC);
+
+            $executados = [];
+            foreach ($jobsAtivos as $jobItem) {
+                try {
+                    $expr = new \Cron\CronExpression($jobItem['schedule']);
+                    $deveRodar = $expr->isDue($agora);
+
+                    if (!$deveRodar) {
+                        try {
+                            $prevRun = $expr->getPreviousRunDate($agora);
+                            $difSeg = $agora->getTimestamp() - $prevRun->getTimestamp();
+                            // Tolerância para atraso de até 5 minutos no cPanel
+                            if ($difSeg >= 0 && $difSeg <= 300) {
+                                $jaRodouRecente = !empty($jobItem['ultima_execucao']) && 
+                                    (strtotime($jobItem['ultima_execucao']) >= $prevRun->getTimestamp() - 60);
+                                if (!$jaRodouRecente) {
+                                    $deveRodar = true;
+                                }
+                            }
+                        } catch (\Throwable $ePrev) {}
+                    }
+
+                    if (!$deveRodar) {
+                        continue;
+                    }
+                } catch (\Throwable $e) {
+                    continue;
+                }
+
+                // Evita rodar duas vezes no mesmo minuto
+                if (!empty($jobItem['ultima_execucao']) && strtotime($jobItem['ultima_execucao']) >= strtotime(date('Y-m-d H:i:00'))) {
+                    continue;
+                }
+
+                $resJob = $this->executarJobAgendado($jobItem);
+                $executados[] = [
+                    'job_id' => $jobItem['id'],
+                    'comando' => $jobItem['comando'],
+                    'nome' => $jobItem['nome'],
+                    'status' => !empty($resJob['success']) ? 'sucesso' : 'falha',
+                    'duracao' => $resJob['duracao'] ?? 0,
+                    'message' => $resJob['message'] ?? ''
+                ];
+            }
+
+            $this->pdo->query("SELECT pg_advisory_unlock(727001)");
+
+            // Atualiza status do heartbeat
+            try {
+                $this->pdo->exec("
+                    CREATE TABLE IF NOT EXISTS cron_dispatcher_status (
+                        id INT PRIMARY KEY DEFAULT 1,
+                        ultimo_batimento TIMESTAMP NOT NULL DEFAULT NOW(),
+                        ip VARCHAR(45),
+                        user_agent VARCHAR(255),
+                        jobs_ativos INT DEFAULT 0,
+                        jobs_disparados INT DEFAULT 0
+                    )
+                ");
+                $stHb = $this->pdo->prepare("
+                    INSERT INTO cron_dispatcher_status (id, ultimo_batimento, ip, user_agent, jobs_ativos, jobs_disparados)
+                    VALUES (1, NOW(), ?, ?, ?, ?)
+                    ON CONFLICT (id) DO UPDATE SET
+                        ultimo_batimento = NOW(),
+                        ip = EXCLUDED.ip,
+                        user_agent = EXCLUDED.user_agent,
+                        jobs_ativos = EXCLUDED.jobs_ativos,
+                        jobs_disparados = EXCLUDED.jobs_disparados
+                ");
+                $ip = $_SERVER['REMOTE_ADDR'] ?? 'CLI';
+                $ua = substr((string)($_SERVER['HTTP_USER_AGENT'] ?? 'CLI'), 0, 250);
+                $stHb->execute([$ip, $ua, count($jobsAtivos), count($executados)]);
+            } catch (\Throwable $eHb) {}
+
+            return $this->jsonResponse($response, [
+                'success' => true,
+                'status' => 'completed',
+                'timestamp' => date('Y-m-d H:i:s'),
+                'jobs_ativos' => count($jobsAtivos),
+                'jobs_disparados' => count($executados),
+                'executados' => $executados
+            ]);
+        } catch (\Throwable $e) {
+            try { $this->pdo->query("SELECT pg_advisory_unlock(727001)"); } catch (\Throwable $e2) {}
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    // ======================================================================
+    // EXECUÇÃO DIRETA DE COMANDO ESPECÍFICO VIA CRON/WEBHOOK
+    // Rota: GET|POST /v1/cron/executar/{comando} (Protegida por CronAuthMiddleware)
+    // ======================================================================
+    public function executarComandoPublico(Request $request, Response $response, array $args): Response
+    {
+        $comando = trim((string)($args['comando'] ?? ''));
+        if ($comando === '') {
+            return $this->jsonResponse($response, ['success' => false, 'error' => 'Comando não informado.'], 400);
+        }
+
+        $params = $request->getQueryParams();
+        $body = json_decode($request->getBody()->getContents(), true) ?? [];
+        $mergedParams = array_merge($params, $body);
+
+        $jobStmt = $this->pdo->prepare("SELECT * FROM cron_jobs WHERE comando = ?");
+        $jobStmt->execute([$comando]);
+        $jobData = $jobStmt->fetch(\PDO::FETCH_ASSOC);
+
+        $jobId = $jobData ? $jobData['id'] : null;
+        $usuario = 'CRON_REMOTO';
+        $ip = $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+
+        $execId = $this->criarExecucao($jobId, $usuario, $ip, 'REMOTO_SEGURO');
+        $inicio = microtime(true);
+
+        try {
+            $resultado = (new CronRotinasController())->executarRotina(
+                $comando,
+                $mergedParams,
+                $usuario,
+                $ip
+            );
+        } catch (\Throwable $e) {
+            $resultado = ['success' => false, 'message' => $e->getMessage()];
+        }
+
+        $duracao = round(microtime(true) - $inicio, 2);
+        $status = !empty($resultado['success']) ? 'sucesso' : 'falha';
+        $this->finalizarExecucao($execId, $status, $resultado, $duracao);
+
+        if ($jobId) {
+            $this->pdo->prepare("UPDATE cron_jobs SET ultima_execucao = NOW() WHERE id = ?")->execute([$jobId]);
+        }
+
+        return $this->jsonResponse($response, [
+            'success' => !empty($resultado['success']),
+            'comando' => $comando,
+            'duracao' => $duracao,
+            'timestamp' => date('Y-m-d H:i:s'),
+            'resultado' => $resultado
         ]);
     }
 
@@ -835,29 +1017,34 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             )
         ");
         
-        // Inserir jobs padrão
-        $stmt = $this->pdo->query("SELECT COUNT(*) FROM cron_jobs");
-        if ($stmt->fetchColumn() == 0) {
-            $categorias = $this->pdo->query("SELECT id, nome FROM cron_categorias")->fetchAll(\PDO::FETCH_KEY_PAIR);
-            
-            $jobs = [
-                ['Representantes', 'Envia relatório de alterações em pedidos', 'representantes', '0 8 * * *', 'Email'],
-                ['Gestores', 'Envia relatório de inadimplência', 'gestores', '0 8 * * *', 'Email'],
-                ['Histórico KPI', 'Processa histórico financeiro', 'historico_kpi', '0 23 * * *', 'Processamento'],
-                ['Notas Nutrire', 'Envia notas para API Nutrire', 'notas_nutrire', '0 9 * * *', 'Integração'],
-                ['Flex Mínimo Gestor', 'Gera Flex para gestores', 'flex_minimo_gestor', '0 1 * * *', 'Financeiro'],
-                ['Bonificações Flex', 'Processa bonificações', 'bonificacoes_flex', '0 2 * * *', 'Financeiro']
-            ];
-            
-            $stmt = $this->pdo->prepare("
-                INSERT INTO cron_jobs (nome, descricao, comando, schedule, categoria_id)
-                VALUES (?, ?, ?, ?, ?)
-            ");
-            
-            foreach ($jobs as $job) {
-                $categoriaId = array_search($job[4], $categorias) ?: null;
-                $stmt->execute([$job[0], $job[1], $job[2], $job[3], $categoriaId]);
-            }
+        // Inserir / Sincronizar jobs padrão
+        $categorias = $this->pdo->query("SELECT id, nome FROM cron_categorias")->fetchAll(\PDO::FETCH_KEY_PAIR);
+        $catEmail = array_search('Email', $categorias) ?: 1;
+        $catProc = array_search('Processamento', $categorias) ?: 2;
+        $catInteg = array_search('Integração', $categorias) ?: 3;
+        $catFin = array_search('Financeiro', $categorias) ?: 4;
+
+        $jobsPadrao = [
+            ['Representantes (Alterações)', 'Envia relatório diário de alterações em pedidos para representantes', 'representantes', '0 6 * * *', $catEmail],
+            ['Representantes (Mensal)', 'Envia relatório mensal de inadimplência individual por representante', 'representantes_mensal', '0 4 1 * *', $catEmail],
+            ['Gestores (Inadimplência)', 'Envia relatório de inadimplência dos gestores no último dia útil do mês', 'gestores', '0 7 * * 1-5', $catEmail],
+            ['Histórico KPI Financeiro', 'Registra histórico diário de performance e inadimplência no banco', 'historico_kpi', '26 23 * * *', $catProc],
+            ['Clientes Isentos ST', 'Gera planilha Excel e envia relatório de clientes com IE Isento/Nulo', 'clientes_isentos', '0 10 * * *', $catEmail],
+            ['Notas Nutrire (GoFind)', 'Envia notas fiscais (marca 8 Nutrire) faturadas para a API GoFind', 'notas_nutrire', '0 20 * * *', $catInteg],
+            ['Flex Mínimo Gestor', 'Gera empréstimo automático de verba flex quando saldo do gestor estiver baixo', 'flex_minimo_gestor', '0 8 * * *', $catFin],
+            ['Bonificações Flex', 'Processa débito automático de notas bonificadas na API Mercos Flex', 'bonificacoes_flex', '0 22 * * *', $catFin],
+            ['Alerta Certificado Digital', 'Verifica vencimento dos certificados digitais NFe das filiais ativas', 'alerta_certificado', '0 8 * * 1', $catProc],
+            ['Atualizar Cubo de Vendas', 'Atualiza a materialized view / cubo de vendas no banco de dados', 'refresh_cubo_vendas', '0 */2 * * *', $catProc],
+        ];
+
+        $insStmt = $this->pdo->prepare("
+            INSERT INTO cron_jobs (nome, descricao, comando, schedule, categoria_id, ativo)
+            VALUES (?, ?, ?, ?, ?, false)
+            ON CONFLICT (comando) DO NOTHING
+        ");
+
+        foreach ($jobsPadrao as $jp) {
+            $insStmt->execute([$jp[0], $jp[1], $jp[2], $jp[3], $jp[4]]);
         }
     }
     

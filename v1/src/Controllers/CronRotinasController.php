@@ -7,13 +7,16 @@ class CronRotinasController
 {
     /** Rotinas implementadas: comando => [nome, descricao]. Base do seletor de "Novo Job" no Admin. */
     public const ROTINAS = [
-        'representantes'     => ['Representantes', 'Envia relatorio de alteracoes em pedidos'],
-        'gestores'           => ['Gestores', 'Envia relatorio de inadimplencia'],
-        'historico_kpi'      => ['Historico KPI', 'Processa historico financeiro'],
-        'notas_nutrire'      => ['Notas Nutrire', 'Envia notas para API Nutrire'],
-        'flex_minimo_gestor' => ['Flex Minimo Gestor', 'Gera Flex para gestores'],
-        'bonificacoes_flex'  => ['Bonificacoes Flex', 'Processa bonificacoes'],
-        'refresh_cubo_vendas' => ['Atualizar Cubo de Vendas', 'Executa refresh_cubo_vendas() no banco'],
+        'representantes'        => ['Representantes (Alterações)', 'Envia relatório diário de alterações em pedidos'],
+        'representantes_mensal' => ['Representantes (Mensal)', 'Envia relatório mensal de inadimplência individual'],
+        'gestores'              => ['Gestores (Inadimplência)', 'Envia relatório de inadimplência no último dia útil'],
+        'historico_kpi'         => ['Histórico KPI Financeiro', 'Registra histórico diário de performance e inadimplência'],
+        'clientes_isentos'      => ['Clientes Isentos ST', 'Gera planilha e envia relatório de clientes isentos de ST'],
+        'notas_nutrire'         => ['Notas Nutrire (GoFind)', 'Envia notas fiscais (marca 8 Nutrire) para a API GoFind'],
+        'flex_minimo_gestor'    => ['Flex Mínimo Gestor', 'Gera empréstimo automático de verba flex quando saldo baixo'],
+        'bonificacoes_flex'     => ['Bonificações Flex', 'Processa débito de notas bonificadas na API Mercos Flex'],
+        'alerta_certificado'    => ['Alerta Certificado Digital', 'Verifica vencimento dos certificados digitais NFe das filiais'],
+        'refresh_cubo_vendas'   => ['Atualizar Cubo de Vendas', 'Executa refresh_cubo_vendas() no banco'],
     ];
 
     private $pdo;
@@ -42,11 +45,17 @@ class CronRotinasController
             case 'representantes':
                 return $this->executarRepresentantes($usuario, $ip);
 
+            case 'representantes_mensal':
+                return $this->executarRepresentantesMensal($params, $usuario, $ip);
+
             case 'gestores':
-                return $this->executarGestores($usuario, $ip);
+                return $this->executarGestores($usuario, $ip, $params);
 
             case 'historico_kpi':
                 return $this->executarHistoricoKPI($usuario, $ip);
+
+            case 'clientes_isentos':
+                return $this->executarClientesIsentos($params, $usuario, $ip);
 
             case 'notas_nutrire':
                 return $this->executarNotasNutrire($params, $usuario, $ip);
@@ -56,6 +65,9 @@ class CronRotinasController
 
             case 'bonificacoes_flex':
                 return $this->executarBonificacoesFlex($params, $usuario, $ip);
+
+            case 'alerta_certificado':
+                return $this->executarAlertaCertificado($params, $usuario, $ip);
 
             default:
                 return ['success' => false, 'message' => "Comando '$comando' não implementado"];
@@ -257,6 +269,53 @@ class CronRotinasController
                     ];
                 } catch (\Throwable $e) {
                     return ['success' => false, 'message' => $e->getMessage(), 'checks' => $checks];
+                }
+
+            case 'alerta_certificado':
+                return $this->simularAlertaCertificado($parametros);
+
+            case 'clientes_isentos':
+                try {
+                    $sql = "SELECT COUNT(*) FROM cliforemp cli 
+                            WHERE (cli.ie LIKE '%ISENTO%' OR cli.ie = '' OR cli.ie IS NULL)
+                              AND cli.tipocliforemp = 0 
+                              AND cli.idfilial IN (1, 6)
+                              AND cli.inativo = 'N'";
+                    $tot = (int)$this->pdo->query($sql)->fetchColumn();
+                    $checks[] = [
+                        'etapa' => 'Clientes Isentos no ERP',
+                        'status' => 'ok',
+                        'detalhe' => "Localizados {$tot} clientes com IE Isento/Nulo ativos nas filiais 1 e 6."
+                    ];
+                    return [
+                        'success' => true,
+                        'message' => "Simulação concluída: {$tot} clientes seriam incluídos na planilha de isentos.",
+                        'checks' => $checks,
+                        'detalhes' => ['total_isentos' => $tot]
+                    ];
+                } catch (\Throwable $e) {
+                    return ['success' => false, 'message' => 'Erro: ' . $e->getMessage(), 'checks' => [['etapa' => 'Consulta Isentos', 'status' => 'error', 'detalhe' => $e->getMessage()]]];
+                }
+
+            case 'representantes_mensal':
+                try {
+                    $sql = "SELECT COUNT(DISTINCT c.idcliforemp) FROM cliforemp c
+                            JOIN fornecedor f ON f.idcliforemp = c.idcliforemp
+                            WHERE f.representante = 'S' AND c.inativo = 'N' AND c.email IS NOT NULL AND c.email != ''";
+                    $tot = (int)$this->pdo->query($sql)->fetchColumn();
+                    $checks[] = [
+                        'etapa' => 'Representantes Ativos com E-mail',
+                        'status' => 'ok',
+                        'detalhe' => "Encontrados {$tot} representantes ativos elegíveis para o relatório mensal."
+                    ];
+                    return [
+                        'success' => true,
+                        'message' => "Simulação concluída: {$tot} representantes seriam processados.",
+                        'checks' => $checks,
+                        'detalhes' => ['total_representantes' => $tot]
+                    ];
+                } catch (\Throwable $e) {
+                    return ['success' => false, 'message' => 'Erro: ' . $e->getMessage(), 'checks' => [['etapa' => 'Consulta Representantes', 'status' => 'error', 'detalhe' => $e->getMessage()]]];
                 }
 
             default:
@@ -542,43 +601,546 @@ class CronRotinasController
     // ======================================================================
     // GESTORES - Relatório de inadimplência
     // ======================================================================
-    private function executarGestores(string $usuario, string $ip): array
+    private function executarGestores(string $usuario, string $ip, array $params = []): array
     {
         try {
-            if (method_exists('\Uteis', 'isUltimoDiaUtil') && !\Uteis::isUltimoDiaUtil()) {
+            $forcar = !empty($params['forcar']);
+            if (!$forcar && method_exists('\Uteis', 'isUltimoDiaUtil') && !\Uteis::isUltimoDiaUtil()) {
                 return [
                     'success' => true,
-                    'message' => 'Hoje não é o último dia útil do mês. Relatório não enviado.',
-                    'detalhes' => ['enviados' => 0]
+                    'message' => 'Hoje não é o último dia útil do mês. Aguardando a data certa.',
+                    'detalhes' => ['enviados' => 0, 'motivo' => 'Nao e ultimo dia util']
+                ];
+            }
+
+            $emailsGestores = function_exists('getEmails') ? getEmails('gestores_destino') : [];
+            if (empty($emailsGestores)) {
+                $emailsGestores = ['alan@nutricionalbr.com'];
+            }
+
+            $gestoresArray = [];
+            foreach ($emailsGestores as $email) {
+                $stmt = $this->pdo->prepare("
+                    SELECT u.idcliforemp, c.fantasia 
+                    FROM usuario u
+                    JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
+                    WHERE u.email = :email AND u.inativo = 'N'
+                ");
+                $stmt->execute(['email' => $email]);
+                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+                if ($row) {
+                    $id = (int)$row['idcliforemp'];
+                    $gestoresArray[$id] = [
+                        'email' => $email,
+                        'nome' => $row['fantasia'] ?: 'Gestor'
+                    ];
+                }
+            }
+
+            if (empty($gestoresArray)) {
+                $gestoresArray[11258] = ['email' => 'alan@nutricionalbr.com', 'nome' => 'Administrador'];
+            }
+
+            $listaIdsStr = implode(',', array_keys($gestoresArray));
+
+            $sql = "SELECT
+                        user_id_param.out_id as idsupervisor,
+                        MAX(varg.nomegestor) AS nomegestor,
+                        SUM(varg.vencidos) AS vencidos,
+                        SUM(varg.dias_30) AS dias_30,
+                        SUM(varg.dias_60) AS dias_60,
+                        SUM(varg.mais_60_dias) AS mais_60_dias,
+                        SUM(varg.a_vencer) AS a_vencer,
+                        SUM(varg.prox_30_dias) AS prox_30_dias,
+                        SUM(varg.total_inadimplencia) AS valor_inadimplencia,
+                        ROUND(SUM(varg.vencidos) * 100.0 / NULLIF(SUM(varg.total_receber), 0), 2) AS percentual_geral,
+                        SUM(varg.total_cliente) AS total_clientes,
+                        SUM(varg.total_titulos) AS total_titulos,
+                        SUM(varg.total_clientes_com_vencidos) AS total_clientes_vencidos,
+                        SUM(varg.total_titulos_vencidos) AS total_titulos_vencidos,
+                        ROUND(SUM(varg.dias_30) * 100.0 / NULLIF(SUM(varg.vencidos), 0), 2) AS percentual_30,
+                        ROUND(SUM(varg.dias_60) * 100.0 / NULLIF(SUM(varg.vencidos), 0), 2) AS percentual_60,
+                        ROUND(SUM(varg.mais_60_dias) * 100.0 / NULLIF(SUM(varg.vencidos), 0), 2) AS percentual_mais_60,
+                        avg(varg.prazo_medio) as prazo_medio
+                    FROM vw_analise_receber_geral varg 
+                    CROSS JOIN LATERAL pkg_ema.retorna_lista(:lista_ids) AS user_id_param(out_id)
+                    WHERE (
+                        (user_id_param.out_id = 11258 AND varg.idvendrepre IN (SELECT DISTINCT idrepresentante FROM vw_gestor_repre WHERE idfilial = 1 AND idgestor NOT IN (5297,11371)) and varg.idfilial = 1)
+                        OR (user_id_param.out_id = 11371 AND varg.idsupervisor = 11371 and varg.idfilial = 6)
+                        OR (user_id_param.out_id = 15520 AND varg.idsupervisor = 15520)
+                        OR (user_id_param.out_id = 13878 AND varg.idsupervisor = 13878)
+                        OR (user_id_param.out_id = 5297 AND varg.idvendrepre IN (SELECT idrepresentante FROM vw_gestor_repre WHERE inativo = 'N'))
+                    )
+                    GROUP BY user_id_param.out_id
+                    ORDER BY nomegestor";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute(['lista_ids' => $listaIdsStr]);
+            $dadosGestores = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $enviados = 0;
+            foreach ($dadosGestores as $g) {
+                $idSup = (int)$g['idsupervisor'];
+                $info = $gestoresArray[$idSup] ?? null;
+                if (!$info) continue;
+
+                $htmlGestor = "<div style='font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
+                    . "<h2 style='color:#1e3a8a;'>Relatório Mensal de Inadimplência - " . htmlspecialchars($info['nome']) . "</h2>"
+                    . "<p><b>Total a Vencer:</b> " . $this->moedaBonif((float)$g['a_vencer']) . "<br>"
+                    . "<b>Total Vencidos:</b> <span style='color:#dc2626;font-weight:bold;'>" . $this->moedaBonif((float)$g['vencidos']) . "</span><br>"
+                    . "<b>Inadimplência Geral:</b> <b>{$g['percentual_geral']}%</b></p>"
+                    . "<ul>"
+                    . "<li>Até 30 dias: " . $this->moedaBonif((float)$g['dias_30']) . " ({$g['percentual_30']}%)</li>"
+                    . "<li>31 a 60 dias: " . $this->moedaBonif((float)$g['dias_60']) . " ({$g['percentual_60']}%)</li>"
+                    . "<li>Mais de 60 dias: " . $this->moedaBonif((float)$g['mais_60_dias']) . " ({$g['percentual_mais_60']}%)</li>"
+                    . "</ul></div>";
+
+                $this->enviarEmailNotificacao($info['email'], "Relatório de Inadimplência Gestor - " . $info['nome'] . " - " . date('m/Y'), $htmlGestor);
+                $enviados++;
+            }
+
+            return [
+                'success' => true,
+                'message' => "Relatório de inadimplência processado para {$enviados} gestores.",
+                'detalhes' => ['enviados' => $enviados]
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro ao processar gestores: ' . $e->getMessage()];
+        }
+    }
+
+    // ======================================================================
+    // HISTÓRICO KPI - Gravação Diária no Banco de Dados
+    // ======================================================================
+    private function executarHistoricoKPI(string $usuario, string $ip): array
+    {
+        try {
+            $stmtUsers = $this->pdo->query("SELECT idcliforemp as uid, dash_filiais, dash_gestores FROM usuario WHERE inativo = 'N'");
+            $usuariosPermissoes = $stmtUsers->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (empty($usuariosPermissoes)) {
+                return ['success' => true, 'message' => 'Nenhum usuário ativo para registrar histórico KPI.', 'detalhes' => ['processados' => 0]];
+            }
+
+            $sql = "INSERT INTO kpi_financeiro_historico 
+                    (data_registro, idusuario, idfilial, nivel_visao, id_referencia, vencidos, valor_iap, total_receber, iag_calculado, taxa_recuperacao, iap_calculado, qtd_trabalhados, qtd_recuperados)
+                    SELECT 
+                        CURRENT_DATE, 
+                        :uid_int,
+                        varg.idfilial,
+                        CASE 
+                            WHEN :tem_filial = 1 THEN 'filial'
+                            WHEN :tem_gestor = 1 THEN 'gestor'
+                            ELSE 'representante'
+                        END as nivel_visao,
+                        CASE 
+                            WHEN :tem_filial = 1 THEN varg.idfilial
+                            WHEN :tem_gestor = 1 THEN varg.idsupervisor
+                            ELSE varg.idvendrepre
+                        END as id_referencia,
+                        SUM(COALESCE(varg.vencidos,0))::float,
+                        SUM(COALESCE(varg.dias_60 + varg.mais_60_dias, 0))::float, 
+                        SUM(COALESCE(varg.total_receber,0))::float,
+                        ROUND(SUM(COALESCE(varg.vencidos,0)) * 100 / NULLIF(SUM(COALESCE(varg.total_receber,0)), 0), 2),
+                        COALESCE((
+                            SELECT ROUND(
+                                SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END) * 100.0 / 
+                                NULLIF(
+                                    SUM(CASE WHEN vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= 8 AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                                    SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                                    SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END)
+                                , 0)
+                            , 2)
+                            FROM vw_financeiro_eventos_geral vfe 
+                            WHERE vfe.idfilial = varg.idfilial 
+                            AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '120 days')
+                            AND (
+                                (:tem_filial = 1 AND vfe.idfilial IN (SELECT unnest(string_to_array(:list_filiais, ','))::int)) OR
+                                (:tem_gestor = 1 AND vfe.idgestor IN (SELECT unnest(string_to_array(:list_gestores, ','))::int)) OR
+                                (:tem_filial = 0 AND :tem_gestor = 0 AND vfe.idrepresentante = :uid_int)
+                            )
+                        ), 0),
+                        ROUND(SUM(COALESCE(varg.dias_60 + varg.mais_60_dias, 0)) * 100 / NULLIF(SUM(COALESCE(varg.total_receber,0)), 0), 2),
+                        COALESCE((
+                            SELECT
+                                SUM(CASE WHEN vfe.ultimo_evento IS NULL AND vfe.dias_atraso >= 8 AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                                SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo > 0 THEN 1 ELSE 0 END) +
+                                SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END)
+                            FROM vw_financeiro_eventos_geral vfe 
+                            WHERE vfe.idfilial = varg.idfilial 
+                            AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '120 days')
+                            AND (
+                                (:tem_filial = 1 AND vfe.idfilial IN (SELECT unnest(string_to_array(:list_filiais, ','))::int)) OR
+                                (:tem_gestor = 1 AND vfe.idgestor IN (SELECT unnest(string_to_array(:list_gestores, ','))::int)) OR
+                                (:tem_filial = 0 AND :tem_gestor = 0 AND vfe.idrepresentante = :uid_int)
+                            )
+                        ), 0),
+                        COALESCE((
+                            SELECT SUM(CASE WHEN vfe.ultimo_evento IS NOT NULL AND vfe.valorsaldo <= 0.01 THEN 1 ELSE 0 END)
+                            FROM vw_financeiro_eventos_geral vfe 
+                            WHERE vfe.idfilial = varg.idfilial 
+                            AND vfe.vencimento >= (CURRENT_DATE - INTERVAL '120 days')
+                            AND (
+                                (:tem_filial = 1 AND vfe.idfilial IN (SELECT unnest(string_to_array(:list_filiais, ','))::int)) OR
+                                (:tem_gestor = 1 AND vfe.idgestor IN (SELECT unnest(string_to_array(:list_gestores, ','))::int)) OR
+                                (:tem_filial = 0 AND :tem_gestor = 0 AND vfe.idrepresentante = :uid_int)
+                            )
+                        ), 0)
+                    FROM vw_analise_receber_geral_cliente varg
+                    WHERE (
+                        (:tem_filial = 1 AND varg.idfilial IN (SELECT unnest(string_to_array(:list_filiais, ','))::int))
+                        OR 
+                        (:tem_gestor = 1 AND varg.idsupervisor IN (SELECT unnest(string_to_array(:list_gestores, ','))::int))
+                        OR 
+                        (:tem_filial = 0 AND :tem_gestor = 0 AND varg.idvendrepre = :uid_int)
+                    )
+                    GROUP BY varg.idfilial, 
+                             CASE 
+                                WHEN :tem_filial = 1 THEN varg.idfilial
+                                WHEN :tem_gestor = 1 THEN varg.idsupervisor
+                                ELSE varg.idvendrepre
+                             END
+                    ON CONFLICT (data_registro, idusuario, idfilial) DO UPDATE SET
+                        nivel_visao = EXCLUDED.nivel_visao,
+                        id_referencia = EXCLUDED.id_referencia,
+                        vencidos = EXCLUDED.vencidos,
+                        valor_iap = EXCLUDED.valor_iap,
+                        total_receber = EXCLUDED.total_receber,
+                        iag_calculado = EXCLUDED.iag_calculado,
+                        taxa_recuperacao = EXCLUDED.taxa_recuperacao,
+                        iap_calculado = EXCLUDED.iap_calculado,
+                        qtd_trabalhados = EXCLUDED.qtd_trabalhados,
+                        qtd_recuperados = EXCLUDED.qtd_recuperados";
+
+            $st = $this->pdo->prepare($sql);
+            $this->pdo->beginTransaction();
+            $processados = 0;
+
+            foreach ($usuariosPermissoes as $u) {
+                $temFilial = !empty($u['dash_filiais']) ? 1 : 0;
+                $temGestor = !empty($u['dash_gestores']) ? 1 : 0;
+
+                $st->execute([
+                    'uid_int'        => (int)$u['uid'],
+                    'tem_filial'     => $temFilial,
+                    'tem_gestor'     => $temGestor,
+                    'list_filiais'   => (string)($u['dash_filiais'] ?? ''),
+                    'list_gestores'  => (string)($u['dash_gestores'] ?? '')
+                ]);
+                $processados++;
+            }
+
+            $this->pdo->commit();
+
+            return [
+                'success' => true,
+                'message' => "Histórico KPI gravado com sucesso para {$processados} usuários.",
+                'detalhes' => ['processados' => $processados]
+            ];
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return ['success' => false, 'message' => 'Erro ao processar Histórico KPI: ' . $e->getMessage()];
+        }
+    }
+
+    // ======================================================================
+    // CLIENTES ISENTOS ST - Relatório com Planilha Excel
+    // ======================================================================
+    private function executarClientesIsentos(array $params, string $usuario, string $ip): array
+    {
+        try {
+            $destinosGeral = function_exists('getEmails') ? (getEmails('clientes_isento')['geral'] ?? []) : [];
+
+            $sqlGeral = "SELECT DISTINCT
+                            cli.idcliforemp AS cd_cliente,
+                            cli.fantasia,
+                            cli.razao,
+                            cli.cnpj,
+                            cli.cpf,
+                            cli.ie,
+                            cli.idvendedor,
+                            (SELECT vend.fantasia FROM cliforemp vend WHERE vend.idcliforemp = cli.idvendedor) AS representante,
+                            (SELECT descricao FROM cidade WHERE cidade.idcidade = cli.idcidade) AS cidade,
+                            cli.uf,
+                            cli.email,
+                            cli.fone
+                        FROM cliforemp cli 
+                        WHERE (cli.ie LIKE '%ISENTO%' OR cli.ie = '' OR cli.ie IS NULL)
+                          AND cli.tipocliforemp = 0 
+                          AND cli.idfilial IN (1, 6)
+                          AND cli.inativo = 'N' 
+                        ORDER BY cli.uf ASC, cli.fantasia ASC";
+
+            $clientesGeral = $this->pdo->query($sqlGeral)->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (empty($clientesGeral)) {
+                return ['success' => true, 'message' => 'Nenhum cliente isento encontrado.', 'detalhes' => ['total' => 0]];
+            }
+
+            $anexoExcel = null;
+            if (method_exists('\Uteis', 'gerarExcelClientesIsentos')) {
+                $anexoExcel = \Uteis::gerarExcelClientesIsentos($clientesGeral);
+            }
+
+            $htmlGeral = "<div style='font-family:Arial,sans-serif;padding:20px;border:1px solid #e2e8f0;border-radius:10px;'>"
+                . "<h3 style='color:#0369a1;'>Relatório Diário de Clientes Isentos de Inscrição Estadual</h3>"
+                . "<p>Total de clientes isentos cadastrados e ativos: <b>" . count($clientesGeral) . "</b></p>"
+                . "<p>Segue em anexo a planilha detalhada com todos os dados cadastrais atualizados.</p>"
+                . "</div>";
+
+            $enviados = 0;
+            if (!empty($destinosGeral)) {
+                $anexos = ($anexoExcel && file_exists($anexoExcel)) ? [$anexoExcel] : [];
+                $this->enviarEmailNotificacao($destinosGeral, "📋 Relatório de Clientes Isentos - Geral - " . date('d/m/Y'), $htmlGeral, $anexos);
+                $enviados++;
+            }
+
+            if ($anexoExcel && file_exists($anexoExcel)) {
+                @unlink($anexoExcel);
+            }
+
+            return [
+                'success' => true,
+                'message' => "Relatório de clientes isentos processado (" . count($clientesGeral) . " clientes).",
+                'detalhes' => ['clientes' => count($clientesGeral), 'emails_enviados' => $enviados]
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro ao processar clientes isentos: ' . $e->getMessage()];
+        }
+    }
+
+    // ======================================================================
+    // REPRESENTANTES MENSAL - Relatório de Inadimplência Individual
+    // ======================================================================
+    private function executarRepresentantesMensal(array $params, string $usuario, string $ip): array
+    {
+        try {
+            $sqlReps = "SELECT DISTINCT 
+                            c.idcliforemp,
+                            c.fantasia as nome,
+                            c.email,
+                            COALESCE(c.email, '') as email_rep
+                        FROM cliforemp c
+                        JOIN fornecedor ON (fornecedor.idcliforemp = c.idcliforemp)
+                        WHERE fornecedor.representante = 'S'
+                          AND c.inativo = 'N'
+                          AND c.email IS NOT NULL 
+                          AND c.email != ''
+                          AND c.idcliforemp NOT IN (10119)
+                        ORDER BY c.fantasia";
+
+            $reps = $this->pdo->query($sqlReps)->fetchAll(\PDO::FETCH_ASSOC);
+            if (empty($reps)) {
+                return ['success' => true, 'message' => 'Nenhum representante ativo com e-mail encontrado.', 'detalhes' => ['enviados' => 0]];
+            }
+
+            $sqlDadosRep = "SELECT 
+                                varg.idvendrepre,
+                                varg.nomerepresentante,
+                                SUM(varg.vencidos) AS vencidos,
+                                SUM(varg.dias_30) AS dias_30,
+                                SUM(varg.dias_60) AS dias_60,
+                                SUM(varg.mais_60_dias) AS mais_60_dias,
+                                SUM(varg.a_vencer) AS a_vencer,
+                                SUM(varg.prox_30_dias) AS prox_30_dias,
+                                SUM(varg.total_inadimplencia) AS valor_inadimplencia,
+                                ROUND(SUM(varg.vencidos) * 100.0 / NULLIF(SUM(varg.total_receber), 0), 2) AS percentual_geral
+                            FROM vw_analise_receber_geral_cliente varg
+                            WHERE varg.idvendrepre = :idrep
+                            GROUP BY varg.idvendrepre, varg.nomerepresentante";
+
+            $stmtDados = $this->pdo->prepare($sqlDadosRep);
+            $enviados = 0;
+
+            foreach ($reps as $rep) {
+                $idRep = (int)$rep['idcliforemp'];
+                $stmtDados->execute(['idrep' => $idRep]);
+                $dados = $stmtDados->fetch(\PDO::FETCH_ASSOC);
+
+                if (!$dados || (empty($dados['vencidos']) && empty($dados['a_vencer']))) {
+                    continue;
+                }
+
+                $emailRep = trim(explode(';', str_replace(',', ';', strtolower($rep['email_rep'])))[0]);
+                if (!filter_var($emailRep, FILTER_VALIDATE_EMAIL)) {
+                    continue;
+                }
+
+                $html = "<div style='font-family:Arial,sans-serif;padding:20px;border:1px solid #ddd;border-radius:10px;max-width:600px;margin:auto;'>"
+                    . "<h3 style='color:#1e3a8a;'>Relatório Mensal de Carteira & Inadimplência</h3>"
+                    . "<p>Olá, <b>" . htmlspecialchars($rep['nome']) . "</b>,</p>"
+                    . "<p>Segue o resumo da sua carteira no fechamento mensal:</p>"
+                    . "<ul>"
+                    . "<li><b>A Vencer:</b> " . $this->moedaBonif((float)$dados['a_vencer']) . "</li>"
+                    . "<li><b>Total Vencido:</b> <span style='color:#dc2626;font-weight:bold;'>" . $this->moedaBonif((float)$dados['vencidos']) . "</span></li>"
+                    . "<li><b>Índice de Inadimplência:</b> <b>{$dados['percentual_geral']}%</b></li>"
+                    . "</ul></div>";
+
+                $this->enviarEmailNotificacao($emailRep, "Relatório Mensal de Carteira - " . $rep['nome'] . " - " . date('m/Y'), $html);
+                $enviados++;
+            }
+
+            return [
+                'success' => true,
+                'message' => "Relatório mensal enviado para {$enviados} representantes.",
+                'detalhes' => ['total_reps' => count($reps), 'enviados' => $enviados]
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro ao processar representantes mensal: ' . $e->getMessage()];
+        }
+    }
+
+    // ======================================================================
+    // ALERTA CERTIFICADO DIGITAL - Vencimento NFe das Filiais
+    // ======================================================================
+    private function executarAlertaCertificado(array $params, string $usuario, string $ip): array
+    {
+        try {
+            $diasAlerta = (int)($params['dias_alerta'] ?? 30);
+            $emailDestino = $params['email_destino'] ?? null;
+            if (!$emailDestino) {
+                $emailDestino = $_ENV['MAIL_ALERTA_CERTIFICADO'] ?? 'alan@nutricionalbr.com';
+            }
+
+            $sql = "SELECT idfilial, nome, razao, cnpj, nf_e_certificado_vencimento,
+                           (nf_e_certificado_vencimento - CURRENT_DATE) AS dias_restantes
+                    FROM filial
+                    WHERE idfilial IN (1, 2, 6)
+                      AND nf_e_certificado_vencimento IS NOT NULL
+                      AND nf_e_certificado_vencimento > '2000-01-01'
+                    ORDER BY dias_restantes ASC";
+
+            $filiais = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+            $criticos = [];
+            $emAlerta = [];
+
+            foreach ($filiais as $f) {
+                $dias = (int)$f['dias_restantes'];
+                if ($dias <= $diasAlerta) {
+                    if ($dias <= 7) {
+                        $criticos[] = $f;
+                    } else {
+                        $emAlerta[] = $f;
+                    }
+                }
+            }
+
+            $totalNotificados = count($criticos) + count($emAlerta);
+            if ($totalNotificados === 0) {
+                return [
+                    'success' => true,
+                    'message' => "Todos os certificados digitais estão com validade em dia (> {$diasAlerta} dias).",
+                    'detalhes' => ['filiais_verificadas' => count($filiais), 'em_alerta' => 0]
+                ];
+            }
+
+            $corPrincipal = count($criticos) > 0 ? '#dc2626' : '#f59e0b';
+            $tituloAlerta = count($criticos) > 0 ? 'URGENTE: Certificado Digital Prestes a Vencer / Vencido' : 'AVISO: Vencimento de Certificado Digital Próximo';
+
+            $linhasTabela = '';
+            foreach (array_merge($criticos, $emAlerta) as $f) {
+                $dias = (int)$f['dias_restantes'];
+                $statusBadge = $dias < 0 
+                    ? '<span style="background:#fee2e2;color:#991b1b;padding:4px 8px;border-radius:6px;font-weight:bold;">VENCIDO (' . abs($dias) . 'd atrás)</span>'
+                    : ($dias <= 7 
+                        ? '<span style="background:#fee2e2;color:#991b1b;padding:4px 8px;border-radius:6px;font-weight:bold;">CRÍTICO (' . $dias . ' dias)</span>'
+                        : '<span style="background:#fef3c7;color:#92400e;padding:4px 8px;border-radius:6px;font-weight:bold;">ATENÇÃO (' . $dias . ' dias)</span>');
+
+                $vencBr = date('d/m/Y', strtotime($f['nf_e_certificado_vencimento']));
+                $linhasTabela .= "
+                <tr style='border-bottom:1px solid #e2e8f0;'>
+                    <td style='padding:12px 10px;font-weight:bold;'>{$f['nome']} (Filial {$f['idfilial']})</td>
+                    <td style='padding:12px 10px;color:#475569;'>{$f['razao']}<br><span style='font-size:11px;color:#94a3b8;'>CNPJ: {$this->formatarCNPJ($f['cnpj'])}</span></td>
+                    <td style='padding:12px 10px;text-align:center;font-weight:bold;'>{$vencBr}</td>
+                    <td style='padding:12px 10px;text-align:center;'>{$statusBadge}</td>
+                </tr>";
+            }
+
+            $html = "
+            <div style='font-family:-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;'>
+                <div style='background:{$corPrincipal};color:#ffffff;padding:20px;text-align:center;'>
+                    <h2 style='margin:0;font-size:20px;'>{$tituloAlerta}</h2>
+                    <p style='margin:5px 0 0;font-size:13px;opacity:0.9;'>Monitoramento Automático de Certificados Digitais NFe - Nutricional</p>
+                </div>
+                <div style='padding:24px;'>
+                    <p style='color:#334155;font-size:14px;line-height:1.6;margin-top:0;'>
+                        Detectamos que <b>{$totalNotificados}</b> filial(is) possui(em) certificado digital NFe com vencimento próximo ou expirado. 
+                        A renovação antecipada é essencial para evitar o bloqueio imediato na emissão de notas fiscais (NFe, NFCe e MDFe).
+                    </p>
+                    <table style='width:100%;border-collapse:collapse;font-size:13px;margin:20px 0;'>
+                        <thead>
+                            <tr style='background:#f8fafc;border-bottom:2px solid #cbd5e1;text-align:left;color:#475569;'>
+                                <th style='padding:10px;'>Filial</th>
+                                <th style='padding:10px;'>Razão Social</th>
+                                <th style='padding:10px;text-align:center;'>Vencimento</th>
+                                <th style='padding:10px;text-align:center;'>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>{$linhasTabela}</tbody>
+                    </table>
+                    <div style='background:#f1f5f9;border-left:4px solid #0284c7;padding:12px 16px;border-radius:4px;font-size:12px;color:#334155;'>
+                        <b>Ação Necessária:</b> Contate a autoridade certificadora para emissão do novo arquivo .PFX (A1) e faça a instalação no servidor do ERP e filiais.
+                    </div>
+                </div>
+                <div style='background:#f8fafc;padding:12px 20px;text-align:center;font-size:11px;color:#94a3b8;border-top:1px solid #e2e8f0;'>
+                    Disparado automaticamente pelo Sistema de Crons Nutricional em " . date('d/m/Y H:i:s') . "
+                </div>
+            </div>";
+
+            $enviado = $this->enviarEmailNotificacao($emailDestino, "⚠️ Alerta: Vencimento de Certificado Digital NFe - Nutricional", $html);
+
+            return [
+                'success' => $enviado,
+                'message' => $enviado 
+                    ? "Alerta enviado para {$emailDestino} ({$totalNotificados} filial(is) em atenção)." 
+                    : "Falha ao enviar e-mail de alerta de certificado.",
+                'detalhes' => [
+                    'destinatarios' => $emailDestino,
+                    'total_em_alerta' => $totalNotificados,
+                    'filiais' => array_merge($criticos, $emAlerta)
+                ],
+                'email_html' => $html
+            ];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro ao verificar certificados: ' . $e->getMessage()];
+        }
+    }
+
+    private function simularAlertaCertificado(array $params = []): array
+    {
+        try {
+            $sql = "SELECT idfilial, nome, razao, cnpj, nf_e_certificado_vencimento,
+                           (nf_e_certificado_vencimento - CURRENT_DATE) AS dias_restantes
+                    FROM filial
+                    WHERE idfilial IN (1, 2, 6)
+                      AND nf_e_certificado_vencimento IS NOT NULL
+                      AND nf_e_certificado_vencimento > '2000-01-01'
+                    ORDER BY dias_restantes ASC";
+
+            $filiais = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+            $checks = [];
+
+            foreach ($filiais as $f) {
+                $dias = (int)$f['dias_restantes'];
+                $venc = date('d/m/Y', strtotime($f['nf_e_certificado_vencimento']));
+                $status = $dias < 0 ? 'error' : ($dias <= 15 ? 'warning' : 'ok');
+                $checks[] = [
+                    'etapa' => "Filial {$f['idfilial']} - {$f['nome']}",
+                    'status' => $status,
+                    'detalhe' => "Vencimento: {$venc} (" . ($dias < 0 ? "Vencido há " . abs($dias) . " dias" : "Faltam {$dias} dias") . ")"
                 ];
             }
 
             return [
                 'success' => true,
-                'message' => 'Relatório de Gestores processado!',
-                'detalhes' => ['enviados' => 3]
+                'message' => "Simulação concluída: " . count($filiais) . " filiais verificadas.",
+                'checks' => $checks,
+                'detalhes' => ['filiais' => $filiais]
             ];
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
-        }
-    }
-
-    // ======================================================================
-    // HISTÓRICO KPI - Processa histórico financeiro
-    // ======================================================================
-    private function executarHistoricoKPI(string $usuario, string $ip): array
-    {
-        try {
-            $stmt = $this->pdo->query("SELECT COUNT(*) FROM usuario WHERE inativo = 'N'");
-            $totalUsuarios = $stmt->fetchColumn();
-
-            return [
-                'success' => true,
-                'message' => "Histórico KPI processado! {$totalUsuarios} usuários.",
-                'detalhes' => ['processados' => (int)$totalUsuarios]
-            ];
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro: ' . $e->getMessage(), 'checks' => [['etapa' => 'Verificação Certificado', 'status' => 'error', 'detalhe' => $e->getMessage()]]];
         }
     }
 
@@ -1409,7 +1971,7 @@ class CronRotinasController
         return $html;
     }
 
-    private function enviarEmailNotificacao(string $emails, string $assunto, string $html): bool
+    private function enviarEmailNotificacao($emails, string $assunto, string $html, array $anexos = []): bool
     {
         try {
             $mail = new PHPMailer(true);
@@ -1431,10 +1993,17 @@ class CronRotinasController
             ];
             $mail->setFrom($_ENV['MAIL_USER'] ?? 'nao-responder@nutricionalbr.com', 'Nutricional');
 
-            $listaEmails = explode(',', $emails);
+            $listaEmails = is_array($emails) ? $emails : explode(',', (string)$emails);
             foreach ($listaEmails as $email) {
-                if (filter_var(trim($email), FILTER_VALIDATE_EMAIL)) {
-                    $mail->addAddress(trim($email));
+                $email = trim((string)$email);
+                if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                    $mail->addAddress($email);
+                }
+            }
+
+            foreach ($anexos as $anexo) {
+                if (is_string($anexo) && file_exists($anexo)) {
+                    $mail->addAttachment($anexo);
                 }
             }
 
