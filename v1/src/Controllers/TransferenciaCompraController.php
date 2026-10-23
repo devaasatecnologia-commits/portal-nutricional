@@ -469,23 +469,37 @@ class TransferenciaCompraController
 
             // 2. Verificar se já existe solicitação ativa para este embarque
             $stmtVerif = $this->pdo->prepare("
-                SELECT sc.idsolicitacaocompra
+                SELECT sc.idsolicitacaocompra, sc.observacao
                 FROM solicitacao_compra sc
                 WHERE (
                         substring(sc.observacao FROM 'Embarque: ([0-9]+)') = :emb
                      OR substring(sc.observacao FROM 'Remessa: ([0-9]+)') = :emb
                 )
                 AND sc.status <> 3
-                LIMIT 1
+                ORDER BY sc.idsolicitacaocompra ASC
             ");
             $stmtVerif->execute(['emb' => (string)$embarqueId]);
-            $jaExiste = $stmtVerif->fetch(PDO::FETCH_ASSOC);
+            $existentes = $stmtVerif->fetchAll(PDO::FETCH_ASSOC);
 
-            if ($jaExiste) {
-                return $this->erro($response, "Este embarque já possui a Solicitação #{$jaExiste['idsolicitacaocompra']} gerada no ERP.", 409);
+            if (!empty($existentes)) {
+                $descEmb = !empty($embarque['observacao']) ? $embarque['observacao'] : "Embarque {$embarqueId}";
+                $ids = implode(', ', array_map(fn($r) => "#{$r['idsolicitacaocompra']}", $existentes));
+                return $this->erro($response, "Já existe solicitação para o embarque {$embarqueId} ({$descEmb}): {$ids}.", 409);
             }
 
-            // 3. Itens com cálculo da necessidade e dedução de estoque livre da filial PR
+            // 3. Verificar se existem itens de remessa (marca 60) no embarque
+            $stmtRem = $this->pdo->prepare("
+                SELECT 1 
+                FROM embarque_pedido_item epi
+                JOIN pedido_item pi ON pi.idpedido = epi.idpedido
+                JOIN item i ON i.iditem = pi.iditem AND i.idmarca IN (60)
+                WHERE epi.idembarque = :emb
+                LIMIT 1
+            ");
+            $stmtRem->execute(['emb' => $embarqueId]);
+            $temRemessa = (bool)$stmtRem->fetchColumn();
+
+            // 4. Itens com cálculo da necessidade e dedução de estoque livre da filial PR
             $sqlItens = '
                 WITH itens_embarque AS (
                     SELECT 
@@ -545,7 +559,18 @@ class TransferenciaCompraController
                 return $this->erro($response, "Nenhum item deste embarque possui necessidade de transferência (o estoque da Filial PR já supre a carga).", 400);
             }
 
-            // 4. Usuário solicitante
+            // Separação entre Remessa (marca 60) e Não-Remessa (outras marcas)
+            $itensRemessa = [];
+            $itensNormais = [];
+            foreach ($itens as $it) {
+                if ((int)$it['idmarca'] === 60) {
+                    $itensRemessa[] = $it;
+                } else {
+                    $itensNormais[] = $it;
+                }
+            }
+
+            // 5. Usuário solicitante
             $user = $request->getAttribute('user') ?? [];
             $nomeUsuario = strtoupper((string)($user['username'] ?? 'PORTAL'));
             $idSolicitante = (int)($user['uid'] ?? 0);
@@ -554,46 +579,38 @@ class TransferenciaCompraController
             }
 
             $placa = trim((string)($embarque['placa'] ?? ''));
-            $obs = "Embarque: {$embarqueId}" . ($placa !== '' ? " - Placa: {$placa}" : '');
+            $obsSufixo = $placa !== '' ? " - Placa: {$placa}" : '';
 
-            // 5. Inserção transacionada no ERP
+            // 6. Inserção transacionada no ERP
             $this->pdo->beginTransaction();
 
-            $seqStmt = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
-            $idSolicitacao = (int)$seqStmt->fetchColumn();
-
             $sqlInsSol = "
-                INSERT INTO solicitacao_compra (
-                    idsolicitacaocompra, idempresa, idfilial, idtransacao, idsolicitante,
-                    status, situacao, data, datanecessidade, datahora,
-                    usuario, observacao, idcontacontabil, idregracontabil, tipo,
-                    idcliforemp, idresponsavel, idsolicitacao_transf, status_oc, status_ped,
-                    idempresa_solicitar, idfilial_solicitar, idsolicitacao_saldocanc, status_nfs, manipulada,
-                    status_old, idmotivocancelamento
+                INSERT INTO public.solicitacao_compra (
+                    idsolicitacaocompra, idempresa, idfilial, idtransacao, idsolicitante, 
+                    status, situacao, data, datanecessidade, datahora, usuario, 
+                    observacao, idcontacontabil, idregracontabil, tipo, 
+                    idcliforemp, idresponsavel, idsolicitacao_transf, 
+                    status_oc, status_ped, idempresa_solicitar, 
+                    idfilial_solicitar, idsolicitacao_saldocanc, 
+                    status_nfs, manipulada, status_old, idmotivocancelamento
                 ) VALUES (
                     :id, 1, 1, 1, :solicitante,
-                    1, 1, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP,
-                    :usuario, :observacao, 0, 0, 2,
-                    14523, 0, 0, 1, 1,
-                    1, 1, 0, 1, 'N',
-                    1, 0
+                    1, 2, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP, :usuario,
+                    :observacao, 0, 0, 2,
+                    14523, 0, 0, 1, 1, 1,
+                    1, 0, 1, 'N', 1, 0
                 )
             ";
-            $stmtIns = $this->pdo->prepare($sqlInsSol);
-            $stmtIns->execute([
-                'id' => $idSolicitacao,
-                'solicitante' => $idSolicitante,
-                'usuario' => $nomeUsuario,
-                'observacao' => $obs
-            ]);
+            $stmtInsSol = $this->pdo->prepare($sqlInsSol);
 
             $sqlInsItem = "
-                INSERT INTO solicitacao_compra_item (
+                INSERT INTO public.solicitacao_compra_item (
                     idsolicitacaocompra, idempresa, idfilial, iditem, codigolido,
                     complemento, quant, quantoc, quantcancelada, statusitem,
                     iditemsolicitacao, quantsaldo, iddeposito, idresponsavel,
                     quantvendaminima, quantnfs, quantoriginal, quantsaldooriginal,
-                    idsolicitacaotransf, iditemsolicitacaotransf, reservaestoque, idfilial_solicitar
+                    idsolicitacaotransf, iditemsolicitacaotransf, reservaestoque, 
+                    idfilial_solicitar
                 ) VALUES (
                     :id, 1, 6, :iditem, :codigolido,
                     :complemento, :quant, 0, 0, 1,
@@ -604,28 +621,88 @@ class TransferenciaCompraController
             ";
             $stmtInsItem = $this->pdo->prepare($sqlInsItem);
 
-            $totalUnidades = 0.0;
-            foreach ($itens as $it) {
-                $quant = (float)$it['qtd_solicitar'];
-                $totalUnidades += $quant;
-                $stmtInsItem->execute([
-                    'id' => $idSolicitacao,
-                    'iditem' => (int)$it['iditem'],
-                    'codigolido' => $it['referencia'] ?? (string)$it['iditem'],
-                    'complemento' => !empty($it['complemento']) ? $it['complemento'] : '.',
-                    'quant' => $quant,
+            $inserirItens = function(int $idSolicitacao, array $listaItens) use ($stmtInsItem): float {
+                $total = 0.0;
+                foreach ($listaItens as $it) {
+                    $quant = (float)$it['qtd_solicitar'];
+                    $total += $quant;
+                    $stmtInsItem->execute([
+                        'id' => $idSolicitacao,
+                        'iditem' => (int)$it['iditem'],
+                        'codigolido' => $it['referencia'] ?? (string)$it['iditem'],
+                        'complemento' => !empty($it['complemento']) ? $it['complemento'] : '.',
+                        'quant' => $quant,
+                    ]);
+                }
+                return $total;
+            };
+
+            if ($temRemessa) {
+                // 5.1 & 5.2 INSERIR SOLICITAÇÃO DE REMESSA (MARCA 60)
+                $seqRem = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
+                $idSolicitacaoRemessa = (int)$seqRem->fetchColumn();
+
+                $stmtInsSol->execute([
+                    'id' => $idSolicitacaoRemessa,
+                    'solicitante' => $idSolicitante,
+                    'usuario' => $nomeUsuario,
+                    'observacao' => "Remessa: {$embarqueId}{$obsSufixo}"
+                ]);
+
+                $unidadesRemessa = $inserirItens($idSolicitacaoRemessa, $itensRemessa);
+
+                // 5.3 & 5.4 INSERIR SOLICITAÇÃO DE NÃO-REMESSA (OUTRAS MARCAS)
+                $seqNorm = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
+                $idSolicitacaoNormal = (int)$seqNorm->fetchColumn();
+
+                $stmtInsSol->execute([
+                    'id' => $idSolicitacaoNormal,
+                    'solicitante' => $idSolicitante,
+                    'usuario' => $nomeUsuario,
+                    'observacao' => "Embarque: {$embarqueId}{$obsSufixo}"
+                ]);
+
+                $unidadesNormais = $inserirItens($idSolicitacaoNormal, $itensNormais);
+
+                $this->pdo->commit();
+
+                return $this->json($response, [
+                    'success' => true,
+                    'tem_remessa' => true,
+                    'idsolicitacao_remessa' => $idSolicitacaoRemessa,
+                    'idsolicitacao_normal' => $idSolicitacaoNormal,
+                    'ids' => [$idSolicitacaoRemessa, $idSolicitacaoNormal],
+                    'total_itens_remessa' => count($itensRemessa),
+                    'total_itens_normais' => count($itensNormais),
+                    'total_unidades' => $unidadesRemessa + $unidadesNormais,
+                    'message' => "Solicitações de Remessa (#{$idSolicitacaoRemessa}) e Embarque (#{$idSolicitacaoNormal}) criadas com sucesso no ERP!"
+                ]);
+            } else {
+                // 6.1 & 6.2 INSERIR SOLICITAÇÃO ÚNICA DE EMBARQUE (SEM REMESSA)
+                $seqNorm = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
+                $idSolicitacaoNormal = (int)$seqNorm->fetchColumn();
+
+                $stmtInsSol->execute([
+                    'id' => $idSolicitacaoNormal,
+                    'solicitante' => $idSolicitante,
+                    'usuario' => $nomeUsuario,
+                    'observacao' => "Embarque: {$embarqueId}{$obsSufixo}"
+                ]);
+
+                $unidadesTotais = $inserirItens($idSolicitacaoNormal, $itens);
+
+                $this->pdo->commit();
+
+                return $this->json($response, [
+                    'success' => true,
+                    'tem_remessa' => false,
+                    'idsolicitacao' => $idSolicitacaoNormal,
+                    'ids' => [$idSolicitacaoNormal],
+                    'total_itens' => count($itens),
+                    'total_unidades' => $unidadesTotais,
+                    'message' => "Solicitação de Embarque (#{$idSolicitacaoNormal}) criada com sucesso no ERP!"
                 ]);
             }
-
-            $this->pdo->commit();
-
-            return $this->json($response, [
-                'success' => true,
-                'idsolicitacao' => $idSolicitacao,
-                'total_itens' => count($itens),
-                'total_unidades' => $totalUnidades,
-                'message' => "Solicitação de Transferência #{$idSolicitacao} gerada com sucesso no ERP com " . count($itens) . " item(ns)!"
-            ]);
 
         } catch (\Throwable $e) {
             if ($this->pdo->inTransaction()) {
@@ -798,7 +875,7 @@ class TransferenciaCompraController
                     status_old, idmotivocancelamento
                 ) VALUES (
                     :id, 1, 6, 1, :solicitante,
-                    1, 1, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP,
+                    1, 2, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP,
                     :usuario, :observacao, 0, 0, 2,
                     1, 0, 0, 1, 1,
                     1, 6, 0, 1, 'N',

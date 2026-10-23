@@ -543,14 +543,39 @@ async function executarGeracaoMatrizFilial(embarqueId, placa = '', itensNecessar
     try {
         const resp = await apiFetch('transf-compras/matriz-filial/gerar', 'POST', { idembarque: embarqueId });
         
+        let msgHtml = '';
+        if (resp.tem_remessa) {
+            msgHtml = `
+                <div class="text-left bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-xs space-y-2 text-slate-700">
+                    <div class="font-extrabold text-slate-800 text-sm border-b pb-1.5 flex items-center justify-between">
+                        <span>2 Solicitações Criadas no ERP</span>
+                        <span class="tc-badge bg-emerald-100 text-emerald-800">Sucesso</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-gift text-purple-600"></i> <b>Remessa (Marca 60):</b></span>
+                        <span class="tc-badge bg-purple-100 text-purple-800 font-mono font-bold">#${resp.idsolicitacao_remessa} (${resp.total_itens_remessa} itens)</span>
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-box text-sky-600"></i> <b>Embarque Normal:</b></span>
+                        <span class="tc-badge bg-sky-100 text-sky-800 font-mono font-bold">#${resp.idsolicitacao_normal} (${resp.total_itens_normais} itens)</span>
+                    </div>
+                    <div class="text-[11px] text-slate-500 pt-1 border-t text-right">
+                        Total transferido: <b>${num(resp.total_unidades)} unidades</b>
+                    </div>
+                </div>`;
+        } else {
+            msgHtml = `
+                <div class="text-center text-sm font-semibold text-slate-700">
+                    A <b>Solicitação #${resp.idsolicitacao}</b> foi gerada no ERP!<br>
+                    <span class="text-xs text-slate-500 mt-1 block">${resp.total_itens} item(ns) · ${num(resp.total_unidades)} unidades</span>
+                </div>`;
+        }
+
         await Swal.fire({
             ...swalBase,
             icon: 'success',
-            title: 'Solicitação Criada com Sucesso!',
-            html: `<div class="text-center text-sm font-semibold text-slate-700">
-                     A <b>Solicitação #${resp.idsolicitacao}</b> foi gerada no ERP!<br>
-                     <span class="text-xs text-slate-500 mt-1 block">${resp.total_itens} item(ns) · ${num(resp.total_unidades)} unidades</span>
-                   </div>`,
+            title: resp.tem_remessa ? 'Solicitações Geradas!' : 'Solicitação Criada!',
+            html: msgHtml,
             confirmButtonText: 'OK',
             confirmButtonColor: '#059669'
         });
