@@ -60,6 +60,15 @@ const filtrado = () => Object.keys(filtros()).length > 0;
 
 function linhaHistorico(r, i) {
     if (ehMF) {
+        const faturado = !!r.faturado;
+        const badgeFaturado = faturado
+            ? `<span class="tc-badge bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-check"></i> Faturada (${r.total_notas} NF${r.total_notas > 1 ? 's' : ''}${r.numeros_nf ? ': ' + esc(r.numeros_nf) : ''})</span>`
+            : `<span class="tc-badge bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-clock"></i> Pendente NF</span>`;
+
+        const badgeTipo = r.remessa
+            ? '<span class="tc-badge bg-purple-100 text-purple-700">Remessa (Marca 60)</span>'
+            : '<span class="tc-badge bg-sky-100 text-sky-700">Embarque Normal</span>';
+
         return `
         <div class="tc-card p-4 hover:border-sky-300 transition-all cursor-pointer flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3" data-i="${i}">
             <div class="flex items-center gap-3.5 min-w-0">
@@ -69,21 +78,27 @@ function linhaHistorico(r, i) {
                 <div class="min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="font-extrabold text-slate-800 text-sm truncate">${esc(r.nomeembarque || 'Embarque #' + r.embarque)}</span>
-                        <span class="tc-badge ${r.remessa ? 'bg-purple-100 text-purple-700' : 'bg-sky-100 text-sky-700'}">${r.remessa ? 'Remessa (Marca 60)' : 'Embarque Normal'}</span>
+                        ${badgeTipo}
+                        ${badgeFaturado}
                     </div>
-                    <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <div class="text-xs text-slate-400 mt-1 flex items-center gap-2 flex-wrap">
                         <span><b class="text-slate-600">Solicitação:</b> #${esc(r.idcompra)}</span>
                         <span>•</span>
                         <span><b class="text-slate-600">Data:</b> ${dataBR(r.data)}</span>
                         <span>•</span>
+                        <span><b class="text-slate-600">Placa:</b> ${esc(r.placa || 'Sem placa')}</span>
+                        <span>•</span>
                         <span><b class="text-slate-600">Pedidos:</b> ${esc(r.qtpedido ?? 0)}</span>
+                        ${r.peso_liquido > 0 ? `<span>•</span><span><b class="text-slate-600">Peso:</b> ${num(r.peso_liquido)} kg</span>` : ''}
+                        <span>•</span>
+                        <span><b class="text-slate-600">Itens:</b> ${r.total_itens_solicitados || 0} (${num(r.total_unidades_solicitadas || 0)} un)</span>
                     </div>
                 </div>
             </div>
             <div class="flex sm:flex-col items-center sm:items-end justify-between w-full sm:w-auto border-t sm:border-t-0 pt-2 sm:pt-0">
                 <div class="text-right">
                     <div class="text-xs text-slate-400 font-semibold">Valor da Guia ST</div>
-                    <div class="text-base font-black text-sky-700">${brl(r.valor_guia)}</div>
+                    <div class="text-base font-black ${faturado ? 'text-sky-700' : 'text-slate-400'}">${faturado ? brl(r.valor_guia) : '<span class="text-xs text-amber-600 font-bold">Aguardando NF</span>'}</div>
                 </div>
                 ${Number(r.erros_calculo || 0) > 0 ? '<span class="tc-badge bg-rose-100 text-rose-700 mt-1"><i class="fa-solid fa-triangle-exclamation"></i> Erro cálculo</span>' : ''}
             </div>
@@ -751,47 +766,9 @@ async function gerarSolicitacaoOrdem(idoc) {
 // DETALHE DE SOLICITAÇÃO (SWEETALERT MEMÓRIA FISCAL GUIA ST)
 // ==========================================================================
 
-function detalhe(r) {
-    const html = ehMF
-        ? `
-        <div class="space-y-2 text-xs text-slate-700">
-            <div class="grid grid-cols-2 gap-2 bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                <div><b>Solicitação:</b> #${esc(r.idcompra)}</div>
-                <div><b>${r.remessa ? 'Remessa' : 'Embarque'}:</b> #${esc(r.embarque)}</div>
-                <div><b>Data Solicitação:</b> ${dataBR(r.data)}</div>
-                <div><b>Qtd Pedidos:</b> ${esc(r.qtpedido ?? 0)}</div>
-                <div><b>Base Total NCM:</b> ${brl(r.valor_st)}</div>
-                <div><b>Valor Guia ST:</b> <span class="font-extrabold text-sky-700">${brl(r.valor_guia)}</span></div>
-            </div>
-
-            ${Number(r.erros_calculo || 0) ? `<div class="p-2 rounded-xl bg-red-50 text-red-700 font-bold border border-red-200"><i class="fa-solid fa-triangle-exclamation"></i> ${esc(r.erros_calculo)} item(ns) não calculados por divisão inválida.</div>` : ''}
-
-            <div class="pt-2 font-black text-slate-800 text-sm flex items-center justify-between">
-                <span>Memória de Cálculo por NCM</span>
-                <span class="text-slate-400 font-normal text-xs">${(r.detalhes_ncm || []).length} NCM(s)</span>
-            </div>
-
-            ${(r.detalhes_ncm || []).length ? '' : '<div class="text-slate-400 text-center py-4">Nenhum item faturado de NCM com regra na guia.</div>'}
-
-            <div class="max-h-60 overflow-y-auto space-y-2 pr-1">
-                ${(r.detalhes_ncm || []).map((n) => `
-                <div class="rounded-xl bg-slate-50 p-2.5 border border-slate-200/80">
-                    <div class="flex items-center justify-between font-bold text-slate-800 mb-1">
-                        <span>NCM ${esc(n.ncm)}</span>
-                        <span>Base: ${brl(n.base)}</span>
-                    </div>
-                    <div class="text-[11px] text-slate-500 space-y-0.5">
-                        <div>Base ICMS-ST (MVA ${num(n.mva_percentual, 4)}% ${esc(n.operador_mva)}): <b>${brl(n.base_ajustada)}</b> · ICMS-ST Bruto: <b>${brl(n.icms_st_bruto)}</b></div>
-                        <div>Crédito Interestadual (${num(n.credito_interestadual_percentual, 4)}%): <b>${brl(n.credito_origem)}</b></div>
-                        <div class="pt-1 border-t border-slate-200 flex justify-between font-bold text-sky-800">
-                            <span>Valor da Guia (ST ${esc(n.operador_guia)} Crédito):</span>
-                            <span>${n.erro_calculo ? '<span class="text-red-600">Erro na fórmula</span>' : brl(n.valor_guia)}</span>
-                        </div>
-                    </div>
-                </div>`).join('')}
-            </div>
-        </div>`
-        : `
+async function detalhe(r) {
+    if (!ehMF) {
+        const html = `
         <div class="space-y-2 text-xs text-slate-700 bg-slate-50 p-3 rounded-xl border border-slate-200">
             <div><b>Solicitação:</b> #${esc(r.idcompra)}</div>
             <div><b>Ordem de Compra:</b> #${esc(r.ordem)}</div>
@@ -802,13 +779,207 @@ function detalhe(r) {
             <div class="text-sm font-extrabold text-teal-800 pt-1 border-t"><b>Valor Total:</b> ${brl(r.valor)}</div>
         </div>`;
 
+        Swal.fire({
+            ...swalBase,
+            title: `Detalhes da Solicitação #${r.idcompra}`,
+            html: `<div class="text-left">${html}</div>`,
+            confirmButtonText: 'Fechar',
+            width: '600px'
+        });
+        return;
+    }
+
     Swal.fire({
         ...swalBase,
-        title: `Detalhes da Solicitação #${r.idcompra}`,
-        html: `<div class="text-left">${html}</div>`,
-        confirmButtonText: 'Fechar',
-        width: '600px'
+        title: `Carregando Solicitação #${r.idcompra}...`,
+        html: '<div class="py-4 text-center"><i class="fa-solid fa-spinner fa-spin text-2xl text-sky-600 mb-2"></i><p class="text-xs text-slate-500">Buscando itens transferidos, notas fiscais e dados do embarque...</p></div>',
+        showConfirmButton: false,
+        allowOutsideClick: false
     });
+
+    try {
+        const d = await apiFetch(`transf-compras/matriz-filial/solicitacao/${r.idcompra}/detalhes`, 'GET');
+        const sol = d.solicitacao || {};
+        const notas = d.notas || [];
+        const itens = d.itens || [];
+        const pedidos = d.pedidos || [];
+        const memNcm = r.detalhes_ncm || [];
+
+        const faturado = d.faturado;
+        const totalNotas = d.total_notas || 0;
+        const totalItens = d.total_itens || 0;
+
+        let htmlNotas = '';
+        if (notas.length) {
+            htmlNotas = `
+            <div class="bg-emerald-50/60 p-3 rounded-2xl border border-emerald-200">
+                <div class="font-bold text-emerald-900 text-xs mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-file-invoice text-emerald-600"></i> Notas Fiscais de Transferência Emitidas (${totalNotas})</span>
+                    <span class="tc-badge bg-emerald-200 text-emerald-900 font-bold">Faturado</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    ${notas.map(n => `
+                        <div class="flex items-center justify-between text-xs text-slate-700 bg-white p-2.5 rounded-xl border border-emerald-100 shadow-sm">
+                            <div><b class="text-emerald-800 text-sm">NF #${esc(n.numeronf)}</b><span class="text-slate-400 text-[11px] block">Emissão: ${dataBR(n.dataemissao)}</span></div>
+                            <div class="font-black text-emerald-700 text-sm">${brl(n.valortotalnota)}</div>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>`;
+        } else {
+            htmlNotas = `
+            <div class="bg-amber-50/70 p-3 rounded-2xl border border-amber-200 flex items-center justify-between text-xs">
+                <span class="text-amber-800 font-semibold flex items-center gap-2">
+                    <i class="fa-solid fa-clock text-amber-500 text-sm"></i> Faturamento no ERP: <b>Aguardando Emissão da Nota Fiscal</b>
+                </span>
+                <span class="tc-badge bg-amber-200 text-amber-900 font-bold">Pendente NF</span>
+            </div>`;
+        }
+
+        let htmlItens = '';
+        if (itens.length) {
+            htmlItens = `
+            <div class="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="bg-slate-100/80 px-3.5 py-2 text-xs font-black text-slate-700 flex items-center justify-between border-b border-slate-200">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-boxes-stacked text-sky-600"></i> Itens Transferidos (${totalItens} itens)</span>
+                    <span class="text-[11px] text-slate-500 font-bold">Total: ${num(itens.reduce((acc, it) => acc + (it.quantidade || 0), 0))} un</span>
+                </div>
+                <div class="max-h-56 overflow-y-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2">Item / Descrição</th>
+                                <th class="px-2 py-2 text-center">Marca</th>
+                                <th class="px-3 py-2 text-right">Qtd Transferida</th>
+                                <th class="px-3 py-2 text-right">Saldo ERP</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            ${itens.map(it => `
+                                <tr class="hover:bg-sky-50/40 transition-colors">
+                                    <td class="px-3 py-2">
+                                        <div class="font-extrabold text-slate-800">${esc(it.descricao)}</div>
+                                        <div class="text-[10px] text-slate-400 mt-0.5">Ref: <b>${esc(it.referencia || it.iditem)}</b> ${it.complemento && it.complemento !== '.' ? '• ' + esc(it.complemento) : ''}</div>
+                                    </td>
+                                    <td class="px-2 py-2 text-center"><span class="tc-badge ${it.marca === 'Remessa' || it.is_remessa ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'} text-[10px]">${esc(it.marca || 'Normal')}</span></td>
+                                    <td class="px-3 py-2 text-right font-black text-slate-800">${num(it.quantidade)} <span class="text-[10px] text-slate-400 font-normal">${esc(it.unidade || '')}</span></td>
+                                    <td class="px-3 py-2 text-right font-medium text-slate-500">${num(it.saldo)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        let htmlPedidos = '';
+        if (pedidos.length) {
+            htmlPedidos = `
+            <div class="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                <div class="bg-slate-100/80 px-3.5 py-2 text-xs font-black text-slate-700 flex items-center justify-between border-b border-slate-200">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-list-check text-indigo-600"></i> Pedidos Atendidos pelo Embarque (${pedidos.length} pedidos)</span>
+                </div>
+                <div class="max-h-40 overflow-y-auto">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-50 text-[10px] uppercase text-slate-500 font-bold border-b sticky top-0">
+                            <tr>
+                                <th class="px-3 py-2">Nº Pedido</th>
+                                <th class="px-2 py-2">Cliente / Destino</th>
+                                <th class="px-2 py-2 text-right">Peso</th>
+                                <th class="px-3 py-2 text-right">Valor Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            ${pedidos.map(p => `
+                                <tr class="hover:bg-slate-50">
+                                    <td class="px-3 py-2 font-black text-indigo-700">#${esc(p.idpedido)}</td>
+                                    <td class="px-2 py-2 text-slate-700 truncate max-w-[220px]" title="${esc(p.cliente)}">${esc(p.fantasia || p.cliente)}</td>
+                                    <td class="px-2 py-2 text-right font-medium text-slate-500">${num(p.peso)} kg</td>
+                                    <td class="px-3 py-2 text-right font-black text-slate-700">${brl(p.valor)}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        let htmlGuia = '';
+        if (memNcm.length) {
+            htmlGuia = `
+            <div class="border border-slate-200 rounded-2xl p-3 bg-slate-50/70">
+                <div class="font-black text-slate-800 text-xs mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-receipt text-sky-600"></i> Memória de Cálculo da Guia ST por NCM</span>
+                    <span class="text-slate-400 font-normal text-[11px]">${memNcm.length} NCM(s)</span>
+                </div>
+                <div class="max-h-48 overflow-y-auto space-y-2 pr-1">
+                    ${memNcm.map(n => `
+                    <div class="rounded-xl bg-white p-2.5 border border-slate-200 shadow-sm">
+                        <div class="flex items-center justify-between font-bold text-slate-800 mb-1">
+                            <span>NCM ${esc(n.ncm)}</span>
+                            <span>Base: ${brl(n.base)}</span>
+                        </div>
+                        <div class="text-[11px] text-slate-500 space-y-0.5">
+                            <div>Base ICMS-ST (MVA ${num(n.mva_percentual, 4)}% ${esc(n.operador_mva)}): <b>${brl(n.base_ajustada)}</b> · ICMS-ST Bruto: <b>${brl(n.icms_st_bruto)}</b></div>
+                            <div>Crédito Interestadual (${num(n.credito_interestadual_percentual, 4)}%): <b>${brl(n.credito_origem)}</b></div>
+                            <div class="pt-1 border-t border-slate-200 flex justify-between font-bold text-sky-800">
+                                <span>Valor da Guia (ST ${esc(n.operador_guia)} Crédito):</span>
+                                <span>${n.erro_calculo ? '<span class="text-red-600">Erro na fórmula</span>' : brl(n.valor_guia)}</span>
+                            </div>
+                        </div>
+                    </div>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        const modalHtml = `
+        <div class="space-y-3 text-xs text-slate-700">
+            <!-- CARDS DE TOPO -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-gradient-to-r from-slate-50 to-sky-50/30 p-3 rounded-2xl border border-slate-200 text-left">
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase font-black block">Solicitação</span>
+                    <b class="text-slate-800 text-sm">#${esc(sol.idcompra)}</b>
+                    <span class="text-[10px] text-slate-500 block">${dataBR(sol.data)}</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase font-black block">Embarque</span>
+                    <b class="text-slate-800 text-sm">#${esc(sol.embarque || r.embarque)}</b>
+                    <span class="text-[10px] text-slate-500 block">Placa: ${esc(sol.placa || 'Sem placa')}</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase font-black block">Carga & Peso</span>
+                    <b class="text-slate-800 text-sm">${num(sol.peso_liquido || r.peso_liquido || 0)} kg</b>
+                    <span class="text-[10px] text-slate-500 block">${esc(sol.qt_pedido || r.qtpedido || 0)} pedido(s) vinculados</span>
+                </div>
+                <div>
+                    <span class="text-[10px] text-slate-400 uppercase font-black block">Guia ST</span>
+                    <b class="text-sky-700 text-sm">${faturado ? brl(r.valor_guia) : '<span class="text-xs text-amber-600">Aguardando NF</span>'}</b>
+                    <span class="text-[10px] text-slate-500 block">Base: ${brl(r.valor_st || 0)}</span>
+                </div>
+            </div>
+
+            ${htmlNotas}
+            ${htmlItens}
+            ${htmlPedidos}
+            ${htmlGuia}
+        </div>`;
+
+        Swal.fire({
+            ...swalBase,
+            title: `Solicitação #${sol.idcompra} · ${sol.remessa ? 'Remessa (Marca 60)' : 'Embarque Normal'}`,
+            html: `<div class="text-left">${modalHtml}</div>`,
+            confirmButtonText: 'Fechar',
+            width: '750px'
+        });
+
+    } catch (e) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'error',
+            title: 'Erro ao carregar detalhes',
+            text: e.message || 'Falha ao buscar dados da solicitação.'
+        });
+    }
 }
 
 // ==========================================================================

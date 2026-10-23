@@ -83,8 +83,7 @@ class TransferenciaCompraController
         try {
             $f = $this->filtros($request);
             [$whereData, $p] = $this->filtroData($f, 'sc.data');
-            $where = " WHERE sc.idfilial = 1 AND sc.status <> 3
-                       AND EXISTS (SELECT 1 FROM nfs_item nf WHERE nf.idsolicitacaocompra = sc.idsolicitacaocompra)" . $whereData;
+            $where = " WHERE sc.idfilial = 1 AND sc.status <> 3" . $whereData;
             if ($f['busca'] !== '') {
                 $where .= ' AND (sc.observacao ILIKE :b OR ep.observacao ILIKE :b OR sc.idsolicitacaocompra::text = :bx)';
                 $p['b'] = '%' . $f['busca'] . '%';
@@ -173,6 +172,20 @@ class TransferenciaCompraController
                 ) x
                 LEFT JOIN embarque_pedido ep ON ep.idembarque = COALESCE(x.emb, x.rem)::int
                 LEFT JOIN LATERAL (
+                    SELECT (COUNT(DISTINCT nfs.idnfs) > 0) AS faturado,
+                           COUNT(DISTINCT nfs.idnfs) AS total_notas,
+                           STRING_AGG(DISTINCT nfs.numeronf::text, ', ' ORDER BY nfs.numeronf::text) AS numeros_nf
+                    FROM nfs_item ni
+                    JOIN nfs ON nfs.idnfs = ni.idnfs
+                    WHERE ni.idsolicitacaocompra = sc.idsolicitacaocompra
+                ) faturamento ON TRUE
+                LEFT JOIN LATERAL (
+                    SELECT COUNT(*) AS total_itens_solicitados,
+                           COALESCE(SUM(sci.quant), 0) AS total_unidades_solicitadas
+                    FROM solicitacao_compra_item sci
+                    WHERE sci.idsolicitacaocompra = sc.idsolicitacaocompra
+                ) itens_sol ON TRUE
+                LEFT JOIN LATERAL (
                     SELECT COALESCE(SUM(c.base_ncm), 0) AS base_st,
                            COALESCE(SUM(CASE WHEN c.regra_id IS NOT NULL AND c.st_pr AND NOT c.erro_calculo THEN c.valor_guia ELSE 0 END), 0) AS valor_guia,
                            COUNT(*) FILTER (WHERE c.erro_calculo) AS erros_calculo,
@@ -201,12 +214,22 @@ class TransferenciaCompraController
                         COALESCE(x.emb, x.rem) AS embarque,
                         (x.emb IS NULL AND x.rem IS NOT NULL) AS remessa,
                         sc.data,
+                        sc.status AS status_solicitacao,
                         TRIM(COALESCE(ep.observacao, '') || CASE WHEN x.emb IS NULL AND x.rem IS NOT NULL THEN ' Remessa ' ELSE ' ' END || COALESCE(TO_CHAR(ep.data, 'DD/MM/YYYY'), '')) AS nomeembarque,
-                        ep.qt_pedido AS qtpedido,
-                        guia.base_st AS valor_st,
-                        ROUND(guia.valor_guia, 2) AS valor_guia,
-                        guia.erros_calculo,
-                        guia.detalhes_ncm
+                        ep.placa,
+                        COALESCE(ep.qt_pedido, 0) AS qtpedido,
+                        COALESCE(ep.totalpesoliquido, 0)::float AS peso_liquido,
+                        COALESCE(ep.totalpesobruto, 0)::float AS peso_bruto,
+                        COALESCE(ep.valortotal, 0)::float AS valor_embarque,
+                        COALESCE(faturamento.faturado, FALSE) AS faturado,
+                        COALESCE(faturamento.total_notas, 0) AS total_notas,
+                        COALESCE(faturamento.numeros_nf, '') AS numeros_nf,
+                        COALESCE(itens_sol.total_itens_solicitados, 0) AS total_itens_solicitados,
+                        COALESCE(itens_sol.total_unidades_solicitadas, 0)::float AS total_unidades_solicitadas,
+                        COALESCE(guia.base_st, 0) AS valor_st,
+                        COALESCE(ROUND(guia.valor_guia, 2), 0) AS valor_guia,
+                        COALESCE(guia.erros_calculo, 0) AS erros_calculo,
+                        COALESCE(guia.detalhes_ncm, '[]'::json) AS detalhes_ncm
                  $from ORDER BY sc.idsolicitacaocompra DESC LIMIT " . $f['limite'],
                 $p
             );
@@ -229,6 +252,105 @@ class TransferenciaCompraController
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao buscar transferencias: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** GET /v1/transf-compras/matriz-filial/solicitacao/{id}/detalhes : Detalhamento completo da solicitação */
+    public function detalhesSolicitacaoMatrizFilial(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $idSolicitacao = (int)($args['id'] ?? 0);
+            if ($idSolicitacao <= 0) {
+                return $this->erro($response, 'ID de solicitação inválido.', 400);
+            }
+
+            // 1. Solicitação e Embarque
+            $stmtSol = $this->pdo->prepare("
+                SELECT sc.idsolicitacaocompra AS idcompra,
+                       sc.data, sc.datahora, sc.usuario, sc.status, sc.situacao, sc.observacao,
+                       COALESCE(x.emb, x.rem)::int AS embarque,
+                       (x.emb IS NULL AND x.rem IS NOT NULL) AS remessa,
+                       ep.placa, ep.data AS data_embarque, ep.observacao AS obs_embarque,
+                       COALESCE(ep.qt_pedido, 0) AS qt_pedido,
+                       COALESCE(ep.totalpesoliquido, 0)::float AS peso_liquido,
+                       COALESCE(ep.totalpesobruto, 0)::float AS peso_bruto,
+                       COALESCE(ep.valortotal, 0)::float AS valor_embarque,
+                       ep.gerou_nf
+                FROM solicitacao_compra sc
+                CROSS JOIN LATERAL (
+                    SELECT substring(sc.observacao FROM 'Embarque: ([0-9]+)') AS emb,
+                           substring(sc.observacao FROM 'Remessa: ([0-9]+)') AS rem
+                ) x
+                LEFT JOIN embarque_pedido ep ON ep.idembarque = COALESCE(x.emb, x.rem)::int
+                WHERE sc.idsolicitacaocompra = :id
+            ");
+            $stmtSol->execute(['id' => $idSolicitacao]);
+            $sol = $stmtSol->fetch(PDO::FETCH_ASSOC);
+
+            if (!$sol) {
+                return $this->erro($response, "Solicitação #{$idSolicitacao} não encontrada.", 404);
+            }
+
+            // 2. Notas Fiscais emitidas vinculadas a esta solicitação
+            $stmtNotas = $this->pdo->prepare("
+                SELECT DISTINCT nfs.idnfs, nfs.numeronf, nfs.dataemissao, nfs.valortotalnota, nfs.status
+                FROM nfs_item ni
+                JOIN nfs ON nfs.idnfs = ni.idnfs
+                WHERE ni.idsolicitacaocompra = :id
+                ORDER BY nfs.numeronf ASC
+            ");
+            $stmtNotas->execute(['id' => $idSolicitacao]);
+            $notas = $stmtNotas->fetchAll(PDO::FETCH_ASSOC);
+
+            // 3. Itens transferidos registrados na solicitação
+            $stmtItens = $this->pdo->prepare("
+                SELECT sci.iditem, sci.codigolido AS referencia, sci.complemento,
+                       i.descricao, u.sigla AS unidade, m.descricao AS marca,
+                       ROUND(sci.quant::numeric, 2)::float AS quantidade,
+                       ROUND(sci.quantsaldo::numeric, 2)::float AS saldo,
+                       ROUND(sci.quantoriginal::numeric, 2)::float AS quant_original
+                FROM solicitacao_compra_item sci
+                JOIN item i ON i.iditem = sci.iditem
+                LEFT JOIN unidade u ON u.idunidade = i.idunidadebasica
+                LEFT JOIN marca m ON m.idmarca = i.idmarca
+                WHERE sci.idsolicitacaocompra = :id
+                ORDER BY i.descricao ASC
+            ");
+            $stmtItens->execute(['id' => $idSolicitacao]);
+            $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
+
+            // 4. Pedidos do Embarque
+            $pedidos = [];
+            if (!empty($sol['embarque'])) {
+                $stmtPed = $this->pdo->prepare("
+                    SELECT DISTINCT p.idpedido, c.razao AS cliente, c.fantasia,
+                           COALESCE(p.valortotalpedido, 0)::float AS valor,
+                           COALESCE(p.pesoliquido, 0)::float AS peso
+                    FROM embarque_pedido ep
+                    JOIN embarque_pedido_item epi ON epi.idembarque = ep.idembarque
+                    JOIN pedido p ON p.idpedido = epi.idpedido
+                    JOIN cliforemp c ON c.idcliforemp = p.idcliforemp
+                    WHERE ep.idembarque = :emb
+                    ORDER BY p.idpedido ASC
+                    LIMIT 100
+                ");
+                $stmtPed->execute(['emb' => (int)$sol['embarque']]);
+                $pedidos = $stmtPed->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'solicitacao' => $sol,
+                'faturado' => count($notas) > 0,
+                'total_notas' => count($notas),
+                'notas' => $notas,
+                'total_itens' => count($itens),
+                'itens' => $itens,
+                'total_pedidos' => count($pedidos),
+                'pedidos' => $pedidos
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao carregar detalhes da solicitação: ' . $e->getMessage(), 500);
         }
     }
 

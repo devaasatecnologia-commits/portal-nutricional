@@ -960,6 +960,7 @@ $protected->group('/transf-compras', function ($group) {
         $g->get('', [$c, 'matrizFilial']);
         $g->get('/pendentes', [$c, 'embarquesPendentes']);
         $g->get('/previa/{embarque}', [$c, 'previaEmbarque']);
+        $g->get('/solicitacao/{id:[0-9]+}/detalhes', [$c, 'detalhesSolicitacaoMatrizFilial']);
         $g->post('/gerar', [$c, 'gerarSolicitacaoMatrizFilial']);
     })->add(new ModulePermissionMiddleware('transferencia-matriz-filial'));
     $group->group('/filial-matriz', function ($g) use ($c) {
