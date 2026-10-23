@@ -216,16 +216,19 @@ Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
 - **Implementação dos Botões e Fluxos de Inserção no ERP:**
   - **Matriz $\rightarrow$ Filial PR (`?tipo=matriz-filial`):**
     - Adicionado botão **"Gerar no ERP"** diretamente no card do embarque pendente e botão de ação primária destacado em verde esmeralda no rodapé da **Modal de Prévia** (`#modalPrevia`).
-    - Validação atômica de duplicidade no ERP (evita solicitações duplicadas para o mesmo embarque).
-    - Inserção com transação atômica em `solicitacao_compra` e `solicitacao_compra_item`:
-      - Sequence primária: `nextval('gi_solicitacao_compra')`.
-      - Cabeçalho: `idfilial = 1`, `tipo = 2`, `idcliforemp = 14523` (Nutricional Distribuidora Filial PR), observação `Embarque: {id} - Placa: {placa}`.
-      - Itens: gravados com a necessidade calculada líquida (`quantsaldo = quant`), `idfilial = 6`, `iddeposito = 6` e `idfilial_solicitar = 1`.
+    - Validação atômica de duplicidade no ERP (evita solicitações duplicadas para o mesmo embarque com verificação por regex em `solicitacao_compra.observacao`).
+    - **Separação Obrigatória do Processo Legado (Duas Solicitações quando há Remessa):**
+      - Quando o embarque possui itens de Remessa/Amostras e Brindes (`idmarca IN (60)`):
+        1. Cria a 1ª Solicitação para **Remessa**: observação `'Remessa: ' || idembarque || ' - Placa: ' || placa`, `situacao = 2`, `tipo = 2`, `idfilial = 1`, `idcliforemp = 14523`, gravando em `solicitacao_compra_item` apenas os itens de marca 60.
+        2. Cria a 2ª Solicitação para **Embarque Normal**: observação `'Embarque: ' || idembarque || ' - Placa: ' || placa`, `situacao = 2`, `tipo = 2`, `idfilial = 1`, `idcliforemp = 14523`, gravando em `solicitacao_compra_item` os itens normais (`idmarca NOT IN (60)`).
+      - Quando o embarque NÃO possui itens de remessa:
+        - Cria solicitação única de Embarque: observação `'Embarque: ' || idembarque || ' - Placa: ' || placa`, `situacao = 2`, gravando todos os itens normais.
+    - Modal de feedback no frontend adaptado para exibir os dois números de solicitação gerados quando houver remessa.
   - **Filial PR $\rightarrow$ Matriz (`?tipo=filial-matriz`):**
     - Adicionada seção de **"Ordens de Compra Disponíveis (Filial PR $\rightarrow$ Matriz)"** com listagem dinâmica via `GET /v1/transf-compras/filial-matriz/ordens-pendentes`.
     - Cada ordem traz o botão **"Gerar no ERP"** com confirmação prévia (SweetAlert2).
     - Endpoint `POST /v1/transf-compras/filial-matriz/gerar`:
-      - Cabeçalho em `solicitacao_compra`: `idfilial = 6`, `tipo = 2`, `idcliforemp = 1` (Nutricional Matriz), observação `Transferencia Ordem de Compra: {idoc}`.
+      - Cabeçalho em `solicitacao_compra`: `idfilial = 6`, `tipo = 2`, `situacao = 2`, `idcliforemp = 1` (Nutricional Matriz), observação `Transferencia Ordem de Compra: {idoc}`.
       - Itens em `solicitacao_compra_item`: `idfilial = 6`, `iddeposito = 1`, `idfilial_solicitar = 6`.
 
 ---
