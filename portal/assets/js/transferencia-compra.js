@@ -230,10 +230,21 @@ async function carregarPendentes() {
                     </div>
                 </div>
 
-                <button onclick="abrirModalPrevia(${p.embarque})" class="tc-btn-primary w-full text-xs flex items-center justify-center gap-2 !py-2.5">
-                    <i class="fa-solid fa-calculator"></i>
-                    <span>${jaSol ? 'Ver Análise / Auditoria' : 'Consultar Prévia de Transferência'}</span>
-                </button>
+                ${jaSol ? `
+                    <button onclick="abrirModalPrevia(${p.embarque})" class="tc-btn-secondary w-full text-xs flex items-center justify-center gap-2 !py-2.5">
+                        <i class="fa-solid fa-calculator"></i>
+                        <span>Ver Análise (Solicitação #${p.idsolicitacao})</span>
+                    </button>
+                ` : `
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="abrirModalPrevia(${p.embarque})" class="tc-btn-secondary text-xs flex items-center justify-center gap-1.5 !py-2.5" title="Ver cálculo detalhado item a item">
+                            <i class="fa-solid fa-calculator"></i> Prévia
+                        </button>
+                        <button onclick="gerarSolicitacaoDireta(${p.embarque})" class="tc-btn-primary text-xs flex items-center justify-center gap-1.5 !py-2.5 !bg-emerald-600 hover:!bg-emerald-700 font-black shadow-sm" title="Gerar solicitação no ERP">
+                            <i class="fa-solid fa-file-circle-plus"></i> Gerar no ERP
+                        </button>
+                    </div>
+                `}
             </div>`;
         }).join('');
 
@@ -305,6 +316,24 @@ async function abrirModalPrevia(embarqueId) {
 
         $('previaKpiRemessas').textContent = `${num(res.remessa_unidades)} un`;
         $('previaKpiRemessasItens').textContent = `${res.remessa_itens} item(ns) de apoio/amostra`;
+
+        // Botão de gerar solicitação na modal
+        const btnGerar = $('btnGerarSolicitacaoPrevia');
+        if (btnGerar) {
+            if (res.ja_solicitado) {
+                btnGerar.style.display = 'none';
+            } else if (res.qtd_total_solicitar > 0) {
+                btnGerar.style.display = 'inline-flex';
+                btnGerar.disabled = false;
+                btnGerar.className = 'tc-btn-primary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none !bg-emerald-600 hover:!bg-emerald-700 font-black shadow-md shadow-emerald-600/25';
+                btnGerar.innerHTML = `<i class="fa-solid fa-file-circle-plus text-sm"></i> Gerar Solicitação no ERP (${num(res.qtd_total_solicitar)} un)`;
+            } else {
+                btnGerar.style.display = 'inline-flex';
+                btnGerar.disabled = true;
+                btnGerar.className = 'tc-btn-secondary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none opacity-60 cursor-not-allowed';
+                btnGerar.innerHTML = `<i class="fa-solid fa-check"></i> Estoque PR Suficiente`;
+            }
+        }
 
         // Resetar campo de busca do modal
         if ($('buscaItemPrevia')) $('buscaItemPrevia').value = '';
@@ -467,6 +496,233 @@ function copiarResumoPrevia() {
 }
 
 // ==========================================================================
+// AÇÕES DE CRIAÇÃO / INSERT DE SOLICITAÇÃO NO ERP
+// ==========================================================================
+
+async function gerarSolicitacaoPreviaModal() {
+    if (!estadoPrevia.dados || !estadoPrevia.dados.embarque) return;
+    const emb = estadoPrevia.dados.embarque;
+    const res = estadoPrevia.dados.resumo;
+    await executarGeracaoMatrizFilial(emb.idembarque, emb.placa, res.itens_a_solicitar, res.qtd_total_solicitar);
+}
+
+async function gerarSolicitacaoDireta(embarqueId) {
+    const p = estado.pendentes.find(x => x.embarque == embarqueId);
+    const placa = p ? p.placa : '';
+    await executarGeracaoMatrizFilial(embarqueId, placa);
+}
+
+async function executarGeracaoMatrizFilial(embarqueId, placa = '', itensNecessarios = null, unidadesTotal = null) {
+    let detalheTexto = `Confirma a geração da Solicitação de Transferência no ERP para o <b>Embarque #${embarqueId}</b> (Placa: ${placa || 'Sem placa'})?`;
+    if (itensNecessarios !== null && unidadesTotal !== null) {
+        detalheTexto += `<br><span class="text-xs text-slate-500 mt-2 block">Serão inseridos <b>${itensNecessarios} item(ns)</b> totalizando <b>${num(unidadesTotal)} unidade(s)</b> calculadas para suprir a carga da Filial PR.</span>`;
+    }
+
+    const conf = await Swal.fire({
+        ...swalBase,
+        title: 'Gerar Solicitação no ERP?',
+        html: detalheTexto,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-file-circle-plus mr-1"></i> Sim, Gerar Solicitação',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        cancelButtonColor: '#64748b',
+    });
+
+    if (!conf.isConfirmed) return;
+
+    Swal.fire({
+        ...swalBase,
+        title: 'Gerando solicitação...',
+        html: '<div class="p-3 text-center text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-emerald-600 mb-2"></i><p class="text-xs">Gravando registros em solicitacao_compra e solicitacao_compra_item no ERP...</p></div>',
+        allowOutsideClick: false,
+        showConfirmButton: false,
+    });
+
+    try {
+        const resp = await apiFetch('transf-compras/matriz-filial/gerar', 'POST', { idembarque: embarqueId });
+        
+        await Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Solicitação Criada com Sucesso!',
+            html: `<div class="text-center text-sm font-semibold text-slate-700">
+                     A <b>Solicitação #${resp.idsolicitacao}</b> foi gerada no ERP!<br>
+                     <span class="text-xs text-slate-500 mt-1 block">${resp.total_itens} item(ns) · ${num(resp.total_unidades)} unidades</span>
+                   </div>`,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#059669'
+        });
+
+        // Recarrega listagens
+        if (ehMF) {
+            carregarPendentes();
+            carregar();
+            if ($('modalPrevia') && !$('modalPrevia').classList.contains('hidden')) {
+                abrirModalPrevia(embarqueId);
+            }
+        }
+    } catch (e) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'error',
+            title: 'Erro ao Gerar Solicitação',
+            text: e.message || 'Falha ao registrar solicitação no ERP.'
+        });
+    }
+}
+
+// ==========================================================================
+// ORDENS PENDENTES (FILIAL PR -> MATRIZ)
+// ==========================================================================
+
+async function carregarOrdensPendentes() {
+    const container = $('listaOrdensPendentes');
+    if (!container) return;
+
+    const termo = ($('buscaOrdensPendentes')?.value || '').toLowerCase().trim();
+
+    container.innerHTML = `
+        <div class="col-span-full py-8 text-center text-sm text-slate-400">
+            <i class="fa-solid fa-spinner fa-spin text-lg mr-2 text-teal-600"></i> Buscando ordens de compra...
+        </div>`;
+
+    try {
+        const r = await apiFetch('transf-compras/filial-matriz/pendentes', 'GET');
+        let ordens = r.registros || [];
+
+        if (termo) {
+            ordens = ordens.filter(o => 
+                String(o.ordem).includes(termo) || 
+                (o.fornecedor || '').toLowerCase().includes(termo)
+            );
+        }
+
+        const qtdNaoSolicitadas = ordens.filter(o => !o.ja_solicitado).length;
+
+        if ($('badgeQtdOrdensPendentes')) {
+            $('badgeQtdOrdensPendentes').textContent = `${qtdNaoSolicitadas} pendentes`;
+            $('badgeQtdOrdensPendentes').className = `tc-badge ${qtdNaoSolicitadas > 0 ? 'bg-teal-100 text-teal-800' : 'bg-slate-100 text-slate-600'}`;
+        }
+        if ($('kpiPendentes')) {
+            $('kpiPendentes').textContent = qtdNaoSolicitadas;
+        }
+
+        if (!ordens.length) {
+            container.innerHTML = `
+                <div class="col-span-full p-8 text-center tc-card border-dashed">
+                    <i class="fa-solid fa-circle-check text-3xl text-teal-500 mb-2 block"></i>
+                    <div class="font-extrabold text-slate-700 text-sm">Nenhuma ordem de compra pendente no momento!</div>
+                    <p class="text-xs text-slate-400 mt-1">Todas as ordens já foram solicitadas ou não há novos pedidos para transferir.</p>
+                </div>`;
+            return;
+        }
+
+        container.innerHTML = ordens.map(o => {
+            const jaSol = o.ja_solicitado;
+            const badgeSol = jaSol
+                ? `<span class="tc-badge bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-check-double text-[10px]"></i> Solicitação #${o.idsolicitacao}</span>`
+                : `<span class="tc-badge bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-clock text-[10px]"></i> Aguardando Solicitação</span>`;
+
+            return `
+            <div class="tc-card p-4 hover:shadow-md transition-all flex flex-col justify-between border-slate-200/80">
+                <div>
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <span class="px-2.5 py-1 rounded-xl bg-slate-900 text-white font-black text-xs">
+                            Ordem #${esc(o.ordem)}
+                        </span>
+                        ${badgeSol}
+                    </div>
+
+                    <div class="font-bold text-slate-800 text-sm mb-1 truncate" title="${esc(o.fornecedor)}">
+                        ${esc(o.fornecedor || 'Fornecedor não informado')}
+                    </div>
+
+                    <div class="text-xs text-slate-500 space-y-0.5 mb-3 bg-slate-50 p-2 rounded-xl">
+                        <div class="flex justify-between">
+                            <span>Data da Ordem:</span>
+                            <b class="text-slate-700">${dataBR(o.data)}</b>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Quantidade / Peso:</span>
+                            <b class="text-slate-700">${num(o.quantidade)} un · ${num(o.peso)} kg</b>
+                        </div>
+                        <div class="flex justify-between">
+                            <span>Valor Total:</span>
+                            <b class="text-teal-700 font-extrabold">${brl(o.valor)}</b>
+                        </div>
+                    </div>
+                </div>
+
+                ${jaSol ? `
+                    <button class="tc-btn-secondary w-full text-xs flex items-center justify-center gap-1.5 !py-2.5 opacity-70 cursor-default" disabled>
+                        <i class="fa-solid fa-check"></i> Solicitação #${o.idsolicitacao} Criada
+                    </button>
+                ` : `
+                    <button onclick="gerarSolicitacaoOrdem(${o.ordem})" class="tc-btn-primary w-full text-xs flex items-center justify-center gap-1.5 !py-2.5 !bg-teal-600 hover:!bg-teal-700 font-black shadow-sm">
+                        <i class="fa-solid fa-file-circle-plus"></i> Gerar Solicitação no ERP
+                    </button>
+                `}
+            </div>`;
+        }).join('');
+
+    } catch (e) {
+        container.innerHTML = `<div class="col-span-full tc-card p-6 text-center text-sm text-red-500"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i> ${esc(e.message)}</div>`;
+    }
+}
+
+async function gerarSolicitacaoOrdem(idoc) {
+    const conf = await Swal.fire({
+        ...swalBase,
+        title: 'Gerar Solicitação Filial PR → Matriz?',
+        html: `Confirma a geração da solicitação de transferência para a <b>Ordem de Compra #${idoc}</b> no ERP?<br><span class="text-xs text-slate-500 mt-2 block">Os itens da ordem serão inseridos automaticamente em solicitacao_compra e solicitacao_compra_item.</span>`,
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-file-circle-plus mr-1"></i> Sim, Gerar no ERP',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#0d9488',
+        cancelButtonColor: '#64748b'
+    });
+
+    if (!conf.isConfirmed) return;
+
+    Swal.fire({
+        ...swalBase,
+        title: 'Gerando solicitação...',
+        html: '<div class="p-3 text-center text-slate-500"><i class="fa-solid fa-circle-notch fa-spin text-3xl text-teal-600 mb-2"></i><p class="text-xs">Gravando registros no ERP...</p></div>',
+        allowOutsideClick: false,
+        showConfirmButton: false
+    });
+
+    try {
+        const resp = await apiFetch('transf-compras/filial-matriz/gerar', 'POST', { idoc });
+        
+        await Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Solicitação Criada!',
+            html: `<div class="text-center text-sm font-semibold text-slate-700">
+                     A <b>Solicitação #${resp.idsolicitacao}</b> foi gerada com sucesso no ERP!<br>
+                     <span class="text-xs text-slate-500 mt-1 block">${resp.total_itens} item(ns) vinculados</span>
+                   </div>`,
+            confirmButtonText: 'OK',
+            confirmButtonColor: '#0d9488'
+        });
+
+        carregarOrdensPendentes();
+        carregar();
+    } catch (e) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'error',
+            title: 'Erro ao Gerar Solicitação',
+            text: e.message || 'Falha ao registrar solicitação no ERP.'
+        });
+    }
+}
+
+// ==========================================================================
 // DETALHE DE SOLICITAÇÃO (SWEETALERT MEMÓRIA FISCAL GUIA ST)
 // ==========================================================================
 
@@ -596,10 +852,18 @@ window.addEventListener('DOMContentLoaded', () => {
     $('chkTodosEmbarques')?.addEventListener('change', carregarPendentes);
     $('btnRecarregarPendentes')?.addEventListener('click', carregarPendentes);
 
+    // Ordens Pendentes (Filial -> Matriz)
+    $('buscaOrdensPendentes')?.addEventListener('input', () => {
+        clearTimeout(estado.timerPendentes);
+        estado.timerPendentes = setTimeout(carregarOrdensPendentes, 400);
+    });
+    $('btnRecarregarOrdens')?.addEventListener('click', carregarOrdensPendentes);
+
     // Busca rápida dentro da modal de prévia
     $('buscaItemPrevia')?.addEventListener('input', renderizarTabelaPrevia);
 
     // Carregar dados iniciais
     carregar();
     if (ehMF) carregarPendentes();
+    else carregarOrdensPendentes();
 });

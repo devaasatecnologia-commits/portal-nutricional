@@ -438,6 +438,203 @@ class TransferenciaCompraController
         }
     }
 
+    /** POST /v1/transf-compras/matriz-filial/gerar : Cria solicitacao_compra e itens no ERP */
+    public function gerarSolicitacaoMatrizFilial(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array)($request->getParsedBody() ?? []);
+            if (empty($body)) {
+                $raw = (string)$request->getBody();
+                $body = json_decode($raw, true) ?? [];
+            }
+
+            $embarqueId = (int)($body['idembarque'] ?? 0);
+            if ($embarqueId <= 0) {
+                return $this->erro($response, 'ID de embarque inválido.', 400);
+            }
+
+            // 1. Dados do Embarque
+            $stmtEmb = $this->pdo->prepare('
+                SELECT ep.idembarque, ep.data, ep.observacao, ep.placa, ep.gerou_nf,
+                       ep.qt_pedido, ep.totalpesoliquido, ep.valortotal
+                FROM embarque_pedido ep
+                WHERE ep.idembarque = :emb
+            ');
+            $stmtEmb->execute(['emb' => $embarqueId]);
+            $embarque = $stmtEmb->fetch(PDO::FETCH_ASSOC);
+
+            if (!$embarque) {
+                return $this->erro($response, "Embarque {$embarqueId} não encontrado.", 404);
+            }
+
+            // 2. Verificar se já existe solicitação ativa para este embarque
+            $stmtVerif = $this->pdo->prepare("
+                SELECT sc.idsolicitacaocompra
+                FROM solicitacao_compra sc
+                WHERE (
+                        substring(sc.observacao FROM 'Embarque: ([0-9]+)') = :emb
+                     OR substring(sc.observacao FROM 'Remessa: ([0-9]+)') = :emb
+                )
+                AND sc.status <> 3
+                LIMIT 1
+            ");
+            $stmtVerif->execute(['emb' => (string)$embarqueId]);
+            $jaExiste = $stmtVerif->fetch(PDO::FETCH_ASSOC);
+
+            if ($jaExiste) {
+                return $this->erro($response, "Este embarque já possui a Solicitação #{$jaExiste['idsolicitacaocompra']} gerada no ERP.", 409);
+            }
+
+            // 3. Itens com cálculo da necessidade e dedução de estoque livre da filial PR
+            $sqlItens = '
+                WITH itens_embarque AS (
+                    SELECT 
+                        pi.iditem,
+                        i.referencia,
+                        i.descricao,
+                        i.complemento,
+                        u.sigla AS unidade,
+                        i.idmarca,
+                        SUM(pi.quant_impressao) AS qtd_embarque
+                    FROM embarque_pedido_item epi
+                    JOIN embarque_pedido ep ON ep.idembarque = epi.idembarque
+                    JOIN pedido p ON p.idpedido = epi.idpedido
+                    JOIN pedido_item pi ON pi.idpedido = p.idpedido
+                    JOIN item i ON i.iditem = pi.iditem
+                    LEFT JOIN unidade u ON u.idunidade = i.idunidadebasica
+                    WHERE ep.idembarque = :emb
+                    GROUP BY pi.iditem, i.referencia, i.descricao, i.complemento, u.sigla, i.idmarca
+                ),
+                reserva_14523 AS (
+                    SELECT 
+                        pi.iditem,
+                        SUM(COALESCE(pi.qtsaldo, pi.qt - COALESCE(pi.qtfaturado, 0))) AS qtd_reservada
+                    FROM pedido p
+                    JOIN pedido_item pi ON pi.idpedido = p.idpedido
+                    WHERE p.idcliforemp = 14523
+                      AND p.idfilial = 6
+                      AND p.status = 1
+                    GROUP BY pi.iditem
+                ),
+                estoque_pr AS (
+                    SELECT 
+                        ef.iditem,
+                        COALESCE(ef.saldoatual, 0) AS saldo_fisico
+                    FROM estoque_filial ef
+                    WHERE ef.idfilial = 6
+                )
+                SELECT 
+                    ie.iditem,
+                    ie.referencia,
+                    ie.descricao,
+                    ie.complemento,
+                    ie.unidade,
+                    ie.idmarca,
+                    ROUND(GREATEST(ie.qtd_embarque - GREATEST(COALESCE(ep.saldo_fisico, 0) - COALESCE(res.qtd_reservada, 0), 0), 0)::numeric, 2) AS qtd_solicitar
+                FROM itens_embarque ie
+                LEFT JOIN estoque_pr ep ON ep.iditem = ie.iditem
+                LEFT JOIN reserva_14523 res ON res.iditem = ie.iditem
+                WHERE GREATEST(ie.qtd_embarque - GREATEST(COALESCE(ep.saldo_fisico, 0) - COALESCE(res.qtd_reservada, 0), 0), 0) > 0
+                ORDER BY ie.descricao ASC
+            ';
+            $stmtItens = $this->pdo->prepare($sqlItens);
+            $stmtItens->execute(['emb' => $embarqueId]);
+            $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($itens)) {
+                return $this->erro($response, "Nenhum item deste embarque possui necessidade de transferência (o estoque da Filial PR já supre a carga).", 400);
+            }
+
+            // 4. Usuário solicitante
+            $user = $request->getAttribute('user') ?? [];
+            $nomeUsuario = strtoupper((string)($user['username'] ?? 'PORTAL'));
+            $idSolicitante = (int)($user['uid'] ?? 0);
+            if ($idSolicitante <= 0) {
+                $idSolicitante = 5195; // Solicitante operacional padrão
+            }
+
+            $placa = trim((string)($embarque['placa'] ?? ''));
+            $obs = "Embarque: {$embarqueId}" . ($placa !== '' ? " - Placa: {$placa}" : '');
+
+            // 5. Inserção transacionada no ERP
+            $this->pdo->beginTransaction();
+
+            $seqStmt = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
+            $idSolicitacao = (int)$seqStmt->fetchColumn();
+
+            $sqlInsSol = "
+                INSERT INTO solicitacao_compra (
+                    idsolicitacaocompra, idempresa, idfilial, idtransacao, idsolicitante,
+                    status, situacao, data, datanecessidade, datahora,
+                    usuario, observacao, idcontacontabil, idregracontabil, tipo,
+                    idcliforemp, idresponsavel, idsolicitacao_transf, status_oc, status_ped,
+                    idempresa_solicitar, idfilial_solicitar, idsolicitacao_saldocanc, status_nfs, manipulada,
+                    status_old, idmotivocancelamento
+                ) VALUES (
+                    :id, 1, 1, 1, :solicitante,
+                    1, 1, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP,
+                    :usuario, :observacao, 0, 0, 2,
+                    14523, 0, 0, 1, 1,
+                    1, 1, 0, 1, 'N',
+                    1, 0
+                )
+            ";
+            $stmtIns = $this->pdo->prepare($sqlInsSol);
+            $stmtIns->execute([
+                'id' => $idSolicitacao,
+                'solicitante' => $idSolicitante,
+                'usuario' => $nomeUsuario,
+                'observacao' => $obs
+            ]);
+
+            $sqlInsItem = "
+                INSERT INTO solicitacao_compra_item (
+                    idsolicitacaocompra, idempresa, idfilial, iditem, codigolido,
+                    complemento, quant, quantoc, quantcancelada, statusitem,
+                    iditemsolicitacao, quantsaldo, iddeposito, idresponsavel,
+                    quantvendaminima, quantnfs, quantoriginal, quantsaldooriginal,
+                    idsolicitacaotransf, iditemsolicitacaotransf, reservaestoque, idfilial_solicitar
+                ) VALUES (
+                    :id, 1, 6, :iditem, :codigolido,
+                    :complemento, :quant, 0, 0, 1,
+                    :iditem, :quant, 6, 0,
+                    0, 0, :quant, :quant,
+                    0, 0, 'N', 1
+                )
+            ";
+            $stmtInsItem = $this->pdo->prepare($sqlInsItem);
+
+            $totalUnidades = 0.0;
+            foreach ($itens as $it) {
+                $quant = (float)$it['qtd_solicitar'];
+                $totalUnidades += $quant;
+                $stmtInsItem->execute([
+                    'id' => $idSolicitacao,
+                    'iditem' => (int)$it['iditem'],
+                    'codigolido' => $it['referencia'] ?? (string)$it['iditem'],
+                    'complemento' => !empty($it['complemento']) ? $it['complemento'] : '.',
+                    'quant' => $quant,
+                ]);
+            }
+
+            $this->pdo->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'idsolicitacao' => $idSolicitacao,
+                'total_itens' => count($itens),
+                'total_unidades' => $totalUnidades,
+                'message' => "Solicitação de Transferência #{$idSolicitacao} gerada com sucesso no ERP com " . count($itens) . " item(ns)!"
+            ]);
+
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->erro($response, 'Erro ao gerar solicitação no ERP: ' . $e->getMessage(), 500);
+        }
+    }
+
     // ======================================================================
     // FILIAL -> MATRIZ
     // ======================================================================
@@ -484,20 +681,183 @@ class TransferenciaCompraController
         }
     }
 
-    /** GET /v1/transf-compras/ordens-pendentes : vw_ordem_compra_transferencia */
+    /** GET /v1/transf-compras/filial-matriz/pendentes : Ordens de compra para transferir */
     public function ordensPendentes(Request $request, Response $response): Response
     {
         try {
             $rows = $this->consultar(
                 "SELECT v.idoc AS ordem, v.fornecedor, v.idfilial,
-                        EXISTS (SELECT 1 FROM solicitacao_compra sc
-                                WHERE substring(sc.observacao FROM 'Ordem de Compra: ([0-9]+)') = v.idoc::text) AS ja_solicitado
+                        oc.data, COALESCE(oc.valortotal, 0) AS valor,
+                        COALESCE(SUM(oci.qt), 0) AS quantidade,
+                        COALESCE(SUM(item.pesoliquido * oci.qt), 0) AS peso,
+                        (sol.idsolicitacao IS NOT NULL) AS ja_solicitado,
+                        sol.idsolicitacao
                  FROM vw_ordem_compra_transferencia v
+                 LEFT JOIN oc ON oc.idoc = v.idoc
+                 LEFT JOIN oc_item oci ON oci.idoc = oc.idoc
+                 LEFT JOIN item ON item.iditem = oci.iditem
+                 LEFT JOIN LATERAL (
+                     SELECT sc.idsolicitacaocompra AS idsolicitacao
+                     FROM solicitacao_compra sc
+                     WHERE substring(sc.observacao FROM 'Ordem de Compra: ([0-9]+)') = v.idoc::text
+                       AND sc.status <> 3
+                     ORDER BY sc.idsolicitacaocompra DESC
+                     LIMIT 1
+                 ) sol ON TRUE
+                 GROUP BY v.idoc, v.fornecedor, v.idfilial, oc.data, oc.valortotal, sol.idsolicitacao
                  ORDER BY v.idoc DESC LIMIT 50"
             );
             return $this->json($response, ['success' => true, 'registros' => $rows]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao buscar ordens: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /** POST /v1/transf-compras/filial-matriz/gerar : Cria solicitacao_compra e itens a partir da OC */
+    public function gerarSolicitacaoFilialMatriz(Request $request, Response $response): Response
+    {
+        try {
+            $body = (array)($request->getParsedBody() ?? []);
+            if (empty($body)) {
+                $raw = (string)$request->getBody();
+                $body = json_decode($raw, true) ?? [];
+            }
+
+            $idoc = (int)($body['idoc'] ?? 0);
+            if ($idoc <= 0) {
+                return $this->erro($response, 'ID da Ordem de Compra inválido.', 400);
+            }
+
+            // 1. Dados da OC
+            $stmtOc = $this->pdo->prepare('
+                SELECT oc.idoc, oc.data, oc.valortotal, oc.idcliforemp, cf.fantasia AS fornecedor
+                FROM oc
+                JOIN cliforemp cf ON cf.idcliforemp = oc.idcliforemp
+                WHERE oc.idoc = :oc
+            ');
+            $stmtOc->execute(['oc' => $idoc]);
+            $oc = $stmtOc->fetch(PDO::FETCH_ASSOC);
+
+            if (!$oc) {
+                return $this->erro($response, "Ordem de Compra {$idoc} não encontrada.", 404);
+            }
+
+            // 2. Verificar se já existe solicitação ativa para esta OC
+            $stmtVerif = $this->pdo->prepare("
+                SELECT sc.idsolicitacaocompra
+                FROM solicitacao_compra sc
+                WHERE substring(sc.observacao FROM 'Ordem de Compra: ([0-9]+)') = :oc
+                  AND sc.status <> 3
+                LIMIT 1
+            ");
+            $stmtVerif->execute(['oc' => (string)$idoc]);
+            $jaExiste = $stmtVerif->fetch(PDO::FETCH_ASSOC);
+
+            if ($jaExiste) {
+                return $this->erro($response, "Esta Ordem de Compra já possui a Solicitação #{$jaExiste['idsolicitacaocompra']} gerada no ERP.", 409);
+            }
+
+            // 3. Itens da OC
+            $stmtItens = $this->pdo->prepare("
+                SELECT oci.iditem, i.referencia, i.descricao, i.complemento, oci.qt
+                FROM oc_item oci
+                JOIN item i ON i.iditem = oci.iditem
+                WHERE oci.idoc = :oc AND oci.qt > 0
+                ORDER BY i.descricao ASC
+            ");
+            $stmtItens->execute(['oc' => $idoc]);
+            $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
+
+            if (empty($itens)) {
+                return $this->erro($response, "Nenhum item com quantidade pendente localizado na Ordem {$idoc}.", 400);
+            }
+
+            // 4. Usuário solicitante
+            $user = $request->getAttribute('user') ?? [];
+            $nomeUsuario = strtoupper((string)($user['username'] ?? 'PORTAL'));
+            $idSolicitante = (int)($user['uid'] ?? 0);
+            if ($idSolicitante <= 0) {
+                $idSolicitante = 5195;
+            }
+
+            $obs = "Transferencia Ordem de Compra: {$idoc}";
+
+            // 5. Inserção transacionada no ERP
+            $this->pdo->beginTransaction();
+
+            $seqStmt = $this->pdo->query("SELECT nextval('gi_solicitacao_compra')");
+            $idSolicitacao = (int)$seqStmt->fetchColumn();
+
+            $sqlInsSol = "
+                INSERT INTO solicitacao_compra (
+                    idsolicitacaocompra, idempresa, idfilial, idtransacao, idsolicitante,
+                    status, situacao, data, datanecessidade, datahora,
+                    usuario, observacao, idcontacontabil, idregracontabil, tipo,
+                    idcliforemp, idresponsavel, idsolicitacao_transf, status_oc, status_ped,
+                    idempresa_solicitar, idfilial_solicitar, idsolicitacao_saldocanc, status_nfs, manipulada,
+                    status_old, idmotivocancelamento
+                ) VALUES (
+                    :id, 1, 6, 1, :solicitante,
+                    1, 1, CURRENT_DATE, CURRENT_DATE, CURRENT_TIMESTAMP,
+                    :usuario, :observacao, 0, 0, 2,
+                    1, 0, 0, 1, 1,
+                    1, 6, 0, 1, 'N',
+                    1, 0
+                )
+            ";
+            $stmtIns = $this->pdo->prepare($sqlInsSol);
+            $stmtIns->execute([
+                'id' => $idSolicitacao,
+                'solicitante' => $idSolicitante,
+                'usuario' => $nomeUsuario,
+                'observacao' => $obs
+            ]);
+
+            $sqlInsItem = "
+                INSERT INTO solicitacao_compra_item (
+                    idsolicitacaocompra, idempresa, idfilial, iditem, codigolido,
+                    complemento, quant, quantoc, quantcancelada, statusitem,
+                    iditemsolicitacao, quantsaldo, iddeposito, idresponsavel,
+                    quantvendaminima, quantnfs, quantoriginal, quantsaldooriginal,
+                    idsolicitacaotransf, iditemsolicitacaotransf, reservaestoque, idfilial_solicitar
+                ) VALUES (
+                    :id, 1, 6, :iditem, :codigolido,
+                    :complemento, :quant, 0, 0, 1,
+                    :iditem, :quant, 1, 0,
+                    0, 0, :quant, :quant,
+                    0, 0, 'N', 6
+                )
+            ";
+            $stmtInsItem = $this->pdo->prepare($sqlInsItem);
+
+            $totalUnidades = 0.0;
+            foreach ($itens as $it) {
+                $quant = (float)$it['qt'];
+                $totalUnidades += $quant;
+                $stmtInsItem->execute([
+                    'id' => $idSolicitacao,
+                    'iditem' => (int)$it['iditem'],
+                    'codigolido' => $it['referencia'] ?? (string)$it['iditem'],
+                    'complemento' => !empty($it['complemento']) ? $it['complemento'] : '.',
+                    'quant' => $quant,
+                ]);
+            }
+
+            $this->pdo->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'idsolicitacao' => $idSolicitacao,
+                'total_itens' => count($itens),
+                'total_unidades' => $totalUnidades,
+                'message' => "Solicitação de Transferência #{$idSolicitacao} (Filial PR → Matriz) gerada com sucesso no ERP!"
+            ]);
+
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->erro($response, 'Erro ao gerar solicitação no ERP: ' . $e->getMessage(), 500);
         }
     }
 

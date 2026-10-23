@@ -156,6 +156,36 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
     </div>
+    <?php else: ?>
+    <!-- SEÇÃO: ORDENS DE COMPRA DISPONÍVEIS (SOMENTE FILIAL PR -> MATRIZ) -->
+    <div class="tc-card p-5 mb-6 border-l-4 border-l-teal-600">
+        <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+            <div>
+                <div class="flex items-center gap-2">
+                    <h2 class="text-base sm:text-lg font-extrabold text-slate-800">Ordens de Compra Disponíveis (Filial PR → Matriz)</h2>
+                    <span id="badgeQtdOrdensPendentes" class="tc-badge bg-teal-100 text-teal-800">0 pendentes</span>
+                </div>
+                <p class="text-xs text-slate-500 mt-0.5">
+                    Gere solicitações de transferência de compra da Filial PR para a Matriz com base nas ordens disponíveis.
+                </p>
+            </div>
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <div class="relative flex-1 sm:w-64">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input id="buscaOrdensPendentes" type="search" placeholder="Filtrar por ordem ou fornecedor..." class="tc-input !pl-8 !py-2 text-xs">
+                </div>
+                <button id="btnRecarregarOrdens" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors" title="Recarregar">
+                    <i class="fa-solid fa-arrows-rotate text-xs"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="listaOrdensPendentes" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            <div class="col-span-full py-8 text-center text-sm text-slate-400">
+                <i class="fa-solid fa-spinner fa-spin text-lg mr-2 text-teal-600"></i> Carregando ordens de compra...
+            </div>
+        </div>
+    </div>
     <?php endif; ?>
 
     <!-- SEÇÃO: HISTÓRICO DE SOLICITAÇÕES / GUIAS APURADAS -->
@@ -317,8 +347,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <button onclick="copiarResumoPrevia()" class="tc-btn-secondary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none">
                     <i class="fa-solid fa-copy"></i> Copiar Resumo
                 </button>
-                <button onclick="fecharModalPrevia()" class="tc-btn-primary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none">
-                    Fechar Análise
+                <button id="btnGerarSolicitacaoPrevia" onclick="gerarSolicitacaoPreviaModal()" class="tc-btn-primary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none !bg-emerald-600 hover:!bg-emerald-700 font-black shadow-md shadow-emerald-600/25">
+                    <i class="fa-solid fa-file-circle-plus text-sm"></i> Gerar Solicitação no ERP
+                </button>
+                <button onclick="fecharModalPrevia()" class="tc-btn-secondary text-xs flex items-center justify-center gap-1.5 flex-1 sm:flex-none">
+                    Fechar
                 </button>
             </div>
         </div>

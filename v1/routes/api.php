@@ -960,10 +960,12 @@ $protected->group('/transf-compras', function ($group) {
         $g->get('', [$c, 'matrizFilial']);
         $g->get('/pendentes', [$c, 'embarquesPendentes']);
         $g->get('/previa/{embarque}', [$c, 'previaEmbarque']);
+        $g->post('/gerar', [$c, 'gerarSolicitacaoMatrizFilial']);
     })->add(new ModulePermissionMiddleware('transferencia-matriz-filial'));
     $group->group('/filial-matriz', function ($g) use ($c) {
         $g->get('', [$c, 'filialMatriz']);
         $g->get('/pendentes', [$c, 'ordensPendentes']);
+        $g->post('/gerar', [$c, 'gerarSolicitacaoFilialMatriz']);
     })->add(new ModulePermissionMiddleware('transferencia-filial-matriz'));
 });
 
@@ -1072,7 +1074,7 @@ $protected->group('/analise-carteira', function ($group) {
     $group->get('/cliente/{id:[0-9]+}/detalhes', [$controller, 'getClienteDetalhes']);
     $group->post('/cliente/{id:[0-9]+}/eventos', [$controller, 'criarEventoCliente']);
     $group->post('/exportar', [$controller, 'exportar']);
-})->add(new ModulePermissionMiddleware('analise_carteira'));
+})->add(new ModulePermissionMiddleware(['analise_carteira', 'analise-carteira']));
 
         // ======================================================================
         // ADMINISTRAÇÃO DO SISTEMA

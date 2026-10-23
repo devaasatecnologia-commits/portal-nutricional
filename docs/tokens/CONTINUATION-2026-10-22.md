@@ -212,23 +212,44 @@ Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
 
 ---
 
+### 1.10 Geração de Solicitação de Transferência no ERP (`TransferenciaCompraController.php`, `transferencia-compra.php`, `transferencia-compra.js`)
+- **Implementação dos Botões e Fluxos de Inserção no ERP:**
+  - **Matriz $\rightarrow$ Filial PR (`?tipo=matriz-filial`):**
+    - Adicionado botão **"Gerar no ERP"** diretamente no card do embarque pendente e botão de ação primária destacado em verde esmeralda no rodapé da **Modal de Prévia** (`#modalPrevia`).
+    - Validação atômica de duplicidade no ERP (evita solicitações duplicadas para o mesmo embarque).
+    - Inserção com transação atômica em `solicitacao_compra` e `solicitacao_compra_item`:
+      - Sequence primária: `nextval('gi_solicitacao_compra')`.
+      - Cabeçalho: `idfilial = 1`, `tipo = 2`, `idcliforemp = 14523` (Nutricional Distribuidora Filial PR), observação `Embarque: {id} - Placa: {placa}`.
+      - Itens: gravados com a necessidade calculada líquida (`quantsaldo = quant`), `idfilial = 6`, `iddeposito = 6` e `idfilial_solicitar = 1`.
+  - **Filial PR $\rightarrow$ Matriz (`?tipo=filial-matriz`):**
+    - Adicionada seção de **"Ordens de Compra Disponíveis (Filial PR $\rightarrow$ Matriz)"** com listagem dinâmica via `GET /v1/transf-compras/filial-matriz/ordens-pendentes`.
+    - Cada ordem traz o botão **"Gerar no ERP"** com confirmação prévia (SweetAlert2).
+    - Endpoint `POST /v1/transf-compras/filial-matriz/gerar`:
+      - Cabeçalho em `solicitacao_compra`: `idfilial = 6`, `tipo = 2`, `idcliforemp = 1` (Nutricional Matriz), observação `Transferencia Ordem de Compra: {idoc}`.
+      - Itens em `solicitacao_compra_item`: `idfilial = 6`, `iddeposito = 1`, `idfilial_solicitar = 6`.
+
+---
+
 ## 2. Arquivos para Deploy FTP (Consolidado do Dia)
 1. `v1/routes/api.php`
-2. `v1/src/Controllers/AnaliseCarteiraController.php`
-3. `portal/modules/analise-carteira.php`
-4. `portal/assets/js/analise-carteira.js`
-5. `v1/src/Controllers/EstoquePrevisaoController.php`
-6. `portal/modules/estoque-previsao.php`
-7. `portal/assets/js/estoque-previsao.js`
-8. `v1/src/Controllers/FlexTransferenciaController.php`
-9. `portal/modules/transferencia-flex.php`
-10. `portal/assets/js/transferencia-flex.js`
-11. `v1/src/Controllers/VerbasFlexController.php`
-12. `portal/modules/verbas-flex.php`
-13. `portal/assets/js/verbas-flex.js`
-14. `v1/src/Controllers/AmostraPedidoController.php`
-15. `docs/fix_verbas_flex_setembro_2026.sql`
-16. `docs/amostra_estoque_config_migration.sql`
+2. `v1/src/Controllers/TransferenciaCompraController.php`
+3. `portal/modules/transferencia-compra.php`
+4. `portal/assets/js/transferencia-compra.js`
+5. `v1/src/Controllers/AnaliseCarteiraController.php`
+6. `portal/modules/analise-carteira.php`
+7. `portal/assets/js/analise-carteira.js`
+8. `v1/src/Controllers/EstoquePrevisaoController.php`
+9. `portal/modules/estoque-previsao.php`
+10. `portal/assets/js/estoque-previsao.js`
+11. `v1/src/Controllers/FlexTransferenciaController.php`
+12. `portal/modules/transferencia-flex.php`
+13. `portal/assets/js/transferencia-flex.js`
+14. `v1/src/Controllers/VerbasFlexController.php`
+15. `portal/modules/verbas-flex.php`
+16. `portal/assets/js/verbas-flex.js`
+17. `v1/src/Controllers/AmostraPedidoController.php`
+18. `docs/fix_verbas_flex_setembro_2026.sql`
+19. `docs/amostra_estoque_config_migration.sql`
 
 ---
 
