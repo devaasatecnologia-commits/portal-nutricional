@@ -224,6 +224,17 @@ Para deploy remoto (cPanel/Linux), subir os seguintes arquivos:
       - Quando o embarque NÃO possui itens de remessa:
         - Cria solicitação única de Embarque: observação `'Embarque: ' || idembarque || ' - Placa: ' || placa`, `situacao = 2`, gravando todos os itens normais.
     - Modal de feedback no frontend adaptado para exibir os dois números de solicitação gerados quando houver remessa.
+    - **Visibilidade de Solicitações Não-Faturadas no Histórico:**
+      - Removida a exigência restritiva `AND EXISTS (SELECT 1 FROM nfs_item...)` que ocultava do histórico as solicitações recém-geradas no ERP até que fossem faturadas.
+      - As solicitações recém-criadas (como #203 e #204) passam a aparecer imediatamente no topo da lista com badge âmbar `Pendente NF` e indicação `Aguardando NF`.
+    - **Endpoint e Modal Rico de Detalhes da Solicitação:**
+      - Endpoint: `GET /v1/transf-compras/matriz-filial/solicitacao/{id}/detalhes`
+      - Ao clicar na solicitação, o modal exibe:
+        1. **Cards Executivos:** Número da solicitação, número do embarque, placa do veículo, peso líquido (kg), peso bruto (kg), quantidade de pedidos e Guia ST.
+        2. **Notas Fiscais de Transferência:** Se faturada, exibe as notas emitidas (número da NF, data de emissão e valor da nota). Se pendente, badge `Aguardando NF`.
+        3. **Itens Transferidos:** Grade completa de itens gravados em `solicitacao_compra_item` com referência, descrição, complemento, marca, quantidade transferida e saldo.
+        4. **Pedidos do Embarque:** Listagem dos pedidos atendidos pela carga com cliente, peso e valor total.
+        5. **Memória de Cálculo de Guia ST por NCM:** Memória fiscal com MVA, ICMS-ST e crédito.
   - **Filial PR $\rightarrow$ Matriz (`?tipo=filial-matriz`):**
     - Adicionada seção de **"Ordens de Compra Disponíveis (Filial PR $\rightarrow$ Matriz)"** com listagem dinâmica via `GET /v1/transf-compras/filial-matriz/ordens-pendentes`.
     - Cada ordem traz o botão **"Gerar no ERP"** com confirmação prévia (SweetAlert2).
