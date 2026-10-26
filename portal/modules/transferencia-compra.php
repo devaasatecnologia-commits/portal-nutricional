@@ -95,7 +95,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             <div class="min-w-0">
                 <span class="tc-label"><?= $ehMF ? 'Total Guia ST' : 'Valor Total' ?></span>
                 <div id="kpiValorTotal" class="text-xl sm:text-2xl font-black text-emerald-700 leading-none mt-1 truncate">—</div>
-                <span class="text-[11px] text-slate-400 mt-0.5 block truncate"><?= $ehMF ? 'ICMS-ST apurado PR' : 'Ordens de compra' ?></span>
+                <span class="text-[11px] text-slate-400 mt-0.5 block truncate" id="kpiValorSub"><?= $ehMF ? 'ICMS-ST apurado PR' : 'Ordens de compra' ?></span>
             </div>
         </div>
 
@@ -209,11 +209,11 @@ require_once __DIR__ . '/../estrutura/header.php';
             <div class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
                 <div>
                     <span class="tc-label">Data Inicial</span>
-                    <input id="dtIni" type="date" class="tc-input text-xs !py-1.5">
+                    <input id="dtIni" type="date" value="<?= date('Y-m-01') ?>" class="tc-input text-xs !py-1.5">
                 </div>
                 <div>
                     <span class="tc-label">Data Final</span>
-                    <input id="dtFim" type="date" class="tc-input text-xs !py-1.5">
+                    <input id="dtFim" type="date" value="<?= date('Y-m-t') ?>" class="tc-input text-xs !py-1.5">
                 </div>
                 <div class="sm:col-span-2">
                     <span class="tc-label">Buscar</span>

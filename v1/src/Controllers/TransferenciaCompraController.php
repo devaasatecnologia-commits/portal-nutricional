@@ -44,8 +44,17 @@ class TransferenciaCompraController
     {
         $q = $request->getQueryParams();
         $data = static fn ($d): ?string => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$d) ? (string)$d : null;
-        $inicio = $data($q['inicio'] ?? '');
-        $fim = $data($q['fim'] ?? '');
+        $verTodos = !empty($q['todos']) || (isset($q['inicio']) && $q['inicio'] === '' && isset($q['fim']) && $q['fim'] === '');
+
+        if ($verTodos) {
+            $inicio = null;
+            $fim = null;
+        } else {
+            // Regra Corporativa: Trabalhar sempre no Mês Corrente ao carregar para evitar sobrecarga e valores astronômicos acumulados
+            $inicio = $data($q['inicio'] ?? '') ?: date('Y-m-01');
+            $fim = $data($q['fim'] ?? '') ?: date('Y-m-t');
+        }
+
         if ($inicio && $fim && $fim < $inicio) {
             [$inicio, $fim] = [$fim, $inicio];
         }
@@ -53,7 +62,7 @@ class TransferenciaCompraController
             'inicio' => $inicio,
             'fim' => $fim,
             'busca' => trim((string)($q['q'] ?? '')),
-            'limite' => max(1, min(2000, (int)($q['limite'] ?? 10))),
+            'limite' => max(1, min(2000, (int)($q['limite'] ?? 50))),
         ];
     }
 

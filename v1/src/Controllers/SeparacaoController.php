@@ -53,10 +53,16 @@ class SeparacaoController
                 WHERE ep.pex_conferido = 'N' 
                   AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
                   AND ep.idfilial IN (1,6)
-                  AND ep.data >= (CURRENT_DATE - INTERVAL '30 days')
+                  AND ep.data BETWEEN :dt_inicio AND :dt_fim
                 ORDER BY ep.idembarque DESC
             ");
-            $stmt->execute();
+            $params = $request->getQueryParams();
+            $dtInicio = !empty($params['dt_inicio']) ? trim($params['dt_inicio']) : (!empty($params['data_inicio']) ? trim($params['data_inicio']) : date('Y-m-01'));
+            $dtFim = !empty($params['dt_fim']) ? trim($params['dt_fim']) : (!empty($params['data_fim']) ? trim($params['data_fim']) : date('Y-m-t'));
+            $stmt->execute([
+                ':dt_inicio' => $dtInicio,
+                ':dt_fim' => $dtFim,
+            ]);
             $data = $stmt->fetchAll();
 
             return $this->json($response, $data);

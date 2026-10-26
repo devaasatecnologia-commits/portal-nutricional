@@ -74,71 +74,103 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- 6 KPI CARDS -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5">
+    <!-- BARRA DE SELEÇÃO DE MÉTRICA (PESO VS UNIDADES) -->
+    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 px-1">
+        <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                <i class="fa-solid fa-sliders text-emerald-600"></i> Exibir Cards por:
+            </span>
+            <div class="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-bold shadow-inner">
+                <button type="button" id="btn-modo-peso" class="py-1 px-3 rounded-lg bg-emerald-600 text-white shadow-sm transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('peso')">
+                    <i class="fa-solid fa-weight-hanging text-[10px]"></i> Peso (KG / Ton)
+                </button>
+                <button type="button" id="btn-modo-unidade" class="py-1 px-3 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('unidade')">
+                    <i class="fa-solid fa-boxes-stacked text-[10px]"></i> Unidades (Peças)
+                </button>
+            </div>
+        </div>
+        <div class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+            <i class="fa-solid fa-circle-info text-emerald-600"></i> Valores em peso refletem a tonelagem real para logística e suprimentos
+        </div>
+    </div>
+
+    <!-- 6 KPI CARDS (INTERATIVOS & RASTREÁVEIS) -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5 select-none">
         <!-- KPI 1: Estoque Físico -->
-        <div class="ep-kpi bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm">
+        <div id="kpi-card-fisico" class="ep-kpi bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Estoque Físico Total: Soma do saldo físico atual (ESTOQUE_FILIAL) nos armazéns. Clique para filtrar todos com saldo físico."
+             onclick="estoquePrevisaoApp.clicarCardKpi('fisico')">
             <div class="flex items-center justify-between text-slate-500 mb-1">
                 <span class="ep-label text-slate-600">Estoque Físico</span>
-                <i class="fa-solid fa-cubes text-xs"></i>
+                <i class="fa-solid fa-cubes text-xs text-slate-400 group-hover:text-slate-700 transition"></i>
             </div>
             <div id="total-estoque" class="text-lg sm:text-2xl font-black text-slate-800">0</div>
             <div id="kpiDetalheEstoque" class="text-[0.65rem] text-slate-500 font-bold mt-1 truncate">M: 0 · PR: 0</div>
         </div>
 
         <!-- KPI 2: Carteira Reservada -->
-        <div class="ep-kpi bg-gradient-to-br from-amber-50 to-yellow-50/70 border border-amber-200 shadow-sm">
+        <div id="kpi-card-reservado" class="ep-kpi bg-gradient-to-br from-amber-50 to-yellow-50/70 border border-amber-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Carteira Reservada: Produtos empenhados em pedidos de venda abertos ou aprovados (Status 1 e 4). Clique para filtrar os itens reservados."
+             onclick="estoquePrevisaoApp.clicarCardKpi('reservado')">
             <div class="flex items-center justify-between text-amber-600 mb-1">
                 <span class="ep-label text-amber-700">Reservado (Pedidos)</span>
-                <i class="fa-solid fa-cart-shopping text-xs"></i>
+                <i class="fa-solid fa-cart-shopping text-xs text-amber-500 group-hover:text-amber-700 transition"></i>
             </div>
             <div id="total-reservado" class="text-lg sm:text-2xl font-black text-amber-600">0</div>
             <div id="kpiDetalheReservado" class="text-[0.65rem] text-amber-700/80 font-bold mt-1 truncate">Status 1 e 4</div>
         </div>
 
         <!-- KPI 3: Estoque Livre -->
-        <div class="ep-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm">
+        <div id="kpi-card-livre" class="ep-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Livre Disponível: Saldo real pronto para venda imediata (Físico menos Reservado). Clique para filtrar produtos com estoque livre adequado."
+             onclick="estoquePrevisaoApp.clicarCardKpi('livre')">
             <div class="flex items-center justify-between text-emerald-600 mb-1">
                 <span class="ep-label text-emerald-700">Livre Disponível</span>
-                <i class="fa-solid fa-circle-check text-xs"></i>
+                <i class="fa-solid fa-circle-check text-xs text-emerald-500 group-hover:text-emerald-700 transition"></i>
             </div>
             <div id="total-livre" class="text-lg sm:text-2xl font-black text-emerald-700">0</div>
-            <div class="text-[0.65rem] text-emerald-700/80 font-bold mt-1 truncate">Físico - Reservado</div>
+            <div id="kpiDetalheLivre" class="text-[0.65rem] text-emerald-700/80 font-bold mt-1 truncate">Físico - Reservado</div>
         </div>
 
         <!-- KPI 4: Previsão Chegada (OCs) -->
-        <div class="ep-kpi bg-gradient-to-br from-blue-50 to-sky-50/70 border border-blue-200 shadow-sm">
+        <div id="kpi-card-previsao" class="ep-kpi bg-gradient-to-br from-blue-50 to-sky-50/70 border border-blue-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Previsão de Compras: Cargas compradas e a caminho registradas em OCs com fornecedores. Clique para filtrar os itens a caminho."
+             onclick="estoquePrevisaoApp.clicarCardKpi('previsao')">
             <div class="flex items-center justify-between text-blue-600 mb-1">
                 <span class="ep-label text-blue-700">Previsão Compras</span>
-                <i class="fa-solid fa-truck-fast text-xs"></i>
+                <i class="fa-solid fa-truck-fast text-xs text-blue-500 group-hover:text-blue-700 transition"></i>
             </div>
             <div id="total-previsao" class="text-lg sm:text-2xl font-black text-blue-700">0</div>
             <div id="kpiDetalhePrevisao" class="text-[0.65rem] text-blue-700/80 font-bold mt-1 truncate">0 OCs a caminho</div>
         </div>
 
         <!-- KPI 5: Estoque Futuro -->
-        <div class="ep-kpi bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm">
+        <div id="kpi-card-futuro" class="ep-kpi bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Estoque Futuro: Projeção de disponibilidade no curto prazo (Livre + Previsão). Clique para ordenar pelos maiores volumes projetados."
+             onclick="estoquePrevisaoApp.clicarCardKpi('futuro')">
             <div class="flex items-center justify-between text-purple-600 mb-1">
                 <span class="ep-label text-purple-700">Estoque Futuro</span>
-                <i class="fa-solid fa-chart-line text-xs"></i>
+                <i class="fa-solid fa-chart-line text-xs text-purple-500 group-hover:text-purple-700 transition"></i>
             </div>
             <div id="total-futuro" class="text-lg sm:text-2xl font-black text-purple-700">0</div>
-            <div class="text-[0.65rem] text-purple-700/80 font-bold mt-1 truncate">Livre + Previsão</div>
+            <div id="kpiDetalheFuturo" class="text-[0.65rem] text-purple-700/80 font-bold mt-1 truncate">Livre + Previsão</div>
         </div>
 
         <!-- KPI 6: Zerados / Críticos -->
-        <div class="ep-kpi bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm">
+        <div id="kpi-card-critico" class="ep-kpi bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             data-tooltip="Críticos / Zerados: Produtos com saldo zerado ou abaixo de 10 unidades. Clique para filtrar imediatamente para reposição."
+             onclick="estoquePrevisaoApp.clicarCardKpi('critico')">
             <div class="flex items-center justify-between text-rose-600 mb-1">
                 <span class="ep-label text-rose-700">Críticos / Zerados</span>
-                <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+                <i class="fa-solid fa-triangle-exclamation text-xs text-rose-500 group-hover:text-rose-700 transition"></i>
             </div>
             <div id="total-zerados" class="text-lg sm:text-2xl font-black text-rose-600">0</div>
             <div id="kpiDetalheCriticos" class="text-[0.65rem] text-rose-700/80 font-bold mt-1 truncate">0 críticos (≤10)</div>
         </div>
     </div>
 
-    <!-- FILTROS DE BUSCA E CONTROLES -->
-    <div class="ep-card p-4 sm:p-5 mb-5">
+    <!-- FILTROS DE BUSCA E CONTROLES (STICKY BAR) -->
+    <div class="ep-card p-4 sm:p-5 mb-5 sticky top-3 z-30 bg-white/95 backdrop-blur-md shadow-md border border-slate-200/80 transition-all">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
             <!-- Busca Textual -->
             <div class="lg:col-span-4">
@@ -166,7 +198,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <select id="filter-status" class="ep-input text-xs sm:text-sm mt-1">
                     <option value="">Todos os status</option>
                     <option value="previsao">🚚 Com Previsão de Chegada (Compras a Caminho)</option>
-                    <option value="critico">⚠️ Crítico (≤ 10 un.)</option>
+                    <option value="reservado">🛒 Com Pedidos Reservados em Carteira</option>
+                    <option value="critico_zerado">🚨 Críticos ou Zerados (≤ 10 un.)</option>
+                    <option value="critico">⚠️ Crítico (1 a 10 un.)</option>
                     <option value="baixo">📉 Baixo estoque (11 a 50 un.)</option>
                     <option value="zerado">❌ Zerado (≤ 0 un.)</option>
                     <option value="ok">✅ Adequado (> 50 un.)</option>
@@ -206,7 +240,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <div class="overflow-x-auto">
             <table class="w-full text-left text-xs sm:text-sm">
-                <thead>
+                <thead class="sticky top-[80px] z-20 bg-slate-50 shadow-sm">
                     <tr class="bg-slate-50 border-b border-slate-200 text-[0.7rem] uppercase tracking-wider text-slate-400 font-extrabold select-none">
                         <th class="py-3 px-4 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('produto')">
                             Produto & Referência <i class="fa-solid fa-sort ml-1"></i>

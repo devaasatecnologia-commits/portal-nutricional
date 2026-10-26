@@ -132,12 +132,15 @@ class EstoquePrevisaoController
 
             $permissions = $this->getUserPermissions($request, $uid);
 
-            // Resumo Estoque Físico
+            // Resumo Estoque Físico (Unidades e Peso em KG)
             $sqlEstoque = "
                 SELECT 
                     COALESCE(SUM(ef.SALDOATUAL), 0) as total_estoque,
                     COALESCE(SUM(CASE WHEN ef.IDFILIAL = 1 THEN ef.SALDOATUAL ELSE 0 END), 0) as estoque_matriz,
                     COALESCE(SUM(CASE WHEN ef.IDFILIAL = 6 THEN ef.SALDOATUAL ELSE 0 END), 0) as estoque_filial,
+                    COALESCE(SUM(ef.SALDOATUAL * COALESCE(i.PESOLIQUIDO, 0)), 0) as total_estoque_kg,
+                    COALESCE(SUM(CASE WHEN ef.IDFILIAL = 1 THEN ef.SALDOATUAL * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as estoque_matriz_kg,
+                    COALESCE(SUM(CASE WHEN ef.IDFILIAL = 6 THEN ef.SALDOATUAL * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as estoque_filial_kg,
                     COUNT(DISTINCT ef.IDITEM) as total_produtos,
                     COUNT(DISTINCT CASE WHEN ef.SALDOATUAL <= 0 THEN ef.IDITEM END) as produtos_zerados,
                     COUNT(DISTINCT CASE WHEN ef.SALDOATUAL BETWEEN 1 AND 10 THEN ef.IDITEM END) as produtos_criticos,
@@ -152,12 +155,15 @@ class EstoquePrevisaoController
             $stmtEstoque = $this->pdo->query($sqlEstoque);
             $estoque = $stmtEstoque->fetch(PDO::FETCH_ASSOC) ?: [];
 
-            // Resumo Carteira Reservada (pedidos status 1 e 4)
+            // Resumo Carteira Reservada (pedidos status 1 e 4 - Unidades e Peso em KG)
             $sqlCarteira = "
                 SELECT 
                     COALESCE(SUM(COALESCE(pi.QTSALDO, pi.QT)), 0) as total_reservado,
                     COALESCE(SUM(CASE WHEN p.IDFILIAL = 1 THEN COALESCE(pi.QTSALDO, pi.QT) ELSE 0 END), 0) as reservado_matriz,
-                    COALESCE(SUM(CASE WHEN p.IDFILIAL = 6 THEN COALESCE(pi.QTSALDO, pi.QT) ELSE 0 END), 0) as reservado_filial
+                    COALESCE(SUM(CASE WHEN p.IDFILIAL = 6 THEN COALESCE(pi.QTSALDO, pi.QT) ELSE 0 END), 0) as reservado_filial,
+                    COALESCE(SUM(COALESCE(pi.QTSALDO, pi.QT) * COALESCE(i.PESOLIQUIDO, 0)), 0) as total_reservado_kg,
+                    COALESCE(SUM(CASE WHEN p.IDFILIAL = 1 THEN COALESCE(pi.QTSALDO, pi.QT) * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as reservado_matriz_kg,
+                    COALESCE(SUM(CASE WHEN p.IDFILIAL = 6 THEN COALESCE(pi.QTSALDO, pi.QT) * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as reservado_filial_kg
                 FROM PEDIDO_ITEM pi
                 JOIN PEDIDO p ON p.IDPEDIDO = pi.IDPEDIDO
                 JOIN ITEM i ON i.IDITEM = pi.IDITEM AND i.INATIVO = 'N' AND i.TIPO = '0'
@@ -169,12 +175,15 @@ class EstoquePrevisaoController
             $stmtCart = $this->pdo->query($sqlCarteira);
             $carteira = $stmtCart->fetch(PDO::FETCH_ASSOC) ?: [];
 
-            // Resumo Previsão de Chegada (Compras / OCs pendentes da Matriz + Filial PR unificadas)
+            // Resumo Previsão de Chegada (Compras / OCs pendentes Matriz + Filial PR - Unidades e Peso em KG)
             $sqlPrevisao = "
                 SELECT 
                     COALESCE(SUM(oci.QTSALDO), 0) as total_previsao,
                     COALESCE(SUM(CASE WHEN oc.IDFILIAL = 1 THEN oci.QTSALDO ELSE 0 END), 0) as previsao_matriz,
                     COALESCE(SUM(CASE WHEN oc.IDFILIAL = 6 THEN oci.QTSALDO ELSE 0 END), 0) as previsao_filial,
+                    COALESCE(SUM(oci.QTSALDO * COALESCE(i.PESOLIQUIDO, 0)), 0) as total_previsao_kg,
+                    COALESCE(SUM(CASE WHEN oc.IDFILIAL = 1 THEN oci.QTSALDO * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as previsao_matriz_kg,
+                    COALESCE(SUM(CASE WHEN oc.IDFILIAL = 6 THEN oci.QTSALDO * COALESCE(i.PESOLIQUIDO, 0) ELSE 0 END), 0) as previsao_filial_kg,
                     COUNT(DISTINCT oci.IDITEM) as produtos_com_previsao,
                     COUNT(DISTINCT oci.IDOC) as total_ocs_abertas
                 FROM OC_ITEM oci
@@ -196,6 +205,12 @@ class EstoquePrevisaoController
             $totalLivre = max(0, $totalEstoque - $totalReservado);
             $totalFuturo = $totalLivre + $totalPrevisao;
 
+            $totalEstoqueKg = (float)($estoque['total_estoque_kg'] ?? 0);
+            $totalReservadoKg = (float)($carteira['total_reservado_kg'] ?? 0);
+            $totalPrevisaoKg = (float)($prev['total_previsao_kg'] ?? 0);
+            $totalLivreKg = max(0, $totalEstoqueKg - $totalReservadoKg);
+            $totalFuturoKg = $totalLivreKg + $totalPrevisaoKg;
+
             $listaFiliais = [
                 ['idfilial' => 0, 'nome' => 'UNIFICADO (MATRIZ + PR)'],
                 ['idfilial' => 1, 'nome' => 'MATRIZ 1 (SC)'],
@@ -205,11 +220,19 @@ class EstoquePrevisaoController
             return $this->json($response, [
                 'success' => true,
                 'data' => [
+                    // Métricas em Unidades
                     'total_estoque' => $totalEstoque,
                     'total_reservado' => $totalReservado,
                     'total_livre' => $totalLivre,
                     'total_previsao' => $totalPrevisao,
                     'total_futuro' => $totalFuturo,
+                    // Métricas em Peso (KG)
+                    'total_estoque_kg' => $totalEstoqueKg,
+                    'total_reservado_kg' => $totalReservadoKg,
+                    'total_livre_kg' => $totalLivreKg,
+                    'total_previsao_kg' => $totalPrevisaoKg,
+                    'total_futuro_kg' => $totalFuturoKg,
+                    // Contadores de Produtos
                     'total_produtos' => (int)($estoque['total_produtos'] ?? 0),
                     'produtos_zerados' => (int)($estoque['produtos_zerados'] ?? 0),
                     'produtos_criticos' => (int)($estoque['produtos_criticos'] ?? 0),
@@ -223,6 +246,12 @@ class EstoquePrevisaoController
                         'reservado_filial' => (float)($carteira['reservado_filial'] ?? 0),
                         'previsao_matriz' => (float)($prev['previsao_matriz'] ?? 0),
                         'previsao_filial' => (float)($prev['previsao_filial'] ?? 0),
+                        'estoque_matriz_kg' => (float)($estoque['estoque_matriz_kg'] ?? 0),
+                        'estoque_filial_kg' => (float)($estoque['estoque_filial_kg'] ?? 0),
+                        'reservado_matriz_kg' => (float)($carteira['reservado_matriz_kg'] ?? 0),
+                        'reservado_filial_kg' => (float)($carteira['reservado_filial_kg'] ?? 0),
+                        'previsao_matriz_kg' => (float)($prev['previsao_matriz_kg'] ?? 0),
+                        'previsao_filial_kg' => (float)($prev['previsao_filial_kg'] ?? 0),
                     ]
                 ],
                 'config' => [
@@ -295,6 +324,8 @@ class EstoquePrevisaoController
                     I.DESCRICAO as produto,
                     I.PATH_FOTO_MASTER as \"Foto\",
                     I.PATH_FOTO_MASTER as foto,
+                    COALESCE(I.PESOLIQUIDO, 0) as peso_liquido,
+                    COALESCE(I.PESOBRUTO, 0) as peso_bruto,
                     COALESCE(M.DESCRICAO, '') AS \"Marca\",
                     COALESCE(M.DESCRICAO, '') AS marca,
                     COALESCE(ef1.SALDOATUAL, 0) AS estoque_matriz,
@@ -310,7 +341,12 @@ class EstoquePrevisaoController
                     COALESCE(oc_prev.qtd_prev_matriz, 0) AS qtd_prev_matriz,
                     COALESCE(oc_prev.qtd_prev_filial, 0) AS qtd_prev_filial,
                     (GREATEST(0, " . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " - COALESCE(res.qtd_reservada, 0)) + COALESCE(oc_prev.qtd_previsao, 0)) AS \"Estoque Líquido (c/ Previsão)\",
-                    (GREATEST(0, " . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " - COALESCE(res.qtd_reservada, 0)) + COALESCE(oc_prev.qtd_previsao, 0)) AS estoque_futuro
+                    (GREATEST(0, " . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " - COALESCE(res.qtd_reservada, 0)) + COALESCE(oc_prev.qtd_previsao, 0)) AS estoque_futuro,
+                    ROUND((" . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " * COALESCE(I.PESOLIQUIDO, 0))::numeric, 2) AS peso_estoque_total,
+                    ROUND((COALESCE(res.qtd_reservada, 0) * COALESCE(I.PESOLIQUIDO, 0))::numeric, 2) AS peso_reservado,
+                    ROUND((GREATEST(0, " . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " - COALESCE(res.qtd_reservada, 0)) * COALESCE(I.PESOLIQUIDO, 0))::numeric, 2) AS peso_livre,
+                    ROUND((COALESCE(oc_prev.qtd_previsao, 0) * COALESCE(I.PESOLIQUIDO, 0))::numeric, 2) AS peso_previsao,
+                    ROUND(((GREATEST(0, " . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . " - COALESCE(res.qtd_reservada, 0)) + COALESCE(oc_prev.qtd_previsao, 0)) * COALESCE(I.PESOLIQUIDO, 0))::numeric, 2) AS peso_futuro
                 FROM ITEM I
                 LEFT JOIN MARCA M ON M.IDMARCA = I.IDMARCA
                 LEFT JOIN ESTOQUE_FILIAL ef1 ON ef1.IDITEM = I.IDITEM AND ef1.IDFILIAL = 1
@@ -342,16 +378,23 @@ class EstoquePrevisaoController
             ";
 
             // Filtro por status de estoque
+            $saldoFisicoSql = ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))"));
             if ($status === 'zerado') {
-                $sql .= " AND (" . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . ") <= 0";
+                $sql .= " AND ({$saldoFisicoSql}) <= 0";
             } elseif ($status === 'critico') {
-                $sql .= " AND (" . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . ") BETWEEN 1 AND 10";
+                $sql .= " AND ({$saldoFisicoSql}) BETWEEN 1 AND 10";
+            } elseif ($status === 'critico_zerado') {
+                $sql .= " AND ({$saldoFisicoSql}) <= 10";
             } elseif ($status === 'baixo') {
-                $sql .= " AND (" . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . ") BETWEEN 11 AND 50";
+                $sql .= " AND ({$saldoFisicoSql}) BETWEEN 11 AND 50";
             } elseif ($status === 'previsao') {
                 $sql .= " AND COALESCE(oc_prev.qtd_previsao, 0) > 0";
+            } elseif ($status === 'reservado') {
+                $sql .= " AND COALESCE(res.qtd_reservada, 0) > 0";
+            } elseif ($status === 'fisico') {
+                $sql .= " AND ({$saldoFisicoSql}) > 0";
             } elseif ($status === 'ok') {
-                $sql .= " AND (" . ($filtroId === 1 ? "COALESCE(ef1.SALDOATUAL, 0)" : ($filtroId === 6 ? "COALESCE(ef6.SALDOATUAL, 0)" : "(COALESCE(ef1.SALDOATUAL, 0) + COALESCE(ef6.SALDOATUAL, 0))")) . ") > 50";
+                $sql .= " AND ({$saldoFisicoSql}) > 50";
             }
 
             // Contagem total para paginação
@@ -471,6 +514,8 @@ class EstoquePrevisaoController
                     I.REFERENCIA as referencia,
                     I.DESCRICAO as nome,
                     I.PATH_FOTO_MASTER as foto,
+                    COALESCE(I.PESOLIQUIDO, 0) as peso_liquido,
+                    COALESCE(I.PESOBRUTO, 0) as peso_bruto,
                     COALESCE(M.DESCRICAO, '') as marca,
                     COALESCE(ef1.SALDOATUAL, 0) as estoque_matriz,
                     COALESCE(ef6.SALDOATUAL, 0) as estoque_filial,

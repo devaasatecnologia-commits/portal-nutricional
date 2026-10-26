@@ -236,3 +236,58 @@
         font-size: 12px !important;
     }
 }
+
+
+/* ==========================================================================
+   TOOLTIPS MODERNOS NUTRICIONAL (GLOBAL)
+   ========================================================================== */
+#nutri-tooltip {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    background: rgba(15, 23, 42, 0.95);
+    color: #f8fafc;
+    font-size: 0.72rem;
+    font-weight: 600;
+    line-height: 1.4;
+    padding: 0.55rem 0.85rem;
+    border-radius: 0.75rem;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.12);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    max-width: 290px;
+    opacity: 0;
+    transform: scale(0.95) translateY(2px);
+    transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    text-align: center;
+}
+
+#nutri-tooltip.nutri-tooltip-visible {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+}
+
+#nutri-tooltip::after {
+    content: '';
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    background: rgba(15, 23, 42, 0.95);
+    transform: rotate(45deg);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+#nutri-tooltip.arrow-bottom::after {
+    bottom: -4px;
+    left: calc(50% - 4px);
+    border-top: none;
+    border-left: none;
+}
+
+#nutri-tooltip.arrow-top::after {
+    top: -4px;
+    left: calc(50% - 4px);
+    border-bottom: none;
+    border-right: none;
+}

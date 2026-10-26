@@ -31,6 +31,18 @@ const tipo = document.querySelector('[data-tipo]')?.dataset.tipo || 'matriz-fili
 const ehMF = tipo === 'matriz-filial';
 const base = `transf-compras/${tipo}`;
 
+const obterPeriodoMesCorrente = () => {
+    const agora = new Date();
+    const ano = agora.getFullYear();
+    const mes = String(agora.getMonth() + 1).padStart(2, '0');
+    const ultimoDia = new Date(ano, agora.getMonth() + 1, 0).getDate();
+    return {
+        inicio: `${ano}-${mes}-01`,
+        fim: `${ano}-${mes}-${String(ultimoDia).padStart(2, '0')}`,
+        nomeMes: agora.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+    };
+};
+
 const estado = {
     registros: [],
     pendentes: [],
@@ -139,16 +151,23 @@ async function carregar() {
         </div>`;
 
     try {
-        const r = await apiFetch(base, 'GET', { ...filtros(), limite: filtrado() ? 500 : 15 });
+        const r = await apiFetch(base, 'GET', { ...filtros(), limite: filtrado() ? 500 : 50 });
         estado.registros = r.registros || [];
 
-        $('rotulo').textContent = filtrado() ? `Filtrado (${r.quantidade} encontrados)` : 'Últimos registros';
+        const padraoMes = obterPeriodoMesCorrente();
+        const ehMesAtual = ($('dtIni')?.value === padraoMes.inicio && $('dtFim')?.value === padraoMes.fim);
+        const rotuloPeriodo = ehMesAtual
+            ? `Mês Atual (${padraoMes.nomeMes})`
+            : ($('dtIni')?.value && $('dtFim')?.value ? `${dataBR($('dtIni').value)} a ${dataBR($('dtFim').value)}` : 'Período Completo');
+
+        $('rotulo').textContent = `Solicitações (${rotuloPeriodo})`;
         $('totais').textContent = `${r.quantidade} solicitação(ões)`;
 
-        // Atualizar KPIs de topo
+        // Atualizar KPIs de topo com o mês corrente / filtro selecionado
         if ($('kpiSolicitacoes')) $('kpiSolicitacoes').textContent = r.quantidade || 0;
-        if ($('kpiSolicitacoesSub')) $('kpiSolicitacoesSub').textContent = filtrado() ? 'Filtrado' : 'Últimas 15 solicitações';
+        if ($('kpiSolicitacoesSub')) $('kpiSolicitacoesSub').textContent = rotuloPeriodo;
         if ($('kpiValorTotal')) $('kpiValorTotal').textContent = ehMF ? brl(r.total_guia) : brl(r.total_valor);
+        if ($('kpiValorSub')) $('kpiValorSub').textContent = ehMF ? `ICMS-ST (${rotuloPeriodo})` : `Ordens (${rotuloPeriodo})`;
 
         lista.innerHTML = estado.registros.length
             ? estado.registros.map(linhaHistorico).join('')
@@ -1018,11 +1037,17 @@ async function baixar() {
 // ==========================================================================
 
 window.addEventListener('DOMContentLoaded', () => {
+    // Garante que os campos de data iniciem preenchidos com o Mês Corrente
+    const padraoMes = obterPeriodoMesCorrente();
+    if ($('dtIni') && !$('dtIni').value) $('dtIni').value = padraoMes.inicio;
+    if ($('dtFim') && !$('dtFim').value) $('dtFim').value = padraoMes.fim;
+
     // Histórico e Filtros
     $('btnFiltrar')?.addEventListener('click', carregar);
     $('btnLimpar')?.addEventListener('click', () => {
-        if ($('dtIni')) $('dtIni').value = '';
-        if ($('dtFim')) $('dtFim').value = '';
+        const resetMes = obterPeriodoMesCorrente();
+        if ($('dtIni')) $('dtIni').value = resetMes.inicio;
+        if ($('dtFim')) $('dtFim').value = resetMes.fim;
         if ($('busca')) $('busca').value = '';
         carregar();
     });
