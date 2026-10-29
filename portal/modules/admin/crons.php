@@ -354,30 +354,64 @@ async function mostrarServidor() {
         const d = await apiFetch('/cron/servidor', 'GET');
         if (!d.success) throw new Error(d.error || 'Erro');
         const status = d.dispatcher_ativo
-            ? `<span class="text-emerald-600 font-bold"><i class="fa-solid fa-circle-check mr-1"></i>Dispatcher ativo</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
+            ? `<span class="text-emerald-600 font-bold"><i class="fa-solid fa-circle-check mr-1"></i>Dispatcher ativo no portal</span> (último batimento: ${formatarData(d.ultimo_batimento)})`
             : (d.ultimo_batimento
-                ? `<span class="text-rose-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Dispatcher sem batimento nos últimos 3 min</span> (último registro: ${formatarData(d.ultimo_batimento)})`
-                : '<span class="text-amber-600 font-bold">Aguardando primeiro disparo do cPanel</span> — configure uma das opções abaixo.');
+                ? `<span class="text-rose-600 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Dispatcher sem batimento recente</span> (último registro: ${formatarData(d.ultimo_batimento)})`
+                : '<span class="text-amber-600 font-bold">Aguardando configuração no cPanel</span> — escolha uma das opções abaixo.');
         await Swal.fire({
-            title: 'Como configurar no cPanel (Trabalhos Cron)',
-            width: 820,
-            html: `<div class="text-left text-sm space-y-3">
-                <p>${status}</p>
-                <ol class="list-decimal pl-5 space-y-1 text-xs text-slate-600">${d.instrucoes.map(i => `<li>${escapeHtml(i)}</li>`).join('')}</ol>
-                <div class="mt-2">
-                    <b class="text-xs text-emerald-700 uppercase block mb-1">Opção A — Motor Unificado do Portal (Configurar 1x a cada minuto: * * * * *):</b>
-                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_dispatcher || d.linha_cron)}</div>
+            title: 'Configuração dos Crons no cPanel',
+            width: 860,
+            html: `<div class="text-left text-sm space-y-3.5">
+                <p class="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">${status}</p>
+
+                <!-- Token Seguro do Portal -->
+                <div class="p-3 rounded-xl bg-amber-50/80 border border-amber-200">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-key"></i> Token de Segurança (CRON_TOKEN):
+                        </span>
+                        <button type="button" onclick="navigator.clipboard.writeText('${escapeHtml(d.cron_token)}'); showToast('Token copiado!');" class="text-[11px] font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 px-2 py-0.5 rounded transition">
+                            <i class="fa-regular fa-copy"></i> Copiar Token
+                        </button>
+                    </div>
+                    <div class="font-mono text-xs text-slate-800 break-all select-all font-bold">${escapeHtml(d.cron_token || 'Token não localizado no .env')}</div>
                 </div>
-                ${d.linha_curl_bonificacao ? `<div class="mt-2">
-                    <b class="text-xs text-indigo-700 uppercase block mb-1">Opção B — Somente Bonificações Flex (Horário fixo no cPanel: 0 22 * * *):</b>
-                    <div class="bg-slate-900 text-sky-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_bonificacao)}</div>
-                </div>` : ''}
+
+                <!-- Opção 1: Motor Unificado -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <b class="text-xs text-emerald-800 uppercase block">Opção A (Recomendada) — Motor Unificado do Portal (Executa a cada minuto: * * * * *):</b>
+                        <button type="button" onclick="navigator.clipboard.writeText('${escapeHtml(d.linha_curl_dispatcher || d.linha_cron)}'); showToast('Comando Opção A copiado!');" class="text-[11px] font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 px-2 py-0.5 rounded transition">
+                            <i class="fa-regular fa-copy"></i> Copiar Linha
+                        </button>
+                    </div>
+                    <div class="bg-slate-900 text-emerald-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_dispatcher || d.linha_cron)}</div>
+                    <p class="text-[11px] text-slate-500 mt-1">Com essa opção, você coloca apenas <b>1 linha no cPanel</b> e todos os horários e ativações são controlados diretamente pelo Portal.</p>
+                </div>
+
+                <!-- Opção 2: Linha Direta das 10:00 (Clientes Isentos) -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <b class="text-xs text-indigo-800 uppercase block">Opção B — Linha Direta no cPanel para Clientes Isentos (Horário: 0 10 * * *):</b>
+                        <button type="button" onclick="navigator.clipboard.writeText('${escapeHtml(d.linha_curl_clientes_isentos || d.linha_curl_clientes_isentos_query)}'); showToast('Comando Clientes Isentos copiado!');" class="text-[11px] font-bold text-indigo-800 bg-indigo-100 hover:bg-indigo-200 px-2 py-0.5 rounded transition">
+                            <i class="fa-regular fa-copy"></i> Copiar Linha
+                        </button>
+                    </div>
+                    <div class="bg-slate-900 text-indigo-300 p-3 rounded-xl font-mono text-xs break-all select-all">${escapeHtml(d.linha_curl_clientes_isentos || d.linha_curl_clientes_isentos_query)}</div>
+                    <p class="text-[11px] text-slate-500 mt-1">Ideal para testar pontualmente a substituição da linha legada no cPanel mantendo o disparo das 10h da manhã.</p>
+                </div>
             </div>`,
             showCancelButton: true,
-            confirmButtonText: 'Copiar Comando (Opção A)',
-            cancelButtonText: 'Fechar',
-            confirmButtonColor: '#274036'
-        }).then(r => { if (r.isConfirmed) { navigator.clipboard.writeText(d.linha_curl_dispatcher || d.linha_cron); showToast('Comando copiado!'); } });
+            confirmButtonText: 'Fechar',
+            cancelButtonText: 'Copiar Opção A',
+            confirmButtonColor: '#274036',
+            cancelButtonColor: '#10b981'
+        }).then(r => { 
+            if (r.dismiss === Swal.DismissReason.cancel) { 
+                navigator.clipboard.writeText(d.linha_curl_dispatcher || d.linha_cron); 
+                showToast('Comando Opção A copiado!'); 
+            } 
+        });
     } catch (e) {
         showError('Erro', e.message);
     }
@@ -871,23 +905,113 @@ async function executarTesteConfiguracao(payload) {
                </div>`
             : '';
 
+        // Montagem da Hierarquia de Destinatários
+        const hierarquia = res.simulacao?.hierarquia_destinatarios || null;
+        let hierarquiaHtml = '';
+        if (hierarquia) {
+            hierarquiaHtml = `
+                <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs space-y-2">
+                    <div class="flex items-center justify-between pb-1 border-b border-slate-200">
+                        <b class="text-slate-800 uppercase tracking-wider flex items-center gap-1.5 font-bold">
+                            <i class="fa-solid fa-sitemap text-indigo-600"></i> Hierarquia de Recebimento
+                        </b>
+                        <div class="flex items-center gap-2">
+                            <a href="/portal/modules/admin/configuracoes-modulos.php?tab=emails" target="_blank" class="px-2 py-0.5 rounded-lg text-[10px] font-bold text-indigo-700 bg-indigo-100 hover:bg-indigo-200 transition flex items-center gap-1">
+                                <i class="fa-solid fa-pen-to-square"></i> Editar Listas
+                            </a>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-indigo-100 text-indigo-800">${escapeHtml(hierarquia.tipo || 'Padrão')}</span>
+                        </div>
+                    </div>
+                    ${hierarquia.destinatario_principal || hierarquia.principal || hierarquia.destinatarios ? `
+                        <div class="flex items-start gap-2">
+                            <span class="w-20 font-bold text-slate-500 flex-shrink-0">Principal:</span>
+                            <span class="font-medium text-slate-800">${escapeHtml(Array.isArray(hierarquia.principal || hierarquia.destinatarios) ? (hierarquia.principal || hierarquia.destinatarios).join(', ') : (hierarquia.destinatario_principal || hierarquia.principal || hierarquia.destinatarios))}</span>
+                        </div>` : ''}
+                    ${hierarquia.copias_cc ? `
+                        <div class="flex items-start gap-2">
+                            <span class="w-20 font-bold text-slate-500 flex-shrink-0">Cópias (CC):</span>
+                            <span class="font-medium text-slate-700">${escapeHtml(Array.isArray(hierarquia.copias_cc) ? hierarquia.copias_cc.join(', ') : hierarquia.copias_cc)}</span>
+                        </div>` : ''}
+                    ${hierarquia.consolidado_gestao ? `
+                        <div class="flex items-start gap-2">
+                            <span class="w-20 font-bold text-slate-500 flex-shrink-0">Consolidado:</span>
+                            <span class="font-semibold text-emerald-700">${escapeHtml(Array.isArray(hierarquia.consolidado_gestao) ? hierarquia.consolidado_gestao.join(', ') : hierarquia.consolidado_gestao)}</span>
+                        </div>` : ''}
+                    ${hierarquia.visao_geral ? `
+                        <div class="flex items-start gap-2">
+                            <span class="w-20 font-bold text-slate-500 flex-shrink-0">Geral:</span>
+                            <span class="font-semibold text-teal-800">${escapeHtml(hierarquia.visao_geral.join(', '))}</span>
+                        </div>` : ''}
+                    ${hierarquia.filial_1_sc || hierarquia.filial_6_pr ? `
+                        <div class="flex items-start gap-2">
+                            <span class="w-20 font-bold text-slate-500 flex-shrink-0">Filiais:</span>
+                            <span class="text-slate-700">F1 (SC): <b>${escapeHtml((hierarquia.filial_1_sc||[]).join(', '))}</b> | F6 (PR): <b>${escapeHtml((hierarquia.filial_6_pr||[]).join(', '))}</b></span>
+                        </div>` : ''}
+                    ${hierarquia.regra ? `
+                        <div class="pt-1.5 border-t border-slate-200 text-[11px] text-slate-500 italic">
+                            <i class="fa-solid fa-circle-info text-blue-500 mr-1"></i>${escapeHtml(hierarquia.regra)}
+                        </div>` : ''}
+                </div>
+            `;
+        }
+
+        // Preview Visual do E-mail Real
         const previewHtml = res.simulacao?.preview_html
-            ? `<div class="mt-3 border border-indigo-100 bg-white rounded-xl p-3 max-h-[260px] overflow-auto">${res.simulacao.preview_html}</div>`
+            ? `
+                <div class="border border-slate-200 rounded-2xl overflow-hidden bg-slate-100">
+                    <div class="bg-slate-800 text-white px-3.5 py-2 text-xs font-bold flex items-center justify-between">
+                        <span><i class="fa-regular fa-envelope mr-1.5 text-amber-400"></i>Pré-visualização do E-mail Real (Amostra / Layout)</span>
+                        <span class="text-[10px] text-slate-400 font-normal">Exibição formatada</span>
+                    </div>
+                    <div class="p-4 bg-white max-h-[300px] overflow-y-auto text-left shadow-inner">
+                        ${res.simulacao.preview_html}
+                    </div>
+                </div>
+            `
             : '';
+
+        // Disparo Seguro de Amostra de Teste por E-mail
+        const disparoAmostraHtml = `
+            <div class="rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/60 p-4">
+                <div class="flex items-center justify-between mb-2">
+                    <b class="text-xs font-extrabold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <i class="fa-solid fa-paper-plane text-indigo-600"></i> Disparar Amostra de Teste para Mim
+                    </b>
+                    <span class="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">100% Seguro</span>
+                </div>
+                <p class="text-[11px] text-slate-500 mb-3">Receba uma cópia idêntica deste e-mail na sua caixa postal antes de colocar a rotina para os representantes ou gestores reais.</p>
+                <div class="flex items-center gap-2">
+                    <input id="emailAmostraInput" type="email" placeholder="Digite seu e-mail para receber o teste..." 
+                           class="flex-1 px-3 py-2 text-xs border border-indigo-200 rounded-xl focus:outline-indigo-600 bg-white">
+                    <button type="button" onclick="dispararAmostraTeste('${escapeHtml(payload.comando || '')}')" 
+                            id="btnDispararAmostra"
+                            class="px-4 py-2 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-700 transition flex items-center gap-1.5 flex-shrink-0 shadow-sm">
+                        <i class="fa-solid fa-paper-plane"></i> Enviar Amostra
+                    </button>
+                </div>
+                <div id="resultadoDisparoAmostra" class="text-xs font-semibold mt-2 hidden"></div>
+            </div>
+        `;
 
         const resultadoModal = await Swal.fire({
             title: res.success ? '🧪 Simulação & Configuração OK' : '⚠️ Atenção no Teste',
-            width: 760,
+            width: 820,
             html: `
-                <div class="text-left space-y-3">
-                    <div class="p-3 rounded-xl ${res.success ? 'bg-emerald-50 text-emerald-800 border border-emerald-200' : 'bg-amber-50 text-amber-800 border border-amber-200'} text-sm font-semibold">
-                        ${escapeHtml(res.message || '')}
+                <div class="text-left space-y-4">
+                    <div class="p-3.5 rounded-2xl ${res.success ? 'bg-emerald-50 text-emerald-900 border border-emerald-200' : 'bg-amber-50 text-amber-900 border border-amber-200'} text-xs font-semibold flex items-center gap-2">
+                        <i class="fa-solid ${res.success ? 'fa-circle-check text-emerald-600' : 'fa-triangle-exclamation text-amber-600'} text-base"></i>
+                        <span>${escapeHtml(res.message || '')}</span>
                     </div>
-                    <div class="bg-white border border-slate-200 rounded-xl px-3 py-1 divide-y divide-slate-100 max-h-[220px] overflow-auto">
+
+                    <!-- Diagnóstico Técnico -->
+                    <div class="bg-white border border-slate-200 rounded-2xl px-3 py-1 divide-y divide-slate-100 max-h-[170px] overflow-auto">
                         ${checksHtml}
                     </div>
+
                     ${proximasHtml}
+                    ${hierarquiaHtml}
                     ${previewHtml}
+                    ${disparoAmostraHtml}
                 </div>
             `,
             showCancelButton: true,
@@ -903,6 +1027,54 @@ async function executarTesteConfiguracao(payload) {
     } catch (e) {
         Swal.close();
         showError('Erro ao testar', e.message || 'Falha ao testar configuração');
+    }
+}
+
+async function dispararAmostraTeste(comando) {
+    const input = document.getElementById('emailAmostraInput');
+    const resBox = document.getElementById('resultadoDisparoAmostra');
+    const btn = document.getElementById('btnDispararAmostra');
+    const email = input?.value?.trim() || '';
+
+    if (!email || !email.includes('@')) {
+        if (resBox) {
+            resBox.className = 'text-xs font-bold text-rose-600 mt-2 block';
+            resBox.textContent = 'Informe um e-mail válido para receber a amostra.';
+        }
+        input?.focus();
+        return;
+    }
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+        }
+        if (resBox) {
+            resBox.className = 'text-xs font-semibold text-slate-500 mt-2 block';
+            resBox.textContent = 'Conectando ao servidor e gerando layout de teste...';
+        }
+
+        const data = await apiFetch('/cron/amostra-teste', 'POST', {
+            comando: comando,
+            email_destino: email
+        });
+
+        if (resBox) {
+            resBox.className = 'text-xs font-bold text-emerald-700 mt-2 block';
+            resBox.innerHTML = `<i class="fa-solid fa-circle-check mr-1 text-emerald-600"></i> ${escapeHtml(data.message || 'Amostra enviada com sucesso!')}`;
+        }
+        showToast('E-mail de amostra disparado com sucesso!');
+    } catch (e) {
+        if (resBox) {
+            resBox.className = 'text-xs font-bold text-rose-600 mt-2 block';
+            resBox.textContent = 'Erro ao enviar: ' + (e.message || 'Falha no disparo');
+        }
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Enviar Amostra';
+        }
     }
 }
 

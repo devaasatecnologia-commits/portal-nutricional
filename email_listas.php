@@ -16,6 +16,22 @@
 class EmailListas {
     
     public static function get($contexto = 'default') {
+        try {
+            if (function_exists('getPDO')) {
+                $pdo = getPDO();
+                $st = $pdo->prepare("SELECT emails_json FROM config_email_listas WHERE chave = ?");
+                $st->execute([$contexto]);
+                $raw = $st->fetchColumn();
+                if ($raw) {
+                    $val = json_decode($raw, true);
+                    if ($val !== null) {
+                        return self::isListaSimples($val) ? self::validar($val) : $val;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Fallback para o array estático
+        }
         
         $listas = [
             

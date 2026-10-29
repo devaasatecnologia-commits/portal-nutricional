@@ -30,6 +30,7 @@ verificacao_completa.txt
 
 # Logs e temporarios
 logs/
+scratch/
 *.log
 *.bak
 *.bak_*

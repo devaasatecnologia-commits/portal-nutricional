@@ -1,6 +1,6 @@
 # Ponteiro de Continuidade
 
-Último token ativo: `docs/tokens/CONTINUATION-2026-10-26-fechamento-dia.md`
-Data: 26/10/2026 (Fechamento do Dia)
-Módulos Concluídos Hoje: MOD-TRANSF-COMPRA, MOD-ESTOQUE-PREVISAO, Ajuste Mês Corrente (Separacao & Carregamento) e Tooltips Globais
-Próxima Sessão: Terça-feira, 27/10/2026 (Dar sequência aos próximos módulos conforme apontamentos do supervisor)
+Último token ativo: `docs/tokens/CONTINUATION-2026-10-29-movimentacao-flex.md`
+Data: 29/10/2026
+Módulos Concluídos: Módulo Novo Movimentação de Verba Flex (Mercos) com Cobertura Automática de Gestor (Tiago F1 / Tales F6) e Auditoria Completa
+Próxima Sessão: Validação em produção e deploy FTP

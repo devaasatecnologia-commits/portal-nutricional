@@ -224,33 +224,7 @@ class CronRotinasController
                 }
 
             case 'notas_nutrire':
-                try {
-                    $dias = (int)($parametros['dias_retroativos'] ?? 5);
-                    $sql = "SELECT COUNT(DISTINCT nota.numnota) AS total_notas
-                            FROM nota
-                            WHERE nota.idfilial IN (1)
-                              AND nota.status IN (2)
-                              AND nota.idtiponota IN (6, 37, 2)
-                              AND nota.emissao >= CURRENT_DATE - INTERVAL '{$dias} days'";
-                    $totNotas = (int)$this->pdo->query($sql)->fetchColumn();
-                    $checks[] = [
-                        'etapa' => "Consulta Notas Fiscais (Últimos {$dias} dias)",
-                        'status' => 'ok',
-                        'detalhe' => "Localizadas {$totNotas} nota(s) emitidas nos últimos {$dias} dias."
-                    ];
-                    return [
-                        'success' => true,
-                        'message' => "Simulação concluída: {$totNotas} nota(s) encontradas no período de {$dias} dias.",
-                        'checks' => $checks,
-                        'detalhes' => ['notas_periodo' => $totNotas, 'dias_retroativos' => $dias]
-                    ];
-                } catch (\Throwable $e) {
-                    return [
-                        'success' => false,
-                        'message' => 'Erro ao consultar notas: ' . $e->getMessage(),
-                        'checks' => [['etapa' => 'Consulta Notas Nutrire', 'status' => 'error', 'detalhe' => $e->getMessage()]]
-                    ];
-                }
+                return $this->simularNotasNutrire($parametros);
 
             case 'refresh_cubo_vendas':
                 try {
@@ -526,6 +500,203 @@ class CronRotinasController
                 ]
             ];
         }
+    }
+
+    /**
+     * Simulação completa (Dry-Run) do Envio de Notas Nutrire para API GoFind
+     */
+    private function simularNotasNutrire(array $parametros = []): array
+    {
+        $checks = [];
+        try {
+            $dias = (int)($parametros['dias_retroativos'] ?? 3);
+            if ($dias < 1) $dias = 3;
+
+            $dadosNutrire = $this->carregarNotasNutrire(8, $dias);
+            if (empty($dadosNutrire['notas'])) {
+                $dadosNutrire = $this->carregarNotasNutrire(8, 30);
+            }
+
+            $totNotas = count($dadosNutrire['notas']);
+            $totItens = count($dadosNutrire['itens']);
+            $totClientes = count($dadosNutrire['clientes']);
+
+            $checks[] = [
+                'etapa' => "Consulta Notas Fiscais Nutrire (Marca 8)",
+                'status' => $totNotas > 0 ? 'ok' : 'warning',
+                'detalhe' => "Localizadas {$totNotas} nota(s) fiscais da marca Nutrire com {$totItens} itens faturados para {$totClientes} clientes."
+            ];
+
+            // Montar respostas simuladas da API GoFind para os lotes
+            $respostasSimuladas = [];
+            $lotes = array_chunk($dadosNutrire['notas'], 100);
+            $loteIdx = 1;
+            foreach ($lotes as $chunk) {
+                $countChunk = count($chunk);
+                foreach (array_slice($chunk, 0, 5) as $n) {
+                    $hash = md5($n['ide']['nNF'] . 'gofind');
+                    $respostasSimuladas[] = "ID: invoice-{$hash}, Status: 200, Message: Documento recebido com sucesso.";
+                }
+                if ($countChunk > 5) {
+                    $respostasSimuladas[] = "... e mais " . ($countChunk - 5) . " notas confirmadas com sucesso no Lote {$loteIdx}.";
+                }
+                $loteIdx++;
+            }
+
+            $previewNutrire = $this->gerarHtmlNotasNutrireCompleto(
+                $dadosNutrire['notas'],
+                $dadosNutrire['clientes'],
+                $respostasSimuladas,
+                true
+            );
+
+            $hierarquia = [
+                'tipo' => 'Transmissão API GoFind + Notificação',
+                'principal' => 'API GoFind (https://app.gofind.online/api/subscribe/invoice)',
+                'copias_cc' => $parametros['email_notificacao'] ?? 'alan@nutricionalbr.com',
+                'regra' => 'Transmite as notas fiscais faturadas da marca Nutrire (8) no dia para a plataforma GoFind em lotes de até 100 notas.'
+            ];
+
+            return [
+                'success' => true,
+                'message' => "Simulação concluída: {$totNotas} nota(s) da marca Nutrire encontradas e agrupadas para envio.",
+                'checks' => $checks,
+                'detalhes' => ['notas_periodo' => $totNotas, 'itens_periodo' => $totItens, 'clientes' => $totClientes],
+                'preview_html' => $previewNutrire,
+                'hierarquia_destinatarios' => $hierarquia,
+                'pode_enviar_amostra' => true
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Erro ao consultar notas: ' . $e->getMessage(),
+                'checks' => [['etapa' => 'Consulta Notas Nutrire', 'status' => 'error', 'detalhe' => $e->getMessage()]]
+            ];
+        }
+    }
+
+    /**
+     * Dispara e-mail seguro com amostra de teste real da rotina para o endereço indicado
+     */
+    public function enviarAmostraTeste(string $comando, string $emailDestino): array
+    {
+        if (!filter_var($emailDestino, FILTER_VALIDATE_EMAIL)) {
+            return ['success' => false, 'message' => 'E-mail de destino inválido.'];
+        }
+
+        $banner = "<div style='background:#fffbeb;border:2px dashed #f59e0b;padding:14px 18px;border-radius:10px;margin-bottom:20px;color:#92400e;font-family:Arial,sans-serif;font-size:13px;line-height:1.5;'>"
+            . "<b style='font-size:14px;display:block;margin-bottom:4px;'>🧪 [AMOSTRA DE TESTE SEGURA — PORTAL NUTRICIONAL]</b>"
+            . "Este e-mail é uma <b>simulação de teste</b> disparada manualmente para validação do layout e dados da rotina <b>" . htmlspecialchars($comando) . "</b>.<br>"
+            . "Destinatário exclusivo: <b>" . htmlspecialchars($emailDestino) . "</b>.<br>"
+            . "<span style='color:#b45309;'>ℹ️ <b>Fique tranquilo:</b> Nenhum cliente, representante ou gestor real foi notificado neste disparo.</span>"
+            . "</div>";
+
+        $assunto = "[TESTE] Simulação de Rotina: " . $comando . " - " . date('d/m/Y H:i');
+        $htmlCorpo = '';
+        $anexos = [];
+
+        switch ($comando) {
+            case 'notas_nutrire':
+                $dadosNutrire = $this->carregarNotasNutrire(8, 3);
+                if (empty($dadosNutrire['notas'])) {
+                    $dadosNutrire = $this->carregarNotasNutrire(8, 30);
+                }
+                $respostasSimuladas = [];
+                $lotes = array_chunk($dadosNutrire['notas'], 100);
+                $loteIdx = 1;
+                foreach ($lotes as $chunk) {
+                    $countChunk = count($chunk);
+                    foreach (array_slice($chunk, 0, 10) as $n) {
+                        $hash = md5($n['ide']['nNF'] . 'gofind_sample');
+                        $respostasSimuladas[] = "ID: invoice-{$hash}, Status: 200, Message: Documento recebido com sucesso.";
+                    }
+                    if ($countChunk > 10) {
+                        $respostasSimuladas[] = "... e mais " . ($countChunk - 10) . " notas confirmadas com sucesso no Lote {$loteIdx}.";
+                    }
+                    $loteIdx++;
+                }
+                $htmlCorpo = $this->gerarHtmlNotasNutrireCompleto(
+                    $dadosNutrire['notas'],
+                    $dadosNutrire['clientes'],
+                    $respostasSimuladas,
+                    true
+                );
+                $assunto = "[TESTE] Processamento de Notas Nutrire - " . date('d/m/Y H:i');
+                break;
+
+            case 'clientes_isentos':
+            case 'G3R4r3l4t0r10Cl13nt3s1s3nt0s':
+                $sqlGeral = "SELECT DISTINCT
+                                cli.idcliforemp AS cd_cliente,
+                                cli.fantasia,
+                                cli.razao,
+                                cli.cnpj,
+                                cli.cpf,
+                                cli.ie,
+                                cli.idvendedor,
+                                (SELECT vend.fantasia FROM cliforemp vend WHERE vend.idcliforemp = cli.idvendedor) AS representante,
+                                (SELECT descricao FROM cidade WHERE cidade.idcidade = cli.idcidade) AS cidade,
+                                cli.uf,
+                                cli.email,
+                                cli.fone
+                            FROM cliforemp cli 
+                            WHERE (cli.ie LIKE '%ISENTO%' OR cli.ie = '' OR cli.ie IS NULL)
+                              AND cli.tipocliforemp = 0 
+                              AND cli.inativo = 'N'
+                              AND cli.idfilial IN (1, 6)
+                            ORDER BY cli.uf ASC, cli.fantasia ASC LIMIT 100";
+                $clientesAmostra = $this->pdo->query($sqlGeral)->fetchAll(\PDO::FETCH_ASSOC);
+                $arquivoExcel = method_exists('\Uteis', 'gerarExcelClientesIsentos') 
+                    ? \Uteis::gerarExcelClientesIsentos($clientesAmostra) 
+                    : null;
+                $htmlCorpo = method_exists('\Uteis', 'construirEmailClientesIsentos')
+                    ? \Uteis::construirEmailClientesIsentos($clientesAmostra, 'geral', 'Simulação de Teste')
+                    : "<p>Relatório de clientes isentos</p>";
+                if ($arquivoExcel && file_exists($arquivoExcel)) {
+                    $anexos[$arquivoExcel] = 'clientes_isentos_ST_AMOSTRA_' . date('d_m_Y') . '.xlsx';
+                }
+                $assunto = "[TESTE] Relatório GERAL de Clientes Isentos - " . date('d/m/Y');
+                break;
+
+            case 'flex_minimo_gestor':
+                $htmlCorpo = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
+                    . "<h2 style='color:#059669;'>✅ [SIMULAÇÃO] Empréstimo Flex Realizado com Sucesso</h2>"
+                    . "<p><strong>Gestor:</strong> Gestor 12335 - TIAGO (MQV) - Matriz</p>"
+                    . "<p><strong>Valor do Empréstimo:</strong> R$ 3.000,00</p>"
+                    . "<p><strong>Saldo Anterior na API Mercos:</strong> R$ 850,00 (Abaixo do mínimo de R$ 3.000,00)</p>"
+                    . "<p><strong>Saldo Atualizado:</strong> R$ 3.850,00</p>"
+                    . "<p><strong>Motivo Registrado:</strong> Empréstimo automático para suprir desfalque de Verba Flex</p>"
+                    . "</div>";
+                $assunto = "[TESTE] Flex Mínimo Gestor - Alerta de Empréstimo";
+                break;
+
+            default:
+                $htmlCorpo = "<div style='font-family:Arial,sans-serif;padding:20px;'>"
+                    . "<h3>Simulação de Notificação da Rotina: " . htmlspecialchars($comando) . "</h3>"
+                    . "<p>Status: Sucesso. Execução simulada com parâmetros padrão do sistema.</p></div>";
+                break;
+        }
+
+        $htmlFinal = $banner . $htmlCorpo;
+        $sucesso = $this->enviarEmailNotificacao($emailDestino, $assunto, $htmlFinal, $anexos);
+
+        foreach (array_keys($anexos) as $arq) {
+            if (file_exists($arq)) {
+                @unlink($arq);
+            }
+        }
+
+        if ($sucesso) {
+            return [
+                'success' => true,
+                'message' => "Amostra de teste enviada com sucesso para {$emailDestino}! Verifique sua caixa de entrada."
+            ];
+        }
+
+        return [
+            'success' => false,
+            'message' => "Não foi possível enviar a amostra para {$emailDestino}. Verifique as configurações de SMTP."
+        ];
     }
 
     // ======================================================================
@@ -1150,67 +1321,18 @@ class CronRotinasController
     private function executarNotasNutrire(array $params, string $usuario, string $ip): array
     {
         try {
-            $marcaId = $params['marca_id'] ?? 8;
+            $marcaId = (int)($params['marca_id'] ?? 8);
             $apiKey = $params['api_key'] ?? 'D52nVqCP3R5vXep4SyknH2ngfisuTrIU8Zj1Krb4';
             $apiUrl = $params['api_url'] ?? 'https://app.gofind.online/api/subscribe/invoice';
             $emailNotificacao = $params['email_notificacao'] ?? null;
+            $dias = (int)($params['dias_retroativos'] ?? 0);
 
-            $sql = "SELECT DISTINCT 
-                        nfs.numero_nf_e AS id, 
-                        nfs.datahora_operacao AS dhemi, 
-                        nfs.datahora_nf_e AS dhsaient, 
-                        nfs.numeronf AS nnf, 
-                        nfs.idserie AS serie, 
-                        REPLACE(REPLACE(REPLACE(emissor.cnpj, '.', ''), '/', ''), '-', '') AS cnpj, 
-                        emissor.ie AS ie, 
-                        emissor.razao AS xnome, 
-                        emissor.nome AS xfant, 
-                        CASE WHEN dest.cnpj = '.' 
-                            THEN REPLACE(REPLACE(REPLACE(dest.cpf, '.', ''), '/', ''), '-', '')
-                            ELSE REPLACE(REPLACE(REPLACE(dest.cnpj, '.', ''), '/', ''), '-', '') 
-                        END AS dest_cnpj,
-                        dest.nf_e_email AS email, 
-                        REPLACE(REPLACE(REPLACE(dest.cep, '-', ''), '.', ''), ' ', '') AS dest_cep, 
-                        REPLACE(REPLACE(REPLACE(dest.fone, '(', ''), ')', ''), '-', '') AS dest_fone, 
-                        dest.numero AS dest_nro, 
-                        dest.uf AS dest_uf, 
-                        dest.bairro AS dest_xbairro, 
-                        dest.complemento AS dest_xcpl, 
-                        dest.endereco AS dest_xlgr, 
-                        (SELECT descricao FROM cidade WHERE idcidade = dest.idcidade) AS dest_xmun, 
-                        'BR' AS dest_xpais, 
-                        dest.ie AS dest_ie, 
-                        dest.razao AS dest_xnome, 
-                        dest.fantasia AS dest_xfant, 
-                        ni.iditemnfs AS nitem, 
-                        cb.idbarra AS cean, 
-                        ni.idcfop AS cfop, 
-                        item.referencia, 
-                        (SELECT DISTINCT classificacao FROM classificacaofiscal WHERE idclassificacaofiscal = item.idclassfiscal) AS ncm, 
-                        CAST(ni.qt AS INT) AS qcom, 
-                        (SELECT sigla FROM unidade WHERE idunidade = ni.idunidade) AS ucom, 
-                        CAST(SUM((ni.valor) - (((ni.valor)*15)/100)) AS numeric(10,2)) AS vuncom, 
-                        CAST(SUM(((ni.valor) - (((ni.valor)*15)/100)) * (ni.qt)) AS numeric(10,2)) AS vprod, 
-                        item.descricao AS xprod 
-                    FROM nfs 
-                    JOIN filial emissor ON emissor.idfilial = nfs.idfilial 
-                    JOIN cliforemp dest ON dest.idcliforemp = nfs.idcliforemp 
-                    JOIN nfs_item ni ON ni.idnfs = nfs.idnfs 
-                    JOIN item ON item.iditem = ni.iditem 
-                    JOIN marca ON marca.idmarca = item.idmarca 
-                    JOIN codigo_barra cb ON cb.iditem = ni.iditem AND cb.principal = 'S' 
-                    WHERE nfs.idtransacao = 1 
-                        AND marca.idmarca = ?
-                        AND nfs.status = 2 
-                        AND nfs.dataemissao = CURRENT_DATE
-                    GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33";
+            $dados = $this->carregarNotasNutrire($marcaId, $dias);
+            $notas = $dados['notas'];
+            $clientes = $dados['clientes'];
 
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([$marcaId]);
-            $resultado = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-
-            if (empty($resultado)) {
-                $html = "<html><body><p>Nenhuma nota fiscal encontrada.</p></body></html>";
+            if (empty($notas)) {
+                $html = "<!DOCTYPE html><html><body><p>Nenhuma nota fiscal encontrada para a marca informada no período.</p></body></html>";
                 if ($emailNotificacao) {
                     $this->enviarEmailNotificacao($emailNotificacao, 'Notas Nutrire - Nenhuma nota', $html);
                 }
@@ -1222,85 +1344,9 @@ class CronRotinasController
                 ];
             }
 
-            $notas = [];
-            $clientes = [];
-
-            foreach ($resultado as $item) {
-                $notaId = $item['id'];
-
-                if (!isset($notas[$notaId])) {
-                    $notas[$notaId] = [
-                        'Id' => '',
-                        'ide' => [
-                            'dhEmi' => $item['dhsaient'] ? date('c', strtotime($item['dhsaient'])) : null,
-                            'dhSaiEnt' => $item['dhsaient'] ? date('c', strtotime($item['dhsaient'])) : null,
-                            'nNF' => (string)$item['nnf'],
-                            'serie' => (string)$item['serie']
-                        ],
-                        'emit' => [
-                            'CNPJ' => $item['cnpj'],
-                            'IE' => $item['ie'],
-                            'xNome' => $item['xnome'],
-                            'xFant' => ''
-                        ],
-                        'dest' => [
-                            'CNPJ' => $item['dest_cnpj'],
-                            'RUC' => '',
-                            'email' => '',
-                            'enderDest' => [
-                                'CEP' => $item['dest_cep'],
-                                'fone' => '',
-                                'nro' => $item['dest_nro'],
-                                'UF' => $item['dest_uf'],
-                                'xBairro' => $item['dest_xbairro'],
-                                'xCpl' => '',
-                                'xLgr' => $item['dest_xlgr'],
-                                'xMun' => $item['dest_xmun'],
-                                'xPais' => 'BR'
-                            ],
-                            'IE' => $item['dest_ie'] ?? '',
-                            'xNome' => $item['dest_xnome'],
-                            'xFant' => $item['dest_xfant'] ?? ''
-                        ],
-                        'entrega' => [
-                            'CEP' => $item['dest_cep'],
-                            'fone' => '',
-                            'nro' => $item['dest_nro'],
-                            'UF' => $item['dest_uf'],
-                            'xBairro' => $item['dest_xbairro'],
-                            'xCpl' => '',
-                            'xLgr' => $item['dest_xlgr'],
-                            'xMun' => $item['dest_xmun'],
-                            'xPais' => 'BR'
-                        ],
-                        'det' => []
-                    ];
-                }
-
-                $notas[$notaId]['det'][] = [
-                    'nItem' => (string)$item['nitem'],
-                    'prod' => [
-                        'cEAN' => $item['cean'],
-                        'CFOP' => '',
-                        'cProd' => (string)$item['referencia'],
-                        'NCM' => '',
-                        'qCom' => (string)$item['qcom'],
-                        'uCom' => $item['ucom'] ?? 'UN',
-                        'vUnCom' => $item['vuncom'] ? (string)$item['vuncom'] : '0,00',
-                        'vProd' => $item['vprod'] ? (string)$item['vprod'] : '0,00',
-                        'xProd' => $item['xprod'] ?? 'Sem descrição'
-                    ]
-                ];
-
-                if (!in_array($item['dest_xnome'], $clientes)) {
-                    $clientes[] = $item['dest_xnome'];
-                }
-            }
-
             $body = array_values($notas);
-            $html = $this->gerarHtmlNotasNutrireCompleto($notas, $clientes);
-
             $chunks = array_chunk($body, 100);
+            $respostasApi = [];
 
             foreach ($chunks as $chunk) {
                 $ch = curl_init($apiUrl);
@@ -1320,13 +1366,13 @@ class CronRotinasController
                     $data = json_decode($response, true);
                     if (isset($data['invoicesResult'])) {
                         foreach ($data['invoicesResult'] as $invoice) {
-                            $html .= "<li>ID: {$invoice['id']}, Status: {$invoice['status']}, Message: {$invoice['message']}</li>";
+                            $respostasApi[] = "ID: {$invoice['id']}, Status: {$invoice['status']}, Message: {$invoice['message']}";
                         }
                     }
                 }
             }
 
-            $html .= "</ul></body></html>";
+            $html = $this->gerarHtmlNotasNutrireCompleto($notas, $clientes, $respostasApi, true);
 
             if ($emailNotificacao) {
                 $this->enviarEmailNotificacao($emailNotificacao, 'Processamento de Notas Nutrire - ' . date('d/m/Y H:i'), $html);
@@ -1910,64 +1956,223 @@ class CronRotinasController
     // MÉTODOS AUXILIARES
     // ======================================================================
 
-    private function gerarHtmlNotasNutrireCompleto(array $notas, array $clientes): string
+    /**
+     * Carrega notas fiscais da marca Nutrire (8) agrupadas por número da NF
+     */
+    private function carregarNotasNutrire(int $marcaId = 8, int $dias = 0): array
     {
-        $html = '<html><head><style>
-            body { font-family: Arial, sans-serif; line-height: 1.6; }
-            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-            th { background-color: #007BFF; color: white; }
-            tr:nth-child(even) { background-color: #f9f9f9; }
+        $whereData = $dias > 0 
+            ? "nfs.dataemissao >= CURRENT_DATE - INTERVAL '{$dias} days'" 
+            : "nfs.dataemissao = CURRENT_DATE";
+
+        $sql = "SELECT DISTINCT 
+                    nfs.numero_nf_e AS id, 
+                    nfs.datahora_operacao AS dhemi, 
+                    nfs.datahora_nf_e AS dhsaient, 
+                    nfs.numeronf AS nnf, 
+                    nfs.idserie AS serie, 
+                    REPLACE(REPLACE(REPLACE(emissor.cnpj, '.', ''), '/', ''), '-', '') AS cnpj, 
+                    emissor.ie AS ie, 
+                    emissor.razao AS xnome, 
+                    emissor.nome AS xfant, 
+                    CASE WHEN dest.cnpj = '.' 
+                        THEN REPLACE(REPLACE(REPLACE(dest.cpf, '.', ''), '/', ''), '-', '')
+                        ELSE REPLACE(REPLACE(REPLACE(dest.cnpj, '.', ''), '/', ''), '-', '') 
+                    END AS dest_cnpj,
+                    dest.nf_e_email AS email, 
+                    REPLACE(REPLACE(REPLACE(dest.cep, '-', ''), '.', ''), ' ', '') AS dest_cep, 
+                    REPLACE(REPLACE(REPLACE(dest.fone, '(', ''), ')', ''), '-', '') AS dest_fone, 
+                    dest.numero AS dest_nro, 
+                    dest.uf AS dest_uf, 
+                    dest.bairro AS dest_xbairro, 
+                    dest.complemento AS dest_xcpl, 
+                    dest.endereco AS dest_xlgr, 
+                    (SELECT descricao FROM cidade WHERE idcidade = dest.idcidade) AS dest_xmun, 
+                    'BR' AS dest_xpais, 
+                    dest.ie AS dest_ie, 
+                    dest.razao AS dest_xnome, 
+                    dest.fantasia AS dest_xfant, 
+                    ni.iditemnfs AS nitem, 
+                    (SELECT idbarra FROM codigo_barra WHERE iditem = ni.iditem AND principal = 'S' LIMIT 1) AS cean, 
+                    ni.idcfop AS cfop, 
+                    item.referencia, 
+                    (SELECT DISTINCT classificacao FROM classificacaofiscal WHERE idclassificacaofiscal = item.idclassfiscal) AS ncm, 
+                    CAST(ni.qt AS INT) AS qcom, 
+                    (SELECT sigla FROM unidade WHERE idunidade = ni.idunidade) AS ucom, 
+                    CAST(SUM((ni.valor) - (((ni.valor)*15)/100)) AS numeric(10,2)) AS vuncom, 
+                    CAST(SUM(((ni.valor) - (((ni.valor)*15)/100)) * (ni.qt)) AS numeric(10,2)) AS vprod, 
+                    item.descricao AS xprod 
+                FROM nfs 
+                JOIN filial emissor ON emissor.idfilial = nfs.idfilial 
+                JOIN cliforemp dest ON dest.idcliforemp = nfs.idcliforemp 
+                JOIN nfs_item ni ON ni.idnfs = nfs.idnfs 
+                JOIN item ON item.iditem = ni.iditem 
+                JOIN marca ON marca.idmarca = item.idmarca 
+                WHERE nfs.idtransacao = 1 
+                    AND marca.idmarca = ?
+                    AND nfs.status = 2 
+                    AND {$whereData}
+                GROUP BY 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33
+                ORDER BY nfs.numeronf ASC";
+
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute([$marcaId]);
+        $resultado = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $notas = [];
+        $clientes = [];
+
+        foreach ($resultado as $item) {
+            $notaId = (int)$item['nnf'];
+
+            if (!isset($notas[$notaId])) {
+                $notas[$notaId] = [
+                    'Id' => $item['id'],
+                    'ide' => [
+                        'dhEmi' => $item['dhsaient'] ? date('c', strtotime($item['dhsaient'])) : null,
+                        'dhSaiEnt' => $item['dhsaient'] ? date('c', strtotime($item['dhsaient'])) : null,
+                        'nNF' => (string)$item['nnf'],
+                        'serie' => (string)$item['serie']
+                    ],
+                    'emit' => [
+                        'CNPJ' => $item['cnpj'],
+                        'IE' => $item['ie'],
+                        'xNome' => $item['xnome'],
+                        'xFant' => $item['xfant'] ?? ''
+                    ],
+                    'dest' => [
+                        'CNPJ' => $item['dest_cnpj'],
+                        'RUC' => '',
+                        'email' => $item['email'] ?? '',
+                        'enderDest' => [
+                            'CEP' => $item['dest_cep'],
+                            'fone' => $item['dest_fone'] ?? '',
+                            'nro' => $item['dest_nro'],
+                            'UF' => $item['dest_uf'],
+                            'xBairro' => $item['dest_xbairro'],
+                            'xCpl' => $item['dest_xcpl'] ?? '',
+                            'xLgr' => $item['dest_xlgr'],
+                            'xMun' => $item['dest_xmun'],
+                            'xPais' => 'BR'
+                        ],
+                        'IE' => $item['dest_ie'] ?? '',
+                        'xNome' => $item['dest_xnome'],
+                        'xFant' => $item['dest_xfant'] ?? ''
+                    ],
+                    'entrega' => [
+                        'CEP' => $item['dest_cep'],
+                        'fone' => $item['dest_fone'] ?? '',
+                        'nro' => $item['dest_nro'],
+                        'UF' => $item['dest_uf'],
+                        'xBairro' => $item['dest_xbairro'],
+                        'xCpl' => $item['dest_xcpl'] ?? '',
+                        'xLgr' => $item['dest_xlgr'],
+                        'xMun' => $item['dest_xmun'],
+                        'xPais' => 'BR'
+                    ],
+                    'det' => []
+                ];
+            }
+
+            $notas[$notaId]['det'][] = [
+                'nItem' => (string)$item['nitem'],
+                'prod' => [
+                    'cEAN' => $item['cean'],
+                    'CFOP' => '',
+                    'cProd' => (string)$item['referencia'],
+                    'NCM' => $item['ncm'] ?? '',
+                    'qCom' => (string)$item['qcom'],
+                    'uCom' => $item['ucom'] ?? 'UN',
+                    'vUnCom' => $item['vuncom'] ? (string)$item['vuncom'] : '0.00',
+                    'vProd' => $item['vprod'] ? (string)$item['vprod'] : '0.00',
+                    'xProd' => $item['xprod'] ?? 'Sem descrição'
+                ]
+            ];
+
+            if (!in_array($item['dest_xnome'], $clientes)) {
+                $clientes[] = $item['dest_xnome'];
+            }
+        }
+
+        return ['notas' => $notas, 'clientes' => $clientes, 'itens' => $resultado];
+    }
+
+    private function gerarHtmlNotasNutrireCompleto(array $notas, array $clientes, array $respostasApi = [], bool $fecharTags = true): string
+    {
+        $html = '<html><head><meta charset="utf-8"><style>
+            body { font-family: Arial, sans-serif; line-height: 1.6; color: #1e293b; font-size: 13px; }
+            h2 { color: #0284c7; font-size: 16px; margin: 16px 0 8px 0; border-bottom: 2px solid #e2e8f0; padding-bottom: 4px; }
+            h3 { color: #0f766e; font-size: 14px; margin: 16px 0 6px 0; }
+            h4 { color: #334155; font-size: 13px; margin: 12px 0 4px 0; }
+            ul { margin: 6px 0 16px 20px; padding: 0; }
+            li { margin-bottom: 4px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px 8px; text-align: left; }
+            th { background-color: #0284c7; color: white; font-weight: bold; }
+            tr:nth-child(even) { background-color: #f8fafc; }
+            .info-label { width: 22%; font-weight: bold; background-color: #f1f5f9; color: #475569; }
         </style></head><body>';
 
         $html .= '<h2>Divisão das Notas Fiscais</h2><ul>';
-        $html .= '<li>Clientes: ' . implode(', ', $clientes) . '</li>';
-        $html .= '<li>Números das Notas: ' . implode(', ', array_keys($notas)) . '</li>';
+        $html .= '<li><b>Clientes:</b> ' . htmlspecialchars(implode(', ', $clientes)) . '</li>';
+        $html .= '<li><b>Números das Notas:</b> ' . implode(', ', array_keys($notas)) . '</li>';
 
         $body = array_values($notas);
         $chunkSize = 100;
         for ($i = 0; $i < count($body); $i += $chunkSize) {
             $chunkNum = floor($i / $chunkSize) + 1;
             $chunkCount = min($chunkSize, count($body) - $i);
-            $html .= "<li>Envio {$chunkNum}: {$chunkCount} notas</li>";
+            $html .= "<li><b>Envio {$chunkNum}:</b> {$chunkCount} notas</li>";
         }
         $html .= '</ul>';
 
         $primeiraNota = reset($notas);
         if ($primeiraNota) {
             $html .= '<h2>Relatório de Notas Fiscais</h2><table>';
-            $html .= '<tr><th>Data de Emissão</th><td>' . $this->formatarData($primeiraNota['ide']['dhEmi']) . '</td></tr>';
-            $html .= '<tr><th>Data de Saída/Entrada</th><td>' . $this->formatarData($primeiraNota['ide']['dhSaiEnt']) . '</td></tr>';
-            $html .= '<tr><th>Número da NF</th><td>' . $primeiraNota['ide']['nNF'] . '</td></tr>';
-            $html .= '<tr><th>Série</th><td>' . $primeiraNota['ide']['serie'] . '</td></tr>';
-            $html .= '<tr><th>CNPJ Emissor</th><td>' . $this->formatarCNPJ($primeiraNota['emit']['CNPJ']) . '</td></tr>';
-            $html .= '<tr><th>Nome Emissor</th><td>' . $primeiraNota['emit']['xNome'] . '</td></tr>';
-            $html .= '<tr><th>CNPJ Destinatário</th><td>' . $this->formatarCNPJ($primeiraNota['dest']['CNPJ']) . '</td></tr>';
-            $html .= '<tr><th>Nome Destinatário</th><td>' . $primeiraNota['dest']['xNome'] . '</td></tr>';
-            $html .= '<tr><th>Endereço</th><td>' . $primeiraNota['dest']['enderDest']['xLgr'] . ', ' . $primeiraNota['dest']['enderDest']['nro'] . '</td></tr>';
-            $html .= '<tr><th>CEP</th><td>' . $this->formatarCEP($primeiraNota['dest']['enderDest']['CEP']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">Data de Emissão</td><td>' . $this->formatarData($primeiraNota['ide']['dhEmi']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">Data de Saída/Entrada</td><td>' . $this->formatarData($primeiraNota['ide']['dhSaiEnt']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">Número da NF</td><td><b>' . htmlspecialchars($primeiraNota['ide']['nNF']) . '</b></td></tr>';
+            $html .= '<tr><td class="info-label">Série</td><td>' . htmlspecialchars($primeiraNota['ide']['serie']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">CNPJ Emissor</td><td>' . $this->formatarCNPJ($primeiraNota['emit']['CNPJ']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">Nome Emissor</td><td>' . htmlspecialchars($primeiraNota['emit']['xNome']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">CNPJ Destinatário</td><td>' . $this->formatarCNPJ($primeiraNota['dest']['CNPJ']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">Nome Destinatário</td><td><b>' . htmlspecialchars($primeiraNota['dest']['xNome']) . '</b></td></tr>';
+            $html .= '<tr><td class="info-label">Endereço</td><td>' . htmlspecialchars($primeiraNota['dest']['enderDest']['xLgr'] . ', ' . $primeiraNota['dest']['enderDest']['nro'] . ' - ' . $primeiraNota['dest']['enderDest']['xBairro'] . ', ' . $primeiraNota['dest']['enderDest']['UF']) . '</td></tr>';
+            $html .= '<tr><td class="info-label">CEP</td><td>' . $this->formatarCEP($primeiraNota['dest']['enderDest']['CEP']) . '</td></tr>';
             $html .= '</table>';
 
             $html .= '<h4>Itens</h4><table>';
-            $html .= '<tr><th>Item</th><th>Descrição</th><th>cEAN</th><th>cProd</th><th>UN</th><th>Qtd</th><th>Valor UN</th><th>Valor Total</th></tr>';
+            $html .= '<tr><th style="width:50px;">Item</th><th>Descrição</th><th>cEAN</th><th>cProd</th><th>UN</th><th style="text-align:right;">Quantidade</th><th style="text-align:right;">Valor UN</th><th style="text-align:right;">Valor Total</th></tr>';
             foreach ($primeiraNota['det'] as $item) {
                 $vUnCom = number_format((float)$item['prod']['vUnCom'], 2, ',', '.');
                 $vProd = number_format((float)$item['prod']['vProd'], 2, ',', '.');
                 $html .= '<tr>';
-                $html .= '<td>' . $item['nItem'] . '</td>';
-                $html .= '<td>' . $item['prod']['xProd'] . '</td>';
-                $html .= '<td>' . ($item['prod']['cEAN'] ?: 'N/A') . '</td>';
-                $html .= '<td>' . ($item['prod']['cProd'] ?: 'N/A') . '</td>';
-                $html .= '<td>' . $item['prod']['uCom'] . '</td>';
-                $html .= '<td>' . $item['prod']['qCom'] . '</td>';
-                $html .= '<td>R$ ' . $vUnCom . '</td>';
-                $html .= '<td>R$ ' . $vProd . '</td>';
+                $html .= '<td>' . htmlspecialchars($item['nItem']) . '</td>';
+                $html .= '<td>' . htmlspecialchars($item['prod']['xProd']) . '</td>';
+                $html .= '<td>' . htmlspecialchars($item['prod']['cEAN'] ?: 'N/A') . '</td>';
+                $html .= '<td>' . htmlspecialchars($item['prod']['cProd'] ?: 'N/A') . '</td>';
+                $html .= '<td>' . htmlspecialchars($item['prod']['uCom']) . '</td>';
+                $html .= '<td style="text-align:right;">' . htmlspecialchars($item['prod']['qCom']) . '</td>';
+                $html .= '<td style="text-align:right;">R$ ' . $vUnCom . '</td>';
+                $html .= '<td style="text-align:right;">R$ ' . $vProd . '</td>';
                 $html .= '</tr>';
             }
             $html .= '</table>';
         }
 
         $html .= '<h3>Respostas da API</h3><ul>';
+        if (!empty($respostasApi)) {
+            foreach ($respostasApi as $resp) {
+                if (is_array($resp)) {
+                    $html .= "<li>ID: {$resp['id']}, Status: {$resp['status']}, Message: {$resp['message']}</li>";
+                } else {
+                    $html .= "<li>{$resp}</li>";
+                }
+            }
+        }
+        if ($fecharTags) {
+            $html .= '</ul></body></html>';
+        }
         return $html;
     }
 

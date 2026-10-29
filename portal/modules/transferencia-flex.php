@@ -72,6 +72,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <a href="<?= $appBase ?>/portal/modules/verbas-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm">
                     <i class="fa-solid fa-chart-pie"></i> Verbas Flex
                 </a>
+
+                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm">
+                    <i class="fa-solid fa-money-bill-transfer"></i> Movimentação
+                </a>
             </div>
         </div>
     </div>

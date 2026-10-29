@@ -461,6 +461,25 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
     /**
      * POST /cron/testar - Testa configuração do Cron + executa Simulação (Dry-Run) sem alterar dados
      */
+        public function enviarAmostra(Request $request, Response $response): Response
+    {
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $comando = trim((string)($input['comando'] ?? ''));
+        $emailDestino = trim((string)($input['email_destino'] ?? ''));
+
+        if ($comando === '' || $emailDestino === '') {
+            return $this->jsonResponse($response, [
+                'success' => false,
+                'message' => 'Informe o comando da rotina e o e-mail de destino da amostra.'
+            ], 400);
+        }
+
+        $rotinasCtrl = new CronRotinasController();
+        $res = $rotinasCtrl->enviarAmostraTeste($comando, $emailDestino);
+
+        return $this->jsonResponse($response, $res, $res['success'] ? 200 : 500);
+    }
+
     public function testar(Request $request, Response $response): Response
     {
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
@@ -738,6 +757,8 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         $cronToken = defined('CRON_TOKEN') ? (string)CRON_TOKEN : (string)($_ENV['CRON_TOKEN'] ?? '');
         $linhaCurlModerna = '/usr/bin/curl -k -s -H "X-Cron-Token: ' . $cronToken . '" "https://api.nutricionalbr.com/v1/cron/dispatcher" > /dev/null 2>&1';
         $linhaCurlModernaQuery = '/usr/bin/curl -k -s "https://api.nutricionalbr.com/v1/cron/dispatcher?token=' . urlencode($cronToken) . '" > /dev/null 2>&1';
+        $linhaCurlIsentos = '/usr/bin/curl -k -s -H "X-Cron-Token: ' . $cronToken . '" "https://api.nutricionalbr.com/v1/cron/executar/clientes_isentos" > /dev/null 2>&1';
+        $linhaCurlIsentosQuery = '/usr/bin/curl -k -s "https://api.nutricionalbr.com/v1/cron/executar/clientes_isentos?token=' . urlencode($cronToken) . '" > /dev/null 2>&1';
 
         return $this->jsonResponse($response, [
             'success' => true,
@@ -747,6 +768,8 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             'linha_cli' => $linha,
             'linha_curl_dispatcher' => $linhaCurlModerna,
             'linha_curl_bonificacao' => $linhaCurlBonif,
+            'linha_curl_clientes_isentos' => $linhaCurlIsentos,
+            'linha_curl_clientes_isentos_query' => $linhaCurlIsentosQuery,
             'cron_token' => $cronToken,
             'script' => $script,
             'php_sugerido' => $php,

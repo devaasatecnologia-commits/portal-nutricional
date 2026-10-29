@@ -972,6 +972,15 @@ $protected->group('/verbas-flex', function ($group) {
     $group->get('/api-historico', [$controller, 'apiHistorico']);
 })->add(new ModulePermissionMiddleware('verbas-flex'));
 
+$protected->group('/flex-movimentacao', function ($group) {
+    $controller = new \Nutricional\Controllers\FlexMovimentacaoController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/representantes', [$controller, 'listarRepresentantes']);
+    $group->get('/saldo', [$controller, 'saldo']);
+    $group->get('/historico', [$controller, 'historico']);
+    $group->post('/movimentar', [$controller, 'movimentar']);
+})->add(new ModulePermissionMiddleware(['movimentacao-flex', 'transferencia-flex', 'verbas-flex']));
+
 $protected->group('/transf-compras', function ($group) {
     $c = new \Nutricional\Controllers\TransferenciaCompraController();
     $group->group('/matriz-filial', function ($g) use ($c) {
@@ -1036,6 +1045,7 @@ $protected->group('/cron', function ($group) {
     $group->get('/auditoria/{id}', [$controller, 'getAuditoriaDetalhes'])->add($admin);
     $group->post('/executar', [$controller, 'executar'])->add($admin);
     $group->post('/testar', [$controller, 'testar'])->add($admin);
+    $group->post('/amostra-teste', [$controller, 'enviarAmostra'])->add($admin);
     $group->post('/limpar-links', [$controller, 'limparLinks'])->add($admin);
     $group->get('/dashboard', [$controller, 'getDashboard'])->add($admin);
     $group->get('/jobs', [$controller, 'getJobs'])->add($admin);
@@ -1111,6 +1121,8 @@ $protected->group('/admin', function ($group) {
     $group->get('/config-modulos/amostra/itens-busca', [$configModulos, 'buscarItensAmostra']);
     $group->post('/config-modulos/amostra/regra-item', [$configModulos, 'salvarAmostraRegraItem']);
     $group->delete('/config-modulos/amostra/regra-item/{id:[0-9]+}', [$configModulos, 'excluirAmostraRegraItem']);
+    $group->get('/config-modulos/emails', [$configModulos, 'listarListasEmails']);
+    $group->post('/config-modulos/emails', [$configModulos, 'salvarListaEmail']);
     $group->get('/modulos', [$controller, 'getModulos']);
     $group->post('/modulos', [$controller, 'salvarModulo']);
     $group->get('/menu-visual', [$controller, 'getMenuVisual']);

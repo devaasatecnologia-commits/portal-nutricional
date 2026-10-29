@@ -601,4 +601,75 @@ class ModuleConfigController
             return $this->json($response, ['success' => false, 'error' => 'Não foi possível excluir a regra.'], 500);
         }
     }
+
+    /** GET /v1/admin/config-modulos/emails */
+    public function listarListasEmails(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        try {
+            $stmt = $this->pdo->query('
+                SELECT id, chave, titulo, descricao, categoria, emails_json, atualizado_em, atualizado_por
+                FROM config_email_listas
+                ORDER BY id ASC
+            ');
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $listas = array_map(function($r) {
+                $r['emails'] = json_decode($r['emails_json'], true) ?? [];
+                return $r;
+            }, $rows);
+
+            return $this->json($response, ['success' => true, 'listas' => $listas]);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao listar listas de emails: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Não foi possível carregar as listas de e-mails.'], 500);
+        }
+    }
+
+    /** POST /v1/admin/config-modulos/emails */
+    public function salvarListaEmail(Request $request, Response $response): Response
+    {
+        if ($denied = $this->exigirAdmin($request, $response)) {
+            return $denied;
+        }
+
+        $body = $this->body($request);
+        $chave = trim((string)($body['chave'] ?? ''));
+        $emails = $body['emails'] ?? null;
+
+        if ($chave === '' || $emails === null) {
+            return $this->json($response, ['success' => false, 'error' => 'Chave da lista e e-mails são obrigatórios.'], 422);
+        }
+
+        try {
+            $user = $request->getAttribute('user') ?? [];
+            $user = is_object($user) ? (array)$user : (array)$user;
+            $usuario = $user['username'] ?? 'ADMIN';
+
+            // Normaliza estrutura se for string separada por vírgula
+            if (is_string($emails)) {
+                $emails = array_values(array_filter(array_map('trim', explode(',', $emails))));
+            }
+
+            $stmt = $this->pdo->prepare('
+                UPDATE config_email_listas
+                SET emails_json = :json::jsonb,
+                    atualizado_por = :usuario,
+                    atualizado_em = NOW()
+                WHERE chave = :chave
+            ');
+            $stmt->execute([
+                'json' => json_encode($emails, JSON_UNESCAPED_UNICODE),
+                'usuario' => $usuario,
+                'chave' => $chave
+            ]);
+
+            return $this->json($response, ['success' => true, 'message' => 'Lista de e-mails atualizada com sucesso!']);
+        } catch (\Throwable $e) {
+            error_log('[admin-config] erro ao salvar lista de emails: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => 'Erro ao salvar: ' . $e->getMessage()], 500);
+        }
+    }
 }

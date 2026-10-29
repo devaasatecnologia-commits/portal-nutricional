@@ -97,6 +97,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         <button type="button" data-aba="creditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> Créditos / Empréstimos</button>
         <button type="button" data-aba="api" class="vf-tab"><i class="fa-solid fa-heart-pulse"></i> API Mercos</button>
         <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> Transferências</a>
+        <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-money-bill-transfer"></i> Movimentação</a>
     </div>
 
     <!-- ========================================== -->
