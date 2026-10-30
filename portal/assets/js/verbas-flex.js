@@ -31,6 +31,10 @@ const estado = {
     debitos: [],
     creditos: [],
     ranking: [],
+    rankingTransferenciasCedidas: [],
+    rankingTransferenciasRecebidas: [],
+    balancoEquipe: [],
+    visaoRanking: 'bonificacoes',
     filtroRankingQtd: 'all',
     buscaRanking: '',
     resumo: null,
@@ -129,9 +133,19 @@ async function carregarPainel() {
         const resultado = cred - deb;
         const stats = r.estatisticas || {};
 
-        // 6 KPIs
+        estado.rankingTransferenciasCedidas = r.ranking_transferencias_cedidas || [];
+        estado.rankingTransferenciasRecebidas = r.ranking_transferencias_recebidas || [];
+        estado.balancoEquipe = r.balanco_equipe || [];
+        const detalheDeb = r.detalhe_maior_debito || null;
+
+        const tipMaiorDeb = detalheDeb
+            ? `Maior Retirada Única:\n• Representante: ${detalheDeb.representante || 'N/D'} (#${detalheDeb.idrepresentante || ''})\n• Nota Fiscal: #${detalheDeb.nota || 'N/D'}\n• Cliente: ${detalheDeb.cliente || 'N/D'}\n• Data: ${detalheDeb.data ? dataBR(detalheDeb.data) : 'N/D'}\n• Valor: ${brl(detalheDeb.valor || 0)}`
+            : 'Pico máximo debitado em uma única nota fiscal no período.';
+
+        // 6 KPIs com Tooltips Especializados
         boxKpi.innerHTML = `
-            <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md">
+            <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md cursor-help"
+                 title="Empréstimos Concedidos:\nTotal de saldo aportado pelo gestor para a equipe no período selecionado.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
                     <span>Empréstimos Concedidos</span>
                     <i class="fa-solid fa-hand-holding-dollar text-base"></i>
@@ -143,10 +157,11 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md">
+            <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md cursor-help"
+                 title="Consumo em Bonificações:\nTotal de verba flex debitada através de notas fiscais de bonificação emitidas no período.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
-                    <span>Retiradas em Bonificações</span>
-                    <i class="fa-solid fa-arrow-trend-down text-base"></i>
+                    <span>Consumo Bonificações</span>
+                    <i class="fa-solid fa-receipt text-base"></i>
                 </div>
                 <div class="text-2xl font-black mt-1">${brl(deb)}</div>
                 <div class="text-xs opacity-90 mt-1 font-semibold">
@@ -155,7 +170,8 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md">
+            <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md cursor-help"
+                 title="Saldo Líquido / Resultado:\nDiferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-). Saldo positivo indica aporte superior ao consumo da filial.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
                     <span>Saldo Líquido / Resultado</span>
                     <i class="fa-solid fa-scale-balanced text-base"></i>
@@ -166,7 +182,8 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-help"
+                 title="Média por Retirada:\nTicket médio de verba flex abatido por nota fiscal faturada no período.">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Média por Retirada</span>
                     <i class="fa-solid fa-calculator text-slate-400 text-base"></i>
@@ -175,16 +192,22 @@ async function carregarPainel() {
                 <div class="text-xs text-slate-400 font-semibold mt-1">Ticket médio por nota fiscal</div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer group"
+                 title="${esc(tipMaiorDeb)}" onclick="irParaAbaDebitosComMaior()">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Maior Retirada Única</span>
-                    <i class="fa-solid fa-bolt text-amber-500 text-base"></i>
+                    <i class="fa-solid fa-bolt text-amber-500 text-base group-hover:scale-125 transition-transform"></i>
                 </div>
                 <div class="text-xl font-black text-red-600 mt-1">${brl(stats.maior_debito || 0)}</div>
-                <div class="text-xs text-slate-400 font-semibold mt-1">Pico máximo em uma única nota</div>
+                <div class="text-xs mt-1 truncate">
+                    ${detalheDeb?.representante
+                        ? `<span class="text-purple-700 font-black inline-flex items-center gap-1 bg-purple-100/70 px-2 py-0.5 rounded-lg max-w-full truncate" title="${esc(tipMaiorDeb)}"><i class="fa-solid fa-user-tie text-[10px] flex-none"></i> <span class="truncate">${esc(detalheDeb.representante)}</span></span>`
+                        : '<span class="text-slate-400 font-semibold">Pico máximo em uma única nota</span>'}
+                </div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-help"
+                 title="Representantes com Consumo:\nQuantidade de vendedores com pelo menos uma bonificação faturada no período.">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Representantes com Consumo</span>
                     <i class="fa-solid fa-users text-violet-600 text-base"></i>
@@ -338,16 +361,31 @@ function renderMiniRanking(ranking) {
 // ABA 2: RANKING COMPLETO DE CONSUMO
 // ==========================================
 
+function irParaAbaDebitosComMaior() {
+    ativarAba('debitos');
+    const detalheDeb = estado.resumo?.detalhe_maior_debito;
+    if (detalheDeb?.nota) {
+        const inp = $('fBuscaD');
+        if (inp) {
+            inp.value = detalheDeb.nota;
+            carregarDebitos();
+        }
+    }
+}
+
 async function carregarRankingCompleto() {
     const host = $('listaRankingCompleto');
-    host.innerHTML = '<div class="py-12 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl text-violet-600 block mb-2"></i>Carregando ranking geral...</div>';
+    host.innerHTML = '<div class="py-12 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl text-violet-600 block mb-2"></i>Carregando painel analítico...</div>';
 
     try {
         if (!estado.resumo) {
             estado.resumo = await apiFetch('verbas-flex/resumo', 'GET', filtroBase());
         }
         estado.ranking = estado.resumo.ranking || [];
-        $('contTotalReps').textContent = estado.ranking.length;
+        estado.rankingTransferenciasCedidas = estado.resumo.ranking_transferencias_cedidas || [];
+        estado.rankingTransferenciasRecebidas = estado.resumo.ranking_transferencias_recebidas || [];
+        estado.balancoEquipe = estado.resumo.balanco_equipe || [];
+
         renderRankingCompleto();
     } catch (e) {
         host.innerHTML = `<div class="py-6 text-center text-rose-500 text-sm font-bold">${esc(e.message)}</div>`;
@@ -358,21 +396,147 @@ function renderRankingCompleto() {
     const host = $('listaRankingCompleto');
     const q = estado.buscaRanking.toLowerCase();
     const limit = estado.filtroRankingQtd;
+    const visao = estado.visaoRanking;
 
-    let lista = estado.ranking.filter((r) => {
+    // Atualizar títulos conforme a visão
+    const titulos = {
+        bonificacoes: {
+            t: '<i class="fa-solid fa-receipt text-amber-500 mr-2"></i>Consumo em Bonificações (Notas Fiscais)',
+            s: 'Representantes com maior volume debitado em notas fiscais faturadas no período.'
+        },
+        transferencias_cedidas: {
+            t: '<i class="fa-solid fa-arrow-up-from-bracket text-purple-600 mr-2"></i>Consumo de Transferência (Quem Mais Cedeu/Transferiu)',
+            s: 'Colaboradores e gestores que mais transferiram saldo flex para outros colegas da filial via Mercos.'
+        },
+        transferencias_recebidas: {
+            t: '<i class="fa-solid fa-arrow-down-to-bracket text-emerald-600 mr-2"></i>Quem Mais Creditou (Recebeu Transferência)',
+            s: 'Representantes e gestores que mais receberam saldo flex remanejado pela equipe via Mercos.'
+        },
+        balanco: {
+            t: '<i class="fa-solid fa-scale-balanced text-indigo-600 mr-2"></i>Balanço Geral Consolidado da Equipe',
+            s: 'Comparativo 360° entre saídas (bonificações + transferências cedidas) e entradas (transferências recebidas).'
+        }
+    };
+
+    if ($('rankingTitulo')) $('rankingTitulo').innerHTML = titulos[visao]?.t || '';
+    if ($('rankingSubtitulo')) $('rankingSubtitulo').textContent = titulos[visao]?.s || '';
+
+    // ==========================================
+    // VISÃO 4: BALANÇO GERAL CONSOLIDADO DA EQUIPE
+    // ==========================================
+    if (visao === 'balanco') {
+        let lista = (estado.balancoEquipe || []).filter((r) => {
+            if (q && !r.nome.toLowerCase().includes(q)) return false;
+            return true;
+        });
+
+        $('contTotalReps').textContent = lista.length;
+        if (limit === '5') lista = lista.slice(0, 5);
+        else if (limit === '10') lista = lista.slice(0, 10);
+
+        if (!lista.length) {
+            host.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs font-semibold">Nenhum registro encontrado no balanço da equipe para este período.</div>';
+            return;
+        }
+
+        host.innerHTML = `
+            <div class="overflow-x-auto rounded-2xl border border-slate-200">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
+                            <th class="py-3 px-4">Colaborador / Vendedor</th>
+                            <th class="py-3 px-3 text-right text-rose-700">Bonificações (-)</th>
+                            <th class="py-3 px-3 text-right text-purple-700">Transferiu / Cedeu (-)</th>
+                            <th class="py-3 px-3 text-right text-emerald-700">Recebeu Transferência (+)</th>
+                            <th class="py-3 px-3 text-right font-black">Total Saídas</th>
+                            <th class="py-3 px-4 text-right font-black">Saldo Líquido</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        ${lista.map((x) => {
+                            const saldolq = Number(x.saldo_liquido || 0);
+                            const corSaldo = saldolq > 0 ? 'text-emerald-600 bg-emerald-50' : saldolq < 0 ? 'text-rose-600 bg-rose-50' : 'text-slate-600 bg-slate-50';
+                            return `
+                                <tr class="hover:bg-slate-50 transition">
+                                    <td class="py-3 px-4 font-bold text-slate-800">
+                                        <div class="truncate max-w-[220px]" title="${esc(x.nome)}">${esc(x.nome)}</div>
+                                        <div class="text-[10px] text-slate-400 font-semibold">ID #${x.id}</div>
+                                    </td>
+                                    <td class="py-3 px-3 text-right font-extrabold text-rose-600">
+                                        ${brl(x.bonificacoes)}
+                                        <div class="text-[10px] text-slate-400 font-medium">${x.qtd_bonificacoes} nota(s)</div>
+                                    </td>
+                                    <td class="py-3 px-3 text-right font-extrabold text-purple-700">
+                                        ${brl(x.transferido_cedido)}
+                                        <div class="text-[10px] text-slate-400 font-medium">${x.qtd_cedido} envio(s)</div>
+                                    </td>
+                                    <td class="py-3 px-3 text-right font-extrabold text-emerald-700">
+                                        ${brl(x.transferido_recebido)}
+                                        <div class="text-[10px] text-slate-400 font-medium">${x.qtd_recebido} entrada(s)</div>
+                                    </td>
+                                    <td class="py-3 px-3 text-right font-black text-slate-800">
+                                        ${brl(x.total_saidas)}
+                                    </td>
+                                    <td class="py-3 px-4 text-right">
+                                        <span class="px-2.5 py-1 rounded-lg font-black ${corSaldo} inline-block">
+                                            ${saldolq > 0 ? '+' : ''}${brl(saldolq)}
+                                        </span>
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>
+        `;
+        return;
+    }
+
+    // ==========================================
+    // VISÕES DE RANKING (1, 2 e 3)
+    // ==========================================
+    let fonte = [];
+    let corBarra = 'from-violet-600 via-purple-600 to-indigo-500';
+    let labelQtd = 'nota(s) faturadas';
+    let labelDestaque = 'Maior:';
+    let badgeTxt = 'da verba';
+
+    if (visao === 'bonificacoes') {
+        fonte = estado.ranking || [];
+        corBarra = 'from-rose-500 to-red-600';
+        labelQtd = 'nota(s) faturadas';
+        labelDestaque = 'Maior Retirada:';
+        badgeTxt = 'do consumo';
+    } else if (visao === 'transferencias_cedidas') {
+        fonte = estado.rankingTransferenciasCedidas || [];
+        corBarra = 'from-purple-600 to-violet-700';
+        labelQtd = 'transferência(s) enviadas';
+        labelDestaque = 'Maior Envio:';
+        badgeTxt = 'do volume cedido';
+    } else if (visao === 'transferencias_recebidas') {
+        fonte = estado.rankingTransferenciasRecebidas || [];
+        corBarra = 'from-emerald-500 to-teal-600';
+        labelQtd = 'transferência(s) recebidas';
+        labelDestaque = 'Maior Recebimento:';
+        badgeTxt = 'do volume recebido';
+    }
+
+    let lista = fonte.filter((r) => {
         if (q && !r.nome.toLowerCase().includes(q)) return false;
         return true;
     });
 
+    $('contTotalReps').textContent = lista.length;
     if (limit === '5') lista = lista.slice(0, 5);
     else if (limit === '10') lista = lista.slice(0, 10);
 
     if (!lista.length) {
-        host.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs font-semibold">Nenhum representante encontrado para este filtro.</div>';
+        host.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs font-semibold">Nenhum registro encontrado para esta visão no período.</div>';
         return;
     }
 
-    const maxR = Math.max(1, ...estado.ranking.map((x) => Number(x.total)));
+    const totalGeral = fonte.reduce((acc, cur) => acc + Number(cur.total || 0), 0);
+    const maxR = Math.max(1, ...fonte.map((x) => Number(x.total || 0)));
 
     host.innerHTML = lista.map((x, i) => {
         const medalha = i === 0
@@ -382,6 +546,9 @@ function renderRankingCompleto() {
             : i === 2
             ? '<span class="rank-badge bg-amber-700/10 text-amber-900 border border-amber-600/30 shadow-xs"><i class="fa-solid fa-medal"></i> 3º</span>'
             : `<span class="rank-badge bg-slate-100 text-slate-500 font-bold">${i + 1}º</span>`;
+
+        const pct = totalGeral > 0 ? ((Number(x.total || 0) / totalGeral) * 100).toFixed(1) : 0;
+        const valDestaque = x.maior_retirada || x.maior_operacao || 0;
 
         return `
             <div class="p-4 rounded-2xl border border-slate-200 bg-white hover:border-violet-300 hover:shadow-xs transition">
@@ -395,17 +562,17 @@ function renderRankingCompleto() {
                         <div class="flex items-center gap-2 text-xs text-slate-400 mt-0.5">
                             <span>Código: <b>#${x.id}</b></span>
                             <span>·</span>
-                            <span><b>${x.qtd}</b> nota(s) faturadas</span>
-                            ${x.maior_retirada ? `<span>·</span><span>Maior: <b>${brl(x.maior_retirada)}</b></span>` : ''}
+                            <span><b>${x.qtd}</b> ${labelQtd}</span>
+                            ${valDestaque ? `<span>·</span><span>${labelDestaque} <b>${brl(valDestaque)}</b></span>` : ''}
                         </div>
                     </div>
                 </div>
 
                 <div class="flex items-center gap-3 mt-3 pt-2.5 border-t border-slate-100">
                     <div class="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r from-violet-600 via-purple-600 to-indigo-500 rounded-full" style="width:${(Number(x.total) / maxR) * 100}%"></div>
+                        <div class="h-full bg-gradient-to-r ${corBarra} rounded-full" style="width:${(Number(x.total) / maxR) * 100}%"></div>
                     </div>
-                    <span class="text-xs font-black text-violet-800 bg-violet-100/70 px-2.5 py-0.5 rounded-lg flex-none">${x.percentual || 0}% da verba</span>
+                    <span class="text-xs font-black text-violet-800 bg-violet-100/70 px-2.5 py-0.5 rounded-lg flex-none">${pct}% ${badgeTxt}</span>
                 </div>
             </div>
         `;
@@ -731,18 +898,61 @@ window.addEventListener('DOMContentLoaded', async () => {
 
     // Exportações Excel
     $('xlsRanking')?.addEventListener('click', () => {
-        if (!estado.ranking.length) return aviso('warning', 'Sem Dados', 'Nenhum dado de ranking para exportar.');
-        const cols = ['Posição', 'Código Rep.', 'Representante', 'Total Consumido (R$)', 'Qtd Notas', 'Maior Retirada (R$)', '% Participação'];
-        const rows = estado.ranking.map((r, i) => [
+        const visao = estado.visaoRanking;
+        if (visao === 'balanco') {
+            const dados = estado.balancoEquipe || [];
+            if (!dados.length) return aviso('warning', 'Sem Dados', 'Nenhum dado do balanço para exportar.');
+            const cols = ['ID', 'Colaborador', 'Bonificações (R$)', 'Qtd Bonificações', 'Transferido Cedido (R$)', 'Qtd Cedido', 'Transferido Recebido (R$)', 'Qtd Recebido', 'Total Saídas (R$)', 'Saldo Líquido (R$)'];
+            const rows = dados.map((d) => [
+                d.id,
+                d.nome,
+                Number(d.bonificacoes || 0).toFixed(2).replace('.', ','),
+                d.qtd_bonificacoes || 0,
+                Number(d.transferido_cedido || 0).toFixed(2).replace('.', ','),
+                d.qtd_cedido || 0,
+                Number(d.transferido_recebido || 0).toFixed(2).replace('.', ','),
+                d.qtd_recebido || 0,
+                Number(d.total_saidas || 0).toFixed(2).replace('.', ','),
+                Number(d.saldo_liquido || 0).toFixed(2).replace('.', ',')
+            ]);
+            return baixarCSV(`balanco_equipe_flex_${iso(new Date())}.csv`, cols, rows);
+        }
+
+        let fonte = [];
+        let nomeArquivo = 'ranking_verbas_flex';
+        let colOperacao = 'Qtd Notas';
+        let colDestaque = 'Maior Retirada (R$)';
+
+        if (visao === 'bonificacoes') {
+            fonte = estado.ranking || [];
+            nomeArquivo = 'ranking_consumo_bonificacoes';
+            colOperacao = 'Qtd Notas';
+            colDestaque = 'Maior Retirada (R$)';
+        } else if (visao === 'transferencias_cedidas') {
+            fonte = estado.rankingTransferenciasCedidas || [];
+            nomeArquivo = 'ranking_transferencias_cedidas';
+            colOperacao = 'Qtd Envios';
+            colDestaque = 'Maior Envio (R$)';
+        } else if (visao === 'transferencias_recebidas') {
+            fonte = estado.rankingTransferenciasRecebidas || [];
+            nomeArquivo = 'ranking_transferencias_recebidas';
+            colOperacao = 'Qtd Recebidas';
+            colDestaque = 'Maior Recebimento (R$)';
+        }
+
+        if (!fonte.length) return aviso('warning', 'Sem Dados', 'Nenhum dado para exportar nesta visão.');
+        const totalGeral = fonte.reduce((acc, cur) => acc + Number(cur.total || 0), 0);
+        const cols = ['Posição', 'ID', 'Colaborador', 'Total (R$)', colOperacao, colDestaque, '% Participação'];
+        const rows = fonte.map((r, i) => [
             `${i + 1}º`,
             r.id,
             r.nome,
-            r.total.toFixed(2).replace('.', ','),
+            Number(r.total || 0).toFixed(2).replace('.', ','),
             r.qtd,
-            (r.maior_retirada || 0).toFixed(2).replace('.', ','),
-            `${r.percentual || 0}%`
+            Number(r.maior_retirada || r.maior_operacao || 0).toFixed(2).replace('.', ','),
+            totalGeral > 0 ? `${((Number(r.total || 0) / totalGeral) * 100).toFixed(1)}%` : '0%'
         ]);
-        baixarCSV(`ranking_verbas_flex_${iso(new Date())}.csv`, cols, rows);
+        baixarCSV(`${nomeArquivo}_${iso(new Date())}.csv`, cols, rows);
     });
 
     $('xlsD')?.addEventListener('click', () => {

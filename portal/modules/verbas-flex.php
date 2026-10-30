@@ -54,6 +54,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <p class="text-xs sm:text-sm text-purple-200 font-medium mt-0.5">Painel analítico, ranking de consumo por representante e conciliação de empréstimos</p>
                 </div>
             </div>
+            <div class="flex items-center gap-2">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=verbas-flex" class="px-4 py-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-black flex items-center gap-2 transition no-underline shadow-sm border border-white/20">
+                    <i class="fa-solid fa-graduation-cap text-sm"></i>
+                    <span>Treinamento & Manual</span>
+                </a>
+            </div>
         </div>
     </div>
 
@@ -93,7 +99,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="vf-tabs mb-4" id="abas">
         <button type="button" data-aba="painel" class="vf-tab on"><i class="fa-solid fa-chart-pie"></i> Painel & Dash</button>
         <button type="button" data-aba="ranking" class="vf-tab"><i class="fa-solid fa-ranking-star"></i> Ranking Consumo</button>
-        <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-arrow-trend-down"></i> Débitos / Notas</button>
+        <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-receipt"></i> Consumo Bonificações</button>
         <button type="button" data-aba="creditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> Créditos / Empréstimos</button>
         <button type="button" data-aba="api" class="vf-tab"><i class="fa-solid fa-heart-pulse"></i> API Mercos</button>
         <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> Transferências</a>
@@ -163,16 +169,24 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="vf-card p-5 sm:p-6">
             <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
                 <div>
-                    <h3 class="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                    <h3 class="text-base font-extrabold text-slate-800 flex items-center gap-2" id="rankingTitulo">
                         <i class="fa-solid fa-trophy text-amber-500"></i>
-                        <span>Ranking Geral de Consumo de Verba Flex</span>
+                        <span>Painel Completo de Consumo & Transferências de Flex</span>
                     </h3>
-                    <p class="text-xs text-slate-400">Classificação completa de todos os representantes que consumiram no período</p>
+                    <p class="text-xs text-slate-400" id="rankingSubtitulo">Acompanhe retiradas em notas fiscais, volume transferido (cedido/recebido) e o balanço líquido da equipe</p>
                 </div>
-                <button id="xlsRanking" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition">
+                <button id="xlsRanking" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
                     <i class="fa-solid fa-file-excel text-emerald-600"></i>
-                    <span>Exportar Ranking</span>
+                    <span>Exportar Painel</span>
                 </button>
+            </div>
+
+            <!-- SELETOR DE VISÕES DO RANKING -->
+            <div class="flex gap-2 mb-4 overflow-x-auto pb-1" id="visoesRanking">
+                <button type="button" data-visao="bonificacoes" class="vf-chip on cursor-pointer"><i class="fa-solid fa-receipt mr-1"></i> 🏆 Consumo em Bonificações</button>
+                <button type="button" data-visao="transferencias_cedidas" class="vf-chip cursor-pointer"><i class="fa-solid fa-arrow-up-from-bracket mr-1"></i> 🔄 Consumo Transferência (Quem Mais Transferiu)</button>
+                <button type="button" data-visao="transferencias_recebidas" class="vf-chip cursor-pointer"><i class="fa-solid fa-arrow-down-to-bracket mr-1"></i> 📥 Quem Mais Creditou (Recebeu Transferência)</button>
+                <button type="button" data-visao="balanco" class="vf-chip cursor-pointer"><i class="fa-solid fa-scale-balanced mr-1"></i> ⚖️ Balanço Geral da Equipe</button>
             </div>
 
             <!-- CONTROLES DO RANKING -->
@@ -183,7 +197,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <button type="button" data-limit="all" class="vf-chip on">Ver Todos (<span id="contTotalReps">0</span>)</button>
                 </div>
                 <div class="w-full sm:w-64">
-                    <input id="buscaRanking" type="search" placeholder="Buscar representante..." class="w-full px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-violet-600">
+                    <input id="buscaRanking" type="search" placeholder="Buscar colaborador..." class="w-full px-3.5 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold focus:outline-violet-600">
                 </div>
             </div>
 
@@ -209,7 +223,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <div class="flex items-center justify-between mb-4 p-4 rounded-2xl bg-red-50/70 border border-red-100">
                 <div>
-                    <span class="vf-label text-red-700">Total Retirado em Bonificações</span>
+                    <span class="vf-label text-red-700">Total Consumido em Bonificações (Notas Fiscais)</span>
                     <div id="totD" class="text-2xl sm:text-3xl font-black text-red-600">R$ 0,00</div>
                     <div id="qtdD" class="text-xs text-red-800/80 font-bold mt-0.5"></div>
                 </div>

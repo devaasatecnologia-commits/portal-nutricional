@@ -183,8 +183,20 @@ function renderFiliais() {
 
 function renderKPIs() {
     const res = estado.resumo || {};
-    $('kpiTotalMes').textContent = brl(res.total_mes);
+    const totalMesVal = Number(res.total_mes || 0);
+    $('kpiTotalMes').textContent = brl(totalMesVal);
     $('kpiQtdMes').textContent = `${res.qtd_mes || 0} operações concluídas`;
+
+    // Tooltip dinâmico e cirúrgico do Card 1 (Transferido no Mês)
+    const cardTot = $('cardKpiTotalMes');
+    if (cardTot) {
+        cardTot.title = `Volume Transferido no Mês: ${brl(totalMesVal)}\n` +
+            `Total de ${res.qtd_mes || 0} operações concluídas com sucesso via Mercos.\n\n` +
+            `O QUE É ESSE VALOR?\n` +
+            `Trata-se do volume total bruto de saldo flex transferido e redistribuído entre as contas de representantes e gestores da filial no mês atual.\n\n` +
+            `• Finalidade Comercial: Rebalanceamento de saldo entre carteiras da equipe para que representantes com oportunidade imediata de venda possam aplicar flexibilização de preços e fechar pedidos.\n` +
+            `• Impacto Financeiro: NÃO gera custo adicional, nem débito, nem saída de caixa da empresa. É exclusivamente o manejo e circulação interna de verbas já liberadas no ecossistema Mercos + ERP.`;
+    }
 
     $('kpiSaldoEquipe').textContent = brl(res.saldo_equipe);
     $('kpiTotalReps').textContent = `${res.total_representantes || estado.reps.length} ativos (ERP + Mercos)`;
@@ -203,6 +215,11 @@ function renderKPIs() {
         $('kpiUltimaValor').textContent = brl(ult.valor);
         $('kpiUltimaDesc').textContent = `${ult.nome_de.split(' ')[0]} ➔ ${ult.nome_para.split(' ')[0]}`;
         $('kpiUltimaDesc').title = `${ult.nome_de} -> ${ult.nome_para} por ${ult.usuario}`;
+        const tagUlt = $('kpiUltimaTag');
+        if (tagUlt) {
+            tagUlt.textContent = `${ult.data ? ult.data.split(' ')[0] : 'Hoje'}`;
+            tagUlt.title = `Realizada em ${ult.data || ''} por ${ult.usuario || 'Sistema'}`;
+        }
     } else {
         $('kpiUltimaValor').textContent = 'Nenhuma';
         $('kpiUltimaDesc').textContent = 'Sem histórico recente';

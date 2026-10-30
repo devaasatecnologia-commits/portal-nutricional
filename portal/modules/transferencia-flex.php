@@ -69,6 +69,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=transferencia-flex" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm border border-white/20">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+                </a>
+
                 <a href="<?= $appBase ?>/portal/modules/verbas-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm">
                     <i class="fa-solid fa-chart-pie"></i> Verbas Flex
                 </a>
@@ -83,43 +87,75 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- 4 KPI CARDS -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <!-- KPI 1: Transferido no Mês -->
-        <div class="tf-kpi bg-gradient-to-br from-violet-50 to-indigo-50/70 border border-violet-100 shadow-sm">
+        <div class="tf-kpi bg-gradient-to-br from-violet-50 to-indigo-50/70 border border-violet-100 shadow-sm cursor-help relative group"
+             id="cardKpiTotalMes"
+             title="Volume Transferido no Mês:&#10;Soma de todas as transferências de saldo flex concluídas com sucesso entre a equipe neste mês via Mercos.&#10;&#10;Natureza da Operação:&#10;Trata-se de remanejamento interno de saldo entre contas (um vendedor ou gestor cedendo verba para outro). NÃO representa custo novo nem saída de caixa para a empresa.">
             <div class="flex items-center justify-between text-violet-600 mb-2">
-                <span class="tf-label text-violet-700">Transferido no Mês</span>
+                <span class="tf-label text-violet-700 flex items-center gap-1.5">
+                    <span>Transferido no Mês</span>
+                    <i class="fa-solid fa-circle-question text-[11px] text-violet-400 group-hover:text-violet-600 transition-colors"></i>
+                </span>
                 <div class="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center"><i class="fa-solid fa-money-bill-transfer text-xs"></i></div>
             </div>
             <div id="kpiTotalMes" class="text-xl sm:text-2xl font-black text-slate-800">R$ 0,00</div>
             <div id="kpiQtdMes" class="text-xs text-slate-500 font-semibold mt-1">0 operações concluídas</div>
+            <div class="text-[10px] text-violet-600 font-bold mt-1 bg-violet-100/60 px-2 py-0.5 rounded-md inline-block">
+                Remanejamento entre contas
+            </div>
         </div>
 
         <!-- KPI 2: Saldo Total Equipe -->
-        <div class="tf-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-100 shadow-sm">
+        <div class="tf-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-100 shadow-sm cursor-help relative group"
+             id="cardKpiSaldoEquipe"
+             title="Saldo Total da Equipe:&#10;Soma de todo o saldo flex atualmente disponível e utilizável nas carteiras de todos os representantes e gestores da filial (dados consolidados do ERP e Mercos).">
             <div class="flex items-center justify-between text-emerald-600 mb-2">
-                <span class="tf-label text-emerald-700">Saldo Total Equipe</span>
+                <span class="tf-label text-emerald-700 flex items-center gap-1.5">
+                    <span>Saldo Total Equipe</span>
+                    <i class="fa-solid fa-circle-question text-[11px] text-emerald-400 group-hover:text-emerald-600 transition-colors"></i>
+                </span>
                 <div class="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center"><i class="fa-solid fa-wallet text-xs"></i></div>
             </div>
             <div id="kpiSaldoEquipe" class="text-xl sm:text-2xl font-black text-slate-800">R$ 0,00</div>
             <div id="kpiTotalReps" class="text-xs text-slate-500 font-semibold mt-1">0 representantes ativos</div>
+            <div class="text-[10px] text-emerald-700 font-bold mt-1 bg-emerald-100/60 px-2 py-0.5 rounded-md inline-block">
+                Saldo ativo disponível
+            </div>
         </div>
 
         <!-- KPI 3: Meu Saldo Gestor -->
-        <div class="tf-kpi bg-gradient-to-br from-purple-50 to-pink-50/70 border border-purple-100 shadow-sm">
+        <div class="tf-kpi bg-gradient-to-br from-purple-50 to-pink-50/70 border border-purple-100 shadow-sm cursor-help relative group"
+             id="cardKpiSaldoGestor"
+             title="Meu Saldo Gestor:&#10;Saldo de flex disponível atualmente na sua conta de gestor/administrador para cobrir necessidades da filial ou remanejar verba para a equipe.">
             <div class="flex items-center justify-between text-purple-600 mb-2">
-                <span class="tf-label text-purple-700">Meu Saldo Gestor</span>
+                <span class="tf-label text-purple-700 flex items-center gap-1.5">
+                    <span>Meu Saldo Gestor</span>
+                    <i class="fa-solid fa-circle-question text-[11px] text-purple-400 group-hover:text-purple-600 transition-colors"></i>
+                </span>
                 <div class="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center"><i class="fa-solid fa-user-shield text-xs"></i></div>
             </div>
             <div id="kpiSaldoGestor" class="text-xl sm:text-2xl font-black text-slate-800">R$ 0,00</div>
             <div id="kpiNomeGestor" class="text-xs text-slate-500 font-semibold mt-1 truncate">Conta do Gestor</div>
+            <div class="text-[10px] text-purple-700 font-bold mt-1 bg-purple-100/60 px-2 py-0.5 rounded-md inline-block">
+                Conta de Gestão
+            </div>
         </div>
 
         <!-- KPI 4: Última Transferência -->
-        <div class="tf-kpi bg-gradient-to-br from-blue-50 to-cyan-50/70 border border-blue-100 shadow-sm">
+        <div class="tf-kpi bg-gradient-to-br from-blue-50 to-cyan-50/70 border border-blue-100 shadow-sm cursor-help relative group"
+             id="cardKpiUltima"
+             title="Última Operação Concluída:&#10;Registro da transferência mais recente efetuada com sucesso na filial, indicando valor transferido, emissor, destinatário e usuário executor.">
             <div class="flex items-center justify-between text-blue-600 mb-2">
-                <span class="tf-label text-blue-700">Última Operação</span>
+                <span class="tf-label text-blue-700 flex items-center gap-1.5">
+                    <span>Última Operação</span>
+                    <i class="fa-solid fa-circle-question text-[11px] text-blue-400 group-hover:text-blue-600 transition-colors"></i>
+                </span>
                 <div class="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center"><i class="fa-solid fa-clock-rotate-left text-xs"></i></div>
             </div>
             <div id="kpiUltimaValor" class="text-xl sm:text-2xl font-black text-slate-800">--</div>
             <div id="kpiUltimaDesc" class="text-xs text-slate-500 font-semibold mt-1 truncate">Nenhuma recente</div>
+            <div class="text-[10px] text-blue-700 font-bold mt-1 bg-blue-100/60 px-2 py-0.5 rounded-md inline-block truncate" id="kpiUltimaTag">
+                Histórico Mercos
+            </div>
         </div>
     </div>
 

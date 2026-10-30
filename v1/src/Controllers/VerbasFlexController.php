@@ -356,6 +356,152 @@ class VerbasFlexController
                 $pc
             )[0] ?? ['qtd' => 0, 'maior_credito' => 0, 'media_credito' => 0];
 
+            // Detalhe da maior retirada única
+            $detalheMaiorDebito = $this->consultar(
+                "SELECT ABS(lfb.valor_tirado) AS valor,
+                        lfb.numero_nota AS nota,
+                        nfs.datahora AS data,
+                        cli.fantasia AS cliente,
+                        vend.idcliforemp AS idrepresentante,
+                        vend.fantasia AS representante
+                 $d
+                 ORDER BY ABS(lfb.valor_tirado) DESC, nfs.datahora DESC
+                 LIMIT 1",
+                $pd
+            )[0] ?? null;
+            if ($detalheMaiorDebito) {
+                $detalheMaiorDebito['valor'] = (float)$detalheMaiorDebito['valor'];
+            }
+
+            // Detalhe do maior crédito/empréstimo
+            $detalheMaiorCredito = $this->consultar(
+                "SELECT ldfg.valor_emprestimo AS valor,
+                        ldfg.motivo,
+                        ldfg.data
+                 $c AND ldfg.valor_emprestimo > 0
+                 ORDER BY ldfg.valor_emprestimo DESC
+                 LIMIT 1",
+                $pc
+            )[0] ?? null;
+            if ($detalheMaiorCredito) {
+                $detalheMaiorCredito['valor'] = (float)$detalheMaiorCredito['valor'];
+            }
+
+            // Rankings de Transferências de Verba (Mercos Log)
+            $rankingTransferenciasCedidas = [];
+            $rankingTransferenciasRecebidas = [];
+            $balancoEquipe = [];
+            try {
+                $pTransf = [
+                    'filial' => $f['filial'],
+                    'inicio' => $f['inicio'],
+                    'fim' => $f['fim'],
+                ];
+                $rankingTransferenciasCedidas = $this->consultar(
+                    "SELECT colaborador_de AS id,
+                            COALESCE(NULLIF(TRIM(nome_de), ''), 'ID ' || colaborador_de) AS nome,
+                            COUNT(*) AS qtd,
+                            COALESCE(SUM(valor), 0) AS total,
+                            COALESCE(MAX(valor), 0) AS maior_operacao
+                     FROM transferencias_flex_mercos_log
+                     WHERE filial = :filial AND sucesso = true
+                       AND data_transferencia >= :inicio::date AND data_transferencia < (:fim::date + 1)
+                     GROUP BY colaborador_de, nome_de
+                     ORDER BY total DESC
+                     LIMIT 50",
+                    $pTransf
+                );
+                foreach ($rankingTransferenciasCedidas as &$rtc) {
+                    $rtc['qtd'] = (int)$rtc['qtd'];
+                    $rtc['total'] = (float)$rtc['total'];
+                    $rtc['maior_operacao'] = (float)$rtc['maior_operacao'];
+                }
+                unset($rtc);
+
+                $rankingTransferenciasRecebidas = $this->consultar(
+                    "SELECT colaborador_para AS id,
+                            COALESCE(NULLIF(TRIM(nome_para), ''), 'ID ' || colaborador_para) AS nome,
+                            COUNT(*) AS qtd,
+                            COALESCE(SUM(valor), 0) AS total,
+                            COALESCE(MAX(valor), 0) AS maior_operacao
+                     FROM transferencias_flex_mercos_log
+                     WHERE filial = :filial AND sucesso = true
+                       AND data_transferencia >= :inicio::date AND data_transferencia < (:fim::date + 1)
+                     GROUP BY colaborador_para, nome_para
+                     ORDER BY total DESC
+                     LIMIT 50",
+                    $pTransf
+                );
+                foreach ($rankingTransferenciasRecebidas as &$rtr) {
+                    $rtr['qtd'] = (int)$rtr['qtd'];
+                    $rtr['total'] = (float)$rtr['total'];
+                    $rtr['maior_operacao'] = (float)$rtr['maior_operacao'];
+                }
+                unset($rtr);
+
+                // Balanço Consolidado da Equipe
+                $mapEquipe = [];
+                foreach ($ranking as $rk) {
+                    $k = 'k_' . $rk['id'];
+                    $mapEquipe[$k] = [
+                        'id' => $rk['id'],
+                        'nome' => $rk['nome'],
+                        'bonificacoes' => (float)$rk['total'],
+                        'qtd_bonificacoes' => (int)$rk['qtd'],
+                        'transferido_cedido' => 0.0,
+                        'qtd_cedido' => 0,
+                        'transferido_recebido' => 0.0,
+                        'qtd_recebido' => 0,
+                    ];
+                }
+                foreach ($rankingTransferenciasCedidas as $tc) {
+                    $k = 'k_' . $tc['id'];
+                    if (!isset($mapEquipe[$k])) {
+                        $mapEquipe[$k] = [
+                            'id' => $tc['id'],
+                            'nome' => $tc['nome'],
+                            'bonificacoes' => 0.0,
+                            'qtd_bonificacoes' => 0,
+                            'transferido_cedido' => 0.0,
+                            'qtd_cedido' => 0,
+                            'transferido_recebido' => 0.0,
+                            'qtd_recebido' => 0,
+                        ];
+                    }
+                    $mapEquipe[$k]['transferido_cedido'] = (float)$tc['total'];
+                    $mapEquipe[$k]['qtd_cedido'] = (int)$tc['qtd'];
+                }
+                foreach ($rankingTransferenciasRecebidas as $tr) {
+                    $k = 'k_' . $tr['id'];
+                    if (!isset($mapEquipe[$k])) {
+                        $mapEquipe[$k] = [
+                            'id' => $tr['id'],
+                            'nome' => $tr['nome'],
+                            'bonificacoes' => 0.0,
+                            'qtd_bonificacoes' => 0,
+                            'transferido_cedido' => 0.0,
+                            'qtd_cedido' => 0,
+                            'transferido_recebido' => 0.0,
+                            'qtd_recebido' => 0,
+                        ];
+                    }
+                    $mapEquipe[$k]['transferido_recebido'] = (float)$tr['total'];
+                    $mapEquipe[$k]['qtd_recebido'] = (int)$tr['qtd'];
+                }
+
+                foreach ($mapEquipe as $item) {
+                    $saidas = $item['bonificacoes'] + $item['transferido_cedido'];
+                    $entradas = $item['transferido_recebido'];
+                    $item['total_saidas'] = $saidas;
+                    $item['total_entradas'] = $entradas;
+                    $item['saldo_liquido'] = $entradas - $saidas;
+                    $balancoEquipe[] = $item;
+                }
+                usort($balancoEquipe, fn($a, $b) => ($b['total_saidas'] <=> $a['total_saidas']));
+            } catch (\Throwable $e) {
+                error_log('[verbas-flex] rankings de transferencias: ' . $e->getMessage());
+            }
+
             // Série diária no período para gráficos de linha/área
             $serieDiaria = $this->consultar(
                 "SELECT date_trunc('day', nfs.datahora)::date AS dia,
@@ -375,6 +521,11 @@ class VerbasFlexController
                 'serie' => $serie,
                 'serie_diaria' => $serieDiaria,
                 'ranking' => $ranking,
+                'ranking_transferencias_cedidas' => $rankingTransferenciasCedidas,
+                'ranking_transferencias_recebidas' => $rankingTransferenciasRecebidas,
+                'balanco_equipe' => $balancoEquipe,
+                'detalhe_maior_debito' => $detalheMaiorDebito,
+                'detalhe_maior_credito' => $detalheMaiorCredito,
                 'estatisticas' => [
                     'qtd_debitos' => (int)$statsDebitos['qtd'],
                     'ticket_medio' => (float)$statsDebitos['ticket_medio'],
