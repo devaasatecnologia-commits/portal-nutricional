@@ -87,13 +87,15 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- 4 KPI CARDS -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <!-- KPI 1: Transferido no Mês -->
-        <div class="tf-kpi bg-gradient-to-br from-violet-50 to-indigo-50/70 border border-violet-100 shadow-sm cursor-help relative group"
+        <div class="tf-kpi bg-gradient-to-br from-violet-50 to-indigo-50/70 border border-violet-100 shadow-sm cursor-pointer relative group hover:shadow-md hover:border-violet-300 transition-all"
              id="cardKpiTotalMes"
-             title="Volume Transferido no Mês:&#10;Soma de todas as transferências de saldo flex concluídas com sucesso entre a equipe neste mês via Mercos.&#10;&#10;Natureza da Operação:&#10;Trata-se de remanejamento interno de saldo entre contas (um vendedor ou gestor cedendo verba para outro). NÃO representa custo novo nem saída de caixa para a empresa.">
+             data-tip-badge="Volume Transferido"
+             data-tip-title="Transferido no Mês Vigente"
+             data-tip-desc="Soma de todas as operações de transferência de verba flex concluídas com sucesso entre a equipe neste mês via Mercos.<br><br><b>O QUE SIGNIFICA:</b> Remanejamento interno entre contas da equipe (um vendedor ou gestor cedendo verba para outro fechar pedidos).<br><br><b>IMPACTO:</b> NÃO gera custo novo, nem despesa, nem saída de caixa da empresa.">
             <div class="flex items-center justify-between text-violet-600 mb-2">
                 <span class="tf-label text-violet-700 flex items-center gap-1.5">
                     <span>Transferido no Mês</span>
-                    <i class="fa-solid fa-circle-question text-[11px] text-violet-400 group-hover:text-violet-600 transition-colors"></i>
+                    <i class="fa-solid fa-circle-info text-[11px] text-violet-400 group-hover:text-violet-600 transition-colors"></i>
                 </span>
                 <div class="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center"><i class="fa-solid fa-money-bill-transfer text-xs"></i></div>
             </div>
@@ -105,13 +107,15 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 2: Saldo Total Equipe -->
-        <div class="tf-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-100 shadow-sm cursor-help relative group"
+        <div class="tf-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-100 shadow-sm cursor-pointer relative group hover:shadow-md hover:border-emerald-300 transition-all"
              id="cardKpiSaldoEquipe"
-             title="Saldo Total da Equipe:&#10;Soma de todo o saldo flex atualmente disponível e utilizável nas carteiras de todos os representantes e gestores da filial (dados consolidados do ERP e Mercos).">
+             data-tip-badge="Saldo Disponível"
+             data-tip-title="Saldo Total da Equipe"
+             data-tip-desc="Soma de todo o saldo flex atualmente disponível e utilizável nas carteiras de todos os representantes e gestores da filial (dados consolidados do ERP e Mercos).">
             <div class="flex items-center justify-between text-emerald-600 mb-2">
                 <span class="tf-label text-emerald-700 flex items-center gap-1.5">
                     <span>Saldo Total Equipe</span>
-                    <i class="fa-solid fa-circle-question text-[11px] text-emerald-400 group-hover:text-emerald-600 transition-colors"></i>
+                    <i class="fa-solid fa-circle-info text-[11px] text-emerald-400 group-hover:text-emerald-600 transition-colors"></i>
                 </span>
                 <div class="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center"><i class="fa-solid fa-wallet text-xs"></i></div>
             </div>
@@ -123,13 +127,15 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 3: Meu Saldo Gestor -->
-        <div class="tf-kpi bg-gradient-to-br from-purple-50 to-pink-50/70 border border-purple-100 shadow-sm cursor-help relative group"
+        <div class="tf-kpi bg-gradient-to-br from-purple-50 to-pink-50/70 border border-purple-100 shadow-sm cursor-pointer relative group hover:shadow-md hover:border-purple-300 transition-all"
              id="cardKpiSaldoGestor"
-             title="Meu Saldo Gestor:&#10;Saldo de flex disponível atualmente na sua conta de gestor/administrador para cobrir necessidades da filial ou remanejar verba para a equipe.">
+             data-tip-badge="Conta Gestão"
+             data-tip-title="Meu Saldo Gestor"
+             data-tip-desc="Saldo de flex disponível atualmente na sua conta de gestor/administrador para cobrir necessidades da filial ou remanejar verba para a equipe.">
             <div class="flex items-center justify-between text-purple-600 mb-2">
                 <span class="tf-label text-purple-700 flex items-center gap-1.5">
                     <span>Meu Saldo Gestor</span>
-                    <i class="fa-solid fa-circle-question text-[11px] text-purple-400 group-hover:text-purple-600 transition-colors"></i>
+                    <i class="fa-solid fa-circle-info text-[11px] text-purple-400 group-hover:text-purple-600 transition-colors"></i>
                 </span>
                 <div class="w-8 h-8 rounded-xl bg-purple-100 flex items-center justify-center"><i class="fa-solid fa-user-shield text-xs"></i></div>
             </div>
@@ -141,13 +147,15 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 4: Última Transferência -->
-        <div class="tf-kpi bg-gradient-to-br from-blue-50 to-cyan-50/70 border border-blue-100 shadow-sm cursor-help relative group"
+        <div class="tf-kpi bg-gradient-to-br from-blue-50 to-cyan-50/70 border border-blue-100 shadow-sm cursor-pointer relative group hover:shadow-md hover:border-blue-300 transition-all"
              id="cardKpiUltima"
-             title="Última Operação Concluída:&#10;Registro da transferência mais recente efetuada com sucesso na filial, indicando valor transferido, emissor, destinatário e usuário executor.">
+             data-tip-badge="Última Operação"
+             data-tip-title="Última Transferência Concluída"
+             data-tip-desc="Registro da transferência mais recente efetuada com sucesso na filial, indicando valor transferido, emissor, destinatário e usuário executor.">
             <div class="flex items-center justify-between text-blue-600 mb-2">
                 <span class="tf-label text-blue-700 flex items-center gap-1.5">
                     <span>Última Operação</span>
-                    <i class="fa-solid fa-circle-question text-[11px] text-blue-400 group-hover:text-blue-600 transition-colors"></i>
+                    <i class="fa-solid fa-circle-info text-[11px] text-blue-400 group-hover:text-blue-600 transition-colors"></i>
                 </span>
                 <div class="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center"><i class="fa-solid fa-clock-rotate-left text-xs"></i></div>
             </div>
@@ -448,6 +456,11 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+</div>
+
+<!-- COMPONENTE: TOOLTIP FLUTUANTE MODERNO ULTRA-RÁPIDO -->
+<div id="modernTooltip" class="fixed pointer-events-none z-[9999] opacity-0 transition-all duration-150 ease-out transform -translate-x-1/2 -translate-y-2">
+    <div class="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700/60 rounded-2xl p-3.5 shadow-2xl max-w-xs ring-1 ring-white/10" id="modernTooltipContent"></div>
 </div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

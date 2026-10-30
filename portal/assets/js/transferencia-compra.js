@@ -1060,6 +1060,36 @@ async function baixar() {
 // ==========================================================================
 
 window.addEventListener('DOMContentLoaded', () => {
+    // 1. Verificação de Hierarquia de Acesso
+    try {
+        const slugReq = ehMF ? 'transferencia-matriz-filial' : 'transferencia-filial-matriz';
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const permissoes = userData.permissoes || [];
+        const isAdmin = !!(userData.is_admin || permissoes.includes('admin') || userData.nivel === 'admin');
+        if (!isAdmin && !permissoes.includes(slugReq)) {
+            const wrap = document.querySelector('.tc-wrap') || document.body;
+            wrap.innerHTML = `
+                <div class="max-w-xl mx-auto my-16 bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl text-center font-sans">
+                    <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl font-black shadow-xs">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 mb-2">Acesso Restrito ao Módulo</h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                        Seu perfil de usuário não possui permissão para acessar <b>${ehMF ? 'Transferência Matriz → Filial' : 'Transferência Filial → Matriz'}</b>. Solicite a liberação ao administrador no painel de Permissões.
+                    </p>
+                    <div class="flex items-center justify-center">
+                        <a href="/portal/" class="px-5 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-900 transition no-underline">
+                            <i class="fa-solid fa-arrow-left mr-1.5"></i> Voltar ao Dashboard
+                        </a>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+    } catch (e) {
+        console.error('Erro na validação de permissão:', e);
+    }
+
     // Garante que os campos de data iniciem preenchidos com o Mês Corrente
     const padraoMes = obterPeriodoMesCorrente();
     if ($('dtIni') && !$('dtIni').value) $('dtIni').value = padraoMes.inicio;

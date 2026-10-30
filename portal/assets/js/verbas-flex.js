@@ -1,6 +1,68 @@
 // Módulo Gestão de Verbas Flex
 // Nutricional Distribuidora - Experiência Premium com Dashboards e Ranking Completo
 
+function aplicarHierarquiaPermissoes() {
+    try {
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const permissoes = userData.permissoes || [];
+        const isAdmin = !!(userData.is_admin || permissoes.includes('admin') || userData.nivel === 'admin');
+        estado.isAdmin = isAdmin;
+        estado.podeTransferir = isAdmin || permissoes.includes('transferencia-flex');
+        estado.podeMovimentar = isAdmin || permissoes.includes('movimentacao-flex');
+
+        if (!estado.podeTransferir) {
+            $('tabLinkTransferencias')?.classList.add('hidden');
+        }
+        if (!estado.podeMovimentar) {
+            $('tabLinkMovimentacao')?.classList.add('hidden');
+        }
+        if (!isAdmin) {
+            $('tabBtnApi')?.classList.add('hidden');
+        }
+    } catch (e) {
+        console.error('Erro ao verificar hierarquia de permissões:', e);
+    }
+}
+
+function initModernTooltips() {
+    const tip = $('modernTooltip');
+    const content = $('modernTooltipContent');
+    if (!tip || !content) return;
+
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (!target) return;
+
+        const title = target.getAttribute('data-tip-title') || '';
+        const desc = target.getAttribute('data-tip-desc') || '';
+        const badge = target.getAttribute('data-tip-badge') || '';
+
+        content.innerHTML = `
+            ${badge ? `<div class="mb-1"><span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/30 text-purple-200 border border-purple-400/30">${esc(badge)}</span></div>` : ''}
+            ${title ? `<div class="font-extrabold text-xs text-white mb-1 flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-purple-400 text-[11px]"></i> ${esc(title)}</div>` : ''}
+            ${desc ? `<div class="text-[11px] text-slate-300 font-medium leading-relaxed">${desc}</div>` : ''}
+        `;
+        tip.classList.remove('opacity-0', 'pointer-events-none');
+        tip.classList.add('opacity-100');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (tip.classList.contains('opacity-0')) return;
+        const x = Math.min(window.innerWidth - 180, Math.max(180, e.clientX));
+        const y = Math.max(40, e.clientY - 15);
+        tip.style.left = `${x}px`;
+        tip.style.top = `${y}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (target) {
+            tip.classList.add('opacity-0', 'pointer-events-none');
+            tip.classList.remove('opacity-100');
+        }
+    });
+}
+
 const apiFetch = async function (acao, metodo = 'GET', body = null) {
     const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
     let url = apiRoot + '/' + acao.replace(/^\/+/, '').replace(/^v1\//, '');
@@ -40,6 +102,9 @@ const estado = {
     resumo: null,
     chartMensalInst: null,
     chartDiarioInst: null,
+    isAdmin: false,
+    podeTransferir: false,
+    podeMovimentar: false,
 };
 
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -142,10 +207,20 @@ async function carregarPainel() {
             ? `Maior Retirada Única:\n• Representante: ${detalheDeb.representante || 'N/D'} (#${detalheDeb.idrepresentante || ''})\n• Nota Fiscal: #${detalheDeb.nota || 'N/D'}\n• Cliente: ${detalheDeb.cliente || 'N/D'}\n• Data: ${detalheDeb.data ? dataBR(detalheDeb.data) : 'N/D'}\n• Valor: ${brl(detalheDeb.valor || 0)}`
             : 'Pico máximo debitado em uma única nota fiscal no período.';
 
-        // 6 KPIs com Tooltips Especializados
+        const tipMaiorDebHtml = detalheDeb
+            ? `<b>Representante:</b> ${esc(detalheDeb.representante || 'N/D')}<br>` +
+              `<b>Nota Fiscal:</b> #${esc(detalheDeb.nota || 'N/D')}<br>` +
+              `<b>Cliente:</b> ${esc(detalheDeb.cliente || 'N/D')}<br>` +
+              `<b>Data:</b> ${detalheDeb.data ? dataBR(detalheDeb.data) : 'N/D'}<br>` +
+              `<b>Valor:</b> ${brl(detalheDeb.valor || 0)}`
+            : 'Pico máximo individual debitado em uma única nota fiscal no período.';
+
+        // 6 KPIs com Tooltips Flutuantes Modernos
         boxKpi.innerHTML = `
-            <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md cursor-help"
-                 title="Empréstimos Concedidos:\nTotal de saldo aportado pelo gestor para a equipe no período selecionado.">
+            <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 data-tip-badge="Aporte Gestor"
+                 data-tip-title="Empréstimos Concedidos"
+                 data-tip-desc="Total de saldo de flex liberado e aportado pelo gestor ou diretoria para a equipe comercial no período selecionado.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
                     <span>Empréstimos Concedidos</span>
                     <i class="fa-solid fa-hand-holding-dollar text-base"></i>
@@ -157,8 +232,10 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md cursor-help"
-                 title="Consumo em Bonificações:\nTotal de verba flex debitada através de notas fiscais de bonificação emitidas no período.">
+            <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 data-tip-badge="Saída Comercial"
+                 data-tip-title="Consumo em Bonificações"
+                 data-tip-desc="Total de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período selecionado.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
                     <span>Consumo Bonificações</span>
                     <i class="fa-solid fa-receipt text-base"></i>
@@ -170,8 +247,10 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md cursor-help"
-                 title="Saldo Líquido / Resultado:\nDiferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-). Saldo positivo indica aporte superior ao consumo da filial.">
+            <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 data-tip-badge="Resultado Líquido"
+                 data-tip-title="Saldo Líquido / Resultado"
+                 data-tip-desc="Diferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-). Saldo positivo indica aporte superior ao consumo da filial.">
                 <div class="flex items-center justify-between opacity-85 text-[11px] font-bold uppercase tracking-wider">
                     <span>Saldo Líquido / Resultado</span>
                     <i class="fa-solid fa-scale-balanced text-base"></i>
@@ -182,8 +261,10 @@ async function carregarPainel() {
                 </div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-help"
-                 title="Média por Retirada:\nTicket médio de verba flex abatido por nota fiscal faturada no período.">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
+                 data-tip-badge="Ticket Médio"
+                 data-tip-title="Média por Retirada"
+                 data-tip-desc="Média aritmética de saldo flex consumido por nota fiscal de bonificação emitida no período.">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Média por Retirada</span>
                     <i class="fa-solid fa-calculator text-slate-400 text-base"></i>
@@ -192,8 +273,11 @@ async function carregarPainel() {
                 <div class="text-xs text-slate-400 font-semibold mt-1">Ticket médio por nota fiscal</div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer group"
-                 title="${esc(tipMaiorDeb)}" onclick="irParaAbaDebitosComMaior()">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer group hover:border-purple-300 hover:shadow-md transition-all"
+                 data-tip-badge="Pico Máximo"
+                 data-tip-title="Maior Retirada Única"
+                 data-tip-desc="${esc(tipMaiorDebHtml)}"
+                 onclick="irParaAbaDebitosComMaior()">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Maior Retirada Única</span>
                     <i class="fa-solid fa-bolt text-amber-500 text-base group-hover:scale-125 transition-transform"></i>
@@ -201,13 +285,15 @@ async function carregarPainel() {
                 <div class="text-xl font-black text-red-600 mt-1">${brl(stats.maior_debito || 0)}</div>
                 <div class="text-xs mt-1 truncate">
                     ${detalheDeb?.representante
-                        ? `<span class="text-purple-700 font-black inline-flex items-center gap-1 bg-purple-100/70 px-2 py-0.5 rounded-lg max-w-full truncate" title="${esc(tipMaiorDeb)}"><i class="fa-solid fa-user-tie text-[10px] flex-none"></i> <span class="truncate">${esc(detalheDeb.representante)}</span></span>`
+                        ? `<span class="text-purple-700 font-black inline-flex items-center gap-1 bg-purple-100/70 px-2 py-0.5 rounded-lg max-w-full truncate"><i class="fa-solid fa-user-tie text-[10px] flex-none"></i> <span class="truncate">${esc(detalheDeb.representante)}</span></span>`
                         : '<span class="text-slate-400 font-semibold">Pico máximo em uma única nota</span>'}
                 </div>
             </div>
 
-            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-help"
-                 title="Representantes com Consumo:\nQuantidade de vendedores com pelo menos uma bonificação faturada no período.">
+            <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
+                 data-tip-badge="Equipe Ativa"
+                 data-tip-title="Representantes com Consumo"
+                 data-tip-desc="Contagem de representantes comerciais com pelo menos uma bonificação faturada no período.">
                 <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold uppercase tracking-wider">
                     <span>Representantes com Consumo</span>
                     <i class="fa-solid fa-users text-violet-600 text-base"></i>
@@ -373,6 +459,88 @@ function irParaAbaDebitosComMaior() {
     }
 }
 
+function verExtratoVendedor(id, nome) {
+    ativarAba('debitos');
+    const sel = $('fRep');
+    if (sel) {
+        sel.value = id;
+    }
+    carregarDebitos();
+    const sec = $('aba-debitos');
+    if (sec) {
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+async function abrirHistoricoColaborador(id, nome) {
+    const modal = $('modalHistColab');
+    const nomeEl = $('histColabNome');
+    const totalEl = $('histColabTotal');
+    const listaEl = $('histColabLista');
+
+    if (!modal || !nomeEl || !totalEl || !listaEl) return;
+
+    nomeEl.textContent = `${nome} (#${id})`;
+    totalEl.textContent = 'Carregando...';
+    listaEl.innerHTML = '<div class="py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl text-purple-600 block mb-2"></i>Buscando transferências no Mercos...</div>';
+    modal.classList.remove('hidden');
+
+    try {
+        const filial = Number($('selFilial')?.value || 1);
+        const r = await apiFetch('flex/movimentacoes', 'GET', {
+            filial,
+            colaborador: id,
+            limite: 40
+        });
+
+        const movs = r.movimentacoes || [];
+        totalEl.textContent = `${movs.length} operação(ões)`;
+
+        if (!movs.length) {
+            listaEl.innerHTML = '<div class="py-8 text-center text-slate-400 text-xs font-semibold">Nenhuma transferência de flex encontrada para este colaborador no período.</div>';
+            return;
+        }
+
+        listaEl.innerHTML = movs.map((m) => {
+            const enviou = Number(m.colaborador_de) === Number(id);
+            const badgeCor = enviou ? 'bg-purple-100 text-purple-800 border-purple-200' : 'bg-emerald-100 text-emerald-800 border-emerald-200';
+            const sinal = enviou ? '➔ Enviou para' : '⬅ Recebeu de';
+            const parceiro = enviou ? m.nome_para : m.nome_de;
+            const corValor = enviou ? 'text-purple-700' : 'text-emerald-600';
+
+            return `
+                <div class="p-3 rounded-2xl border border-slate-100 bg-white hover:bg-slate-50 transition flex items-center justify-between gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-black border ${badgeCor}">
+                                ${enviou ? 'CEDEU' : 'RECEBEU'}
+                            </span>
+                            <span class="text-xs font-bold text-slate-700 truncate">${sinal} <b>${esc(parceiro)}</b></span>
+                        </div>
+                        <div class="text-[11px] text-slate-400 truncate">
+                            <span>${m.data_transferencia ? m.data_transferencia.slice(0, 16) : ''}</span>
+                            ${m.motivo ? ` · <i>"${esc(m.motivo)}"</i>` : ''}
+                            ${m.usuario ? ` · por <b>${esc(m.usuario)}</b>` : ''}
+                        </div>
+                    </div>
+                    <div class="text-right flex-none">
+                        <div class="text-sm font-black ${corValor}">${brl(m.valor)}</div>
+                        <span class="text-[10px] font-bold ${m.sucesso ? 'text-emerald-600' : 'text-rose-600'}">
+                            ${m.sucesso ? '<i class="fa-solid fa-check"></i> Concluída' : '<i class="fa-solid fa-xmark"></i> Falhou'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    } catch (e) {
+        listaEl.innerHTML = `<div class="py-6 text-center text-rose-500 text-xs font-bold">${esc(e.message)}</div>`;
+    }
+}
+
+function fecharModalHistColab() {
+    $('modalHistColab')?.classList.add('hidden');
+}
+
 async function carregarRankingCompleto() {
     const host = $('listaRankingCompleto');
     host.innerHTML = '<div class="py-12 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl text-violet-600 block mb-2"></i>Carregando painel analítico...</div>';
@@ -449,7 +617,8 @@ function renderRankingCompleto() {
                             <th class="py-3 px-3 text-right text-purple-700">Transferiu / Cedeu (-)</th>
                             <th class="py-3 px-3 text-right text-emerald-700">Recebeu Transferência (+)</th>
                             <th class="py-3 px-3 text-right font-black">Total Saídas</th>
-                            <th class="py-3 px-4 text-right font-black">Saldo Líquido</th>
+                            <th class="py-3 px-3 text-right font-black">Saldo Líquido</th>
+                            <th class="py-3 px-4 text-center font-black">Ações</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
@@ -457,9 +626,9 @@ function renderRankingCompleto() {
                             const saldolq = Number(x.saldo_liquido || 0);
                             const corSaldo = saldolq > 0 ? 'text-emerald-600 bg-emerald-50' : saldolq < 0 ? 'text-rose-600 bg-rose-50' : 'text-slate-600 bg-slate-50';
                             return `
-                                <tr class="hover:bg-slate-50 transition">
+                                <tr class="hover:bg-purple-50/40 transition">
                                     <td class="py-3 px-4 font-bold text-slate-800">
-                                        <div class="truncate max-w-[220px]" title="${esc(x.nome)}">${esc(x.nome)}</div>
+                                        <div class="truncate max-w-[200px]" title="${esc(x.nome)}">${esc(x.nome)}</div>
                                         <div class="text-[10px] text-slate-400 font-semibold">ID #${x.id}</div>
                                     </td>
                                     <td class="py-3 px-3 text-right font-extrabold text-rose-600">
@@ -477,10 +646,31 @@ function renderRankingCompleto() {
                                     <td class="py-3 px-3 text-right font-black text-slate-800">
                                         ${brl(x.total_saidas)}
                                     </td>
-                                    <td class="py-3 px-4 text-right">
+                                    <td class="py-3 px-3 text-right">
                                         <span class="px-2.5 py-1 rounded-lg font-black ${corSaldo} inline-block">
                                             ${saldolq > 0 ? '+' : ''}${brl(saldolq)}
                                         </span>
+                                    </td>
+                                    <td class="py-3 px-4 text-center">
+                                        <div class="flex items-center justify-center gap-1.5">
+                                            ${x.qtd_bonificacoes > 0 ? `
+                                            <button type="button" onclick="verExtratoVendedor(${x.id}, '${esc(x.nome)}')"
+                                                    class="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 transition"
+                                                    title="Ver notas fiscais de bonificação">
+                                                <i class="fa-solid fa-receipt text-xs"></i>
+                                            </button>` : ''}
+                                            ${estado.podeTransferir ? `
+                                            <a href="/portal/modules/transferencia-flex.php?para=${x.id}"
+                                               class="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 transition no-underline"
+                                               title="Transferir verba para ${esc(x.nome)}">
+                                                <i class="fa-solid fa-right-left text-xs"></i>
+                                            </a>` : ''}
+                                            <button type="button" onclick="abrirHistoricoColaborador(${x.id}, '${esc(x.nome)}')"
+                                                    class="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 transition"
+                                                    title="Histórico de transferências">
+                                                <i class="fa-solid fa-clock-rotate-left text-xs"></i>
+                                            </button>
+                                        </div>
                                     </td>
                                 </tr>
                             `;
@@ -551,7 +741,7 @@ function renderRankingCompleto() {
         const valDestaque = x.maior_retirada || x.maior_operacao || 0;
 
         return `
-            <div class="p-4 rounded-2xl border border-slate-200 bg-white hover:border-violet-300 hover:shadow-xs transition">
+            <div class="p-4 rounded-2xl border border-slate-200 bg-white hover:border-violet-300 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200">
                 <div class="flex items-center gap-3 mb-2">
                     ${medalha}
                     <div class="flex-1 min-w-0">
@@ -568,9 +758,30 @@ function renderRankingCompleto() {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-3 mt-3 pt-2.5 border-t border-slate-100">
-                    <div class="flex-1 bg-slate-100 h-3 rounded-full overflow-hidden">
-                        <div class="h-full bg-gradient-to-r ${corBarra} rounded-full" style="width:${(Number(x.total) / maxR) * 100}%"></div>
+                <!-- Barra de Proporção -->
+                <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden my-2.5">
+                    <div class="h-full bg-gradient-to-r ${corBarra} rounded-full transition-all duration-500" style="width:${(Number(x.total) / maxR) * 100}%"></div>
+                </div>
+
+                <!-- AÇÕES ANALÍTICAS E PARTICIPAÇÃO -->
+                <div class="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100">
+                    <div class="flex items-center gap-1.5">
+                        <button type="button" onclick="verExtratoVendedor(${x.id}, '${esc(x.nome)}')"
+                                class="px-2.5 py-1 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                            <i class="fa-solid fa-receipt text-[10px]"></i>
+                            <span>Ver Notas</span>
+                        </button>
+                        ${estado.podeTransferir ? `
+                        <a href="/portal/modules/transferencia-flex.php?para=${x.id}"
+                           class="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-black transition flex items-center gap-1.5 no-underline cursor-pointer shadow-2xs">
+                            <i class="fa-solid fa-right-left text-[10px]"></i>
+                            <span>Transferir</span>
+                        </a>` : ''}
+                        <button type="button" onclick="abrirHistoricoColaborador(${x.id}, '${esc(x.nome)}')"
+                                class="px-2.5 py-1 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-black transition flex items-center gap-1.5 cursor-pointer shadow-2xs">
+                            <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
+                            <span>Histórico Flex</span>
+                        </button>
                     </div>
                     <span class="text-xs font-black text-violet-800 bg-violet-100/70 px-2.5 py-0.5 rounded-lg flex-none">${pct}% ${badgeTxt}</span>
                 </div>
@@ -985,5 +1196,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         baixarCSV(`creditos_verbas_flex_${iso(new Date())}.csv`, cols, rows);
     });
 
+    aplicarHierarquiaPermissoes();
+    initModernTooltips();
     carregarPainel();
 });

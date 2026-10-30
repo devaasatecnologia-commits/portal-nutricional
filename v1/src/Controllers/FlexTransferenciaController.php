@@ -64,6 +64,7 @@ class FlexTransferenciaController
             'filiais' => $filiais,
             'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
             'is_admin' => $isAdmin,
+            'permissoes' => (array)($user['permissoes'] ?? []),
         ];
     }
 
@@ -382,6 +383,9 @@ class FlexTransferenciaController
         $motivo = mb_substr($motivo, 0, 255);
 
         $usuario = $this->usuario($request);
+        if (!$usuario['is_admin'] && !in_array('transferencia-flex', $usuario['permissoes'], true)) {
+            return $this->erro($response, 'Seu perfil de usuário não possui permissão para executar transferências de verba flex.', 403);
+        }
         $repDe = $this->permitido($usuario, $filial, $de);
         $repPara = $this->permitido($usuario, $filial, $para);
         if ($repDe === null || $repPara === null) {
@@ -506,6 +510,7 @@ class FlexTransferenciaController
             $fim = $ok((string)($q['fim'] ?? '')) ? $q['fim'] : null;
             $de = (int)($q['de'] ?? 0);
             $para = (int)($q['para'] ?? 0);
+            $colaborador = (int)($q['colaborador'] ?? 0);
             $statusFiltro = trim((string)($q['status'] ?? ''));
             $buscaTexto = trim((string)($q['q'] ?? ''));
             $limite = max(1, min(2000, (int)($q['limite'] ?? 10)));
@@ -533,6 +538,10 @@ class FlexTransferenciaController
             if ($para > 0) {
                 $sql .= ' AND colaborador_para = :para';
                 $params['para'] = $para;
+            }
+            if ($colaborador > 0) {
+                $sql .= ' AND (colaborador_de = :colab OR colaborador_para = :colab)';
+                $params['colab'] = $colaborador;
             }
             if ($statusFiltro === 'ok') {
                 $sql .= ' AND sucesso = true';

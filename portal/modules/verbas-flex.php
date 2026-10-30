@@ -95,15 +95,15 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- ABAS -->
+    <!-- ABAS COM CONTROLE DE HIERARQUIA -->
     <div class="vf-tabs mb-4" id="abas">
         <button type="button" data-aba="painel" class="vf-tab on"><i class="fa-solid fa-chart-pie"></i> Painel & Dash</button>
         <button type="button" data-aba="ranking" class="vf-tab"><i class="fa-solid fa-ranking-star"></i> Ranking Consumo</button>
         <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-receipt"></i> Consumo Bonificações</button>
-        <button type="button" data-aba="creditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> Créditos / Empréstimos</button>
-        <button type="button" data-aba="api" class="vf-tab"><i class="fa-solid fa-heart-pulse"></i> API Mercos</button>
-        <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> Transferências</a>
-        <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" class="vf-tab text-center no-underline"><i class="fa-solid fa-money-bill-transfer"></i> Movimentação</a>
+        <button type="button" data-aba="creditos" id="tabBtnCreditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> Créditos / Empréstimos</button>
+        <button type="button" data-aba="api" id="tabBtnApi" class="vf-tab"><i class="fa-solid fa-heart-pulse"></i> API Mercos</button>
+        <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" id="tabLinkTransferencias" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> Transferências</a>
+        <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" id="tabLinkMovimentacao" class="vf-tab text-center no-underline"><i class="fa-solid fa-money-bill-transfer"></i> Movimentação</a>
     </div>
 
     <!-- ========================================== -->
@@ -181,12 +181,24 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </button>
             </div>
 
-            <!-- SELETOR DE VISÕES DO RANKING -->
+            <!-- SELETOR DE VISÕES DO RANKING (DESIGN CLEAN & MODERNO) -->
             <div class="flex gap-2 mb-4 overflow-x-auto pb-1" id="visoesRanking">
-                <button type="button" data-visao="bonificacoes" class="vf-chip on cursor-pointer"><i class="fa-solid fa-receipt mr-1"></i> 🏆 Consumo em Bonificações</button>
-                <button type="button" data-visao="transferencias_cedidas" class="vf-chip cursor-pointer"><i class="fa-solid fa-arrow-up-from-bracket mr-1"></i> 🔄 Consumo Transferência (Quem Mais Transferiu)</button>
-                <button type="button" data-visao="transferencias_recebidas" class="vf-chip cursor-pointer"><i class="fa-solid fa-arrow-down-to-bracket mr-1"></i> 📥 Quem Mais Creditou (Recebeu Transferência)</button>
-                <button type="button" data-visao="balanco" class="vf-chip cursor-pointer"><i class="fa-solid fa-scale-balanced mr-1"></i> ⚖️ Balanço Geral da Equipe</button>
+                <button type="button" data-visao="bonificacoes" class="vf-chip on cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-receipt text-rose-500"></i>
+                    <span>Consumo em Bonificações</span>
+                </button>
+                <button type="button" data-visao="transferencias_cedidas" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-up-from-bracket text-purple-600"></i>
+                    <span>Quem Mais Cedeu (Transferiu)</span>
+                </button>
+                <button type="button" data-visao="transferencias_recebidas" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-down-to-bracket text-emerald-600"></i>
+                    <span>Quem Mais Recebeu (Creditou)</span>
+                </button>
+                <button type="button" data-visao="balanco" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
+                    <span>Balanço da Equipe</span>
+                </button>
             </div>
 
             <!-- CONTROLES DO RANKING -->

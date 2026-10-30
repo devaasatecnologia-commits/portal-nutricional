@@ -72,6 +72,7 @@ class FlexMovimentacaoController
             'filiais' => $filiais,
             'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
             'is_admin' => $isAdmin,
+            'permissoes' => (array)($user['permissoes'] ?? []),
         ];
     }
 
@@ -322,6 +323,9 @@ class FlexMovimentacaoController
     public function movimentar(Request $request, Response $response): Response
     {
         $u = $this->usuario($request);
+        if (!$u['is_admin'] && !in_array('movimentacao-flex', $u['permissoes'], true)) {
+            return $this->erro($response, 'Seu perfil de usuário não possui permissão para executar movimentações manuais de verba flex.', 403);
+        }
         $body = json_decode($request->getBody()->getContents(), true) ?? [];
 
         $filial = (int)($body['filial'] ?? 0);

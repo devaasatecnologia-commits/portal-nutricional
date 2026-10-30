@@ -59,6 +59,33 @@ const estado = {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
     try {
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const permissoes = userData.permissoes || [];
+        const isAdmin = !!(userData.is_admin || permissoes.includes('admin') || userData.nivel === 'admin');
+        if (!isAdmin && !permissoes.includes('movimentacao-flex')) {
+            const wrap = document.querySelector('.mf-wrap') || document.body;
+            wrap.innerHTML = `
+                <div class="max-w-xl mx-auto my-16 bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl text-center">
+                    <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl font-black shadow-xs">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 mb-2">Acesso Restrito ao Módulo</h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                        Seu perfil de usuário não possui permissão para executar ou gerenciar a <b>Movimentação Manual de Flex</b>. Esta funcionalidade é exclusiva para gestores e administradores autorizados.
+                    </p>
+                    <div class="flex flex-wrap items-center justify-center gap-3">
+                        <a href="/portal/" class="px-5 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-900 transition no-underline">
+                            <i class="fa-solid fa-arrow-left mr-1.5"></i> Dashboard Principal
+                        </a>
+                        <a href="/portal/modules/verbas-flex.php" class="px-5 py-2.5 rounded-xl bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition no-underline">
+                            <i class="fa-solid fa-chart-pie mr-1.5"></i> Gestão de Verbas Flex
+                        </a>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
         await carregarContexto();
         $('selFilial').addEventListener('change', async (e) => {
             estado.filial = Number(e.target.value);

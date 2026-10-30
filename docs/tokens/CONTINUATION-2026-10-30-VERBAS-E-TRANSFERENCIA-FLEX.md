@@ -1,61 +1,65 @@
-# Continuation Token — Verbas Flex & Transferência de Verba Flex
+# Continuation Token — Hierarquia de Transferência, Ações do Ranking & Tooltips Modernos
 
-**Data / Horário:** 30/10/2026 16:42  
+**Data / Horário:** 30/10/2026 17:15  
 **Autor:** Tech Lead & Arquiteto Especialista  
-**Status:** Concluído e Validado
+**Status:** Concluído, Validado e Testado
 
 ---
 
-## 1. Resumo das Alterações Realizadas
+## 1. Resumo das Implementações Cirúrgicas
 
-### A. Módulo `verbas-flex.php` (Gestão de Verbas Flex)
-1. **Botão Treinamento & Manual no Hero Header:**
-   - Adicionado no banner superior com link direto para `/portal/modules/treinamentos.php?modulo=verbas-flex`.
-2. **Nomenclatura Débitos / Notas -> Consumo Bonificações:**
-   - Renomeada a aba e títulos para refletir a linguagem corporativa e de vendas: **Consumo Bonificações**.
-3. **Card "Maior Retirada Única" com Hover e Destaque do Representante:**
-   - Destaque direto no card com o nome do vendedor (`detalhe_maior_debito.representante`).
-   - Hover / tooltip rico contendo: Representante, Nota Fiscal (#), Cliente atendido, Data/Hora e Valor faturado.
-   - Clique no card direciona automaticamente para a aba de bonificações filtrando pelo número da nota fiscal.
-4. **Tooltips Técnicos Especializados em Todos os 6 KPIs:**
-   - Empréstimos Concedidos, Consumo Bonificações, Saldo Líquido / Resultado, Média por Retirada, Maior Retirada e Representantes com Consumo.
-5. **Painel Completo de Consumo & Transferências (Aba Ranking Multi-Visão):**
-   - Criado seletor de 4 visões especializadas:
-     1. `🏆 Consumo em Bonificações`: ranking de retiradas em notas fiscais com pódio, medalhas, barras de progresso e percentual do consumo.
-     2. `🔄 Consumo de Transferência (Quem Mais Transferiu)`: ranking de colaboradores/gestores que mais cederam verba para a equipe na filial via Mercos.
-     3. `📥 Quem Mais Creditou (Recebeu Transferência)`: ranking de quem mais recebeu verba remanejada.
-     4. `⚖️ Balanço Geral Consolidado da Equipe`: tabela analítica cruzando bonificações abatidas + saídas de transferências vs entradas de transferências e saldo líquido de cada vendedor.
-   - Suporte a filtros de quantidade (Top 5, Top 10, Todos), busca em tempo real e exportação CSV formatada para Excel para qualquer uma das 4 visões.
+### A. Hierarquia de Acesso nos Módulos de Transferência
+1. **Blindagem de Permissões no Backend:**
+   - [`FlexTransferenciaController.php`](file:///c:/xampp/htdocs/API/v1/src/Controllers/FlexTransferenciaController.php): `transferir()` valida se o usuário possui a permissão `transferencia-flex` ou é `admin`.
+   - [`FlexMovimentacaoController.php`](file:///c:/xampp/htdocs/API/v1/src/Controllers/FlexMovimentacaoController.php): `movimentar()` valida a permissão `movimentacao-flex` ou `admin`.
+   - `movimentacoes()` agora suporta o parâmetro opcional `colaborador={id}` para buscar o histórico de remanejamentos de um vendedor específico (enviadas e recebidas).
+2. **Blindagem e Controle Dinâmico no Frontend:**
+   - [`verbas-flex.php`](file:///c:/xampp/htdocs/API/portal/modules/verbas-flex.php) e [`verbas-flex.js`](file:///c:/xampp/htdocs/API/portal/assets/js/verbas-flex.js): as abas e botões de atalho para *Transferências*, *Movimentação* e *API Mercos* são ocultados dinamicamente se o usuário logado não tiver as permissões necessárias.
+   - [`transferencia-flex.js`](file:///c:/xampp/htdocs/API/portal/assets/js/transferencia-flex.js): se um usuário sem permissão carregar a tela diretamente pela URL, é exibido card de **Acesso Restrito ao Módulo** impedindo a execução de transferências.
+   - [`movimentacao-flex.js`](file:///c:/xampp/htdocs/API/portal/assets/js/movimentacao-flex.js): bloqueio semelhante caso o usuário não tenha `movimentacao-flex`.
+   - [`transferencia-compra.js`](file:///c:/xampp/htdocs/API/portal/assets/js/transferencia-compra.js): validação estrita das permissões `transferencia-matriz-filial` e `transferencia-filial-matriz`.
 
-### B. Módulo `transferencia-flex.php` (Transferência de Verba Flex)
-1. **Botão Treinamento & Manual no Hero Header:**
-   - Inserido no topo com link direto para `/portal/modules/treinamentos.php?modulo=transferencia-flex`.
-2. **Tooltips e Explicação dos 4 Cards de KPIs:**
-   - Card 1: **TRANSFERIDO NO MÊS**:
-     - Subtítulo explicativo: *"Remanejamento entre contas"*.
-     - Tooltip dinâmico completo explicando com clareza o valor (ex: `R$ 68.994,01`):
-       - Soma de todas as transferências de saldo flex concluídas na filial no mês vigente via Mercos.
-       - Esclarecimento contábil: Trata-se de circulação/redistribuição interna entre carteiras (um vendedor ou gestor cedendo verba para outro fechar pedidos). **NÃO representa dinheiro novo, nem custo adicional, nem débito/saída de caixa para a empresa.**
-   - Cards 2, 3 e 4: Tooltips explicativos para *Saldo Total Equipe*, *Meu Saldo Gestor* e *Última Operação*.
+---
 
-### C. Backend: `VerbasFlexController.php`
-- Enriquecido o endpoint `GET /v1/verbas-flex/resumo` para calcular e retornar:
-  - `detalhe_maior_debito`: representante, nota, cliente, data e valor da maior nota faturada.
-  - `ranking_transferencias_cedidas`: quem mais transferiu/cedeu verba na filial (`transferencias_flex_mercos_log`).
-  - `ranking_transferencias_recebidas`: quem mais recebeu verba creditada via transferência.
-  - `balanco_equipe`: consolidação individual de saídas x entradas e saldo líquido.
+### B. Layout Moderno ao Passar o Mouse (Micro-interações e Tooltips Flutuantes)
+1. **Limpeza do Seletor de Visões do Ranking:**
+   - Removidos emojis soltos duplicados com FontAwesome (evitando o visual polúido apontado na captura de tela).
+   - Ícones SVG/FontAwesome estilizados com cores corporativas:
+     - `fa-receipt text-rose-500` (Consumo em Bonificações)
+     - `fa-arrow-up-from-bracket text-purple-600` (Quem Mais Cedeu / Transferiu)
+     - `fa-arrow-down-to-bracket text-emerald-600` (Quem Mais Recebeu / Creditou)
+     - `fa-scale-balanced text-indigo-600` (Balanço da Equipe)
+2. **Componente de Tooltip Flutuante Moderno (`ModernTooltip`):**
+   - Substituição do `title` cinza padrão do Windows por popover flutuante ultra-rápido:
+     - Fundo escuro translúcido com glassmorphism (`bg-slate-900/95 backdrop-blur-md border border-slate-700/60 rounded-2xl shadow-2xl`).
+     - Acompanhamento suave da posição do cursor do mouse.
+     - Badge de contexto, título em negrito e descrição rica formatada.
+3. **Efeito Hover nos Cards do Ranking:**
+   - Elevação suave (`hover:-translate-y-0.5 hover:shadow-md hover:border-violet-300`).
+   - Aparição das barras de ações rápidas.
 
-### D. Manuais & Treinamentos em Banco de Dados (`sistema_manuais`)
-- Atualizados os registros dos módulos `verbas-flex` e `transferencia-flex` (versão 2.1) com o novo glossário de KPIs, passo a passo de botões, novas visões do painel de ranking e seção de dúvidas frequentes.
+---
+
+### C. Ações Analíticas e Interativas no Ranking
+Cada linha do ranking agora possui ações contextuais diretas:
+1. **Ver Notas / Extrato (`verExtratoVendedor`):**
+   - Alterna para a aba *Consumo Bonificações*, seleciona o vendedor no dropdown e exibe todas as notas faturadas com rolagem suave.
+2. **Transferir Verba (`transferirParaVendedor`):**
+   - Se o usuário tiver permissão, redireciona para `transferencia-flex.php?para={id}`, abrindo a tela de transferência com o colaborador já pré-selecionado no campo **Destino (PARA)**.
+3. **Histórico Flex (`abrirHistoricoColaborador`):**
+   - Abre o modal interativo (`z-[75]`) carregando em tempo real todas as transferências recentes onde o colaborador cedeu ou recebeu saldo via Mercos, com valores, datas, motivos e quem autorizou.
 
 ---
 
 ## 2. Arquivos para Deploy FTP
 
 ```plaintext
-v1/src/Controllers/VerbasFlexController.php
+v1/src/Controllers/FlexTransferenciaController.php
+v1/src/Controllers/FlexMovimentacaoController.php
 portal/modules/verbas-flex.php
 portal/assets/js/verbas-flex.js
 portal/modules/transferencia-flex.php
 portal/assets/js/transferencia-flex.js
+portal/assets/js/movimentacao-flex.js
+portal/assets/js/transferencia-compra.js
 ```

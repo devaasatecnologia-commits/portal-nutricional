@@ -1,6 +1,45 @@
 // Módulo Transferência de Flex — Nutricional API & Portal
 // Integração em tempo real com a API Mercos e validação rigorosa de representantes ativos no ERP
 
+function initModernTooltips() {
+    const tip = $('modernTooltip');
+    const content = $('modernTooltipContent');
+    if (!tip || !content) return;
+
+    document.addEventListener('mouseover', (e) => {
+        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (!target) return;
+
+        const title = target.getAttribute('data-tip-title') || '';
+        const desc = target.getAttribute('data-tip-desc') || '';
+        const badge = target.getAttribute('data-tip-badge') || '';
+
+        content.innerHTML = `
+            ${badge ? `<div class="mb-1"><span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-purple-500/30 text-purple-200 border border-purple-400/30">${esc(badge)}</span></div>` : ''}
+            ${title ? `<div class="font-extrabold text-xs text-white mb-1 flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-purple-400 text-[11px]"></i> ${esc(title)}</div>` : ''}
+            ${desc ? `<div class="text-[11px] text-slate-300 font-medium leading-relaxed">${desc}</div>` : ''}
+        `;
+        tip.classList.remove('opacity-0', 'pointer-events-none');
+        tip.classList.add('opacity-100');
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (tip.classList.contains('opacity-0')) return;
+        const x = Math.min(window.innerWidth - 180, Math.max(180, e.clientX));
+        const y = Math.max(40, e.clientY - 15);
+        tip.style.left = `${x}px`;
+        tip.style.top = `${y}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (target) {
+            tip.classList.add('opacity-0', 'pointer-events-none');
+            tip.classList.remove('opacity-100');
+        }
+    });
+}
+
 const apiFetch = async function (acao, metodo = 'GET', body = null) {
     const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
     let url = apiRoot + '/' + acao.replace(/^\/+/, '').replace(/^v1\//, '');
@@ -52,6 +91,7 @@ const estado = {
     movs: [],
     enviando: false,
     abaAtiva: 'transferir',
+    prePara: 0,
 };
 
 // ==========================================
@@ -252,8 +292,29 @@ function popularSelectsReps() {
     }
     selDe.innerHTML = htmlDe;
 
+    // Pré-seleção via URL (?para=ID)
+    if (estado.prePara > 0 && repsComSaldo.length && !estado.repDe) {
+        // Seleciona o primeiro emissor com saldo que não seja o próprio destinatário
+        const emissorAuto = repsComSaldo.find((r) => r.id !== estado.prePara) || repsComSaldo[0];
+        if (emissorAuto) {
+            selDe.value = emissorAuto.id;
+            selecionarRep('de', emissorAuto.id);
+        }
+    }
+
     // Filtro PARA: Todos os ativos da filial exceto o selecionado no DE
     atualizarSelectPara();
+
+    if (estado.prePara > 0) {
+        const repDestino = estado.reps.find((r) => r.id === estado.prePara);
+        if (repDestino && selPara) {
+            selPara.value = estado.prePara;
+            selecionarRep('para', estado.prePara);
+            $('valor')?.focus();
+            aviso('info', 'Destinatário Pré-selecionado', `Transferência direcionada para <b>${esc(repDestino.nome)}</b>. Escolha o valor e o motivo para concluir.`);
+            estado.prePara = 0; // Consumido
+        }
+    }
 
     // Filtros do Histórico
     const htmlFiltros = '<option value="">Todos</option>' + estado.reps.map((r) => `<option value="${r.id}">[${r.id}] ${esc(r.nome)}</option>`).join('');
@@ -684,11 +745,52 @@ function alternarAba(aba) {
 // INICIALIZAÇÃO
 // ==========================================
 window.addEventListener('DOMContentLoaded', () => {
-    $('selFilial').addEventListener('change', mudarFilial);
-    $('selDe').addEventListener('change', aoSelecionarDe);
-    $('selPara').addEventListener('change', aoSelecionarPara);
-    $('valor').addEventListener('input', formatarInputMoeda);
-    $('motivo').addEventListener('input', atualizarPrevisoes);
+    // 1. Validação de Hierarquia de Acesso
+    try {
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const permissoes = userData.permissoes || [];
+        const isAdmin = !!(userData.is_admin || permissoes.includes('admin') || userData.nivel === 'admin');
+        if (!isAdmin && !permissoes.includes('transferencia-flex')) {
+            const wrap = document.querySelector('.tf-wrap') || document.body;
+            wrap.innerHTML = `
+                <div class="max-w-xl mx-auto my-16 bg-white rounded-3xl p-8 sm:p-10 border border-slate-200 shadow-xl text-center">
+                    <div class="w-16 h-16 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center mx-auto mb-4 text-2xl font-black shadow-xs">
+                        <i class="fa-solid fa-lock"></i>
+                    </div>
+                    <h2 class="text-xl font-black text-slate-800 mb-2">Acesso Restrito ao Módulo</h2>
+                    <p class="text-xs sm:text-sm text-slate-500 mb-6 leading-relaxed">
+                        Seu perfil de usuário não possui permissão para executar ou gerenciar a <b>Transferência de Verba Flex</b>. Esta operação é restrita a gestores e administradores de filial.
+                    </p>
+                    <div class="flex flex-wrap items-center justify-center gap-3">
+                        <a href="/portal/" class="px-5 py-2.5 rounded-xl bg-slate-800 text-white font-bold text-xs hover:bg-slate-900 transition no-underline">
+                            <i class="fa-solid fa-arrow-left mr-1.5"></i> Dashboard Principal
+                        </a>
+                        <a href="/portal/modules/verbas-flex.php" class="px-5 py-2.5 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition no-underline">
+                            <i class="fa-solid fa-chart-pie mr-1.5"></i> Gestão de Verbas Flex
+                        </a>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+    } catch (e) {
+        console.error('Erro na validação de permissão:', e);
+    }
+
+    // 2. Leitura do parâmetro GET ?para=
+    const urlParams = new URLSearchParams(window.location.search);
+    const prePara = Number(urlParams.get('para') || 0);
+    if (prePara > 0) {
+        estado.prePara = prePara;
+    }
+
+    initModernTooltips();
+
+    $('selFilial')?.addEventListener('change', mudarFilial);
+    $('selDe')?.addEventListener('change', aoSelecionarDe);
+    $('selPara')?.addEventListener('change', aoSelecionarPara);
+    $('valor')?.addEventListener('input', formatarInputMoeda);
+    $('motivo')?.addEventListener('input', atualizarPrevisoes);
 
     carregarContexto();
 });
