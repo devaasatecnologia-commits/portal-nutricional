@@ -317,4 +317,45 @@ require_once __DIR__ . '/../estrutura/header.php';
     </section>
 </div>
 
+<!-- MODAL: HISTÓRICO DE TRANSFERÊNCIAS DO COLABORADOR -->
+<div id="modalHistColab" class="fixed inset-0 z-[75] hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onclick="fecharModalHistColab()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-slate-100">
+            <div class="bg-gradient-to-r from-violet-800 to-purple-700 px-6 py-4 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center text-white font-black">
+                        <i class="fa-solid fa-right-left"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-purple-200">Histórico de Transferências Mercos</span>
+                        <h3 class="text-base sm:text-lg font-black truncate" id="histColabNome">---</h3>
+                    </div>
+                </div>
+                <button type="button" onclick="fecharModalHistColab()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="p-6">
+                <div class="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+                    <span class="text-xs font-bold text-slate-500">Operações Concluídas no Período Selecionado</span>
+                    <span id="histColabTotal" class="text-xs font-black text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg">0 operações</span>
+                </div>
+                <div id="histColabLista" class="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                    <!-- Preenchido via JS -->
+                </div>
+            </div>
+            <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-100 flex items-center justify-between">
+                <div class="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-emerald-600"></i> Auditoria Oficial Mercos
+                </div>
+                <button type="button" onclick="fecharModalHistColab()" class="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

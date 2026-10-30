@@ -25,9 +25,17 @@ function aplicarHierarquiaPermissoes() {
 }
 
 function initModernTooltips() {
-    const tip = $('modernTooltip');
-    const content = $('modernTooltipContent');
-    if (!tip || !content) return;
+    let tip = $('modernTooltip');
+    let content = $('modernTooltipContent');
+    if (!tip) {
+        tip = document.createElement('div');
+        tip.id = 'modernTooltip';
+        tip.className = 'fixed pointer-events-none z-[99999] opacity-0 transition-opacity duration-150 ease-out transform -translate-x-1/2 -translate-y-full mb-3';
+        tip.style.pointerEvents = 'none';
+        tip.innerHTML = '<div class="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700/70 rounded-2xl p-3.5 shadow-2xl max-w-xs ring-1 ring-white/10" id="modernTooltipContent"></div>';
+        document.body.appendChild(tip);
+        content = tip.querySelector('#modernTooltipContent');
+    }
 
     document.addEventListener('mouseover', (e) => {
         const target = e.target.closest('[data-tip-title], [data-tip-desc]');
@@ -42,22 +50,22 @@ function initModernTooltips() {
             ${title ? `<div class="font-extrabold text-xs text-white mb-1 flex items-center gap-1.5"><i class="fa-solid fa-circle-info text-purple-400 text-[11px]"></i> ${esc(title)}</div>` : ''}
             ${desc ? `<div class="text-[11px] text-slate-300 font-medium leading-relaxed">${desc}</div>` : ''}
         `;
-        tip.classList.remove('opacity-0', 'pointer-events-none');
+        tip.classList.remove('opacity-0');
         tip.classList.add('opacity-100');
     });
 
     document.addEventListener('mousemove', (e) => {
-        if (tip.classList.contains('opacity-0')) return;
-        const x = Math.min(window.innerWidth - 180, Math.max(180, e.clientX));
-        const y = Math.max(40, e.clientY - 15);
+        if (!tip || tip.classList.contains('opacity-0')) return;
+        const x = Math.min(window.innerWidth - 170, Math.max(170, e.clientX));
+        const y = Math.max(30, e.clientY - 12);
         tip.style.left = `${x}px`;
         tip.style.top = `${y}px`;
     });
 
     document.addEventListener('mouseout', (e) => {
         const target = e.target.closest('[data-tip-title], [data-tip-desc]');
-        if (target) {
-            tip.classList.add('opacity-0', 'pointer-events-none');
+        if (target && tip) {
+            tip.classList.add('opacity-0');
             tip.classList.remove('opacity-100');
         }
     });
@@ -110,14 +118,18 @@ const estado = {
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 
 function filtroBase() {
+    let fil = $('selFilial')?.value;
+    if (!fil || fil === '0' || fil === '') {
+        fil = '1';
+    }
     return {
-        filial: $('selFilial').value,
-        inicio: $('dtIni').value,
-        fim: $('dtFim').value
+        filial: fil,
+        inicio: $('dtIni')?.value || iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+        fim: $('dtFim')?.value || iso(new Date())
     };
 }
 
-function atalho(tipo) {
+function atalho(tipo, disparar = true) {
     const h = new Date();
     let a = new Date(h.getFullYear(), h.getMonth(), 1);
     let b = h;
@@ -139,10 +151,12 @@ function atalho(tipo) {
         b = h;
     }
 
-    $('dtIni').value = iso(a);
-    $('dtFim').value = iso(b);
+    if ($('dtIni')) $('dtIni').value = iso(a);
+    if ($('dtFim')) $('dtFim').value = iso(b);
     document.querySelectorAll('#atalhos .vf-chip').forEach((c) => c.classList.toggle('on', c.dataset.p === tipo));
-    recarregarAbaAtiva();
+    if (disparar) {
+        recarregarAbaAtiva();
+    }
 }
 
 function variacao(atual, anterior) {
@@ -215,9 +229,14 @@ async function carregarPainel() {
               `<b>Valor:</b> ${brl(detalheDeb.valor || 0)}`
             : 'Pico máximo individual debitado em uma única nota fiscal no período.';
 
-        // 6 KPIs com Tooltips Flutuantes Modernos
+        const tipMaiorDebTxt = detalheDeb
+            ? `Maior Retirada Única:\n• Representante: ${detalheDeb.representante || 'N/D'} (#${detalheDeb.idrepresentante || ''})\n• Nota Fiscal: #${detalheDeb.nota || 'N/D'}\n• Cliente: ${detalheDeb.cliente || 'N/D'}\n• Data: ${detalheDeb.data ? dataBR(detalheDeb.data) : 'N/D'}\n• Valor: ${brl(detalheDeb.valor || 0)}`
+            : 'Pico máximo individual debitado em uma única nota fiscal no período.';
+
+        // 6 KPIs com Tooltips Flutuantes Modernos + Title de Fallback
         boxKpi.innerHTML = `
             <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 title="Empréstimos Concedidos:\nTotal de saldo de flex liberado e aportado pelo gestor ou diretoria para a equipe no período selecionado."
                  data-tip-badge="Aporte Gestor"
                  data-tip-title="Empréstimos Concedidos"
                  data-tip-desc="Total de saldo de flex liberado e aportado pelo gestor ou diretoria para a equipe comercial no período selecionado.">
@@ -233,6 +252,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 title="Consumo em Bonificações:\nTotal de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período selecionado."
                  data-tip-badge="Saída Comercial"
                  data-tip-title="Consumo em Bonificações"
                  data-tip-desc="Total de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período selecionado.">
@@ -248,6 +268,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
+                 title="Saldo Líquido / Resultado:\nDiferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-)."
                  data-tip-badge="Resultado Líquido"
                  data-tip-title="Saldo Líquido / Resultado"
                  data-tip-desc="Diferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-). Saldo positivo indica aporte superior ao consumo da filial.">
@@ -262,6 +283,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
+                 title="Média por Retirada:\nTicket médio de verba flex abatido por nota fiscal faturada no período."
                  data-tip-badge="Ticket Médio"
                  data-tip-title="Média por Retirada"
                  data-tip-desc="Média aritmética de saldo flex consumido por nota fiscal de bonificação emitida no período.">
@@ -274,6 +296,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer group hover:border-purple-300 hover:shadow-md transition-all"
+                 title="${esc(tipMaiorDebTxt)}"
                  data-tip-badge="Pico Máximo"
                  data-tip-title="Maior Retirada Única"
                  data-tip-desc="${esc(tipMaiorDebHtml)}"
@@ -291,6 +314,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
+                 title="Representantes com Consumo:\nContagem de representantes com bonificações no período."
                  data-tip-badge="Equipe Ativa"
                  data-tip-title="Representantes com Consumo"
                  data-tip-desc="Contagem de representantes comerciais com pelo menos uma bonificação faturada no período.">
