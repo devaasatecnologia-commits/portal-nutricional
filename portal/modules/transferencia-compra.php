@@ -63,14 +63,19 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
             
-            <!-- SWITCHER DE FLUXO -->
-            <div class="bg-black/20 backdrop-blur-md p-1.5 rounded-2xl flex items-center gap-1 self-stretch sm:self-auto">
-                <a href="?tipo=matriz-filial" class="tc-tab-btn flex-1 sm:flex-none text-center <?= $ehMF ? 'active' : 'text-white/80 hover:text-white' ?>" style="text-decoration:none;">
-                    <i class="fa-solid fa-truck-arrow-right mr-1.5"></i> Matriz → Filial
+            <!-- SWITCHER DE FLUXO & MANUAL -->
+            <div class="flex items-center gap-2 flex-wrap self-stretch sm:self-auto">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=transferencia-compra" class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs py-2 px-3.5 rounded-2xl transition flex items-center gap-1.5 shadow-sm no-underline">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
                 </a>
-                <a href="?tipo=filial-matriz" class="tc-tab-btn flex-1 sm:flex-none text-center <?= !$ehMF ? 'active' : 'text-white/80 hover:text-white' ?>" style="text-decoration:none;">
-                    <i class="fa-solid fa-warehouse mr-1.5"></i> Filial → Matriz
-                </a>
+                <div class="bg-black/20 backdrop-blur-md p-1.5 rounded-2xl flex items-center gap-1 flex-1 sm:flex-none">
+                    <a href="?tipo=matriz-filial" class="tc-tab-btn flex-1 sm:flex-none text-center <?= $ehMF ? 'active' : 'text-white/80 hover:text-white' ?>" style="text-decoration:none;">
+                        <i class="fa-solid fa-truck-arrow-right mr-1.5"></i> Matriz → Filial
+                    </a>
+                    <a href="?tipo=filial-matriz" class="tc-tab-btn flex-1 sm:flex-none text-center <?= !$ehMF ? 'active' : 'text-white/80 hover:text-white' ?>" style="text-decoration:none;">
+                        <i class="fa-solid fa-warehouse mr-1.5"></i> Filial → Matriz
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -142,7 +147,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
                 <label class="flex items-center gap-1.5 text-xs text-slate-600 font-semibold cursor-pointer whitespace-nowrap bg-slate-50 px-3 py-2 rounded-xl border border-slate-200">
                     <input type="checkbox" id="chkTodosEmbarques" class="rounded text-sky-600">
-                    <span>Ver faturados</span>
+                    <span>Ver já solicitados / faturados</span>
                 </label>
                 <button id="btnRecarregarPendentes" class="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors" title="Recarregar">
                     <i class="fa-solid fa-arrows-rotate text-xs"></i>

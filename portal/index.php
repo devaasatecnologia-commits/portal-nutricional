@@ -454,8 +454,8 @@ function portalDashboard() {
             this.dataHoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
             
             // Carrega módulos e setores do banco via API
-            this.carregarModulosSetores(permissoes);
-              this.initScrollSpy(); 
+            this.carregarModulosSetores(permissoes, userData);
+            this.initScrollSpy(); 
         },
 
         temaSetor(nome) {
@@ -470,7 +470,8 @@ function portalDashboard() {
                 expedicao:     { icon: 'fa-dolly',              from: '#d97706', to: '#fcd34d' },
                 producao:      { icon: 'fa-industry',           from: '#475569', to: '#94a3b8' },
                 marketing:     { icon: 'fa-bullhorn',           from: '#7c3aed', to: '#a78bfa' },
-                rh:            { icon: 'fa-people-group',       from: '#db2777', to: '#f472b6' },
+                rh:            { icon: 'fa-people-group',       from: '#059669', to: '#0d9488' },
+                'recursos humanos': { icon: 'fa-people-group', from: '#059669', to: '#0d9488' },
                 compras:       { icon: 'fa-cart-shopping',      from: '#0891b2', to: '#22d3ee' },
                 fiscal:        { icon: 'fa-file-invoice-dollar', from: '#4f46e5', to: '#818cf8' },
                 qualidade:     { icon: 'fa-shield-halved',      from: '#16a34a', to: '#4ade80' },
@@ -488,7 +489,7 @@ function portalDashboard() {
             return i || 'fa-cube';
         },
 
-        async carregarModulosSetores(permissoes) {
+        async carregarModulosSetores(permissoes, userData = null) {
             try {
                 const resp = await fetch(`${API_URL}/sistema/modulos-setores`);
                 const data = await resp.json();
@@ -509,7 +510,9 @@ function portalDashboard() {
                 });
                 
                 // Filtra módulos por permissão do usuário
-                const modulosPermitidos = modulosData.filter(mod => permissoes.includes(mod.slug));
+                const userObj = userData || JSON.parse(localStorage.getItem('userData') || '{}');
+                const isAdmin = (Array.isArray(permissoes) && permissoes.includes('admin')) || userObj.nivel === 'admin' || userObj.role === 'admin' || userObj.is_admin === true;
+                const modulosPermitidos = modulosData.filter(mod => isAdmin || (Array.isArray(permissoes) && permissoes.includes(mod.slug)));
                 
                 // Agrupa por setor
                 const modulosPorSetor = {};

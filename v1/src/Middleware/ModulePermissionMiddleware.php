@@ -32,6 +32,27 @@ class ModulePermissionMiddleware
             return $handler->handle($request);
         }
 
+        // 🔥 Fallback em banco caso a permissão tenha sido concedida após a emissão do token JWT
+        if (!empty($user['idusuario'])) {
+            try {
+                $pdo = \getPDO();
+                $placeholders = implode(',', array_fill(0, count($this->modules), '?'));
+                $stmt = $pdo->prepare("
+                    SELECT 1 
+                    FROM usuario_permissoes up
+                    JOIN sistema_modulos sm ON sm.id = up.idmodulo
+                    WHERE up.idusuario = ? AND sm.slug IN ($placeholders) AND sm.ativo = true
+                    LIMIT 1
+                ");
+                $stmt->execute(array_merge([$user['idusuario']], $this->modules));
+                if ($stmt->fetchColumn()) {
+                    return $handler->handle($request);
+                }
+            } catch (\Throwable $e) {
+                // Silencia e segue para bloqueio 403
+            }
+        }
+
         $response = new SlimResponse();
         $response->getBody()->write(json_encode([
             'success' => false,

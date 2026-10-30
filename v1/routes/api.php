@@ -981,6 +981,27 @@ $protected->group('/flex-movimentacao', function ($group) {
     $group->post('/movimentar', [$controller, 'movimentar']);
 })->add(new ModulePermissionMiddleware(['movimentacao-flex', 'transferencia-flex', 'verbas-flex']));
 
+$protected->group('/avaliacao-chapd', function ($group) {
+    $controller = new \Nutricional\Controllers\AvaliacaoChapdController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/dashboard', [$controller, 'dashboard']);
+    $group->get('/matriz-anual', [$controller, 'matrizAnual']);
+    $group->get('/historico', [$controller, 'historico']);
+    $group->get('/perguntas', [$controller, 'listarPerguntas']);
+    $group->post('/perguntas/salvar', [$controller, 'salvarPergunta']);
+    $group->post('/perguntas/toggle', [$controller, 'togglePergunta']);
+    $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
+    $group->post('/salvar', [$controller, 'salvar']);
+})->add(new ModulePermissionMiddleware(['avaliacao-chapd', 'rh', 'admin']));
+
+$protected->group('/treinamentos', function ($group) {
+    $c = new \Nutricional\Controllers\TreinamentoController();
+    $group->get('', [$c, 'listar']);
+    $group->get('/', [$c, 'listar']);
+    $group->get('/{slug}', [$c, 'obterPorSlug']);
+    $group->post('/salvar', [$c, 'salvar']);
+});
+
 $protected->group('/transf-compras', function ($group) {
     $c = new \Nutricional\Controllers\TransferenciaCompraController();
     $group->group('/matriz-filial', function ($g) use ($c) {

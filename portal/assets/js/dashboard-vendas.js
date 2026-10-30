@@ -1,7 +1,8 @@
 // ==========================================================================
-// DASHBOARD DE VENDAS
+// DASHBOARD EXECUTIVO DE VENDAS v3.0 — MODO ESPECIALISTA & PREMIUM
 // Hierarquia: Filial → Gestor → Representante (escopo validado no backend)
-// Faturamento = NFs faturadas | Carteira = pedidos abertos/parciais (separados)
+// Foco simultâneo: Valor (R$), Peso Líquido (Kg/Ton) e Quantidade (Un/NFs)
+// 6 Macro-Regiões Unificadas: SUL, GRF, AVI, NOR, PLN e RMC
 // ==========================================================================
 
 function dashboardVendasHandler() {
@@ -9,7 +10,7 @@ function dashboardVendasHandler() {
     const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
     return {
-        // Estado
+        // Estado de carregamento
         loading: false,
         loadingPesados: false,
         loadingInsights: false,
@@ -23,10 +24,11 @@ function dashboardVendasHandler() {
         _seq: { kpis: 0, pesados: 0, insights: 0 },
         _ctrl: { kpis: null, pesados: null, insights: null },
 
-        // Modais
+        // Modais de Rastreio de Card / Região
         modalCardOpen: false,
         modalCardTitulo: '',
         modalCardTipo: '',
+        cardVisao: '',
         cardAba: 'resumo',
         cardBusca: '',
         cardDetalhes: [],
@@ -37,19 +39,39 @@ function dashboardVendasHandler() {
         cardExtra: {},
         cardLoading: false,
         cardErro: '',
-        modalRepresentanteOpen: false,
-        modalFunilOpen: false,
+
+        // Modal Expandido de Projeção de Fechamento
+        modalProjecaoOpen: false,
+        abaProjecao: 'representantes',
+        buscaProjecao: '',
+
+        // Modal e Filtros de Clientes Sem Compras (+30d / +60d / +90d)
         modalRiscoOpen: false,
         filtroRiscoRep: '',
+        filtroRiscoRegiao: '',
+        filtroRiscoFaixa: '',
         buscaRiscoCliente: '',
+        limiteRiscoPainel: 25,
+
+        // Modais de Entidades (Representante, Funil, Produto, Cliente)
+        modalRepresentanteOpen: false,
+        modalFunilOpen: false,
+        modalProdutoOpen: false,
+        modalClienteOpen: false,
         representanteDetalhes: { nome: '', clientes: [], produtos: [], evolucao: { itens: [] }, total: null },
         repLoading: false,
         repErro: '',
         funilDetalhes: { etapa: '', pedidos: [], total: null, truncado: false },
         funilLoading: false,
         funilErro: '',
+        produtoDetalhes: { nome: '', valor: 0, quantidade: 0, peso: 0, preco_medio: 0, preco_medio_kg: 0, total_clientes: 0, total_notas: 0, comissao: 0, clientes: [], evolucao: [] },
+        produtoLoading: false,
+        produtoErro: '',
+        clienteDetalhes: { nome: '', valor: 0, total_notas: 0, ticket_medio: 0, quantidade: 0, peso: 0, produtos: [] },
+        clienteLoading: false,
+        clienteErro: '',
 
-        // Filtros
+        // Filtros Globais
         periodoRapidoAtivo: 'mes_atual',
         filters: {
             data_inicio: '',
@@ -65,51 +87,78 @@ function dashboardVendasHandler() {
         representantesDisponiveis: [],
         erroRepresentantes: '',
 
-        // KPIs
+        // KPIs Principais (com Valor, Peso e Quantidade em foco)
         kpis: {
-            faturamento: 0, variacao_faturamento: null,
-            notas: 0, variacao_notas: null,
-            ticket_medio: 0, variacao_ticket: null,
-            media_diaria: 0, media_dia_com_venda: 0, dias_uteis: 0, dias_com_venda: 0,
-            carteira: { valor: 0, pedidos: 0, quantidade: 0 },
-            cancelados: { valor: 0, notas: 0 },
-            devolucoes: { valor: 0, notas: 0 },
-            positivacao: { positivados: 0, base: 0, percentual: 0 }
+            faturamento: 0,
+            faturamento_anterior: 0,
+            variacao_faturamento: null,
+            peso_faturado: 0,
+            peso_anterior: 0,
+            variacao_peso: null,
+            quantidade_faturada: 0,
+            quantidade_anterior: 0,
+            variacao_quantidade: null,
+            clientes_faturados: 0,
+            notas: 0,
+            notas_anterior: 0,
+            variacao_notas: null,
+            media_itens_nf: 0,
+            media_peso_nf: 0,
+            ticket_medio: 0,
+            ticket_anterior: 0,
+            variacao_ticket: null,
+            preco_medio_kg: 0,
+            preco_medio_un: 0,
+            media_diaria: 0,
+            media_peso_diario: 0,
+            media_qtd_diaria: 0,
+            media_notas_diaria: 0,
+            media_dia_com_venda: 0,
+            dias_uteis: 0,
+            dias_com_venda: 0,
+            carteira: { valor: 0, pedidos: 0, quantidade: 0, peso: 0, clientes: 0 },
+            cancelados: { valor: 0, notas: 0, peso: 0 },
+            devolucoes: { valor: 0, notas: 0, quantidade: 0, peso: 0, percentual_faturamento: 0 },
+            positivacao: { positivados: 0, base: 0, nao_positivados: 0, percentual: 0 }
         },
+        periodoInfo: { inicio: '', fim: '', dias: 0, dias_uteis: 0 },
         periodoAnterior: null,
         porDiaSemana: [],
 
-        // Dados
+        // Dados de Listas e Gráficos
         topProdutos: [],
         topClientes: [],
         distribuicaoRegiao: [],
-        margemProdutos: [],
-        evolucao: { granularidade: 'mes', itens: [] },
+        evolucao: { granularidade: 'dia', itens: [], series_periodo: {}, totais: {} },
         matrizCrossSelling: [],
         projecao: [],
         rankingRepresentantes: [],
         funilPedidos: [],
-        funilTaxas: { conversao: null, cancelamento: null },
-        projecaoFechamento: {},
+        funilTaxas: { conversao: null, conversao_valor: null, cancelamento: null },
+        projecaoFechamento: { carregado: false, por_representante: [], por_regiao: [] },
         clientesRisco: [],
-        riscoCriterio: { dias_sem_comprar: 30, janela_dias: 180 },
+        resumoRisco: {
+            total_clientes: 0,
+            valor_historico_total: 0,
+            peso_historico_total: 0,
+            quantidade_historico_total: 0,
+            nfs_historico_total: 0,
+            faixas: {
+                '30_45': { label: '30 a 45 dias', clientes: 0, valor: 0, peso: 0 },
+                '46_60': { label: '46 a 60 dias', clientes: 0, valor: 0, peso: 0 },
+                '61_90': { label: '61 a 90 dias', clientes: 0, valor: 0, peso: 0 },
+                '90_mais': { label: '+90 dias', clientes: 0, valor: 0, peso: 0 }
+            }
+        },
+        riscoCriterio: { dias_sem_comprar: 30, janela_dias: 365 },
 
-        // Gráficos
-        tipoGrafico: 'valor',
+        // Controles de Gráficos
+        tipoGrafico: 'combinado', // 'combinado' | 'valor' | 'peso' | 'quantidade' | 'notas'
+        periodoEvolucao: 'auto',  // 'auto' | 'dia' | 'semana' | 'mes'
+        metricaRegiao: 'valor',   // 'valor' | 'peso'
         chartEvolucao: null,
         chartRegiao: null,
         chartProdutoEvolucao: null,
-
-        // Modais de detalhes
-        modalProdutoOpen: false,
-        modalClienteOpen: false,
-        produtoDetalhes: { nome: '', valor: 0, quantidade: 0, preco_medio: 0, total_clientes: 0, clientes: [], evolucao: [] },
-        produtoLoading: false,
-        produtoErro: '',
-        clienteDetalhes: { nome: '', valor: 0, total_notas: 0, ticket_medio: 0, quantidade: 0, produtos: [] },
-        clienteLoading: false,
-        clienteErro: '',
-
         maxProjecao: 1,
 
         // ======================================================================
@@ -140,7 +189,7 @@ function dashboardVendasHandler() {
         },
 
         // ======================================================================
-        // API
+        // API & CONTROLE DE CONCORRÊNCIA
         // ======================================================================
         getToken() {
             return localStorage.getItem('authToken') || '';
@@ -174,7 +223,7 @@ function dashboardVendasHandler() {
 
             const text = await resp.text();
             let json = null;
-            try { json = JSON.parse(text); } catch (e) { /* resposta não-JSON tratada abaixo */ }
+            try { json = JSON.parse(text); } catch (e) { /* tratado abaixo */ }
 
             if (!resp.ok || (json && json.success === false)) {
                 throw new Error((json && json.error) || `Erro ${resp.status} ao consultar o servidor.`);
@@ -183,7 +232,6 @@ function dashboardVendasHandler() {
             return json;
         },
 
-        // Controle de corrida: cancela a requisição anterior do mesmo grupo e descarta respostas antigas
         iniciar(grupo) {
             if (this._ctrl[grupo]) this._ctrl[grupo].abort();
             this._ctrl[grupo] = new AbortController();
@@ -205,7 +253,7 @@ function dashboardVendasHandler() {
         },
 
         // ======================================================================
-        // HIERARQUIA
+        // HIERARQUIA DE FILTROS
         // ======================================================================
         async carregarFiliais() {
             try {
@@ -242,7 +290,6 @@ function dashboardVendasHandler() {
         async carregarRepresentantes() {
             this.erroRepresentantes = '';
             try {
-                // idfilial 0 = todas as filiais (o backend do cubo resolve)
                 const data = await this.apiFetch('/v1/vendas/cubo/representantes-por-supervisor', {
                     idsupervisor: parseInt(this.filters.gestor) || 0,
                     idfilial: parseInt(this.filters.filial) || 0
@@ -305,13 +352,13 @@ function dashboardVendasHandler() {
                 return false;
             }
             if (dias > MAX_DIAS_PESADO) {
-                this.avisoPeriodo = `Período acima de ${MAX_DIAS_PESADO} dias: "Margem por produto" e "Produtos comprados juntos" não serão calculados. Reduza o período para vê-los.`;
+                this.avisoPeriodo = `Período acima de ${MAX_DIAS_PESADO} dias: a matriz "Produtos comprados juntos" fica desativada para preservar a performance.`;
             }
             return true;
         },
 
         // ======================================================================
-        // CARREGAMENTO
+        // CARREGAMENTO DOS DADOS
         // ======================================================================
         async carregarDados() {
             this.erro = '';
@@ -322,7 +369,6 @@ function dashboardVendasHandler() {
 
             const { id, signal } = this.iniciar('kpis');
             this.loading = true;
-            // Pesados e insights são independentes e disparam uma única vez por carga
             this.carregarDadosPesados();
             this.carregarInsights();
 
@@ -330,28 +376,46 @@ function dashboardVendasHandler() {
                 const data = await this.apiFetch('/v1/vendas/dashboard/kpis', this.corpoFiltros(), signal);
                 if (!this.atual('kpis', id)) return;
 
+                this.periodoInfo = data.periodo || { inicio: this.filters.data_inicio, fim: this.filters.data_fim, dias: 0, dias_uteis: 0 };
                 this.kpis = {
                     faturamento: data.faturamento?.valor || 0,
+                    faturamento_anterior: data.faturamento?.anterior || 0,
                     variacao_faturamento: data.faturamento?.variacao ?? null,
+                    peso_faturado: data.faturamento?.peso || 0,
+                    peso_anterior: data.faturamento?.peso_anterior || 0,
+                    variacao_peso: data.faturamento?.variacao_peso ?? null,
+                    quantidade_faturada: data.faturamento?.quantidade || 0,
+                    quantidade_anterior: data.faturamento?.quantidade_anterior || 0,
+                    variacao_quantidade: data.faturamento?.variacao_quantidade ?? null,
+                    clientes_faturados: data.faturamento?.clientes || 0,
                     notas: data.notas?.atual || 0,
+                    notas_anterior: data.notas?.anterior || 0,
                     variacao_notas: data.notas?.variacao ?? null,
+                    media_itens_nf: data.notas?.media_itens_nf || 0,
+                    media_peso_nf: data.notas?.media_peso_nf || 0,
                     ticket_medio: data.ticket_medio?.atual || 0,
+                    ticket_anterior: data.ticket_medio?.anterior || 0,
                     variacao_ticket: data.ticket_medio?.variacao ?? null,
+                    preco_medio_kg: data.ticket_medio?.preco_medio_kg || 0,
+                    preco_medio_un: data.ticket_medio?.preco_medio_un || 0,
                     media_diaria: data.velocidade_venda?.media_diaria || 0,
+                    media_peso_diario: data.velocidade_venda?.media_peso_diario || 0,
+                    media_qtd_diaria: data.velocidade_venda?.media_qtd_diaria || 0,
+                    media_notas_diaria: data.velocidade_venda?.media_notas_diaria || 0,
                     media_dia_com_venda: data.velocidade_venda?.media_dia_com_venda || 0,
                     dias_uteis: data.velocidade_venda?.dias_uteis || 0,
                     dias_com_venda: data.velocidade_venda?.dias_com_venda || 0,
-                    carteira: data.carteira || { valor: 0, pedidos: 0, quantidade: 0 },
-                    cancelados: data.cancelados || { valor: 0, notas: 0 },
-                    devolucoes: data.devolucoes || { valor: 0, notas: 0 },
-                    positivacao: data.positivacao || { positivados: 0, base: 0, percentual: 0 }
+                    carteira: data.carteira || { valor: 0, pedidos: 0, quantidade: 0, peso: 0, clientes: 0 },
+                    cancelados: data.cancelados || { valor: 0, notas: 0, peso: 0 },
+                    devolucoes: data.devolucoes || { valor: 0, notas: 0, quantidade: 0, peso: 0, percentual_faturamento: 0 },
+                    positivacao: data.positivacao || { positivados: 0, base: 0, nao_positivados: 0, percentual: 0 }
                 };
                 this.periodoAnterior = data.periodo_anterior || null;
                 this.porDiaSemana = data.velocidade_venda?.por_dia_semana || [];
                 this.topProdutos = data.top_produtos || [];
                 this.topClientes = data.top_clientes || [];
                 this.distribuicaoRegiao = data.distribuicao_regiao || [];
-                this.evolucao = data.evolucao || { granularidade: 'mes', itens: [] };
+                this.evolucao = data.evolucao || { granularidade: 'dia', itens: [], series_periodo: {}, totais: {} };
 
                 setTimeout(() => {
                     this.renderizarGraficoEvolucao();
@@ -371,13 +435,12 @@ function dashboardVendasHandler() {
             this.topProdutos = [];
             this.topClientes = [];
             this.distribuicaoRegiao = [];
-            this.evolucao = { granularidade: 'mes', itens: [] };
-            this.margemProdutos = [];
+            this.evolucao = { granularidade: 'dia', itens: [], series_periodo: {}, totais: {} };
             this.matrizCrossSelling = [];
             this.projecao = [];
             this.rankingRepresentantes = [];
             this.funilPedidos = [];
-            this.projecaoFechamento = {};
+            this.projecaoFechamento = { carregado: false, por_representante: [], por_regiao: [] };
             this.clientesRisco = [];
             this.destruirGrafico('chartEvolucao');
             this.destruirGrafico('chartRegiao');
@@ -391,16 +454,16 @@ function dashboardVendasHandler() {
             try {
                 const dados = await this.apiFetch('/v1/vendas/dashboard/kpis-detalhes', this.corpoFiltros(), signal);
                 if (!this.atual('pesados', id)) return;
-                this.margemProdutos = dados.margem_produtos || [];
                 this.matrizCrossSelling = dados.matriz_cross_selling || [];
                 this.projecao = this.formatarProjecao(dados.projecao_vendas || []);
-                this.maxProjecao = this.projecao.length > 0 ? Math.max(...this.projecao.map(p => Math.max(p.valor || 0, p.valor_projetado || 0)), 1) : 1;
+                this.maxProjecao = this.projecao.length > 0
+                    ? Math.max(...this.projecao.map(p => Math.max(p.valor || 0, p.valor_projetado || 0, p.projecao_com_carteira || 0)), 1)
+                    : 1;
                 this.mensagemPesados = dados.mensagem || '';
             } catch (e) {
                 if (e.name === 'AbortError' || !this.atual('pesados', id)) return;
                 console.error('Erro dados pesados:', e);
                 this.erroPesados = e.message;
-                this.margemProdutos = [];
                 this.matrizCrossSelling = [];
                 this.projecao = [];
             } finally {
@@ -419,10 +482,14 @@ function dashboardVendasHandler() {
                 this.funilPedidos = dados.funil_pedidos?.etapas || [];
                 this.funilTaxas = {
                     conversao: dados.funil_pedidos?.taxa_conversao ?? null,
+                    conversao_valor: dados.funil_pedidos?.taxa_conversao_valor ?? null,
                     cancelamento: dados.funil_pedidos?.taxa_cancelamento ?? null
                 };
-                this.projecaoFechamento = dados.projecao_fechamento || {};
+                this.projecaoFechamento = dados.projecao_fechamento || { carregado: false, por_representante: [], por_regiao: [] };
                 this.clientesRisco = dados.clientes_risco || [];
+                if (dados.resumo_risco) {
+                    this.resumoRisco = dados.resumo_risco;
+                }
                 this.riscoCriterio = dados.risco_criterio || this.riscoCriterio;
             } catch (e) {
                 if (e.name === 'AbortError' || !this.atual('insights', id)) return;
@@ -430,7 +497,7 @@ function dashboardVendasHandler() {
                 this.erroInsights = e.message;
                 this.rankingRepresentantes = [];
                 this.funilPedidos = [];
-                this.projecaoFechamento = {};
+                this.projecaoFechamento = { carregado: false, por_representante: [], por_regiao: [] };
                 this.clientesRisco = [];
             } finally {
                 if (this.atual('insights', id)) this.loadingInsights = false;
@@ -438,7 +505,7 @@ function dashboardVendasHandler() {
         },
 
         // ======================================================================
-        // GRÁFICOS
+        // GRÁFICOS AVANÇADOS (EVOLUÇÃO MULTIMÉTRICA + 6 REGIÕES UNIFICADAS)
         // ======================================================================
         destruirGrafico(nome) {
             if (this[nome]) {
@@ -447,34 +514,41 @@ function dashboardVendasHandler() {
             }
         },
 
-        renderizarGraficoEvolucao() {
-            this.destruirGrafico('chartEvolucao');
-            const el = document.querySelector('#chartEvolucao');
-            const itens = this.evolucao?.itens || [];
-            if (!el) return;
-            el.innerHTML = '';
-            if (!itens.length) return;
+        itensEvolucaoAtiva() {
+            const sp = this.evolucao?.series_periodo || {};
+            if (this.periodoEvolucao !== 'auto' && Array.isArray(sp[this.periodoEvolucao]) && sp[this.periodoEvolucao].length > 0) {
+                return sp[this.periodoEvolucao];
+            }
+            return this.evolucao?.itens || [];
+        },
 
-            const quantidade = this.tipoGrafico === 'quantidade';
-            const labels = itens.map(m => m.label);
-            const dados = itens.map(m => parseFloat(quantidade ? m.quantidade : m.valor) || 0);
-            const fmt = (v) => quantidade
-                ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' un.'
-                : 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-            this.chartEvolucao = new ApexCharts(el, {
-                chart: { type: 'area', height: 320, toolbar: { show: false } },
-                series: [{ name: quantidade ? 'Quantidade faturada' : 'Faturamento (R$)', data: dados }],
-                xaxis: { categories: labels, tickAmount: Math.min(labels.length, 12) },
-                yaxis: { labels: { formatter: (v) => quantidade ? v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' mil' } },
-                colors: [quantidade ? '#3b82f6' : '#059669'],
-                dataLabels: { enabled: false },
-                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.3, opacityTo: 0.05 } },
-                stroke: { curve: 'smooth', width: 3 },
-                grid: { borderColor: '#e2e8f0' },
-                tooltip: { y: { formatter: fmt } }
-            });
-            this.chartEvolucao.render();
+        resumoEvolucaoAtiva() {
+            const itens = this.itensEvolucaoAtiva();
+            if (!itens.length) {
+                return { valor: 0, peso: 0, quantidade: 0, notas: 0, media_valor: 0, media_peso: 0, pico_label: '—', pico_valor: 0 };
+            }
+            let valor = 0, peso = 0, quantidade = 0, notas = 0, picoValor = 0, picoLabel = '—';
+            for (const i of itens) {
+                const v = parseFloat(i.valor || 0);
+                valor += v;
+                peso += parseFloat(i.peso || 0);
+                quantidade += parseFloat(i.quantidade || 0);
+                notas += parseInt(i.notas || 0, 10);
+                if (v > picoValor) {
+                    picoValor = v;
+                    picoLabel = i.label || i.periodo || '—';
+                }
+            }
+            return {
+                valor,
+                peso,
+                quantidade,
+                notas,
+                media_valor: valor / itens.length,
+                media_peso: peso / itens.length,
+                pico_label: picoLabel,
+                pico_valor: picoValor
+            };
         },
 
         mudarTipoGrafico(tipo) {
@@ -482,20 +556,198 @@ function dashboardVendasHandler() {
             this.renderizarGraficoEvolucao();
         },
 
+        mudarPeriodoEvolucao(periodo) {
+            this.periodoEvolucao = periodo;
+            this.renderizarGraficoEvolucao();
+        },
+
+        mudarMetricaRegiao(metrica) {
+            this.metricaRegiao = metrica;
+            this.renderizarGraficoRegiao();
+        },
+
+        renderizarGraficoEvolucao() {
+            this.destruirGrafico('chartEvolucao');
+            const el = document.querySelector('#chartEvolucao');
+            const itens = this.itensEvolucaoAtiva();
+            if (!el) return;
+            el.innerHTML = '';
+            if (!itens.length) return;
+
+            const labels = itens.map(m => m.label);
+            const vals = itens.map(m => Math.round((parseFloat(m.valor) || 0) * 100) / 100);
+            const pesos = itens.map(m => Math.round((parseFloat(m.peso) || 0) * 100) / 100);
+            const qtds = itens.map(m => Math.round((parseFloat(m.quantidade) || 0) * 100) / 100);
+            const nfs = itens.map(m => parseInt(m.notas || 0, 10));
+
+            if (this.tipoGrafico === 'combinado') {
+                this.chartEvolucao = new ApexCharts(el, {
+                    chart: { type: 'line', height: 320, toolbar: { show: false }, fontFamily: 'Plus Jakarta Sans, sans-serif' },
+                    series: [
+                        { name: 'Faturamento (R$)', type: 'column', data: vals },
+                        { name: 'Peso Líquido (Kg)', type: 'line', data: pesos }
+                    ],
+                    xaxis: { categories: labels, tickAmount: Math.min(labels.length, 14), labels: { style: { fontSize: '10px' } } },
+                    yaxis: [
+                        {
+                            title: { text: 'Faturamento (R$)', style: { color: '#059669', fontSize: '11px', fontWeight: 700 } },
+                            labels: {
+                                formatter: (v) => v >= 1000000
+                                    ? 'R$ ' + (v / 1000000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'M'
+                                    : 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k'
+                            }
+                        },
+                        {
+                            opposite: true,
+                            title: { text: 'Peso Líquido (Kg)', style: { color: '#d97706', fontSize: '11px', fontWeight: 700 } },
+                            labels: {
+                                formatter: (v) => v >= 1000
+                                    ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' t'
+                                    : v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg'
+                            }
+                        }
+                    ],
+                    colors: ['#059669', '#f59e0b'],
+                    stroke: { width: [0, 3], curve: 'smooth' },
+                    plotOptions: { bar: { borderRadius: 5, columnWidth: '55%' } },
+                    dataLabels: { enabled: false },
+                    grid: { borderColor: '#f1f5f9' },
+                    legend: { position: 'top', horizontalAlign: 'right', fontSize: '11px', fontWeight: 600 },
+                    tooltip: {
+                        shared: true,
+                        intersect: false,
+                        y: {
+                            formatter: (v, { seriesIndex, dataPointIndex }) => {
+                                const row = itens[dataPointIndex] || {};
+                                if (seriesIndex === 0) {
+                                    return this.formatMoney(v) + ` (${row.notas || 0} NFs)`;
+                                }
+                                return this.formatPeso(v) + ` (${this.formatNumber(row.quantidade || 0)} un.)`;
+                            }
+                        }
+                    }
+                });
+                this.chartEvolucao.render();
+                return;
+            }
+
+            const mapaConfig = {
+                valor: {
+                    name: 'Faturamento (R$)',
+                    data: vals,
+                    color: '#059669',
+                    yFmt: (v) => 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k',
+                    tipFmt: (v, idx) => `${this.formatMoney(v)} • ${this.formatPeso(pesos[idx] || 0)} • ${nfs[idx] || 0} NFs`
+                },
+                peso: {
+                    name: 'Peso Líquido (Kg)',
+                    data: pesos,
+                    color: '#d97706',
+                    yFmt: (v) => v >= 1000 ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' t' : v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' kg',
+                    tipFmt: (v, idx) => `${this.formatPeso(v)} • ${this.formatMoney(vals[idx] || 0)} • ${this.formatNumber(qtds[idx] || 0)} un.`
+                },
+                quantidade: {
+                    name: 'Quantidade (Unid.)',
+                    data: qtds,
+                    color: '#2563eb',
+                    yFmt: (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' un',
+                    tipFmt: (v, idx) => `${this.formatNumber(v)} un. • ${this.formatPeso(pesos[idx] || 0)} • ${this.formatMoney(vals[idx] || 0)}`
+                },
+                notas: {
+                    name: 'NFs Faturadas',
+                    data: nfs,
+                    color: '#7c3aed',
+                    yFmt: (v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + ' NFs',
+                    tipFmt: (v, idx) => `${v} NFs • ${this.formatMoney(vals[idx] || 0)} • ${this.formatPeso(pesos[idx] || 0)}`
+                }
+            };
+            const cfg = mapaConfig[this.tipoGrafico] || mapaConfig.valor;
+
+            this.chartEvolucao = new ApexCharts(el, {
+                chart: { type: 'area', height: 320, toolbar: { show: false }, fontFamily: 'Plus Jakarta Sans, sans-serif' },
+                series: [{ name: cfg.name, data: cfg.data }],
+                xaxis: { categories: labels, tickAmount: Math.min(labels.length, 14), labels: { style: { fontSize: '10px' } } },
+                yaxis: { labels: { formatter: cfg.yFmt } },
+                colors: [cfg.color],
+                dataLabels: { enabled: false },
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.35, opacityTo: 0.05 } },
+                stroke: { curve: 'smooth', width: 3 },
+                grid: { borderColor: '#f1f5f9' },
+                tooltip: {
+                    y: {
+                        formatter: (v, { dataPointIndex }) => cfg.tipFmt(v, dataPointIndex)
+                    }
+                }
+            });
+            this.chartEvolucao.render();
+        },
+
         renderizarGraficoRegiao() {
             this.destruirGrafico('chartRegiao');
             const el = document.querySelector('#chartRegiao');
             if (!el) return;
             el.innerHTML = '';
-            if (!this.distribuicaoRegiao?.length) return;
+            const regs = this.distribuicaoRegiao || [];
+            if (!regs.length) return;
+
+            const isPeso = this.metricaRegiao === 'peso';
+            const series = regs.map(r => parseFloat(isPeso ? r.peso : r.valor) || 0);
+            const labels = regs.map(r => `${r.regiao} — ${r.nome || ''}`);
+            const colors = regs.map(r => r.cor || '#059669');
 
             this.chartRegiao = new ApexCharts(el, {
-                chart: { type: 'donut', height: 280 },
-                series: this.distribuicaoRegiao.map(r => parseFloat(r.valor || 0)),
-                labels: this.distribuicaoRegiao.map(r => r.regiao),
-                colors: ['#059669', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'],
-                legend: { position: 'bottom', fontSize: '11px' },
-                tooltip: { y: { formatter: (v) => 'R$ ' + v.toLocaleString('pt-BR') } }
+                chart: {
+                    type: 'donut',
+                    height: 290,
+                    fontFamily: 'Plus Jakarta Sans, sans-serif',
+                    events: {
+                        dataPointSelection: (event, chartContext, config) => {
+                            const r = regs[config.dataPointIndex];
+                            if (r) this.abrirDetalhesRegiao(r);
+                        }
+                    }
+                },
+                series,
+                labels,
+                colors,
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '66%',
+                            labels: {
+                                show: true,
+                                name: { show: true, fontSize: '11px', fontWeight: 700 },
+                                value: {
+                                    show: true,
+                                    fontSize: '14px',
+                                    fontWeight: 800,
+                                    formatter: (v) => isPeso ? this.formatPeso(parseFloat(v)) : this.formatMoney(parseFloat(v))
+                                },
+                                total: {
+                                    show: true,
+                                    label: isPeso ? 'Peso Total (6 Regiões)' : 'Total 6 Regiões',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    color: '#64748b',
+                                    formatter: (w) => {
+                                        const tot = w.globals.seriesTotals.reduce((a, b) => a + b, 0);
+                                        return isPeso ? this.formatPeso(tot) : this.formatMoney(tot);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                dataLabels: { enabled: true, formatter: (val) => val.toFixed(1) + '%' },
+                legend: { position: 'bottom', fontSize: '11px', fontWeight: 600 },
+                tooltip: {
+                    y: {
+                        formatter: (v, { seriesIndex }) => {
+                            const r = regs[seriesIndex] || {};
+                            return `${this.formatMoney(r.valor || 0)} | ${this.formatPeso(r.peso || 0)} | ${r.notas || 0} NFs (${r.clientes || 0} cli)`;
+                        }
+                    }
+                }
             });
             this.chartRegiao.render();
         },
@@ -509,26 +761,38 @@ function dashboardVendasHandler() {
             if (!evo.length) return;
 
             this.chartProdutoEvolucao = new ApexCharts(el, {
-                chart: { type: 'bar', height: 250, toolbar: { show: false } },
-                series: [{ name: 'Faturamento (R$)', data: evo.map(m => parseFloat(m.valor) || 0) }],
+                chart: { type: 'line', height: 250, toolbar: { show: false } },
+                series: [
+                    { name: 'Faturamento (R$)', type: 'column', data: evo.map(m => parseFloat(m.valor) || 0) },
+                    { name: 'Peso (Kg)', type: 'line', data: evo.map(m => parseFloat(m.peso) || 0) }
+                ],
                 xaxis: { categories: evo.map(m => m.label) },
-                colors: ['#059669'],
+                yaxis: [
+                    { labels: { formatter: (v) => 'R$ ' + (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k' } },
+                    { opposite: true, labels: { formatter: (v) => this.formatPeso(v) } }
+                ],
+                colors: ['#059669', '#f59e0b'],
+                stroke: { width: [0, 3], curve: 'smooth' },
                 dataLabels: { enabled: false },
-                title: { text: 'Evolução mensal do produto (últimos 6 meses)', style: { fontSize: '12px' } },
-                tooltip: { y: { formatter: (v) => 'R$ ' + v.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) } }
+                title: { text: 'Evolução mensal do produto — Valor (R$) e Peso (Kg)', style: { fontSize: '12px' } },
+                tooltip: {
+                    y: {
+                        formatter: (v, { seriesIndex }) => seriesIndex === 0 ? this.formatMoney(v) : this.formatPeso(v)
+                    }
+                }
             });
             this.chartProdutoEvolucao.render();
         },
 
         // ======================================================================
-        // DETALHES (modais)
+        // MODAIS DE DETALHES & RASTREIO (CARDS, REGIÕES, PRODUTOS, CLIENTES)
         // ======================================================================
         async verDetalhesProduto(idproduto, nome) {
             this.modalProdutoOpen = true;
             this.produtoLoading = true;
             this.produtoErro = '';
             this.destruirGrafico('chartProdutoEvolucao');
-            this.produtoDetalhes = { nome, valor: 0, quantidade: 0, preco_medio: 0, total_clientes: 0, clientes: [], evolucao: [] };
+            this.produtoDetalhes = { nome, valor: 0, quantidade: 0, peso: 0, preco_medio: 0, preco_medio_kg: 0, total_clientes: 0, total_notas: 0, comissao: 0, clientes: [], evolucao: [] };
 
             try {
                 const data = await this.apiFetch('/v1/vendas/dashboard/produto-detalhes', this.corpoFiltros({ idproduto }));
@@ -536,8 +800,12 @@ function dashboardVendasHandler() {
                     nome,
                     valor: data.produto?.valor || 0,
                     quantidade: data.produto?.quantidade || 0,
+                    peso: data.produto?.peso || 0,
                     preco_medio: data.produto?.preco_medio || 0,
+                    preco_medio_kg: data.produto?.preco_medio_kg || 0,
                     total_clientes: data.produto?.total_clientes || 0,
+                    total_notas: data.produto?.total_notas || 0,
+                    comissao: data.produto?.comissao || 0,
                     clientes: data.clientes || [],
                     evolucao: data.evolucao || []
                 };
@@ -556,10 +824,11 @@ function dashboardVendasHandler() {
         },
 
         async verDetalhesCliente(idcliente, nome) {
+            if (!idcliente) return;
             this.modalClienteOpen = true;
             this.clienteLoading = true;
             this.clienteErro = '';
-            this.clienteDetalhes = { nome, valor: 0, total_notas: 0, ticket_medio: 0, quantidade: 0, produtos: [] };
+            this.clienteDetalhes = { nome, valor: 0, total_notas: 0, ticket_medio: 0, quantidade: 0, peso: 0, produtos: [] };
 
             try {
                 const data = await this.apiFetch('/v1/vendas/dashboard/cliente-detalhes', this.corpoFiltros({ idcliente }));
@@ -569,6 +838,7 @@ function dashboardVendasHandler() {
                     total_notas: data.cliente?.total_notas || 0,
                     ticket_medio: data.cliente?.ticket_medio || 0,
                     quantidade: data.cliente?.quantidade || 0,
+                    peso: data.cliente?.peso || 0,
                     produtos: data.top_produtos || []
                 };
             } catch (e) {
@@ -585,7 +855,6 @@ function dashboardVendasHandler() {
             this.repErro = '';
             this.representanteDetalhes = { nome, clientes: [], produtos: [], evolucao: { itens: [] }, total: null };
             try {
-                // O id do ranking prevalece sobre o filtro de representante
                 const dados = await this.apiFetch('/v1/vendas/dashboard/detalhes-representante', this.corpoFiltros({ id, representante: '' }));
                 this.representanteDetalhes = {
                     nome,
@@ -618,10 +887,20 @@ function dashboardVendasHandler() {
             }
         },
 
-        async abrirDetalhesCard(tipo, titulo) {
+        abrirDetalhesRegiao(regiaoObj) {
+            if (!regiaoObj || !regiaoObj.regiao) return;
+            this.abrirDetalhesCard(
+                'Regiao',
+                `Macro-Região ${regiaoObj.regiao} — ${regiaoObj.nome || ''}`,
+                { regiao: regiaoObj.regiao }
+            );
+        },
+
+        async abrirDetalhesCard(tipo, titulo, extraPayload = {}) {
             this.modalCardTitulo = titulo || tipo;
             const mapaTipos = {
                 'Faturamento': 'faturamento',
+                'Regiao': 'regiao',
                 'Notas': 'notas',
                 'Pedidos': 'notas',
                 'Ticket Médio': 'ticket_medio',
@@ -643,7 +922,8 @@ function dashboardVendasHandler() {
             this.cardTotal = null;
             this.cardExtra = {};
             try {
-                const dados = await this.apiFetch('/v1/vendas/dashboard/detalhes-card', this.corpoFiltros({ tipo }));
+                const payload = Object.assign({ tipo }, extraPayload || {});
+                const dados = await this.apiFetch('/v1/vendas/dashboard/detalhes-card', this.corpoFiltros(payload));
                 this.cardDetalhes = dados.dados || [];
                 this.cardPorDia = dados.por_dia || [];
                 this.cardRastreio = dados.rastreio || [];
@@ -686,36 +966,90 @@ function dashboardVendasHandler() {
             });
         },
 
+        // ======================================================================
+        // INTELIGÊNCIA DE RECOMPRA & CLIENTES SEM COMPRAS (+30 / +60 / +90 DIAS)
+        // ======================================================================
         representantesRisco() {
             const mapa = new Map();
             for (const c of (this.clientesRisco || [])) {
                 const id = String(c.idrepresentante || 0);
                 const nome = c.representante || ('REP ' + id);
                 if (!mapa.has(id)) {
-                    mapa.set(id, { id, nome, qtd: 0, valor: 0 });
+                    mapa.set(id, { id, nome, qtd: 0, valor: 0, peso: 0 });
                 }
                 const item = mapa.get(id);
                 item.qtd += 1;
                 item.valor += parseFloat(c.valor_historico || 0);
+                item.peso += parseFloat(c.peso_historico || 0);
             }
             return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
         },
 
         clientesRiscoFiltrados() {
             const repFiltro = String(this.filtroRiscoRep || '').trim();
+            const regFiltro = String(this.filtroRiscoRegiao || '').trim().toUpperCase();
+            const faixaFiltro = String(this.filtroRiscoFaixa || '').trim();
             const q = (this.buscaRiscoCliente || '').trim().toLowerCase();
+
             return (this.clientesRisco || []).filter(c => {
                 if (repFiltro) {
                     const matchId = String(c.idrepresentante || 0) === repFiltro;
                     const matchNome = String(c.representante || '').trim() === repFiltro;
                     if (!matchId && !matchNome) return false;
                 }
+                if (regFiltro && String(c.regiao || '').toUpperCase() !== regFiltro) {
+                    return false;
+                }
+                if (faixaFiltro && String(c.faixa || '') !== faixaFiltro) {
+                    return false;
+                }
                 if (!q) return true;
-                const texto = `${c.nome || ''} ${c.representante || ''} ${c.cidade_uf || ''} ${c.ultima_fmt || ''}`.toLowerCase();
+                const texto = `${c.id || ''} ${c.nome || ''} ${c.representante || ''} ${c.cidade_uf || ''} ${c.regiao || ''} ${c.ultima_fmt || ''}`.toLowerCase();
                 return texto.includes(q);
             });
         },
 
+        resumoRiscoFiltrado() {
+            const lista = this.clientesRiscoFiltrados();
+            let valor = 0, peso = 0, qtd = 0, nfs = 0;
+            for (const c of lista) {
+                valor += parseFloat(c.valor_historico || 0);
+                peso += parseFloat(c.peso_historico || 0);
+                qtd += parseFloat(c.quantidade_historico || 0);
+                nfs += parseInt(c.compras_anteriores || 0, 10);
+            }
+            return {
+                clientes: lista.length,
+                valor,
+                peso,
+                quantidade: qtd,
+                nfs
+            };
+        },
+
+        alternarFaixaRisco(faixa) {
+            this.filtroRiscoFaixa = (this.filtroRiscoFaixa === faixa) ? '' : faixa;
+        },
+
+        // ======================================================================
+        // PROJEÇÃO DE FECHAMENTO EXPANDIDA (MODAL & FILTROS)
+        // ======================================================================
+        abrirModalProjecao(aba = 'representantes') {
+            this.abaProjecao = aba;
+            this.buscaProjecao = '';
+            this.modalProjecaoOpen = true;
+        },
+
+        projecaoRepsFiltrados() {
+            const reps = this.projecaoFechamento?.por_representante || [];
+            const q = (this.buscaProjecao || '').trim().toLowerCase();
+            if (!q) return reps;
+            return reps.filter(r => String(r.representante || '').toLowerCase().includes(q));
+        },
+
+        // ======================================================================
+        // ATALHOS DE PERÍODO E FORMATADORES
+        // ======================================================================
         definirPeriodoRapido(tipo) {
             const hoje = new Date();
             const ano = hoje.getFullYear();
@@ -757,21 +1091,29 @@ function dashboardVendasHandler() {
             this.carregarDados();
         },
 
-        // ======================================================================
-        // UTILITÁRIOS
-        // ======================================================================
         formatarProjecao(projecao) {
             return (projecao || [])
-                .filter(item => item?.mes && item.tipo !== "projecao")
+                .filter(item => item?.mes)
                 .map(item => {
                     const [ano, mes] = String(item.mes).split('-');
                     return {
                         mes_label: `${MESES[parseInt(mes, 10) - 1]}/${ano}`,
                         valor: parseFloat(item.valor || 0),
                         valor_projetado: parseFloat(item.valor_projetado || item.valor || 0),
+                        carteira_aberta: parseFloat(item.carteira_aberta || 0),
+                        projecao_com_carteira: parseFloat(item.projecao_com_carteira || item.valor_projetado || item.valor || 0),
+                        peso: parseFloat(item.peso || 0),
+                        peso_projetado: parseFloat(item.peso_projetado || item.peso || 0),
+                        quantidade: parseFloat(item.quantidade || 0),
+                        quantidade_projetada: parseFloat(item.quantidade_projetada || item.quantidade || 0),
+                        notas: parseInt(item.notas || 0, 10),
+                        clientes: parseInt(item.clientes || 0, 10),
+                        dias_uteis: parseInt(item.dias_uteis || 0, 10),
+                        media_diaria: parseFloat(item.media_diaria || 0),
                         tipo: item.tipo || 'projecao',
                         realizado: item.tipo === 'realizado',
-                        atual: item.tipo === 'atual'
+                        atual: item.tipo === 'atual',
+                        tendencia: item.tipo === 'projecao'
                     };
                 });
         },
@@ -786,14 +1128,13 @@ function dashboardVendasHandler() {
             const p = this.periodoAnterior;
             if (!p) return 'vs período anterior';
             const f = (s) => this.formatarDataBR(s);
-            return `vs ${f(p.inicio)} a ${f(p.fim)}${p.parcial ? ' (mesmo nº de dias)' : ''}`;
+            return `vs ${f(p.inicio)} a ${f(p.fim)}${p.parcial ? ' (mesmo nº dias)' : ''}`;
         },
         formatarDataBR(iso) {
             const d = this.parseISO(iso);
             return d ? d.toLocaleDateString('pt-BR') : '';
         },
 
-        // Data local, sem conversão UTC
         parseISO(s) {
             const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
             if (!m) return null;
@@ -812,8 +1153,23 @@ function dashboardVendasHandler() {
             return this.toISO(new Date(d.getFullYear(), d.getMonth() + 1, 0));
         },
 
-        formatMoney(v) { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0); },
-        formatNumber(v) { return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(v || 0); },
+        formatMoney(v) {
+            return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
+        },
+        formatNumber(v) {
+            return new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 2 }).format(v || 0);
+        },
+        formatPeso(kg) {
+            const val = parseFloat(kg || 0);
+            return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(val) + ' kg';
+        },
+        formatPesoTon(kg) {
+            const val = parseFloat(kg || 0);
+            if (Math.abs(val) >= 1000) {
+                return new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val / 1000) + ' ton';
+            }
+            return this.formatPeso(val);
+        },
 
         larguraFunil(item) {
             const max = Math.max(...this.funilPedidos.map(f => f.valor), 0);
@@ -824,67 +1180,241 @@ function dashboardVendasHandler() {
         },
 
         // ======================================================================
-        // EXPORTAR (CSV dos dados já carregados, respeitando os filtros atuais)
+        // EXPORTAÇÕES PARA EXCEL (.CSV UTF-8 BOM)
         // ======================================================================
+        _baixarCsv(nomeArquivo, linhas) {
+            const blob = new Blob(['\uFEFF' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nomeArquivo;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+        },
+
+        _escCsv(v) {
+            if (v === null || v === undefined) return '';
+            if (typeof v === 'number') return String(v).replace('.', ',');
+            const s = String(v);
+            return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+        },
+
+        /** Exporta o Fechamento e Projeção Completa (Global + Por Representante + 6 Regiões + Histórico) */
+        exportarProjecaoExcel() {
+            const pf = this.projecaoFechamento || {};
+            if (!pf.carregado) {
+                this.showToast('Projeção ainda não carregada.', 'info');
+                return;
+            }
+            const linhas = [];
+            const add = (...c) => linhas.push(c.map(v => this._escCsv(v)).join(';'));
+
+            add('RELATÓRIO EXECUTIVO DE PROJEÇÃO DE FECHAMENTO DE VENDAS — NUTRICIONAL');
+            add('Mês Referência', pf.mes_referencia || 'Atual', 'Dias Úteis Decorridos', pf.dias_uteis_decorridos, 'Dias Úteis Restantes', pf.dias_uteis_restantes, 'Dias Úteis Totais', pf.dias_uteis_totais);
+            add();
+
+            add('1. RESUMO EXECUTIVO DE PROJEÇÃO DO MÊS');
+            add('Indicador', 'Valor (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs / Pedidos');
+            add('Realizado Faturado até Hoje', pf.realizado || 0, pf.peso_realizado || 0, pf.quantidade_realizada || 0, pf.notas_realizadas || 0);
+            add('Média por Dia Útil', pf.media_dia_util || 0, pf.media_peso_dia_util || 0, pf.media_qtd_dia_util || 0, '');
+            add('Projeção Adicional (Dias Restantes)', pf.projecao_adicional || 0, Math.max((pf.peso_projetado || 0) - (pf.peso_realizado || 0), 0), Math.max((pf.quantidade_projetada || 0) - (pf.quantidade_realizada || 0), 0), '');
+            add('Projeção de Fechamento (Ritmo Linear)', pf.projecao || 0, pf.peso_projetado || 0, pf.quantidade_projetada || 0, pf.notas_projetadas || 0);
+            add('Carteira de Pedidos em Aberto no Mês', pf.carteira_valor || 0, pf.carteira_peso || 0, pf.carteira_quantidade || 0, pf.carteira_pedidos || 0);
+            add('Potencial Máximo (Projeção + Carteira)', pf.projecao_com_carteira || 0, (pf.peso_projetado || 0) + (pf.carteira_peso || 0), (pf.quantidade_projetada || 0) + (pf.carteira_quantidade || 0), '');
+            add('Mês Anterior Fechado (Comparativo)', pf.mes_anterior_valor || 0, pf.mes_anterior_peso || 0, '', pf.mes_anterior_notas || 0);
+            add('Variação Projeção vs Mês Anterior (%)', pf.variacao_vs_mes_anterior ?? '');
+            add();
+
+            add('2. DESDOBRAMENTO DE PROJEÇÃO POR REPRESENTANTE');
+            add('Código Rep', 'Representante', 'Realizado (R$)', 'Peso Realizado (Kg)', 'Qtd Realizada (Un)', 'NFs', 'Clientes Positivados', 'Média/Dia Útil (R$)', 'Média Peso/Dia (Kg)', 'Carteira Aberta (R$)', 'Carteira Peso (Kg)', 'Projeção Fechamento (R$)', 'Peso Projetado (Kg)', 'Qtd Projetada (Un)', 'Potencial c/ Carteira (R$)', 'Mês Anterior (R$)', 'Peso Mês Anterior (Kg)', 'Var. Projeção vs Mês Ant. (%)');
+            for (const r of this.projecaoRepsFiltrados()) {
+                add(
+                    r.id,
+                    r.representante,
+                    r.realizado,
+                    r.peso_realizado,
+                    r.qtd_realizada,
+                    r.notas,
+                    r.clientes,
+                    r.media_dia_util,
+                    r.media_peso_dia,
+                    r.carteira_valor,
+                    r.carteira_peso,
+                    r.projecao,
+                    r.peso_projetado,
+                    r.qtd_projetada,
+                    r.projecao_com_carteira,
+                    r.mes_anterior,
+                    r.peso_anterior,
+                    r.variacao_projecao ?? ''
+                );
+            }
+            add();
+
+            add('3. DESDOBRAMENTO DE PROJEÇÃO PELAS 6 REGIÕES UNIFICADAS');
+            add('Sigla Região', 'Nome da Região', 'Realizado (R$)', 'Peso Realizado (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes', 'Média/Dia Útil (R$)', 'Projeção Fechamento (R$)', 'Peso Projetado (Kg)', '% Participação');
+            for (const rg of (pf.por_regiao || [])) {
+                add(
+                    rg.regiao,
+                    rg.nome,
+                    rg.realizado,
+                    rg.peso_realizado,
+                    rg.quantidade_realizada,
+                    rg.notas,
+                    rg.clientes,
+                    rg.media_dia_util,
+                    rg.projecao,
+                    rg.peso_projetado,
+                    rg.participacao
+                );
+            }
+            add();
+
+            add('4. HISTÓRICO MENSAL E TENDÊNCIA (M-3 A M+1)');
+            add('Mês/Ano', 'Status', 'Realizado (R$)', 'Projetado (R$)', 'Peso (Kg)', 'Peso Projetado (Kg)', 'Quantidade (Un)', 'NFs', 'Dias Úteis', 'Média Diária (R$)');
+            for (const m of (this.projecao || [])) {
+                add(
+                    m.mes_label,
+                    m.atual ? 'Mês Atual' : (m.realizado ? 'Realizado Fechado' : 'Projeção M+1'),
+                    m.valor,
+                    m.valor_projetado,
+                    m.peso,
+                    m.peso_projetado,
+                    m.quantidade,
+                    m.notas,
+                    m.dias_uteis,
+                    m.media_diaria
+                );
+            }
+
+            this._baixarCsv(`projecao-fechamento-vendas_${pf.mes_referencia || 'atual'}.csv`, linhas);
+        },
+
+        /** Exporta a Base de Clientes Sem Compras (+30d / +60d / +90d) filtrada */
+        exportarClientesRiscoExcel() {
+            const lista = this.clientesRiscoFiltrados();
+            if (!lista.length) {
+                this.showToast('Nenhum cliente sem compras para exportar no filtro atual.', 'info');
+                return;
+            }
+            const linhas = [];
+            const add = (...c) => linhas.push(c.map(v => this._escCsv(v)).join(';'));
+
+            add('INTELIGÊNCIA DE RECOMPRA — CLIENTES ATIVOS SEM COMPRAS (+30 DIAS)');
+            add('Filtro Representante', this.filtroRiscoRep || 'Todos', 'Filtro Região', this.filtroRiscoRegiao || 'Todas (6 Regiões)', 'Filtro Faixa', this.filtroRiscoFaixa || 'Todas');
+            add('Total Clientes Exportados', lista.length);
+            add();
+            add('Código Cliente', 'Cliente', 'Representante', 'Região Unificada', 'Cidade/UF', 'Última Compra', 'Dias Sem Comprar', 'Faixa Inatividade', 'NFs Históricas (12m)', 'Peso Histórico (Kg)', 'Quantidade Histórica (Un)', 'Faturamento Histórico (R$)', 'Ticket Médio Histórico (R$)');
+
+            for (const c of lista) {
+                add(
+                    c.id,
+                    c.nome,
+                    c.representante,
+                    c.regiao || 'SUL',
+                    c.cidade_uf || '',
+                    c.ultima_fmt || '',
+                    c.dias_sem_comprar,
+                    c.faixa || '',
+                    c.compras_anteriores || 0,
+                    c.peso_historico || 0,
+                    c.quantidade_historico || 0,
+                    c.valor_historico || 0,
+                    c.ticket_medio || 0
+                );
+            }
+
+            this._baixarCsv(`clientes-sem-compras_${this.filters.data_inicio}_${this.filters.data_fim}.csv`, linhas);
+        },
+
+        /** Exporta os dados do Modal de Detalhes / Rastreio de Card aberto */
+        exportarCardExcel() {
+            const linhas = [];
+            const add = (...c) => linhas.push(c.map(v => this._escCsv(v)).join(';'));
+
+            add(`AUDITORIA E RASTREIO — ${this.modalCardTitulo}`);
+            add('Período', this.filters.data_inicio, 'até', this.filters.data_fim, 'Aba Exportada', this.cardAba);
+            add();
+
+            if (this.cardAba === 'rastreio') {
+                const lista = this.cardListaRastreioFiltrada();
+                if (this.modalCardTipo === 'positivacao') {
+                    add('Código Cliente', 'Cliente Positivado', 'Representante', 'NFs no Período', 'Peso (Kg)', 'Quantidade (Un)', 'Última Compra', 'Valor Comprado (R$)');
+                    lista.forEach(r => add(r.idcliente || r.id_doc, r.cliente, r.representante, r.documentos || r.notas || 0, r.peso || 0, r.quantidade || 0, r.data, r.valor || 0));
+                } else {
+                    add('Documento', 'Data', 'Pedido / Situação', 'Código Cliente', 'Cliente', 'Representante', 'Filial', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'Comissão (R$)', 'Valor (R$)');
+                    lista.forEach(r => add(r.numero || r.documento || ('#' + r.id_doc), r.data, r.pedido || r.situacao || '', r.idcliente || '', r.cliente, r.representante, r.filial || '', r.peso || 0, r.quantidade || 0, r.comissao || 0, r.valor || 0));
+                }
+            } else if (this.cardAba === 'por_dia') {
+                const lista = this.cardListaPorDiaFiltrada();
+                add('Data', 'Dia da Semana', this.cardRotulo || 'Documentos', 'Clientes', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'Ticket Médio (R$)', 'Valor (R$)');
+                lista.forEach(d => add(d.label || d.periodo, d.sublabel || '', d.documentos || 0, d.clientes || 0, d.peso || 0, d.quantidade || 0, d.ticket_medio || 0, d.valor || 0));
+            } else {
+                const lista = this.cardListaResumoFiltrada();
+                if (this.modalCardTipo === 'positivacao') {
+                    add('Representante', 'Valor Faturado (R$)', 'Peso (Kg)', 'Clientes Positivados', 'QT Carteira', '% Positivação');
+                    lista.forEach(i => add(i.label, i.valor || 0, i.peso || 0, i.positivados || 0, i.qt_carteira || 0, i.percentual || 0));
+                } else {
+                    add('Agrupador / Representante', this.cardRotulo || 'Documentos', 'Clientes', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'Ticket Médio (R$)', 'Comissão (R$)', 'Valor (R$)', '% Participação');
+                    lista.forEach(i => add(i.label || i.periodo, i.documentos || 0, i.clientes || 0, i.peso || 0, i.quantidade || 0, i.ticket_medio || 0, i.comissao || 0, i.valor || 0, i.percentual ?? i.participacao ?? 0));
+                }
+            }
+
+            const slug = String(this.modalCardTipo || 'card').replace(/[^a-z0-9_-]/gi, '_');
+            this._baixarCsv(`rastreio-${slug}_${this.filters.data_inicio}_${this.filters.data_fim}.csv`, linhas);
+        },
+
+        /** Exporta o Dashboard Completo (KPIs, Evolução, Top 10, 6 Regiões, Projeção e Clientes Sem Compras) */
         exportarDados() {
             if (this.loading) {
                 this.showToast('Aguarde o carregamento dos dados.', 'info');
                 return;
             }
-            const esc = (v) => {
-                if (v === null || v === undefined) return '';
-                if (typeof v === 'number') return String(v).replace('.', ',');
-                const s = String(v);
-                return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
-            };
             const linhas = [];
-            const add = (...c) => linhas.push(c.map(esc).join(';'));
+            const add = (...c) => linhas.push(c.map(v => this._escCsv(v)).join(';'));
             const k = this.kpis;
 
-            add('Dashboard de Vendas');
-            add('Período', this.filters.data_inicio, this.filters.data_fim);
+            add('DASHBOARD EXECUTIVO DE VENDAS v3.0 — NUTRICIONAL');
+            add('Período', this.filters.data_inicio, 'a', this.filters.data_fim);
             add('Filial', this.filters.filial || 'Todas', 'Gestor', this.filters.gestor || 'Todos', 'Representante', this.filters.representante || 'Todos');
             add();
-            add('INDICADOR', 'VALOR');
-            add('Faturamento (NFs faturadas)', k.faturamento);
-            add('NFs emitidas', k.notas);
-            add('Ticket médio (faturamento / NFs)', k.ticket_medio);
-            add('Média por dia útil', k.media_diaria);
-            add('Carteira de pedidos (abertos e parciais)', k.carteira.valor);
-            add('NFs canceladas', k.cancelados.valor);
-            add('Devoluções', k.devolucoes.valor);
-            add('Positivação (%)', k.positivacao.percentual);
-            add();
-            add('EVOLUÇÃO (' + (this.evolucao.granularidade === 'dia' ? 'diária' : 'mensal') + ')', 'Faturamento', 'Quantidade', 'NFs');
-            (this.evolucao.itens || []).forEach(i => add(i.label, i.valor, i.quantidade, i.notas));
-            add();
-            add('TOP PRODUTOS', 'Valor', 'Quantidade');
-            this.topProdutos.forEach(i => add(i.produto, i.valor, i.quantidade));
-            add();
-            add('TOP CLIENTES', 'Valor', 'NFs');
-            this.topClientes.forEach(i => add(i.cliente, i.valor, i.total_notas));
-            add();
-            add('REGIÃO', 'Valor');
-            this.distribuicaoRegiao.forEach(i => add(i.regiao, i.valor));
-            add();
-            add('TOP REPRESENTANTES', 'Valor', 'NFs', 'Clientes');
-            this.rankingRepresentantes.forEach(i => add(i.nome, i.valor, i.total_notas, i.clientes_ativos));
-            add();
-            add('FUNIL DE PEDIDOS', 'Pedidos', 'Valor');
-            this.funilPedidos.forEach(i => add(i.etapa, i.quantidade, i.valor));
-            add();
-            add('MARGEM POR PRODUTO', 'Receita', 'Comissão', '% Comissão', 'Margem gerencial %', 'Quantidade');
-            this.margemProdutos.forEach(i => add(i.produto, i.receita, i.comissao, i.comissao_percentual, i.margem_percentual, i.quantidade));
 
-            const blob = new Blob(['\uFEFF' + linhas.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `dashboard-vendas_${this.filters.data_inicio}_${this.filters.data_fim}.csv`;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
+            add('INDICADOR', 'VALOR (R$)', 'PESO LÍQUIDO (KG)', 'QUANTIDADE (UN)', 'DOCUMENTOS / INFO');
+            add('Faturamento (NFs faturadas)', k.faturamento, k.peso_faturado, k.quantidade_faturada, k.notas + ' NFs');
+            add('Ticket Médio por NF', k.ticket_medio, k.media_peso_nf, k.media_itens_nf, 'Preço/Kg: R$ ' + k.preco_medio_kg);
+            add('Média por Dia Útil (' + k.dias_uteis + 'd)', k.media_diaria, k.media_peso_diario, k.media_qtd_diaria, k.media_notas_diaria + ' NFs/dia');
+            add('Carteira de Pedidos em Aberto', k.carteira.valor, k.carteira.peso, k.carteira.quantidade, k.carteira.pedidos + ' pedidos');
+            add('NFs Canceladas', k.cancelados.valor, k.cancelados.peso, '', k.cancelados.notas + ' NFs');
+            add('Devoluções de Venda', k.devolucoes.valor, k.devolucoes.peso, k.devolucoes.quantidade, k.devolucoes.notas + ' NFs');
+            add('Positivação da Carteira (%)', k.positivacao.percentual + '%', '', '', `${k.positivacao.positivados} de ${k.positivacao.base} clientes`);
+            add();
+
+            add('DISTRIBUIÇÃO PELAS 6 REGIÕES UNIFICADAS', 'Nome', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes', '% Participação');
+            this.distribuicaoRegiao.forEach(r => add(r.regiao, r.nome, r.valor, r.peso, r.quantidade, r.notas, r.clientes, r.participacao));
+            add();
+
+            add('EVOLUÇÃO DE VENDAS', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Ticket Médio (R$)');
+            this.itensEvolucaoAtiva().forEach(i => add(i.label, i.valor, i.peso, i.quantidade, i.notas, i.ticket_medio));
+            add();
+
+            add('TOP 10 PRODUTOS', 'Grupo', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes');
+            this.topProdutos.forEach(i => add(i.produto, i.grupo, i.valor, i.peso, i.quantidade, i.notas, i.clientes));
+            add();
+
+            add('TOP 10 CLIENTES', 'Região', 'Cidade', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Ticket Médio (R$)');
+            this.topClientes.forEach(i => add(i.cliente, i.regiao, i.cidade, i.valor, i.peso, i.quantidade, i.total_notas, i.ticket_medio));
+            add();
+
+            add('TOP 10 REPRESENTANTES', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes Positivados', 'Ticket Médio (R$)', 'Comissão (R$)');
+            this.rankingRepresentantes.forEach(i => add(i.nome, i.valor, i.peso, i.quantidade, i.total_notas, i.clientes_ativos, i.ticket_medio, i.comissao));
+            add();
+
+            add('CLIENTES +30 DIAS SEM COMPRAS (TOP 100)', 'Representante', 'Região', 'Cidade/UF', 'Última Compra', 'Dias Sem Comprar', 'NFs Hist.', 'Peso Hist. (Kg)', 'Qtd Hist.', 'Faturamento Hist. (R$)');
+            this.clientesRisco.slice(0, 100).forEach(c => add(c.nome, c.representante, c.regiao, c.cidade_uf, c.ultima_fmt, c.dias_sem_comprar, c.compras_anteriores, c.peso_historico, c.quantidade_historico, c.valor_historico));
+
+            this._baixarCsv(`dashboard-vendas-executivo_${this.filters.data_inicio}_${this.filters.data_fim}.csv`, linhas);
         },
 
         showToast(msg, type = 'success') {

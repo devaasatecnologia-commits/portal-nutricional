@@ -201,9 +201,9 @@ class CronRotinasController
 
             case 'historico_kpi':
                 try {
-                    $jaExiste = (int)$this->pdo->query("SELECT COUNT(*) FROM analise_kpi_historico WHERE data_registro = CURRENT_DATE")->fetchColumn();
+                    $jaExiste = (int)$this->pdo->query("SELECT COUNT(*) FROM kpi_financeiro_historico WHERE data_registro = CURRENT_DATE")->fetchColumn();
                     $checks[] = [
-                        'etapa' => 'Tabela analise_kpi_historico',
+                        'etapa' => 'Tabela kpi_financeiro_historico',
                         'status' => 'ok',
                         'detalhe' => $jaExiste > 0
                             ? "Já existem {$jaExiste} registros gravados na data de hoje (CURRENT_DATE)."
@@ -218,8 +218,8 @@ class CronRotinasController
                 } catch (\Throwable $e) {
                     return [
                         'success' => false,
-                        'message' => 'Erro ao verificar analise_kpi_historico: ' . $e->getMessage(),
-                        'checks' => [['etapa' => 'Tabela analise_kpi_historico', 'status' => 'error', 'detalhe' => $e->getMessage()]]
+                        'message' => 'Erro ao verificar kpi_financeiro_historico: ' . $e->getMessage(),
+                        'checks' => [['etapa' => 'Tabela kpi_financeiro_historico', 'status' => 'error', 'detalhe' => $e->getMessage()]]
                     ];
                 }
 

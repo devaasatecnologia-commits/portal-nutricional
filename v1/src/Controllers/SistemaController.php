@@ -23,7 +23,7 @@ class SistemaController
         try {
             // Busca setores ativos
             $stmtSetores = $this->pdo->query("
-                SELECT id, nome, slug, icone, cor_bg as corBg, cor_text as corTexto, descricao
+                SELECT id, nome, slug, icone, cor_bg as corBg, cor_texto as corTexto, descricao
                 FROM sistema_setores 
                 WHERE ativo = true 
                 ORDER BY ordem

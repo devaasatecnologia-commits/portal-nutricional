@@ -211,17 +211,21 @@ async function carregarPendentes() {
             $('kpiPendentes').textContent = qtdNaoSolicitados;
         }
 
-        if (!qtdTotal) {
+        const listaExibir = (todos || termo) 
+            ? estado.pendentes 
+            : estado.pendentes.filter(p => !p.ja_solicitado);
+
+        if (!listaExibir.length) {
             container.innerHTML = `
                 <div class="col-span-full p-8 text-center tc-card border-dashed">
                     <i class="fa-solid fa-circle-check text-3xl text-emerald-500 mb-2 block"></i>
-                    <div class="font-extrabold text-slate-700 text-sm">Nenhum embarque pendente no momento!</div>
-                    <p class="text-xs text-slate-400 mt-1">Todos os embarques já foram solicitados ou não há novos pedidos na Filial PR.</p>
+                    <div class="font-extrabold text-slate-700 text-sm">Nenhum embarque aguardando solicitação!</div>
+                    <p class="text-xs text-slate-400 mt-1">Todos os embarques recentes da Filial PR já tiveram solicitação gerada.</p>
                 </div>`;
             return;
         }
 
-        container.innerHTML = estado.pendentes.map((p) => {
+        container.innerHTML = listaExibir.map((p) => {
             const jaSol = p.ja_solicitado;
             const badgeSol = jaSol
                 ? `<span class="tc-badge bg-emerald-100 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-check-double text-[10px]"></i> Solicitação #${p.idsolicitacao}</span>`
@@ -820,6 +824,7 @@ async function detalhe(r) {
         const d = await apiFetch(`transf-compras/matriz-filial/solicitacao/${r.idcompra}/detalhes`, 'GET');
         const sol = d.solicitacao || {};
         const notas = d.notas || [];
+        const notasCanceladas = d.notas_canceladas || [];
         const itens = d.itens || [];
         const pedidos = d.pedidos || [];
         const memNcm = r.detalhes_ncm || [];
@@ -852,6 +857,24 @@ async function detalhe(r) {
                     <i class="fa-solid fa-clock text-amber-500 text-sm"></i> Faturamento no ERP: <b>Aguardando Emissão da Nota Fiscal</b>
                 </span>
                 <span class="tc-badge bg-amber-200 text-amber-900 font-bold">Pendente NF</span>
+            </div>`;
+        }
+
+        if (notasCanceladas.length) {
+            htmlNotas += `
+            <div class="bg-rose-50/60 p-3 rounded-2xl border border-rose-200 mt-2">
+                <div class="font-bold text-rose-900 text-xs mb-2 flex items-center justify-between">
+                    <span class="flex items-center gap-1.5"><i class="fa-solid fa-ban text-rose-600"></i> Notas Fiscais Canceladas no ERP (${notasCanceladas.length}) — Desconsideradas do Cálculo</span>
+                    <span class="tc-badge bg-rose-200 text-rose-900 font-bold">Cancelada</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    ${notasCanceladas.map(n => `
+                        <div class="flex items-center justify-between text-xs text-slate-500 bg-white p-2.5 rounded-xl border border-rose-100 shadow-sm opacity-80">
+                            <div><b class="text-rose-800 text-sm line-through">NF #${esc(n.numeronf)}</b><span class="text-slate-400 text-[11px] block">Cancelada • Emissão: ${dataBR(n.dataemissao)}</span></div>
+                            <div class="font-bold text-rose-600 text-sm line-through">${brl(n.valortotalnota)}</div>
+                        </div>
+                    `).join('')}
+                </div>
             </div>`;
         }
 

@@ -156,11 +156,13 @@ class TransferenciaCompraController
                               SELECT COALESCE(NULLIF(regexp_replace(cf.classificacao, '[^0-9]', '', 'g'), ''), 'SEM_NCM') AS ncm,
                                      SUM(ni.valortotal_imp) AS base_ncm
                               FROM nfs_item ni
+                              JOIN nfs ON nfs.idnfs = ni.idnfs
                               LEFT JOIN item i ON i.iditem = ni.iditem
                               LEFT JOIN classificacaofiscal cf
                                 ON cf.idclassificacaofiscal = i.idclassfiscal
                               WHERE ni.idsolicitacaocompra = sc.idsolicitacaocompra
                                 AND ni.idsituacaotributaria = 10
+                                AND nfs.status = 2
                               GROUP BY 1
                           ) itens
                           LEFT JOIN LATERAL (
@@ -187,6 +189,7 @@ class TransferenciaCompraController
                     FROM nfs_item ni
                     JOIN nfs ON nfs.idnfs = ni.idnfs
                     WHERE ni.idsolicitacaocompra = sc.idsolicitacaocompra
+                      AND nfs.status = 2
                 ) faturamento ON TRUE
                 LEFT JOIN LATERAL (
                     SELECT COUNT(*) AS total_itens_solicitados,
@@ -300,16 +303,29 @@ class TransferenciaCompraController
                 return $this->erro($response, "Solicitação #{$idSolicitacao} não encontrada.", 404);
             }
 
-            // 2. Notas Fiscais emitidas vinculadas a esta solicitação
+            // 2. Notas Fiscais emitidas vinculadas a esta solicitação (apenas ativas/válidas)
             $stmtNotas = $this->pdo->prepare("
                 SELECT DISTINCT nfs.idnfs, nfs.numeronf, nfs.dataemissao, nfs.valortotalnota, nfs.status
                 FROM nfs_item ni
                 JOIN nfs ON nfs.idnfs = ni.idnfs
                 WHERE ni.idsolicitacaocompra = :id
+                  AND nfs.status = 2
                 ORDER BY nfs.numeronf ASC
             ");
             $stmtNotas->execute(['id' => $idSolicitacao]);
             $notas = $stmtNotas->fetchAll(PDO::FETCH_ASSOC);
+
+            // 2.1 Notas Fiscais canceladas vinculadas a esta solicitação (para auditoria)
+            $stmtNotasCanc = $this->pdo->prepare("
+                SELECT DISTINCT nfs.idnfs, nfs.numeronf, nfs.dataemissao, nfs.valortotalnota, nfs.status
+                FROM nfs_item ni
+                JOIN nfs ON nfs.idnfs = ni.idnfs
+                WHERE ni.idsolicitacaocompra = :id
+                  AND nfs.status = 3
+                ORDER BY nfs.numeronf ASC
+            ");
+            $stmtNotasCanc->execute(['id' => $idSolicitacao]);
+            $notasCanceladas = $stmtNotasCanc->fetchAll(PDO::FETCH_ASSOC);
 
             // 3. Itens transferidos registrados na solicitação
             $stmtItens = $this->pdo->prepare("
@@ -353,6 +369,8 @@ class TransferenciaCompraController
                 'faturado' => count($notas) > 0,
                 'total_notas' => count($notas),
                 'notas' => $notas,
+                'total_notas_canceladas' => count($notasCanceladas),
+                'notas_canceladas' => $notasCanceladas,
                 'total_itens' => count($itens),
                 'itens' => $itens,
                 'total_pedidos' => count($pedidos),

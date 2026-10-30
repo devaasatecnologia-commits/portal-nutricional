@@ -77,9 +77,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <i class="fa-solid fa-right-left"></i> Transferências
                 </a>
 
-                <button type="button" onclick="abrirModalManual()" class="bg-amber-400/90 hover:bg-amber-400 text-slate-900 font-extrabold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition flex items-center gap-2 shadow-sm cursor-pointer">
-                    <i class="fa-solid fa-book-open"></i> Manual & Regras
-                </button>
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=movimentacao-flex" class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition flex items-center gap-2 shadow-sm no-underline">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+                </a>
             </div>
         </div>
     </div>
