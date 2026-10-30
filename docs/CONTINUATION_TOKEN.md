@@ -1,5 +1,5 @@
-# Ponteiro de Continuidade do Projeto
+# Token de Continuidade Ativo
 
-Último token ativo: `docs/tokens/CONTINUATION-2026-10-30-VERBAS-E-TRANSFERENCIA-FLEX.md`
-
-Para retomar a sessão, leia o arquivo acima e verifique o status do git.
+- **Token Atual:** `docs/tokens/CONTINUATION-20261030-VERBAS-FLEX-RANKING-MENU.md`
+- **Última Atualização:** 30/10/2026 17:38 (BRT)
+- **Status:** Pílulas do ranking ("Quem mais cedeu", "Quem mais recebeu", "Balanço") funcionando perfeitamente; menu de abas limpo e sem quebra de layout; tooltips modernos estabilizados sem piscar.

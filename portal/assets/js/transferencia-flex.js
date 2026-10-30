@@ -7,7 +7,7 @@ function initModernTooltips() {
     if (!tip) {
         tip = document.createElement('div');
         tip.id = 'modernTooltip';
-        tip.className = 'fixed pointer-events-none z-[99999] opacity-0 transition-opacity duration-150 ease-out transform -translate-x-1/2 -translate-y-full mb-3';
+        tip.className = 'fixed pointer-events-none z-[99999] opacity-0 transition-opacity duration-150 ease-out mb-3';
         tip.style.pointerEvents = 'none';
         tip.innerHTML = '<div class="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700/70 rounded-2xl p-3.5 shadow-2xl max-w-xs ring-1 ring-white/10" id="modernTooltipContent"></div>';
         document.body.appendChild(tip);
@@ -33,15 +33,29 @@ function initModernTooltips() {
 
     document.addEventListener('mousemove', (e) => {
         if (!tip || tip.classList.contains('opacity-0')) return;
-        const x = Math.min(window.innerWidth - 170, Math.max(170, e.clientX));
-        const y = Math.max(30, e.clientY - 12);
+        const x = Math.min(window.innerWidth - 180, Math.max(180, e.clientX));
+        const tooltipHeight = tip.offsetHeight || 120;
+        let y = e.clientY - 12;
+
+        if (e.clientY < tooltipHeight + 25) {
+            tip.style.transform = 'translate(-50%, 20px)';
+        } else {
+            tip.style.transform = 'translate(-50%, -100%)';
+        }
         tip.style.left = `${x}px`;
         tip.style.top = `${y}px`;
     });
 
     document.addEventListener('mouseout', (e) => {
-        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
-        if (target && tip) {
+        const fromTarget = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (!fromTarget) return;
+
+        // Se o cursor ainda estiver dentro do mesmo elemento com tooltip, não esconder
+        if (e.relatedTarget && fromTarget.contains(e.relatedTarget)) {
+            return;
+        }
+
+        if (tip) {
             tip.classList.add('opacity-0');
             tip.classList.remove('opacity-100');
         }

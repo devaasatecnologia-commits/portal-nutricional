@@ -15,8 +15,8 @@ $extraCss = '
   .vf-label { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
   .vf-input { width: 100%; margin-top: 0.35rem; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.7rem 0.95rem; font-size: 0.95rem; background: #f8fafc; font-weight: 600; color: #1e293b; transition: all 0.2s; }
   .vf-input:focus { outline: none; border-color: #8b5cf6; background: #ffffff; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.12); }
-  .vf-tabs { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0.35rem; background: #ffffff; border-radius: 1.25rem; border: 1px solid #f1f5f9; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); }
-  .vf-tab { flex: 1; white-space: nowrap; padding: 0.65rem 1.1rem; border-radius: 1rem; font-weight: 800; font-size: 0.82rem; color: #64748b; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  .vf-tabs { display: flex; gap: 0.4rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem; background: #ffffff; border-radius: 1.25rem; border: 1px solid #f1f5f9; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); flex-wrap: nowrap; }
+  .vf-tab { flex: 1 1 0; min-width: max-content; white-space: nowrap; padding: 0.65rem 1.1rem; border-radius: 1rem; font-weight: 800; font-size: 0.82rem; color: #64748b; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
   .vf-tab.on { background: linear-gradient(135deg, #6d28d9, #8b5cf6); color: #ffffff; box-shadow: 0 6px 16px rgba(109, 40, 217, 0.3); }
   .vf-tab:not(.on):hover { background: #f8fafc; color: #1e293b; }
   .vf-kpi { border-radius: 1.25rem; padding: 1.1rem; transition: transform 0.2s; }
@@ -55,6 +55,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
             <div class="flex items-center gap-2">
+                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" id="heroBtnMovimentacao" class="px-3 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition no-underline shadow-sm border border-white/20" title="Ajuste manual de saldo Flex de representantes">
+                    <i class="fa-solid fa-money-bill-transfer"></i>
+                    <span>Movimentação</span>
+                </a>
+                <button type="button" onclick="ativarAba('api')" id="heroBtnApi" class="px-3 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition shadow-sm border border-white/20" title="Status técnico e latência de sincronização Mercos">
+                    <i class="fa-solid fa-heart-pulse"></i>
+                    <span>Status Mercos</span>
+                </button>
                 <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=verbas-flex" class="px-4 py-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-black flex items-center gap-2 transition no-underline shadow-sm border border-white/20">
                     <i class="fa-solid fa-graduation-cap text-sm"></i>
                     <span>Treinamento & Manual</span>
@@ -95,15 +103,13 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- ABAS COM CONTROLE DE HIERARQUIA -->
+    <!-- ABAS PRINCIPAIS: DESIGN PREMIUM, LIMPO E SEM QUEBRA -->
     <div class="vf-tabs mb-4" id="abas">
-        <button type="button" data-aba="painel" class="vf-tab on"><i class="fa-solid fa-chart-pie"></i> Painel & Dash</button>
-        <button type="button" data-aba="ranking" class="vf-tab"><i class="fa-solid fa-ranking-star"></i> Ranking Consumo</button>
-        <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-receipt"></i> Consumo Bonificações</button>
-        <button type="button" data-aba="creditos" id="tabBtnCreditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> Créditos / Empréstimos</button>
-        <button type="button" data-aba="api" id="tabBtnApi" class="vf-tab"><i class="fa-solid fa-heart-pulse"></i> API Mercos</button>
-        <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" id="tabLinkTransferencias" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> Transferências</a>
-        <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" id="tabLinkMovimentacao" class="vf-tab text-center no-underline"><i class="fa-solid fa-money-bill-transfer"></i> Movimentação</a>
+        <button type="button" data-aba="painel" class="vf-tab on"><i class="fa-solid fa-chart-pie"></i> <span>Painel & Dash</span></button>
+        <button type="button" data-aba="ranking" class="vf-tab"><i class="fa-solid fa-ranking-star"></i> <span>Ranking Consumo</span></button>
+        <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-receipt"></i> <span>Consumo Bonificações</span></button>
+        <button type="button" data-aba="creditos" id="tabBtnCreditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> <span>Créditos / Empréstimos</span></button>
+        <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" id="tabLinkTransferencias" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> <span>Transferências</span></a>
     </div>
 
     <!-- ========================================== -->
@@ -183,21 +189,21 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- SELETOR DE VISÕES DO RANKING (DESIGN CLEAN & MODERNO) -->
             <div class="flex gap-2 mb-4 overflow-x-auto pb-1" id="visoesRanking">
-                <button type="button" data-visao="bonificacoes" class="vf-chip on cursor-pointer flex items-center gap-2">
-                    <i class="fa-solid fa-receipt text-rose-500"></i>
-                    <span>Consumo em Bonificações</span>
+                <button type="button" data-visao="bonificacoes" onclick="trocarVisaoRanking('bonificacoes')" class="vf-chip on cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-receipt text-rose-500 pointer-events-none"></i>
+                    <span class="pointer-events-none">Consumo em Bonificações</span>
                 </button>
-                <button type="button" data-visao="transferencias_cedidas" class="vf-chip cursor-pointer flex items-center gap-2">
-                    <i class="fa-solid fa-arrow-up-from-bracket text-purple-600"></i>
-                    <span>Quem Mais Cedeu (Transferiu)</span>
+                <button type="button" data-visao="transferencias_cedidas" onclick="trocarVisaoRanking('transferencias_cedidas')" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-up-from-bracket text-purple-600 pointer-events-none"></i>
+                    <span class="pointer-events-none">Quem Mais Cedeu (Transferiu)</span>
                 </button>
-                <button type="button" data-visao="transferencias_recebidas" class="vf-chip cursor-pointer flex items-center gap-2">
-                    <i class="fa-solid fa-arrow-down-to-bracket text-emerald-600"></i>
-                    <span>Quem Mais Recebeu (Creditou)</span>
+                <button type="button" data-visao="transferencias_recebidas" onclick="trocarVisaoRanking('transferencias_recebidas')" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-arrow-down-to-bracket text-emerald-600 pointer-events-none"></i>
+                    <span class="pointer-events-none">Quem Mais Recebeu (Creditou)</span>
                 </button>
-                <button type="button" data-visao="balanco" class="vf-chip cursor-pointer flex items-center gap-2">
-                    <i class="fa-solid fa-scale-balanced text-indigo-600"></i>
-                    <span>Balanço da Equipe</span>
+                <button type="button" data-visao="balanco" onclick="trocarVisaoRanking('balanco')" class="vf-chip cursor-pointer flex items-center gap-2">
+                    <i class="fa-solid fa-scale-balanced text-indigo-600 pointer-events-none"></i>
+                    <span class="pointer-events-none">Balanço da Equipe</span>
                 </button>
             </div>
 

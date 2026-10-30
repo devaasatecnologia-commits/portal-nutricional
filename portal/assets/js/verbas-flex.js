@@ -15,9 +15,11 @@ function aplicarHierarquiaPermissoes() {
         }
         if (!estado.podeMovimentar) {
             $('tabLinkMovimentacao')?.classList.add('hidden');
+            $('heroBtnMovimentacao')?.classList.add('hidden');
         }
         if (!isAdmin) {
             $('tabBtnApi')?.classList.add('hidden');
+            $('heroBtnApi')?.classList.add('hidden');
         }
     } catch (e) {
         console.error('Erro ao verificar hierarquia de permissões:', e);
@@ -30,7 +32,7 @@ function initModernTooltips() {
     if (!tip) {
         tip = document.createElement('div');
         tip.id = 'modernTooltip';
-        tip.className = 'fixed pointer-events-none z-[99999] opacity-0 transition-opacity duration-150 ease-out transform -translate-x-1/2 -translate-y-full mb-3';
+        tip.className = 'fixed pointer-events-none z-[99999] opacity-0 transition-opacity duration-150 ease-out mb-3';
         tip.style.pointerEvents = 'none';
         tip.innerHTML = '<div class="bg-slate-900/95 backdrop-blur-md text-white border border-slate-700/70 rounded-2xl p-3.5 shadow-2xl max-w-xs ring-1 ring-white/10" id="modernTooltipContent"></div>';
         document.body.appendChild(tip);
@@ -56,20 +58,49 @@ function initModernTooltips() {
 
     document.addEventListener('mousemove', (e) => {
         if (!tip || tip.classList.contains('opacity-0')) return;
-        const x = Math.min(window.innerWidth - 170, Math.max(170, e.clientX));
-        const y = Math.max(30, e.clientY - 12);
+        const x = Math.min(window.innerWidth - 180, Math.max(180, e.clientX));
+        const tooltipHeight = tip.offsetHeight || 120;
+        let y = e.clientY - 12;
+
+        if (e.clientY < tooltipHeight + 25) {
+            tip.style.transform = 'translate(-50%, 20px)';
+        } else {
+            tip.style.transform = 'translate(-50%, -100%)';
+        }
         tip.style.left = `${x}px`;
         tip.style.top = `${y}px`;
     });
 
     document.addEventListener('mouseout', (e) => {
-        const target = e.target.closest('[data-tip-title], [data-tip-desc]');
-        if (target && tip) {
+        const fromTarget = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (!fromTarget) return;
+
+        // Se o cursor ainda estiver dentro do mesmo elemento com tooltip, não esconder
+        if (e.relatedTarget && fromTarget.contains(e.relatedTarget)) {
+            return;
+        }
+
+        if (tip) {
             tip.classList.add('opacity-0');
             tip.classList.remove('opacity-100');
         }
     });
 }
+
+function trocarVisaoRanking(visao) {
+    if (!visao) return;
+    estado.visaoRanking = visao;
+    document.querySelectorAll('#visoesRanking button').forEach((b) => {
+        b.classList.toggle('on', b.getAttribute('data-visao') === visao);
+    });
+
+    if (!estado.resumo) {
+        carregarRankingCompleto();
+    } else {
+        renderRankingCompleto();
+    }
+}
+window.trocarVisaoRanking = trocarVisaoRanking;
 
 const apiFetch = async function (acao, metodo = 'GET', body = null) {
     const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
@@ -1094,7 +1125,16 @@ window.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Filtros de Ranking
+    // Pílulas / Visões do Ranking (Consumo Bonificações, Quem Cedeu, Quem Recebeu, Balanço Geral)
+    document.querySelectorAll('#visoesRanking button').forEach((b) => {
+        b.addEventListener('click', (e) => {
+            const btn = e.currentTarget || b;
+            const visao = btn.getAttribute('data-visao');
+            trocarVisaoRanking(visao);
+        });
+    });
+
+    // Filtros de Quantidade do Ranking (Top 5, Top 10, Todos)
     document.querySelectorAll('#filtroQtdRanking .vf-chip').forEach((b) => {
         b.addEventListener('click', () => {
             document.querySelectorAll('#filtroQtdRanking .vf-chip').forEach((c) => c.classList.remove('on'));
