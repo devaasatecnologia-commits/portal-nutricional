@@ -182,6 +182,31 @@ public function calcularProgressoMeta(int $idMeta, ?float $valorAtual = null): a
             
             // Atualizar alimentação diária
             $this->atualizarAlimentacaoDiaria($idMeta, $dataRegistro, $valores);
+
+            // Sincronizar total acumulado na meta pai (mkt_metas_instancias)
+            $stmtSoma = $this->pdo->prepare("
+                SELECT COALESCE(SUM((valores->>'valor_alcancado')::float), 0)
+                FROM mkt_alimentacao_registros
+                WHERE id_meta_instancia = :id_meta
+            ");
+            $stmtSoma->execute(['id_meta' => $idMeta]);
+            $totalAlcancado = (float)$stmtSoma->fetchColumn();
+
+            $stmtMeta = $this->pdo->prepare("SELECT valores FROM mkt_metas_instancias WHERE id = :id");
+            $stmtMeta->execute(['id' => $idMeta]);
+            $rawValoresMeta = $stmtMeta->fetchColumn();
+            $metaVals = $rawValoresMeta ? (json_decode($rawValoresMeta, true) ?? []) : [];
+            $metaVals['valor_alcancado'] = $totalAlcancado;
+
+            $stmtUpMeta = $this->pdo->prepare("
+                UPDATE mkt_metas_instancias
+                SET valores = :valores::jsonb, updated_at = NOW()
+                WHERE id = :id
+            ");
+            $stmtUpMeta->execute([
+                'id' => $idMeta,
+                'valores' => json_encode($metaVals)
+            ]);
             
             return ['success' => true, 'message' => 'Dados registrados com sucesso!'];
         } catch (\Exception $e) {

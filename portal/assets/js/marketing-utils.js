@@ -58,11 +58,42 @@ const MarketingUtils = {
     },
 
     /**
-     * Formata data
+     * Obtém data de hoje no formato YYYY-MM-DD local (sem timezone drift)
+     */
+    getDataHojeLocal() {
+        const d = new Date();
+        const ano = d.getFullYear();
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const dia = String(d.getDate()).padStart(2, '0');
+        return `${ano}-${mes}-${dia}`;
+    },
+
+    /**
+     * Obtém data futura no formato YYYY-MM-DD local
+     */
+    getDataFuturaLocal(dias = 30) {
+        const d = new Date();
+        d.setDate(d.getDate() + dias);
+        const ano = d.getFullYear();
+        const mes = String(d.getMonth() + 1).padStart(2, '0');
+        const dia = String(d.getDate()).padStart(2, '0');
+        return `${ano}-${mes}-${dia}`;
+    },
+
+    /**
+     * Formata data no padrão brasileiro DD/MM/AAAA imune a fuso horário UTC
      */
     formatarData(data) {
         if (!data) return '-';
-        return new Date(data).toLocaleDateString('pt-BR');
+        if (typeof data === 'string') {
+            const str = data.slice(0, 10);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                const [ano, mes, dia] = str.split('-');
+                return `${dia}/${mes}/${ano}`;
+            }
+        }
+        const d = new Date(data);
+        return isNaN(d.getTime()) ? String(data) : d.toLocaleDateString('pt-BR');
     },
 
     /**
@@ -70,7 +101,14 @@ const MarketingUtils = {
      */
     formatarDateTime(data) {
         if (!data) return '-';
-        return new Date(data).toLocaleString('pt-BR');
+        if (typeof data === 'string' && data.includes('T')) {
+            const [dataPart, horaPart] = data.split('T');
+            const dataFmt = this.formatarData(dataPart);
+            const horaFmt = horaPart.slice(0, 5);
+            return `${dataFmt} às ${horaFmt}`;
+        }
+        const d = new Date(data);
+        return isNaN(d.getTime()) ? String(data) : d.toLocaleString('pt-BR');
     },
 
     /**

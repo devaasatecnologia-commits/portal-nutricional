@@ -408,7 +408,15 @@ function gerenciarInstancias() {
         
         formatarData(data) {
             if (!data) return '-';
-            return new Date(data).toLocaleDateString('pt-BR');
+            if (typeof data === 'string') {
+                const str = data.slice(0, 10);
+                if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+                    const [ano, mes, dia] = str.split('-');
+                    return `${dia}/${mes}/${ano}`;
+                }
+            }
+            const d = new Date(data);
+            return isNaN(d.getTime()) ? String(data) : d.toLocaleDateString('pt-BR');
         },
         
         formatarCampo(campo) {

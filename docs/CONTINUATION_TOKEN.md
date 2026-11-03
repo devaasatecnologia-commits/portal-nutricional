@@ -1,5 +1,5 @@
 # Token de Continuidade Ativo
 
-- **Token Atual:** `docs/tokens/CONTINUATION-20261030-VERBAS-FLEX-RANKING-MENU.md`
-- **Última Atualização:** 30/10/2026 17:38 (BRT)
-- **Status:** Pílulas do ranking ("Quem mais cedeu", "Quem mais recebeu", "Balanço") funcionando perfeitamente; menu de abas limpo e sem quebra de layout; tooltips modernos estabilizados sem piscar.
+- **Token Atual:** `docs/tokens/CONTINUATION-20261103-MARKETING-METAS-DATAS-PERFORMANCE.md`
+- **Última Atualização:** 03/11/2026 09:05 (BRT)
+- **Status:** Erro de datas (fuso horário) corrigido em todo o setor de Marketing; performance otimizada com carregamento paralelo e procedure PostgreSQL; layout com badge de Meta Batida e validação de data futura; sincronização de acumulados no backend concluída.

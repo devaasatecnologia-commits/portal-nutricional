@@ -211,6 +211,9 @@ require_once __DIR__ . '/../../estrutura/header.php';
                         (meta.status === 'concluida' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600')"
                         x-text="meta.status === 'ativa' ? 'Ativa' : (meta.status === 'concluida' ? 'Concluída' : meta.status)">
                     </span>
+                    <span x-show="meta.progresso >= 100" class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-gradient-to-r from-amber-400 to-yellow-500 text-amber-950 shadow-xs inline-flex items-center gap-1">
+                        <i class="fa-solid fa-trophy text-[9px] text-amber-900"></i> Meta Batida!
+                    </span>
                 </div>
                 <p class="text-sm text-slate-400 mt-1" x-text="meta.tipo_nome || 'Meta Padrão'"></p>
             </div>
@@ -578,7 +581,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
         // Modal Alimentação
             modalAlimentacaoAberta: false,
             metaSelecionada: null,
-            alimentacaoData: new Date().toISOString().slice(0, 10),
+            alimentacaoData: MarketingUtils.getDataHojeLocal(),
             alimentacaoValor: 0,
             campoValorAtual: null,
             metaTaxaInicial: 0,
@@ -589,8 +592,8 @@ require_once __DIR__ . '/../../estrutura/header.php';
             modalNovaMetaAberta: false,
             novaMetaTipoId: '',
             novaMetaTitulo: '',
-            novaMetaInicio: new Date().toISOString().slice(0, 10),
-            novaMetaFim: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
+            novaMetaInicio: MarketingUtils.getDataHojeLocal(),
+            novaMetaFim: MarketingUtils.getDataFuturaLocal(30),
             novaMetaCampos: [],
 
         // ====================================================================
@@ -688,9 +691,14 @@ async carregarMetas() {
         const data = await resp.json();
 
         if (data.success && data.data) {
-            for (const meta of data.data) {
+            // OTIMIZAÇÃO: Carregamento em paralelo de todos os históricos (sem loop bloqueante)
+            const historicosPromises = data.data.map(m => this.carregarHistoricoMeta(m.id));
+            const todosHistoricos = await Promise.all(historicosPromises);
+
+            for (let idx = 0; idx < data.data.length; idx++) {
+                const meta = data.data[idx];
                 meta.expandido = false;
-                meta.historico = await this.carregarHistoricoMeta(meta.id);
+                meta.historico = todosHistoricos[idx] || [];
 
                 let valores = {};
                 try {
@@ -833,14 +841,14 @@ async carregarMetas() {
             },
 
        calcularTotais() {
-    const ativas = this.metas.filter(m => m.status === 'ativa').length;
-    const concluidas = this.metas.filter(m => m.status === 'concluida' || m.progresso >= 100).length;
+    const metasAtivas = this.metas.filter(m => m.status === 'ativa');
+    const ativas = metasAtivas.length;
+    const concluidas = this.metas.filter(m => m.status === 'concluida').length;
     let somaProgresso = 0;
-    this.metas.forEach(m => { 
-        // ⭐ GARANTIR QUE O PROGRESSO NUNCA SEJA NEGATIVO
+    metasAtivas.forEach(m => { 
         somaProgresso += Math.max(0, Math.min(100, m.progresso || 0)); 
     });
-    const progressoMedio = this.metas.length > 0 ? Math.round(somaProgresso / this.metas.length) : 0;
+    const progressoMedio = metasAtivas.length > 0 ? Math.round(somaProgresso / metasAtivas.length) : 0;
     this.totais = { 
         ativas, 
         concluidas, 
@@ -917,7 +925,7 @@ async carregarMetas() {
 
            async abrirAlimentacao(meta) {
     this.metaSelecionada = meta;
-    this.alimentacaoData = new Date().toISOString().slice(0, 10);
+    this.alimentacaoData = MarketingUtils.getDataHojeLocal();
     this.metaTaxaInicial = meta.taxa_inicial || 0;
     this.metaMetaFinal = meta.meta_final || 0;
     this.metaValorAcumulado = meta.valor_acumulado || 0;
@@ -1022,8 +1030,8 @@ async carregarMetas() {
             abrirModalNovaMeta() {
                 this.novaMetaTipoId = '';
                 this.novaMetaTitulo = '';
-                this.novaMetaInicio = new Date().toISOString().slice(0, 10);
-                this.novaMetaFim = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+                this.novaMetaInicio = MarketingUtils.getDataHojeLocal();
+                this.novaMetaFim = MarketingUtils.getDataFuturaLocal(30);
                 this.novaMetaCampos = [];
                 this.modalNovaMetaAberta = true;
                 document.getElementById('modalNovaMeta').classList.remove('hidden');

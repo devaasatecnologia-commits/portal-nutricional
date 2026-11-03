@@ -629,12 +629,16 @@ if (typeof MarketingUtils === 'undefined') {
     }
 
     function formatarData(data) {
-        if (!data) return '—';
-        try {
-            return new Date(data).toLocaleDateString('pt-BR');
-        } catch(e) {
-            return data;
+        if (typeof MarketingUtils !== 'undefined' && MarketingUtils.formatarData) {
+            return MarketingUtils.formatarData(data);
         }
+        if (!data) return '—';
+        const str = String(data).slice(0, 10);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+            const [ano, mes, dia] = str.split('-');
+            return `${dia}/${mes}/${ano}`;
+        }
+        return data;
     }
 
     // ========================================================================
@@ -1323,7 +1327,7 @@ window.carregarDados = async function() {
                             </div>
                             <div>
                                 <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Data</label>
-                                <input type="date" id="dataAlim_${id}" class="w-full p-2 border rounded-lg text-sm" value="${new Date().toISOString().slice(0,10)}">
+                                <input type="date" id="dataAlim_${id}" class="w-full p-2 border rounded-lg text-sm" value="${(typeof MarketingUtils !== 'undefined' && MarketingUtils.getDataHojeLocal) ? MarketingUtils.getDataHojeLocal() : new Date().toLocaleDateString('en-CA')}">
                             </div>
                     `;
                     const respCampos = await fetchAuth(`/v1/meta-builder/campos/${id}`);
