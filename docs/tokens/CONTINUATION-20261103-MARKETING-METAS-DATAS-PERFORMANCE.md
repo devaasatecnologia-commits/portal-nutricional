@@ -49,3 +49,4 @@
 - `portal/modules/marketing/dashboard.php`
 - `portal/modules/marketing/admin/instancias.php`
 - `v1/src/Services/MarketingService.php`
+

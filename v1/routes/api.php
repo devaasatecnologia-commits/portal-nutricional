@@ -625,6 +625,7 @@ $protected->group('/carregamento', function ($group) {
     $group->delete('/estornar/{iditem}/{idembarque}', [$estornoController, 'estornarItem']);
     $group->post('/finalizar/{idembarque}', [$controller, 'finalizarEmbarque']);
     $group->post('/foto', [$controller, 'uploadFoto']);
+    $group->post('/ajustar-foto', [$controller, 'ajustarFotoItem']);
     $group->get('/fotos/{idembarque}', [$controller, 'getFotos']);
     $group->get('/foto/{idfoto}', [$controller, 'getFoto']);
     $group->get('/resumo/{idembarque}', [$controller, 'getResumo']);
@@ -910,6 +911,8 @@ $protected->group('/meta-builder', function ($group) {
     $group->get('/dashboard', [$controller, 'getDashboard']);
     $group->get('/progresso/{id}', [MetaBuilderController::class, 'getProgressoMeta']);
     $group->get('/campos/{id}', [MetaBuilderController::class, 'getCamposEditaveis']);
+    $group->get('/projecao-novo-ciclo', [$controller, 'getProjecaoNovoCiclo']);
+    $group->post('/aplicar-projecao-ciclo', [$controller, 'aplicarProjecaoCiclo']);
 });
 
         // ======================================================================
@@ -992,6 +995,8 @@ $protected->group('/avaliacao-chapd', function ($group) {
     $group->post('/perguntas/toggle', [$controller, 'togglePergunta']);
     $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
     $group->post('/salvar', [$controller, 'salvar']);
+    $group->post('/upload-foto', [$controller, 'uploadFoto']);
+    $group->post('/colaborador/salvar-perfil', [$controller, 'salvarPerfilColaborador']);
 })->add(new ModulePermissionMiddleware(['avaliacao-chapd', 'rh', 'admin']));
 
 $protected->group('/treinamentos', function ($group) {

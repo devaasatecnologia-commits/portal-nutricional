@@ -15,8 +15,9 @@ $extraCss = '
   .vf-label { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
   .vf-input { width: 100%; margin-top: 0.35rem; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.7rem 0.95rem; font-size: 0.95rem; background: #f8fafc; font-weight: 600; color: #1e293b; transition: all 0.2s; }
   .vf-input:focus { outline: none; border-color: #8b5cf6; background: #ffffff; box-shadow: 0 0 0 4px rgba(139, 92, 246, 0.12); }
-  .vf-tabs { display: flex; gap: 0.4rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem; background: #ffffff; border-radius: 1.25rem; border: 1px solid #f1f5f9; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); flex-wrap: nowrap; }
-  .vf-tab { flex: 1 1 0; min-width: max-content; white-space: nowrap; padding: 0.65rem 1.1rem; border-radius: 1rem; font-weight: 800; font-size: 0.82rem; color: #64748b; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  .vf-tabs { display: flex; gap: 0.4rem; overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 0.35rem; background: #ffffff; border-radius: 1.25rem; border: 1px solid #f1f5f9; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); scrollbar-width: none; }
+  .vf-tabs::-webkit-scrollbar { display: none; }
+  .vf-tab { flex: 1; min-width: 140px; text-align: center; white-space: nowrap; padding: 0.65rem 1rem; border-radius: 1rem; font-weight: 800; font-size: 0.82rem; color: #64748b; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.45rem; }
   .vf-tab.on { background: linear-gradient(135deg, #6d28d9, #8b5cf6); color: #ffffff; box-shadow: 0 6px 16px rgba(109, 40, 217, 0.3); }
   .vf-tab:not(.on):hover { background: #f8fafc; color: #1e293b; }
   .vf-kpi { border-radius: 1.25rem; padding: 1.1rem; transition: transform 0.2s; }
@@ -25,12 +26,14 @@ $extraCss = '
   .vf-row:hover { border-color: #c4b5fd; background: #faf5ff; transform: translateY(-1px); }
   .vf-chip { padding: 0.4rem 0.9rem; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 0.75rem; font-weight: 700; transition: all 0.15s; }
   .vf-chip.on { background: #6d28d9; color: #ffffff; box-shadow: 0 4px 12px rgba(109, 40, 217, 0.25); }
+  .vf-chip.on i, .vf-chip.on span { color: #ffffff !important; }
   .vf-chip:hover:not(.on) { background: #e2e8f0; color: #1e293b; }
   .rank-badge { width: 2.2rem; height: 2.2rem; border-radius: 0.75rem; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.9rem; flex-none; }
 </style>
 ';
 require_once __DIR__ . '/../estrutura/header.php';
 ?>
+<script>window.APP_BASE = "<?= $appBase ?>";</script>
 
 <div class="vf-wrap max-w-6xl mx-auto px-3 sm:px-6 pt-4 pb-12">
     <!-- HERO BANNER -->

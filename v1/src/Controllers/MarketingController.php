@@ -3813,6 +3813,18 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
 
         try {
+            $idMeta = (int)($input['id_meta'] ?? 0);
+            if ($idMeta > 0) {
+                $stmtCheck = $this->pdo->prepare("SELECT titulo, status FROM mkt_metas_instancias WHERE id = :id");
+                $stmtCheck->execute(['id' => $idMeta]);
+                $metaRow = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+                if ($metaRow && in_array(strtolower(trim((string)$metaRow['status'])), ['concluida', 'concluído', 'concluido', 'encerrada', 'cancelada', 'inativa', 'arquivada'])) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'error' => "A meta '{$metaRow['titulo']}' já está {$metaRow['status']} e não aceita novos lançamentos para evitar conflito de histórico."
+                    ], 400);
+                }
+            }
             $sql = "INSERT INTO mkt_alimentacao_diaria 
                 (data_registro, leads_recebidos, vendas_fechadas, valor_faturado, investimento_dia, idusuario_mkt, id_meta) 
                 VALUES (:data, :leads, :vendas, :valor, :inv, :uid, :meta)

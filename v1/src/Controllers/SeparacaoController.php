@@ -38,38 +38,52 @@ class SeparacaoController
     // =========================================================================
     // GET /v1/separacao/embarques-pendentes
     // =========================================================================
-    public function getEmbarquesPendentes(Request $request, Response $response): Response {
-        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+   public function getEmbarquesPendentes(Request $request, Response $response): Response {
+    if ($denied = $this->validarAcesso($request, $response)) return $denied;
 
-        try {
-            $stmt = $this->pdo->prepare("
-                SELECT DISTINCT 
-                    ep.idembarque, 
-                    ep.observacao as rota, 
-                    ep.placa,
-                    COALESCE(s.status_atual, 'PENDENTE') as status_logistico
-                FROM embarque_pedido ep
-                LEFT JOIN embarque_status_log s ON s.idembarque = ep.idembarque
-                WHERE ep.pex_conferido = 'N' 
-                  AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
-                  AND ep.idfilial IN (1,6)
-                  AND ep.data BETWEEN :dt_inicio AND :dt_fim
-                ORDER BY ep.idembarque DESC
-            ");
-            $params = $request->getQueryParams();
-            $dtInicio = !empty($params['dt_inicio']) ? trim($params['dt_inicio']) : (!empty($params['data_inicio']) ? trim($params['data_inicio']) : date('Y-m-01'));
-            $dtFim = !empty($params['dt_fim']) ? trim($params['dt_fim']) : (!empty($params['data_fim']) ? trim($params['data_fim']) : date('Y-m-t'));
-            $stmt->execute([
-                ':dt_inicio' => $dtInicio,
-                ':dt_fim' => $dtFim,
-            ]);
-            $data = $stmt->fetchAll();
+    try {
+        $stmt = $this->pdo->prepare("
+            SELECT DISTINCT 
+                ep.idembarque, 
+                ep.observacao as rota, 
+                ep.placa,
+                COALESCE(s.status_atual, 'PENDENTE') as status_logistico
+            FROM embarque_pedido ep
+            LEFT JOIN embarque_status_log s ON s.idembarque = ep.idembarque
+            WHERE ep.pex_conferido = 'N' 
+              AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
+              AND ep.idfilial IN (1,6)
+              AND ep.data BETWEEN :dt_inicio AND :dt_fim
+            ORDER BY ep.idembarque DESC
+        ");
 
-            return $this->json($response, $data);
-        } catch (\Exception $e) {
-            return $this->json($response, ['error' => $e->getMessage()], 500);
-        }
+        $params = $request->getQueryParams();
+
+        $dtInicio = !empty($params['dt_inicio'])
+            ? trim($params['dt_inicio'])
+            : (!empty($params['data_inicio'])
+                ? trim($params['data_inicio'])
+                : date('Y-m-d', strtotime('-35 days')));
+
+        $dtFim = !empty($params['dt_fim'])
+            ? trim($params['dt_fim'])
+            : (!empty($params['data_fim'])
+                ? trim($params['data_fim'])
+                : date('Y-m-d'));
+
+        $stmt->execute([
+            ':dt_inicio' => $dtInicio,
+            ':dt_fim' => $dtFim,
+        ]);
+
+        $data = $stmt->fetchAll();
+
+        return $this->json($response, $data);
+
+    } catch (\Exception $e) {
+        return $this->json($response, ['error' => $e->getMessage()], 500);
     }
+}
 
     // =========================================================================
     // GET /v1/separacao/itens/{idembarque}

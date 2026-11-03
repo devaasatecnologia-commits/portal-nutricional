@@ -1131,6 +1131,124 @@ async function confirmarEstornoCarregamento(id, nome) {
 // ==========================================================================
 // FINALIZAR
 // ==========================================================================
+// ==========================================================================
+// AJUSTE RÁPIDO DE FOTOS PENDENTES NA FINALIZAÇÃO DO CARREGAMENTO
+// ==========================================================================
+async function abrirModalAjustarFotosPendentes(itensSemFoto) {
+    let itensPendentes = itensSemFoto.map(i => ({ ...i, fotoEnviada: false }));
+
+    const renderListaHtml = () => {
+        return itensPendentes.map(item => `
+            <div id="card-ajuste-item-${item.iditem}" class="p-3 mb-2 rounded-xl border ${item.fotoEnviada ? 'border-emerald-300 bg-emerald-50' : 'border-amber-200 bg-amber-50/60'} flex items-center justify-between gap-3 text-left">
+                <div class="flex-1 min-w-0">
+                    <div class="font-bold text-xs text-slate-800 truncate">${escapeHtmlCarga(item.descricao)}</div>
+                    <div class="text-[11px] text-slate-500 font-semibold">Cód. #${item.iditem} · Qtd: ${Number(item.qt)} un</div>
+                    ${item.fotoEnviada ? '<span class="inline-flex items-center gap-1 text-[10px] font-black text-emerald-700 mt-1"><i class="fa-solid fa-check"></i> Foto anexada</span>' : '<span class="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 mt-1"><i class="fa-solid fa-camera"></i> Foto pendente</span>'}
+                </div>
+                <div>
+                    ${item.fotoEnviada 
+                        ? `<button type="button" disabled class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-bold flex items-center gap-1 opacity-90"><i class="fa-solid fa-check"></i> OK</button>`
+                        : `<button type="button" onclick="baterFotoAjuste(${item.iditem}, '${escapeHtmlCarga(item.descricao)}')" class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer"><i class="fa-solid fa-camera"></i> Tirar Foto</button>`
+                    }
+                </div>
+            </div>
+        `).join('');
+    };
+
+    window._listaAjusteFotos = itensPendentes;
+    window._fnAtualizarModalAjuste = () => {
+        const container = document.getElementById('containerAjusteFotos');
+        if (container) container.innerHTML = renderListaHtml();
+        const todosConcluidos = window._listaAjusteFotos.every(i => i.fotoEnviada);
+        const btnConcluir = document.getElementById('btnConcluirAjusteFotos');
+        if (btnConcluir) {
+            btnConcluir.disabled = !todosConcluidos;
+            btnConcluir.className = todosConcluidos
+                ? 'w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black shadow-md transition flex items-center justify-center gap-2 cursor-pointer'
+                : 'w-full py-2.5 rounded-xl bg-slate-300 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center justify-center gap-2';
+            btnConcluir.innerHTML = todosConcluidos
+                ? '<i class="fa-solid fa-circle-check"></i><span>Concluir e Finalizar Embarque</span>'
+                : '<i class="fa-solid fa-circle-notch"></i><span>Tire todas as fotos para finalizar</span>';
+        }
+    };
+
+    window.baterFotoAjuste = (iditem, nomeItem) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*';
+        input.capture = 'environment';
+
+        input.onchange = async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            Swal.showLoading();
+            try {
+                const formData = new FormData();
+                formData.append('foto', file);
+                formData.append('idembarque', state.embarque);
+                formData.append('iditem', iditem);
+                formData.append('idusuario', getUserId());
+                formData.append('doca', docaSelecionada);
+
+                const token = getAuthToken();
+                const apiRoot = (window.API_URL || 'https://api.nutricionalbr.com/v1').replace(/\/$/, '');
+                const resp = await fetch(`${apiRoot}/carregamento/ajustar-foto`, {
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    body: formData
+                });
+                const resJson = await resp.json();
+                if (!resJson.success) {
+                    throw new Error(resJson.error || 'Falha ao salvar foto do item');
+                }
+
+                const idx = window._listaAjusteFotos.findIndex(i => Number(i.iditem) === Number(iditem));
+                if (idx !== -1) {
+                    window._listaAjusteFotos[idx].fotoEnviada = true;
+                }
+                window._fnAtualizarModalAjuste();
+                Swal.hideLoading();
+            } catch (err) {
+                Swal.hideLoading();
+                Swal.showValidationMessage('Erro ao enviar foto: ' + err.message);
+            }
+        };
+
+        input.click();
+    };
+
+    await Swal.fire({
+        title: 'Fotos Pendentes no Carregamento',
+        html: `
+            <div class="text-xs text-slate-600 mb-3 text-left">
+                Alguns itens foram carregados sem o registro de foto. <b>Tire a foto de cada item abaixo</b> para liberar a finalização imediatamente sem precisar estornar a carga:
+            </div>
+            <div id="containerAjusteFotos" class="max-h-72 overflow-y-auto pr-1">
+                ${renderListaHtml()}
+            </div>
+            <div class="mt-4">
+                <button type="button" id="btnConcluirAjusteFotos" disabled class="w-full py-2.5 rounded-xl bg-slate-300 text-slate-500 text-xs font-bold cursor-not-allowed flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-circle-notch"></i>
+                    <span>Tire todas as fotos para finalizar</span>
+                </button>
+            </div>
+        `,
+        showConfirmButton: false,
+        showCancelButton: true,
+        cancelButtonText: 'Fechar e Ajustar Depois',
+        cancelButtonColor: '#64748b',
+        didOpen: () => {
+            const btnConcluir = document.getElementById('btnConcluirAjusteFotos');
+            btnConcluir?.addEventListener('click', async () => {
+                if (btnConcluir.disabled) return;
+                Swal.close();
+                await finalizarCargaOficial();
+            });
+        }
+    });
+}
+
 async function finalizarCargaOficial() {
     if (isProcessing) return;      // evita duplo clique / bipe acidental
     isProcessing = true;
@@ -1172,13 +1290,7 @@ async function finalizarCargaOficial() {
                 }
             } catch (e) {
                 if (e.itensSemFoto) {
-                    const linhas = e.itensSemFoto.map(i => `<li style="margin:4px 0;"><b>${escapeHtmlCarga(i.descricao)}</b> (cód. ${i.iditem}) - ${Number(i.qt)} un</li>`).join('');
-                    await Swal.fire({
-                        title: 'Itens sem foto',
-                        html: `<div style="text-align:left;font-size:0.85rem;">Estorne a subida desses itens e carregue novamente registrando a foto:<ul style="margin-top:8px;padding-left:18px;">${linhas}</ul></div>`,
-                        icon: 'warning',
-                        position: 'top'
-                    });
+                    await abrirModalAjustarFotosPendentes(e.itensSemFoto);
                 } else {
                     await Swal.fire({ title: 'Erro', text: e.message, icon: 'error' });
                 }

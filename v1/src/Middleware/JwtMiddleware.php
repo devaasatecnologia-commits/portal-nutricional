@@ -56,15 +56,23 @@ class JwtMiddleware
         }
 
         // ─────────────────────────────────────────────────────────────
-        // 2. Extrai o token do header Authorization
+        // 2. Extrai o token do header Authorization ou query param 'token'
         // ─────────────────────────────────────────────────────────────
         $authHeader = $request->getHeaderLine('Authorization');
+        $token = null;
 
-        if (!preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
-            return $this->unauthorized('Token não fornecido');
+        if (preg_match('/Bearer\s+(.*)$/i', $authHeader, $matches)) {
+            $token = trim($matches[1]);
+        } else {
+            $queryParams = $request->getQueryParams();
+            if (!empty($queryParams['token'])) {
+                $token = trim((string)$queryParams['token']);
+            }
         }
 
-        $token = $matches[1];
+        if (!$token) {
+            return $this->unauthorized('Token não fornecido');
+        }
 
         // ─────────────────────────────────────────────────────────────
         // 3. Tudo abaixo pode lançar exceção JWT — protegido por try

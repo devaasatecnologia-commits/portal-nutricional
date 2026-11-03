@@ -141,6 +141,23 @@ public function calcularProgressoMeta(int $idMeta, ?float $valorAtual = null): a
     public function registrarAlimentacao(int $idMeta, string $dataRegistro, array $valores, int $usuarioId): array
     {
         try {
+            // Verificar status da meta para impedir alimentação em metas concluídas/inativas
+            $stmtMeta = $this->pdo->prepare("SELECT id, titulo, status FROM mkt_metas_instancias WHERE id = :id");
+            $stmtMeta->execute(['id' => $idMeta]);
+            $meta = $stmtMeta->fetch(PDO::FETCH_ASSOC);
+
+            if (!$meta) {
+                return ['success' => false, 'error' => 'Meta não encontrada.'];
+            }
+
+            $st = strtolower(trim((string)$meta['status']));
+            if (in_array($st, ['concluida', 'concluído', 'concluido', 'encerrada', 'cancelada', 'inativa', 'arquivada'])) {
+                return [
+                    'success' => false,
+                    'error' => "A meta '{$meta['titulo']}' já está {$meta['status']} e não aceita novos lançamentos para evitar conflito de histórico."
+                ];
+            }
+
             // Verificar se já existe registro
             $stmtCheck = $this->pdo->prepare("
                 SELECT id FROM mkt_alimentacao_registros 

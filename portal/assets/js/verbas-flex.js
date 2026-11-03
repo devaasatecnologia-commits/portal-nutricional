@@ -118,6 +118,7 @@ const apiFetch = async function (acao, metodo = 'GET', body = null) {
     return data;
 };
 
+const appBase = window.APP_BASE !== undefined ? window.APP_BASE : (window.location.pathname.startsWith('/API') ? '/API' : '');
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const brl = (n) => Number(n || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -658,7 +659,23 @@ function renderRankingCompleto() {
         else if (limit === '10') lista = lista.slice(0, 10);
 
         if (!lista.length) {
-            host.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs font-semibold">Nenhum registro encontrado no balanço da equipe para este período.</div>';
+            host.innerHTML = `
+                <div class="py-12 px-4 text-center rounded-2xl bg-slate-50 border border-slate-100">
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-3 text-lg">
+                        <i class="fa-solid fa-scale-balanced"></i>
+                    </div>
+                    <h4 class="font-bold text-sm text-slate-700 mb-1">Nenhum registro no Balanço para este período</h4>
+                    <p class="text-xs text-slate-400 max-w-md mx-auto mb-4">Não há lançamentos de bonificações ou transferências registradas para o filtro selecionado.</p>
+                    <div class="flex items-center justify-center gap-2">
+                        <button type="button" onclick="atalho('30')" class="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition shadow-xs cursor-pointer">
+                            <i class="fa-solid fa-calendar-days mr-1.5"></i>Últimos 30 Dias
+                        </button>
+                        <button type="button" onclick="atalho('ant')" class="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition cursor-pointer">
+                            Mês Anterior
+                        </button>
+                    </div>
+                </div>
+            `;
             return;
         }
 
@@ -715,7 +732,7 @@ function renderRankingCompleto() {
                                                 <i class="fa-solid fa-receipt text-xs"></i>
                                             </button>` : ''}
                                             ${estado.podeTransferir ? `
-                                            <a href="/portal/modules/transferencia-flex.php?para=${x.id}"
+                                            <a href="${appBase}/portal/modules/transferencia-flex.php?para=${x.id}"
                                                class="p-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 transition no-underline"
                                                title="Transferir verba para ${esc(x.nome)}">
                                                 <i class="fa-solid fa-right-left text-xs"></i>
@@ -776,7 +793,31 @@ function renderRankingCompleto() {
     else if (limit === '10') lista = lista.slice(0, 10);
 
     if (!lista.length) {
-        host.innerHTML = '<div class="py-10 text-center text-slate-400 text-xs font-semibold">Nenhum registro encontrado para esta visão no período.</div>';
+        const nomeVisao = visao === 'transferencias_cedidas'
+            ? 'transferência enviada (cedida)'
+            : visao === 'transferencias_recebidas'
+            ? 'transferência recebida (creditada)'
+            : 'bonificação faturada';
+        const corIcone = visao === 'transferencias_cedidas' ? 'bg-purple-50 text-purple-600' : visao === 'transferencias_recebidas' ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-50 text-rose-600';
+        const icone = visao === 'transferencias_cedidas' ? 'fa-arrow-up-from-bracket' : visao === 'transferencias_recebidas' ? 'fa-arrow-down-to-bracket' : 'fa-receipt';
+
+        host.innerHTML = `
+            <div class="py-12 px-4 text-center rounded-2xl bg-slate-50 border border-slate-100">
+                <div class="w-12 h-12 rounded-2xl ${corIcone} flex items-center justify-center mx-auto mb-3 text-lg">
+                    <i class="fa-solid ${icone}"></i>
+                </div>
+                <h4 class="font-bold text-sm text-slate-700 mb-1">Nenhuma ${nomeVisao} neste período</h4>
+                <p class="text-xs text-slate-400 max-w-md mx-auto mb-4">Não encontramos movimentações para o filtro de datas atual. Experimente consultar um período maior:</p>
+                <div class="flex items-center justify-center gap-2">
+                    <button type="button" onclick="atalho('30')" class="px-3.5 py-2 rounded-xl bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold transition shadow-xs cursor-pointer">
+                        <i class="fa-solid fa-calendar-days mr-1.5"></i>Últimos 30 Dias
+                    </button>
+                    <button type="button" onclick="atalho('ant')" class="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs font-bold transition cursor-pointer">
+                        Mês Anterior
+                    </button>
+                </div>
+            </div>
+        `;
         return;
     }
 
@@ -827,7 +868,7 @@ function renderRankingCompleto() {
                             <span>Ver Notas</span>
                         </button>
                         ${estado.podeTransferir ? `
-                        <a href="/portal/modules/transferencia-flex.php?para=${x.id}"
+                        <a href="${appBase}/portal/modules/transferencia-flex.php?para=${x.id}"
                            class="px-2.5 py-1 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 text-[11px] font-black transition flex items-center gap-1.5 no-underline cursor-pointer shadow-2xs">
                             <i class="fa-solid fa-right-left text-[10px]"></i>
                             <span>Transferir</span>
@@ -1098,34 +1139,18 @@ function baixarCSV(nomeArquivo, colunas, linhas) {
 }
 
 // ==========================================
-// INICIALIZAÇÃO
+// INICIALIZAÇÃO ROBUSTA E VINCULAÇÃO IMEDIATA
 // ==========================================
 
-window.addEventListener('DOMContentLoaded', async () => {
-    atalho('mes');
-
-    try {
-        const ctx = await apiFetch('verbas-flex/contexto');
-        $('selFilial').innerHTML = (ctx.filiais || []).map((f) => `<option value="${f.idfilial}">${esc(f.idfilial)} - ${esc(f.razao)}</option>`).join('');
-    } catch (e) {
-        aviso('error', 'Erro ao carregar contexto', e.message);
-        return;
-    }
-
-    $('selFilial').addEventListener('change', recarregarAbaAtiva);
-    $('btnAplicar').addEventListener('click', recarregarAbaAtiva);
-
-    document.querySelectorAll('#atalhos .vf-chip').forEach((b) => {
-        b.addEventListener('click', () => atalho(b.dataset.p));
-    });
-
+function vincularEventosUI() {
+    // 1. Abas Principais
     document.querySelectorAll('#abas .vf-tab').forEach((b) => {
         if (b.dataset.aba) {
             b.addEventListener('click', () => ativarAba(b.dataset.aba));
         }
     });
 
-    // Pílulas / Visões do Ranking (Consumo Bonificações, Quem Cedeu, Quem Recebeu, Balanço Geral)
+    // 2. Visões do Ranking (Consumo Bonificações, Quem Cedeu, Quem Recebeu, Balanço)
     document.querySelectorAll('#visoesRanking button').forEach((b) => {
         b.addEventListener('click', (e) => {
             const btn = e.currentTarget || b;
@@ -1134,7 +1159,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Filtros de Quantidade do Ranking (Top 5, Top 10, Todos)
+    // 3. Filtros de Quantidade do Ranking (Top 5, Top 10, Todos)
     document.querySelectorAll('#filtroQtdRanking .vf-chip').forEach((b) => {
         b.addEventListener('click', () => {
             document.querySelectorAll('#filtroQtdRanking .vf-chip').forEach((c) => c.classList.remove('on'));
@@ -1144,12 +1169,20 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
+    // 4. Busca no Ranking
     $('buscaRanking')?.addEventListener('input', (e) => {
         estado.buscaRanking = e.target.value.trim();
         renderRankingCompleto();
     });
 
-    // Filtros de Débitos e Créditos
+    // 5. Atalhos de período e Botão Filtrar
+    document.querySelectorAll('#atalhos .vf-chip').forEach((b) => {
+        b.addEventListener('click', () => atalho(b.dataset.p));
+    });
+    $('selFilial')?.addEventListener('change', recarregarAbaAtiva);
+    $('btnAplicar')?.addEventListener('click', recarregarAbaAtiva);
+
+    // 6. Filtros de Débitos e Créditos
     $('fRep')?.addEventListener('change', carregarDebitos);
     $('fBuscaD')?.addEventListener('input', () => {
         clearTimeout(estado.timerD);
@@ -1161,7 +1194,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     });
     $('fZerados')?.addEventListener('change', carregarCreditos);
 
-    // Monitor API
+    // 7. Monitor API
     $('btnTestar')?.addEventListener('click', testarApi);
     document.querySelectorAll('#apiPeriodo .vf-chip').forEach((b) => {
         b.addEventListener('click', () => {
@@ -1171,7 +1204,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // Exportações Excel
+    // 8. Exportações Excel
     $('xlsRanking')?.addEventListener('click', () => {
         const visao = estado.visaoRanking;
         if (visao === 'balanco') {
@@ -1259,8 +1292,31 @@ window.addEventListener('DOMContentLoaded', async () => {
         ]);
         baixarCSV(`creditos_verbas_flex_${iso(new Date())}.csv`, cols, rows);
     });
+}
 
+async function carregarContextoFiliais() {
+    try {
+        const ctx = await apiFetch('verbas-flex/contexto');
+        if ($('selFilial') && ctx.filiais && ctx.filiais.length) {
+            $('selFilial').innerHTML = ctx.filiais.map((f) => `<option value="${f.idfilial}">${esc(f.idfilial)} - ${esc(f.razao)}</option>`).join('');
+        }
+    } catch (e) {
+        console.warn('Aviso ao carregar contexto de filiais:', e.message);
+    }
+}
+
+function inicializarModulo() {
+    atalho('mes', false);
     aplicarHierarquiaPermissoes();
     initModernTooltips();
-    carregarPainel();
-});
+    vincularEventosUI();
+    carregarContextoFiliais().finally(() => {
+        carregarPainel();
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', inicializarModulo);
+} else {
+    inicializarModulo();
+}

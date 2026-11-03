@@ -837,12 +837,20 @@ if (typeof MarketingUtils === 'undefined') {
             const valorAtual = m.total_alcancado || 0;
             const metaFinal = m.meta_final || 0;
 
+            const isConcluida = ['concluida', 'concluído', 'concluido', 'encerrada', 'cancelada', 'inativa'].includes(String(m.status || '').toLowerCase());
+            const clickAcao = isConcluida
+                ? `onclick="Swal.fire({title: 'Meta Concluída', text: 'Esta meta já foi finalizada e não aceita novos lançamentos.', icon: 'info', confirmButtonColor: '#7c3aed'})"`
+                : `onclick="window.abrirAlimentacaoMeta(${m.id}, '${tituloEsc.replace(/'/g, "\\'")}')"`;
+            const badgeStatus = isConcluida
+                ? `<span class="ml-2 text-[10px] bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full font-bold"><i class="fa-solid fa-lock mr-0.5"></i> Concluída</span>`
+                : `<span class="ml-2 text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">${m.tipo_nome || 'Meta'}</span>`;
+
             return `
-                <div class="meta-card fade-in" onclick="window.abrirAlimentacaoMeta(${m.id}, '${tituloEsc.replace(/'/g, "\\'")}')">
+                <div class="meta-card fade-in" ${clickAcao}>
                     <div class="flex justify-between items-start">
                         <div>
                             <span class="font-bold text-slate-800 text-sm">${tituloEsc}</span>
-                            <span class="ml-2 text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">${m.tipo_nome || 'Meta'}</span>
+                            ${badgeStatus}
                         </div>
                         <span class="text-xs font-bold ${pct >= 70 ? 'text-emerald-600' : pct >= 40 ? 'text-amber-600' : 'text-rose-600'}">${pct.toFixed(1)}%</span>
                     </div>
@@ -900,12 +908,14 @@ if (typeof MarketingUtils === 'undefined') {
             let todasSemanas = [];
             const series = [];
 
-            for (const m of metas) {
-                if (m.status !== 'ativa' && m.status !== 'Ativa') continue;
+            const metasAtivas = metas.filter(m => (m.status || '').toLowerCase() === 'ativa');
+            const alimResultados = await Promise.all(
+                metasAtivas.map(m => fetchAuth(`/v1/meta-builder/alimentacao/${m.id}`).then(r => r.json()).catch(() => ({ data: [] })))
+            );
 
-                const respAlim = await fetchAuth(`/v1/meta-builder/alimentacao/${m.id}`);
-                const alimData = await respAlim.json();
-                const registros = alimData.data || [];
+            metasAtivas.forEach((m, idx) => {
+                const alimData = alimResultados[idx];
+                const registros = (alimData && alimData.data) ? alimData.data : [];
 
                 let nomeVA = 'valor_alcancado';
                 if (m.campos) {
@@ -932,7 +942,7 @@ if (typeof MarketingUtils === 'undefined') {
                     data: semanasFiltradas.map(s => s.valor),
                     type: 'line'
                 });
-            }
+            });
 
             todasSemanas.sort((a, b) => parseInt(a.label.replace('S', '')) - parseInt(b.label.replace('S', '')));
 
@@ -1316,6 +1326,19 @@ window.carregarDados = async function() {
                         return;
                     }
                     const m = result.data;
+                    const st = String(m.status || '').toLowerCase().trim();
+                    if (['concluida', 'concluído', 'concluido', 'encerrada', 'cancelada', 'inativa', 'arquivada'].includes(st)) {
+                        document.getElementById(`alimMeta-${id}`).innerHTML = `
+                            <div class="p-5 bg-amber-50 border border-amber-200 rounded-2xl text-center space-y-2">
+                                <div class="w-12 h-12 bg-amber-100 text-amber-600 rounded-full flex items-center justify-center mx-auto text-xl">
+                                    <i class="fa-solid fa-lock"></i>
+                                </div>
+                                <h4 class="font-black text-slate-800 text-sm">Meta Concluída</h4>
+                                <p class="text-xs text-slate-500 leading-relaxed">A meta <b>"${m.titulo}"</b> já foi concluída. Novos lançamentos estão bloqueados para evitar divergência de dados.</p>
+                            </div>
+                        `;
+                        return;
+                    }
                     let valores = {};
                     if (m.valores) {
                         try { valores = typeof m.valores === 'string' ? JSON.parse(m.valores) : m.valores; } catch(e) {}

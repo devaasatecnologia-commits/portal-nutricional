@@ -58,6 +58,7 @@ const estado = {
     perguntas: [],
     escalaPontos: [],
     conceitosLetras: [],
+    conjuntosLetras: [],
     faixasClassificacao: [],
     
     // Estado do Wizard de Avaliação
@@ -67,6 +68,12 @@ const estado = {
     indicePerguntaAtual: 0,
     respostas: {}, // { idpergunta: { pontuacao: 10, observacao_item: '' } }
     conceitoLetraSelecionada: '',
+    
+    // Estado do Módulo de Fotos
+    fotoStream: null,
+    fotoBlob: null,
+    fotoArquivo: null,
+    modoFoto: 'webcam',
     
     // Cache de Dados
     matrizAnual: [],
@@ -93,6 +100,7 @@ const swalBase = {
 // ==========================================
 document.addEventListener('DOMContentLoaded', async () => {
     popularSelectMeses();
+    initModernTooltipsChapd();
     await carregarContexto();
 });
 
@@ -154,6 +162,7 @@ async function carregarContexto() {
         estado.perguntas = data.perguntas || [];
         estado.escalaPontos = data.escala_pontos || [];
         estado.conceitosLetras = data.conceitos_letras || [];
+        estado.conjuntosLetras = data.conjuntos_letras || [];
         estado.faixasClassificacao = data.faixas_classificacao || [];
 
         // Preenche o Select de Colaboradores
@@ -175,6 +184,71 @@ async function carregarContexto() {
 }
 
 /**
+ * Inicializa Tooltips Modernos e Ricos no Hover
+ */
+function initModernTooltipsChapd() {
+    const tooltip = $('modernTooltipChapd');
+    const badgeEl = $('tooltipChapdBadge');
+    const titleEl = $('tooltipChapdTitle');
+    const descEl = $('tooltipChapdDesc');
+    if (!tooltip) return;
+
+    let activeTarget = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (!el) return;
+
+        activeTarget = el;
+        const title = el.getAttribute('data-tip-title') || '';
+        const desc = el.getAttribute('data-tip-desc') || '';
+        const badge = el.getAttribute('data-tip-badge') || 'INFORMAÇÃO';
+
+        if (titleEl) titleEl.textContent = title;
+        if (descEl) descEl.textContent = desc;
+        if (badgeEl) badgeEl.textContent = badge;
+
+        tooltip.classList.remove('hidden');
+        posicionarTooltip(e);
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!activeTarget) return;
+        posicionarTooltip(e);
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        const el = e.target.closest('[data-tip-title], [data-tip-desc]');
+        if (el && el === activeTarget) {
+            activeTarget = null;
+            tooltip.classList.add('hidden');
+        }
+    });
+
+    function posicionarTooltip(e) {
+        const x = e.clientX;
+        const y = e.clientY;
+        const gap = 16;
+        const tipRect = tooltip.getBoundingClientRect();
+        const winW = window.innerWidth;
+        const winH = window.innerHeight;
+
+        let left = x + gap;
+        let top = y + gap;
+
+        if (left + tipRect.width > winW - 12) {
+            left = Math.max(12, x - tipRect.width - gap);
+        }
+        if (top + tipRect.height > winH - 12) {
+            top = Math.max(12, y - tipRect.height - gap);
+        }
+
+        tooltip.style.left = `${left}px`;
+        tooltip.style.top = `${top}px`;
+    }
+}
+
+/**
  * Preenche o select de colaboradores com os 50 funcionários ativos do ERP
  */
 function popularSelectColaboradores() {
@@ -189,6 +263,24 @@ function popularSelectColaboradores() {
         opt.textContent = `${c.nome} (${c.cargo} • Filial ${c.idfilial})`;
         sel.appendChild(opt);
     });
+}
+
+/**
+ * Converte caminhos relativos de foto (ex: uploads/chapd/colab_1.jpg)
+ * na URL absoluta correta baseada na origem e prefixo da API/Portal
+ */
+function formatarUrlFoto(caminho) {
+    if (!caminho) return '';
+    if (caminho.startsWith('http://') || caminho.startsWith('https://') || caminho.startsWith('data:') || caminho.startsWith('blob:')) {
+        return caminho;
+    }
+    const cleanPath = caminho.replace(/^\/+/, '');
+    if (window.API_URL) {
+        const apiBase = window.API_URL.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+        return `${apiBase}/${cleanPath}`;
+    }
+    const basePrefix = window.location.pathname.includes('/API/') ? '/API' : '';
+    return `${window.location.origin}${basePrefix}/${cleanPath}`;
 }
 
 // ==========================================
@@ -213,29 +305,533 @@ function aoSelecionarColaborador() {
     $('colabFilial').innerHTML = `<i class="fa-solid fa-building text-emerald-600"></i> Filial ${colab.idfilial}`;
     $('colabAdmissao').innerHTML = `<i class="fa-solid fa-calendar text-emerald-600"></i> Adm: ${colab.data_admissao ? formatarDataBR(colab.data_admissao) : '--'}`;
 
-    // Avatar com Iniciais
-    const nomes = colab.nome.trim().split(' ');
-    const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
-    $('colabAvatar').textContent = iniciais;
-
-    // Sugere Setor baseado no Cargo se estiver vazio
-    const inputSetor = $('inputSetor');
-    if (inputSetor && !inputSetor.value) {
-        const cargoUpper = (colab.cargo || '').toUpperCase();
-        if (cargoUpper.includes('COMERCIAL') || cargoUpper.includes('VEND')) inputSetor.value = 'Comercial';
-        else if (cargoUpper.includes('CARGA') || cargoUpper.includes('MOTOR') || cargoUpper.includes('EXPED')) inputSetor.value = 'Logística';
-        else if (cargoUpper.includes('TI') || cargoUpper.includes('INFOR')) inputSetor.value = 'TI';
-        else if (cargoUpper.includes('FINANC') || cargoUpper.includes('CONT')) inputSetor.value = 'Financeiro';
-        else inputSetor.value = 'Operacional';
+    // Badge de Perfil Customizado na Área Separada
+    const badgePerfil = $('badgePerfilCustom');
+    if (badgePerfil) {
+        if (colab.perfil_editado) {
+            badgePerfil.classList.remove('hidden');
+        } else {
+            badgePerfil.classList.add('hidden');
+        }
     }
 
-    // Sugere Célula baseado na Filial se estiver vazia
+    // Avatar com Foto ou Iniciais
+    const nomes = colab.nome.trim().split(' ');
+    const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+    const colabIniciais = $('colabIniciais');
+    const colabFotoImg = $('colabFotoImg');
+    const colabFotoBtnTexto = $('colabFotoBtnTexto');
+
+    if (colab.foto_url) {
+        if (colabFotoImg) {
+            colabFotoImg.src = formatarUrlFoto(colab.foto_url);
+            colabFotoImg.classList.remove('hidden');
+            colabFotoImg.onerror = () => {
+                colabFotoImg.classList.add('hidden');
+                if (colabIniciais) colabIniciais.classList.remove('hidden');
+            };
+        }
+        if (colabIniciais) colabIniciais.classList.add('hidden');
+        if (colabFotoBtnTexto) colabFotoBtnTexto.textContent = 'Alterar Foto';
+    } else {
+        if (colabFotoImg) {
+            colabFotoImg.src = '';
+            colabFotoImg.classList.add('hidden');
+        }
+        if (colabIniciais) {
+            colabIniciais.textContent = iniciais;
+            colabIniciais.classList.remove('hidden');
+        }
+        if (colabFotoBtnTexto) colabFotoBtnTexto.textContent = 'Foto';
+    }
+
+    // Sugere Setor (prioriza personalização se houver)
+    const inputSetor = $('inputSetor');
+    if (inputSetor) {
+        if (colab.setor_custom) {
+            inputSetor.value = colab.setor_custom;
+        } else if (!inputSetor.value) {
+            const cargoUpper = (colab.cargo || '').toUpperCase();
+            if (cargoUpper.includes('COMERCIAL') || cargoUpper.includes('VEND')) inputSetor.value = 'Comercial';
+            else if (cargoUpper.includes('CARGA') || cargoUpper.includes('MOTOR') || cargoUpper.includes('EXPED')) inputSetor.value = 'Logística';
+            else if (cargoUpper.includes('TI') || cargoUpper.includes('INFOR')) inputSetor.value = 'TI';
+            else if (cargoUpper.includes('FINANC') || cargoUpper.includes('CONT')) inputSetor.value = 'Financeiro';
+            else inputSetor.value = 'Operacional';
+        }
+    }
+
+    // Sugere Célula (prioriza personalização se houver)
     const inputCelula = $('inputCelula');
-    if (inputCelula && !inputCelula.value) {
-        inputCelula.value = colab.idfilial === 1 ? 'Matriz SC' : (colab.idfilial === 6 ? 'Filial PR' : `Filial ${colab.idfilial}`);
+    if (inputCelula) {
+        if (colab.celula_custom) {
+            inputCelula.value = colab.celula_custom;
+        } else if (!inputCelula.value) {
+            inputCelula.value = colab.idfilial === 1 ? 'Matriz SC' : (colab.idfilial === 6 ? 'Filial PR' : `Filial ${colab.idfilial}`);
+        }
     }
 
     cardResumo?.classList.remove('hidden');
+}
+
+// ==========================================
+// MÓDULO DE EDIÇÃO DO PERFIL (ÁREA SEPARADA ERP)
+// ==========================================
+function abrirModalEditarPerfilColab(idcliforemp = null) {
+    let c = null;
+    if (idcliforemp) {
+        c = estado.colaboradores.find(x => x.idcliforemp === parseInt(idcliforemp));
+    }
+    if (!c) {
+        c = estado.colaboradorSelecionado;
+    }
+
+    if (!c) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'info',
+            title: 'Selecione o Colaborador',
+            text: 'Primeiro selecione um colaborador na lista para editar os dados.'
+        });
+        return;
+    }
+
+    $('editPerfilIdcliforemp').value = c.idcliforemp;
+    $('modalPerfilSubtitulo').textContent = `${c.nome} (Cód. ${c.idcliforemp}) • Área C.H.A.P.D`;
+    $('editPerfilNomeErpLabel').textContent = `ERP: ${c.nome_erp || c.nome}`;
+    $('editPerfilCargoErpLabel').textContent = `ERP: ${c.cargo_erp || c.cargo}`;
+
+    $('editPerfilNome').value = (c.nome !== c.nome_erp) ? c.nome : '';
+    $('editPerfilCargo').value = (c.cargo !== c.cargo_erp) ? c.cargo : '';
+    $('editPerfilSetor').value = c.setor_custom || (estado.colaboradorSelecionado?.idcliforemp === c.idcliforemp ? $('inputSetor')?.value || '' : '');
+    $('editPerfilCelula').value = c.celula_custom || (estado.colaboradorSelecionado?.idcliforemp === c.idcliforemp ? $('inputCelula')?.value || '' : '');
+    $('editPerfilFilial').value = c.idfilial || 1;
+    $('editPerfilAdmissao').value = c.data_admissao || '';
+    $('editPerfilObservacoes').value = c.perfil_observacoes || '';
+
+    $('modalEditarPerfilColab')?.classList.remove('hidden');
+}
+
+function fecharModalEditarPerfilColab() {
+    $('modalEditarPerfilColab')?.classList.add('hidden');
+}
+
+async function salvarPerfilColaborador(event) {
+    event.preventDefault();
+
+    const id = parseInt($('editPerfilIdcliforemp').value);
+    if (!id) return;
+
+    const btn = $('btnSalvarPerfilColab');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gravando...';
+
+    const payload = {
+        idcliforemp: id,
+        nome_custom: $('editPerfilNome').value.trim(),
+        cargo_custom: $('editPerfilCargo').value.trim(),
+        setor_custom: $('editPerfilSetor').value.trim(),
+        celula_custom: $('editPerfilCelula').value.trim(),
+        idfilial_custom: parseInt($('editPerfilFilial').value) || null,
+        data_admissao_custom: $('editPerfilAdmissao').value || null,
+        observacoes: $('editPerfilObservacoes').value.trim()
+    };
+
+    try {
+        const data = await apiFetch('colaborador/salvar-perfil', 'POST', payload);
+
+        if (!data.sucesso) {
+            throw new Error(data.mensagem || 'Falha ao salvar dados do colaborador.');
+        }
+
+        const colabAtualizado = data.colaborador;
+
+        // Atualiza item no array global
+        const idx = estado.colaboradores.findIndex(x => x.idcliforemp === id);
+        if (idx !== -1) {
+            estado.colaboradores[idx] = { ...estado.colaboradores[idx], ...colabAtualizado };
+        }
+
+        // Atualiza colaborador selecionado
+        if (estado.colaboradorSelecionado && estado.colaboradorSelecionado.idcliforemp === id) {
+            estado.colaboradorSelecionado = { ...estado.colaboradorSelecionado, ...colabAtualizado };
+            aoSelecionarColaborador();
+        }
+
+        // Atualiza texto da option do select
+        const sel = $('selColaborador');
+        if (sel) {
+            const opt = sel.querySelector(`option[value="${id}"]`);
+            if (opt) {
+                opt.textContent = `${colabAtualizado.nome} (${colabAtualizado.cargo} • Filial ${colabAtualizado.idfilial})`;
+            }
+        }
+
+        // Atualiza grid de colaboradores
+        if (typeof renderizarGridColaboradores === 'function') {
+            renderizarGridColaboradores();
+        }
+
+        fecharModalEditarPerfilColab();
+
+        Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Perfil Atualizado!',
+            text: 'Os dados foram salvos na área exclusiva C.H.A.P.D e vinculados ao ERP com sucesso.',
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (err) {
+        console.error('Erro ao salvar perfil:', err);
+        Swal.fire({
+            ...swalBase,
+            icon: 'error',
+            title: 'Erro ao Salvar',
+            text: err.message
+        });
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvar Alterações';
+    }
+}
+
+async function restaurarPadraoErpColaborador() {
+    const id = parseInt($('editPerfilIdcliforemp').value);
+    if (!id) return;
+
+    const confirm = await Swal.fire({
+        ...swalBase,
+        title: 'Restaurar Dados Originais?',
+        text: 'Deseja limpar as edições customizadas e voltar a exibir o Nome, Cargo e Lotação nativos do ERP?',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sim, Restaurar ERP',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+        const data = await apiFetch('colaborador/salvar-perfil', 'POST', {
+            idcliforemp: id,
+            restaurar_padrao: true
+        });
+
+        if (!data.sucesso) throw new Error(data.mensagem);
+
+        const colabAtualizado = data.colaborador;
+
+        const idx = estado.colaboradores.findIndex(x => x.idcliforemp === id);
+        if (idx !== -1) {
+            estado.colaboradores[idx] = { ...estado.colaboradores[idx], ...colabAtualizado };
+        }
+
+        if (estado.colaboradorSelecionado && estado.colaboradorSelecionado.idcliforemp === id) {
+            estado.colaboradorSelecionado = { ...estado.colaboradorSelecionado, ...colabAtualizado };
+            aoSelecionarColaborador();
+        }
+
+        // Atualiza option do select
+        const sel = $('selColaborador');
+        if (sel) {
+            const opt = sel.querySelector(`option[value="${id}"]`);
+            if (opt) {
+                opt.textContent = `${colabAtualizado.nome} (${colabAtualizado.cargo} • Filial ${colabAtualizado.idfilial})`;
+            }
+        }
+
+        // Atualiza grid de colaboradores
+        if (typeof renderizarGridColaboradores === 'function') {
+            renderizarGridColaboradores();
+        }
+
+        fecharModalEditarPerfilColab();
+
+        Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Restaurado!',
+            text: 'Os dados do colaborador voltaram ao padrão original do ERP.',
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (err) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'error',
+            title: 'Erro',
+            text: err.message
+        });
+    }
+}
+
+// ==========================================
+// MÓDULO DE FOTO DO COLABORADOR (CÂMERA / ARQUIVO)
+// ==========================================
+function abrirModalCapturaFoto(idcliforemp = null) {
+    let colab = null;
+    if (idcliforemp) {
+        colab = estado.colaboradores.find(c => c.idcliforemp === parseInt(idcliforemp));
+        if (colab) {
+            estado.colaboradorSelecionado = colab;
+            const sel = $('selColaborador');
+            if (sel && sel.value !== String(idcliforemp)) {
+                sel.value = String(idcliforemp);
+                aoSelecionarColaborador();
+            }
+        }
+    } else {
+        colab = estado.colaboradorSelecionado;
+    }
+
+    if (!colab) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'info',
+            title: 'Selecione o Colaborador',
+            text: 'Primeiro selecione um colaborador na lista para vincular a foto.'
+        });
+        return;
+    }
+
+    $('modalFotoNomeColab').textContent = `${colab.nome} (Cód. ${colab.idcliforemp})`;
+    estado.fotoBlob = null;
+    estado.fotoArquivo = null;
+    $('btnSalvarFotoUpload').disabled = true;
+
+    $('modalFotoColab')?.classList.remove('hidden');
+    alternarModoFoto('webcam');
+}
+
+function fecharModalCapturaFoto() {
+    pararWebcam();
+    $('modalFotoColab')?.classList.add('hidden');
+}
+
+function alternarModoFoto(modo) {
+    estado.modoFoto = modo;
+    const btnWebcam = $('abaFotoModoWebcam');
+    const btnArquivo = $('abaFotoModoArquivo');
+    const painelWebcam = $('painelFotoWebcam');
+    const painelArquivo = $('painelFotoArquivo');
+
+    if (modo === 'webcam') {
+        btnWebcam.className = 'flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow-xs flex items-center justify-center gap-1.5 transition font-bold';
+        btnArquivo.className = 'flex-1 py-2 rounded-lg text-slate-600 flex items-center justify-center gap-1.5 transition font-bold';
+        painelWebcam.classList.remove('hidden');
+        painelArquivo.classList.add('hidden');
+        if (!estado.fotoBlob) {
+            iniciarWebcam();
+        }
+    } else {
+        pararWebcam();
+        btnArquivo.className = 'flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow-xs flex items-center justify-center gap-1.5 transition font-bold';
+        btnWebcam.className = 'flex-1 py-2 rounded-lg text-slate-600 flex items-center justify-center gap-1.5 transition font-bold';
+        painelArquivo.classList.remove('hidden');
+        painelWebcam.classList.add('hidden');
+    }
+}
+
+async function iniciarWebcam() {
+    try {
+        pararWebcam();
+        const constraints = {
+            video: {
+                facingMode: 'user',
+                width: { ideal: 640 },
+                height: { ideal: 480 }
+            },
+            audio: false
+        };
+
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        estado.fotoStream = stream;
+
+        const video = $('videoWebcam');
+        if (video) {
+            video.srcObject = stream;
+            video.classList.remove('hidden');
+        }
+
+        $('overlayCameraInativa')?.classList.add('hidden');
+        $('previewFotoCapturada')?.classList.add('hidden');
+        $('btnDispararFoto')?.classList.remove('hidden');
+        $('btnRepetirFoto')?.classList.add('hidden');
+
+    } catch (err) {
+        console.warn('Erro ao acessar webcam:', err);
+        Swal.fire({
+            ...swalBase,
+            icon: 'warning',
+            title: 'Câmera Não Disponível',
+            text: 'Não foi possível acessar a câmera do dispositivo. Verifique as permissões do navegador ou utilize a opção "Enviar Arquivo".'
+        });
+        alternarModoFoto('arquivo');
+    }
+}
+
+function pararWebcam() {
+    if (estado.fotoStream) {
+        estado.fotoStream.getTracks().forEach(track => track.stop());
+        estado.fotoStream = null;
+    }
+    const video = $('videoWebcam');
+    if (video) video.srcObject = null;
+}
+
+function capturarFotoWebcam() {
+    const video = $('videoWebcam');
+    const canvas = $('canvasWebcam');
+    const preview = $('previewFotoCapturada');
+
+    if (!video || !canvas || !video.videoWidth) {
+        Swal.fire({ ...swalBase, icon: 'info', title: 'Aguarde a câmera', text: 'Aguarde o carregamento do vídeo da câmera.' });
+        return;
+    }
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    canvas.toBlob((blob) => {
+        if (!blob) return;
+        estado.fotoBlob = blob;
+        estado.fotoArquivo = null;
+
+        const url = URL.createObjectURL(blob);
+        preview.src = url;
+        preview.classList.remove('hidden');
+        video.classList.add('hidden');
+
+        $('btnDispararFoto').classList.add('hidden');
+        $('btnRepetirFoto').classList.remove('hidden');
+        $('btnSalvarFotoUpload').disabled = false;
+
+        pararWebcam();
+    }, 'image/jpeg', 0.92);
+}
+
+function reiniciarCapturaWebcam() {
+    estado.fotoBlob = null;
+    $('btnSalvarFotoUpload').disabled = true;
+    iniciarWebcam();
+}
+
+function aoSelecionarArquivoFoto(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+        Swal.fire({ ...swalBase, icon: 'warning', title: 'Arquivo Inválido', text: 'Selecione apenas arquivos de imagem (JPEG, PNG ou WEBP).' });
+        return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+        Swal.fire({ ...swalBase, icon: 'warning', title: 'Arquivo Muito Grande', text: 'O tamanho da foto deve ser no máximo 10MB.' });
+        return;
+    }
+
+    estado.fotoArquivo = file;
+    estado.fotoBlob = null;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+        $('previewFotoArquivo').src = e.target.result;
+        $('previewArquivoNome').textContent = file.name;
+        $('previewArquivoTamanho').textContent = `${(file.size / 1024).toFixed(1)} KB`;
+        $('previewArquivoContainer').classList.remove('hidden');
+        $('btnSalvarFotoUpload').disabled = false;
+    };
+    reader.readAsDataURL(file);
+}
+
+async function salvarFotoColaborador() {
+    if (!estado.colaboradorSelecionado) return;
+
+    const fileToUpload = estado.fotoArquivo || estado.fotoBlob;
+    if (!fileToUpload) {
+        Swal.fire({ ...swalBase, icon: 'warning', title: 'Nenhuma foto', text: 'Capture ou envie uma foto antes de salvar.' });
+        return;
+    }
+
+    const btn = $('btnSalvarFotoUpload');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...';
+
+    const formData = new FormData();
+    formData.append('idcliforemp', estado.colaboradorSelecionado.idcliforemp);
+    if (estado.fotoArquivo) {
+        formData.append('foto', estado.fotoArquivo);
+    } else {
+        formData.append('foto', estado.fotoBlob, `colab_${estado.colaboradorSelecionado.idcliforemp}.jpg`);
+    }
+
+    try {
+        const apiRoot = (window.API_URL || (window.location.origin + (window.location.pathname.includes('/API/') ? '/API/v1' : '/v1'))).replace(/\/$/, '');
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
+        const headers = {};
+        if (token) headers.Authorization = 'Bearer ' + token;
+
+        const resp = await fetch(`${apiRoot}/avaliacao-chapd/upload-foto`, {
+            method: 'POST',
+            headers,
+            body: formData,
+            credentials: 'include'
+        });
+
+        const resJson = await resp.json();
+        if (!resp.ok || !resJson.sucesso) {
+            throw new Error(resJson.mensagem || 'Falha ao salvar foto do colaborador.');
+        }
+
+        const novaFotoUrl = resJson.foto_url;
+        estado.colaboradorSelecionado.foto_url = novaFotoUrl;
+
+        // Atualiza no cache de colaboradores
+        const colabItem = estado.colaboradores.find(c => c.idcliforemp === estado.colaboradorSelecionado.idcliforemp);
+        if (colabItem) colabItem.foto_url = novaFotoUrl;
+
+        // Atualiza Avatar do Card com URL absoluta e Cache-Bust para refletir na hora!
+        const urlFinal = formatarUrlFoto(resJson.url_completa || novaFotoUrl) + '?t=' + Date.now();
+        const imgEl = $('colabFotoImg');
+        const iniciaisEl = $('colabIniciais');
+        if (imgEl && iniciaisEl) {
+            imgEl.src = urlFinal;
+            imgEl.classList.remove('hidden');
+            imgEl.onerror = () => {
+                imgEl.classList.add('hidden');
+                if (iniciaisEl) iniciaisEl.classList.remove('hidden');
+            };
+            iniciaisEl.classList.add('hidden');
+        }
+        $('colabFotoBtnTexto').textContent = 'Alterar Foto';
+
+        // Atualiza a Grid de Colaboradores
+        if (typeof renderizarGridColaboradores === 'function') {
+            renderizarGridColaboradores();
+        }
+
+        fecharModalCapturaFoto();
+
+        Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Foto Salva!',
+            text: 'Foto vinculada com sucesso ao prontuário do colaborador no C.H.A.P.D.',
+            timer: 2000,
+            showConfirmButton: false
+        });
+
+    } catch (err) {
+        console.error('Erro upload foto:', err);
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro no Upload', text: err.message });
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Salvar Foto no Prontuário';
+    }
 }
 
 /**
@@ -431,6 +1027,46 @@ function calcularPontosParciais() {
 // ==========================================
 // WIZARD ETAPA 3: SÍNTESE, CONCEITO E FECHAMENTO
 // ==========================================
+/**
+ * Calcula o Conjunto Duplo de Letras conforme a metodologia Nutricional C.H.A.P.D:
+ * - Soma Máxima: Conjunto A & B (>= 115 pontos / Alta Performance)
+ * - Meio dos Pontos: Conjunto C & D (85 a 114.9 pontos / Médio Potencial)
+ * - Últimos Abaixo: Conjunto E & F (< 85 pontos / Atenção Crítica / Necessita PDI)
+ */
+function calcularConjuntoDuplo(pontos) {
+    if (pontos >= 115) {
+        return {
+            codigo: 'AB',
+            letras: 'A & B',
+            titulo: 'Alta Performance / Destaque',
+            descricao: 'Soma Máxima (≥ 115 pts). Domínio dos processos, postura exemplar e entrega com diferencial.',
+            badge: 'CONJUNTO A & B (≥ 115 PTS)',
+            classBadge: 'bg-emerald-100 text-emerald-900 border border-emerald-300',
+            sugestaoLetra: pontos >= 130 ? 'A' : 'B'
+        };
+    } else if (pontos >= 85) {
+        return {
+            codigo: 'CD',
+            letras: 'C & D',
+            titulo: 'Médio Potencial / Em Desenvolvimento',
+            descricao: 'Meio dos Pontos (85 a 114 pts). Cumpre rotinas satisfatoriamente, com potencial para ampliar proatividade.',
+            badge: 'CONJUNTO C & D (85 A 114 PTS)',
+            classBadge: 'bg-indigo-100 text-indigo-900 border border-indigo-300',
+            sugestaoLetra: pontos >= 100 ? 'C' : 'D'
+        };
+    } else {
+        return {
+            codigo: 'EF',
+            letras: 'E & F',
+            titulo: 'Atenção Crítica / Necessita PDI',
+            descricao: 'Últimos Abaixo (< 85 pts). Desempenho irregular ou lacunas críticas que exigem plano individual imediato.',
+            badge: 'CONJUNTO E & F (< 85 PTS)',
+            classBadge: 'bg-rose-100 text-rose-900 border border-rose-300',
+            sugestaoLetra: pontos >= 60 ? 'E' : 'F'
+        };
+    }
+}
+
 function exibirStepSintese() {
     $('stepSelecao').classList.add('hidden');
     $('stepQuestionario').classList.add('hidden');
@@ -473,6 +1109,16 @@ function exibirStepSintese() {
     badgeFaixa.className = `mt-2 text-xs font-black inline-flex items-center gap-1.5 px-3 py-1 rounded-xl ${badgeClass}`;
     badgeFaixa.innerHTML = `<i class="fa-solid fa-certificate"></i> Faixa: ${classificacao}`;
 
+    // Conjunto Duplo conforme a regra de ouro do usuário (A&B, C&D, E&F)
+    const conjunto = calcularConjuntoDuplo(totalPontos);
+    const elConjunto = $('resumoConjuntoDuplo');
+    if (elConjunto) elConjunto.textContent = conjunto.letras;
+    const badgeConjunto = $('resumoConjuntoBadge');
+    if (badgeConjunto) {
+        badgeConjunto.className = `mt-2 text-[11px] font-black inline-flex items-center gap-1 px-2.5 py-1 rounded-xl ${conjunto.classBadge}`;
+        badgeConjunto.innerHTML = `<i class="fa-solid fa-layer-group"></i> ${conjunto.badge}`;
+    }
+
     // Barras dos 5 Pilares
     $('pilarTotalC').textContent = `${pilares.C} pts`;
     $('pilarBarraC').style.width = `${Math.min(100, (pilares.C / 40) * 100)}%`;
@@ -489,14 +1135,9 @@ function exibirStepSintese() {
     $('pilarTotalD').textContent = `${pilares.D} pts`;
     $('pilarBarraD').style.width = `${Math.min(100, (pilares.D / 20) * 100)}%`;
 
-    // Sugestão Automática de Letra Conceito com base na pontuação
+    // Sugestão Automática de Letra Conceito com base na dupla calculada
     if (!estado.conceitoLetraSelecionada) {
-        if (totalPontos >= 130) selecionarLetra('A');
-        else if (totalPontos >= 115) selecionarLetra('B');
-        else if (totalPontos >= 100) selecionarLetra('C');
-        else if (totalPontos >= 85)  selecionarLetra('D');
-        else if (totalPontos >= 65)  selecionarLetra('E');
-        else selecionarLetra('F');
+        selecionarLetra(conjunto.sugestaoLetra);
     }
 }
 
@@ -507,7 +1148,7 @@ function voltarAoQuestionario() {
 }
 
 /**
- * Renderiza os 3 blocos de Letras Conceito (A, B, C, D, E, F)
+ * Renderiza os 3 blocos de Conjuntos Duplos de Letras (A & B, C & D, E & F)
  */
 function renderizarGradeConceitosLetras() {
     const container = $('gradeConceitosLetras');
@@ -515,33 +1156,69 @@ function renderizarGradeConceitosLetras() {
 
     container.innerHTML = '';
 
-    estado.conceitosLetras.forEach(grupo => {
+    // Agrupamento explícito em duplas de letras
+    const duplasConfig = [
+        {
+            dupla: 'AB',
+            letrasNome: 'A e B',
+            titulo: 'Soma Máxima (≥ 115 pts)',
+            subtitulo: 'Alta Performance • Diferencial',
+            corBadge: 'bg-emerald-100 text-emerald-800 border-emerald-300'
+        },
+        {
+            dupla: 'CD',
+            letrasNome: 'C e D',
+            titulo: 'Meio dos Pontos (85 a 114 pts)',
+            subtitulo: 'Médio Potencial • Desenvolvimento',
+            corBadge: 'bg-indigo-100 text-indigo-800 border-indigo-300'
+        },
+        {
+            dupla: 'EF',
+            letrasNome: 'E e F',
+            titulo: 'Últimos Abaixo (< 85 pts)',
+            subtitulo: 'Atenção Crítica • Exige PDI',
+            corBadge: 'bg-rose-100 text-rose-800 border-rose-300'
+        }
+    ];
+
+    duplasConfig.forEach(conf => {
         const col = document.createElement('div');
-        col.className = 'space-y-2.5';
+        col.className = 'space-y-2.5 p-3 rounded-2xl bg-slate-50/80 border border-slate-200/70';
 
-        const tituloGrupo = document.createElement('div');
-        tituloGrupo.className = 'text-[0.68rem] uppercase font-black tracking-wider text-slate-400';
-        tituloGrupo.textContent = grupo.grupo;
-        col.appendChild(tituloGrupo);
+        const cabecalho = document.createElement('div');
+        cabecalho.className = 'flex items-center justify-between pb-1.5 border-b border-slate-200';
+        cabecalho.innerHTML = `
+            <div>
+                <span class="text-xs font-black text-slate-800">Conjunto ${conf.letrasNome}</span>
+                <div class="text-[10px] text-slate-500 font-semibold">${conf.subtitulo}</div>
+            </div>
+            <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${conf.corBadge}">${conf.titulo}</span>
+        `;
+        col.appendChild(cabecalho);
 
-        grupo.itens.forEach(item => {
-            const card = document.createElement('div');
-            card.id = `cardLetra_${item.letra}`;
-            card.className = 'letra-card';
-            card.onclick = () => selecionarLetra(item.letra);
+        // Busca itens do grupo
+        estado.conceitosLetras.forEach(grupo => {
+            grupo.itens.forEach(item => {
+                if (conf.letrasNome.includes(item.letra)) {
+                    const card = document.createElement('div');
+                    card.id = `cardLetra_${item.letra}`;
+                    card.className = 'letra-card cursor-pointer transition hover:border-emerald-300 hover:shadow-xs';
+                    card.onclick = () => selecionarLetra(item.letra);
 
-            card.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 font-black text-base flex items-center justify-center flex-shrink-0" id="badgeLetra_${item.letra}">
-                        ${item.letra}
-                    </div>
-                    <div>
-                        <div class="font-extrabold text-slate-800 text-xs sm:text-sm">${item.titulo}</div>
-                        <p class="text-[0.7rem] text-slate-500 font-semibold leading-tight mt-0.5">${item.descricao}</p>
-                    </div>
-                </div>
-            `;
-            col.appendChild(card);
+                    card.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <div class="w-9 h-9 rounded-xl bg-slate-100 text-slate-800 font-black text-base flex items-center justify-center flex-shrink-0" id="badgeLetra_${item.letra}">
+                                ${item.letra}
+                            </div>
+                            <div class="flex-1 min-w-0">
+                                <div class="font-extrabold text-slate-800 text-xs sm:text-sm truncate">${item.titulo}</div>
+                                <p class="text-[0.68rem] text-slate-500 font-semibold leading-tight mt-0.5 line-clamp-2">${item.descricao}</p>
+                            </div>
+                        </div>
+                    `;
+                    col.appendChild(card);
+                }
+            });
         });
 
         container.appendChild(col);
@@ -633,6 +1310,7 @@ async function salvarAvaliacaoFinal() {
         avaliador_nome: $('inputAvaliador').value.trim() || 'Sandro Rafo',
         aprovador_nome: $('inputAprovador').value.trim() || 'Robson Becker',
         conceito_letra: estado.conceitoLetraSelecionada,
+        foto_colaborador: estado.colaboradorSelecionado.foto_url || '',
         pontos_fortes: $('inputPontosFortes').value.trim(),
         pontos_desenvolver: $('inputPontosDesenvolver').value.trim(),
         plano_acao: $('inputPlanoAcao').value.trim(),
@@ -880,16 +1558,26 @@ function renderizarTabelaMatriz() {
         // Média Anual
         const media = colab.media_anual !== null ? `<b>${colab.media_anual}</b>` : '<span class="text-slate-300">-</span>';
 
+        const fotoUrlFormatada = colab.foto_url ? formatarUrlFoto(colab.foto_url) : '';
+        const colabFotoHtml = fotoUrlFormatada 
+            ? `<img src="${fotoUrlFormatada}" class="w-8 h-8 rounded-xl object-cover flex-none border border-slate-200 shadow-2xs" alt="Foto" onerror="this.onerror=null; this.src=''; this.classList.add('hidden');">`
+            : `<div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center flex-none">${(colab.nome || 'C')[0]}</div>`;
+
         return `
             <tr class="hover:bg-slate-50/80 transition">
                 <td class="py-3 px-3">
-                    <div class="font-black text-slate-800 text-xs">${esc(colab.nome)}</div>
-                    <div class="text-[0.68rem] text-slate-400 font-semibold">${esc(colab.cargo)} • Filial ${colab.filial}</div>
+                    <div class="flex items-center gap-2.5">
+                        ${colabFotoHtml}
+                        <div class="overflow-hidden">
+                            <div class="font-black text-slate-800 text-xs truncate">${esc(colab.nome)}</div>
+                            <div class="text-[0.68rem] text-slate-400 font-semibold truncate">${esc(colab.cargo)} • Filial ${colab.filial}</div>
+                        </div>
+                    </div>
                 </td>
                 ${colsMeses}
                 <td class="py-3 px-3 text-center bg-slate-50 text-slate-800 font-black">${media}</td>
                 <td class="py-3 px-3 text-center">
-                    <button type="button" onclick="iniciarAvaliacaoDireta(${colab.idcliforemp})" class="p-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-[0.68rem] transition" title="Avaliar este colaborador">
+                    <button type="button" onclick="iniciarAvaliacaoDireta(${colab.idcliforemp})" class="p-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-[0.68rem] transition flex items-center gap-1 mx-auto" title="Avaliar este colaborador">
                         <i class="fa-solid fa-plus"></i> Avaliar
                     </button>
                 </td>
@@ -940,26 +1628,42 @@ function renderizarTabelaHistorico() {
         return;
     }
 
-    corpo.innerHTML = estado.historico.map(a => `
-        <tr class="hover:bg-slate-50 transition">
-            <td class="py-3 px-3 font-bold text-slate-700">${a.mes.toString().padStart(2, '0')}/${a.ano}</td>
-            <td class="py-3 px-3 font-black text-slate-800">${esc(a.nome_colaborador)}</td>
-            <td class="py-3 px-3 text-slate-500">${esc(a.cargo)} • ${esc(a.setor || 'Geral')}</td>
-            <td class="py-3 px-3 text-center font-black text-slate-900">${a.pontuacao_total} / ${a.pontuacao_maxima}</td>
-            <td class="py-3 px-3 text-center">
-                <span class="p-1 px-2.5 rounded-xl bg-slate-100 text-slate-800 font-black text-xs">
-                    ${a.conceito_letra || '-'}
-                </span>
-            </td>
-            <td class="py-3 px-3 font-bold text-slate-700">${esc(a.classificacao_pontos)}</td>
-            <td class="py-3 px-3 text-slate-500">${esc(a.avaliador_nome)}</td>
-            <td class="py-3 px-3 text-center">
-                <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 mx-auto">
-                    <i class="fa-solid fa-file-lines"></i> Ficha
-                </button>
-            </td>
-        </tr>
-    `).join('');
+    corpo.innerHTML = estado.historico.map(a => {
+        const rawFoto = a.foto_url || a.foto_colaborador;
+        const fotoUrlFormatada = rawFoto ? formatarUrlFoto(rawFoto) : '';
+        const fotoHtml = fotoUrlFormatada
+            ? `<img src="${fotoUrlFormatada}" class="w-8 h-8 rounded-xl object-cover flex-none border border-slate-200 shadow-2xs" alt="Foto" onerror="this.onerror=null; this.src=''; this.classList.add('hidden');">`
+            : `<div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center flex-none">${(a.nome_colaborador || 'C')[0]}</div>`;
+
+        return `
+            <tr class="hover:bg-slate-50 transition">
+                <td class="py-3 px-3 font-bold text-slate-700">${a.mes.toString().padStart(2, '0')}/${a.ano}</td>
+                <td class="py-3 px-3">
+                    <div class="flex items-center gap-2.5">
+                        ${fotoHtml}
+                        <div>
+                            <div class="font-black text-slate-800">${esc(a.nome_colaborador)}</div>
+                            <div class="text-[0.68rem] text-slate-400 font-semibold">${esc(a.cargo)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td class="py-3 px-3 text-slate-500">${esc(a.cargo)} • ${esc(a.setor || 'Geral')}</td>
+                <td class="py-3 px-3 text-center font-black text-slate-900">${a.pontuacao_total} / ${a.pontuacao_maxima}</td>
+                <td class="py-3 px-3 text-center">
+                    <span class="p-1 px-2.5 rounded-xl bg-slate-100 text-slate-800 font-black text-xs">
+                        ${a.conceito_letra || '-'}
+                    </span>
+                </td>
+                <td class="py-3 px-3 font-bold text-slate-700">${esc(a.classificacao_pontos)}</td>
+                <td class="py-3 px-3 text-slate-500">${esc(a.avaliador_nome)}</td>
+                <td class="py-3 px-3 text-center">
+                    <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 mx-auto">
+                        <i class="fa-solid fa-file-lines"></i> Ficha
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
 }
 
 // ==========================================
@@ -985,9 +1689,54 @@ async function abrirModalFicha(id) {
         $('fichaSetor').textContent = a.setor || 'Geral';
         $('fichaCelula').textContent = a.celula_trabalho || `Filial ${a.idfilial}`;
 
+        // Foto do Colaborador na Ficha Oficial
+        const fotoUrl = a.foto_colaborador || a.foto_url;
+        const imgFicha = $('fichaColabFoto');
+        const iniciaisFicha = $('fichaColabIniciais');
+        if (fotoUrl) {
+            if (imgFicha) {
+                imgFicha.src = formatarUrlFoto(fotoUrl);
+                imgFicha.classList.remove('hidden');
+                imgFicha.onerror = () => {
+                    imgFicha.classList.add('hidden');
+                    if (iniciaisFicha) iniciaisFicha.classList.remove('hidden');
+                };
+            }
+            if (iniciaisFicha) iniciaisFicha.classList.add('hidden');
+        } else {
+            if (imgFicha) imgFicha.classList.add('hidden');
+            if (iniciaisFicha) {
+                const nomes = (a.nome_colaborador || '').trim().split(' ');
+                iniciaisFicha.textContent = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+                iniciaisFicha.classList.remove('hidden');
+            }
+        }
+        if (fotoUrl) {
+            if (imgFicha) {
+                imgFicha.src = fotoUrl;
+                imgFicha.classList.remove('hidden');
+            }
+            if (iniciaisFicha) iniciaisFicha.classList.add('hidden');
+        } else {
+            if (imgFicha) imgFicha.classList.add('hidden');
+            if (iniciaisFicha) {
+                const nomes = (a.nome_colaborador || '').trim().split(' ');
+                iniciaisFicha.textContent = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+                iniciaisFicha.classList.remove('hidden');
+            }
+        }
+
         $('fichaPontos').textContent = `${a.pontuacao_total} / ${a.pontuacao_maxima} pts`;
         $('fichaPercentual').textContent = `${a.percentual_atingido}% de aproveitamento`;
         $('fichaClassificacao').textContent = a.classificacao_pontos;
+        
+        // Conjunto Duplo na Ficha
+        const elConjunto = $('fichaConjuntoDuplo');
+        if (elConjunto) {
+            const conj = a.conjunto || calcularConjuntoDuplo(a.pontuacao_total).letras;
+            elConjunto.textContent = conj;
+        }
+
         $('fichaLetra').textContent = `Letra ${a.conceito_letra || '-'}`;
 
         $('fichaPontosFortes').textContent = a.pontos_fortes || 'Nenhum ponto forte registrado.';
@@ -1167,7 +1916,7 @@ async function togglePerguntaStatus(id) {
 // ==========================================
 function alternarAba(aba) {
     estado.abaAtiva = aba;
-    const abas = ['avaliar', 'dashboard', 'matriz', 'historico', 'perguntas'];
+    const abas = ['avaliar', 'dashboard', 'colaboradores', 'matriz', 'historico', 'perguntas'];
 
     abas.forEach(a => {
         const btn = $(`tabBtn${a.charAt(0).toUpperCase() + a.slice(1)}`);
@@ -1183,9 +1932,206 @@ function alternarAba(aba) {
     });
 
     if (aba === 'dashboard') carregarDashboard();
+    else if (aba === 'colaboradores') renderizarGridColaboradores();
     else if (aba === 'matriz') carregarMatrizAnual();
     else if (aba === 'historico') carregarHistorico();
     else if (aba === 'perguntas') carregarPerguntasGestao();
+}
+
+// ==========================================
+// PAINEL DE GESTÃO DE COLABORADORES & EQUIPE
+// ==========================================
+function atualizarMetricasColaboradores() {
+    const total = estado.colaboradores.length;
+    const comFoto = estado.colaboradores.filter(c => !!c.foto_url).length;
+    const custom = estado.colaboradores.filter(c => !!c.perfil_editado).length;
+    const usuarios = estado.colaboradores.filter(c => !!c.usuario_portal).length;
+
+    const elTotal = $('colabMetricaTotal');
+    const elFoto = $('colabMetricaComFoto');
+    const elCustom = $('colabMetricaCustom');
+    const elUsers = $('colabMetricaUsuarios');
+
+    if (elTotal) elTotal.textContent = total;
+    if (elFoto) elFoto.textContent = comFoto;
+    if (elCustom) elCustom.textContent = custom;
+    if (elUsers) elUsers.textContent = usuarios;
+}
+
+function filtrarColaboradoresGrid() {
+    const termo = ($('filtroColabBusca')?.value || '').toLowerCase().trim();
+    const filial = $('filtroColabFilial')?.value || '';
+    const foto = $('filtroColabFoto')?.value || '';
+
+    const btnLimpar = $('btnLimparBuscaColab');
+    if (btnLimpar) {
+        if (termo) btnLimpar.classList.remove('hidden');
+        else btnLimpar.classList.add('hidden');
+    }
+
+    const filtrados = estado.colaboradores.filter(c => {
+        // Filtro Filial
+        if (filial && String(c.idfilial) !== String(filial)) {
+            return false;
+        }
+
+        // Filtro Status / Foto
+        if (foto === 'com_foto' && !c.foto_url) return false;
+        if (foto === 'sem_foto' && !!c.foto_url) return false;
+        if (foto === 'customizado' && !c.perfil_editado) return false;
+        if (foto === 'com_usuario' && !c.usuario_portal) return false;
+
+        // Filtro de Texto
+        if (termo) {
+            const matchNome = (c.nome || '').toLowerCase().includes(termo);
+            const matchNomeErp = (c.nome_erp || '').toLowerCase().includes(termo);
+            const matchCargo = (c.cargo || '').toLowerCase().includes(termo);
+            const matchSetor = (c.setor_custom || '').toLowerCase().includes(termo);
+            const matchCelula = (c.celula_custom || '').toLowerCase().includes(termo);
+            const matchUser = (c.usuario_portal || '').toLowerCase().includes(termo);
+            const matchId = String(c.idcliforemp).includes(termo);
+
+            if (!matchNome && !matchNomeErp && !matchCargo && !matchSetor && !matchCelula && !matchUser && !matchId) {
+                return false;
+            }
+        }
+
+        return true;
+    });
+
+    renderizarGridColaboradores(filtrados);
+}
+
+function limparFiltroBuscaColab() {
+    const input = $('filtroColabBusca');
+    if (input) {
+        input.value = '';
+        filtrarColaboradoresGrid();
+        input.focus();
+    }
+}
+
+function renderizarGridColaboradores(lista = null) {
+    atualizarMetricasColaboradores();
+
+    const grid = $('gridColaboradores');
+    const empty = $('emptyColaboradores');
+    const contador = $('colabContadorExibidos');
+
+    if (!grid) return;
+
+    const itens = lista !== null ? lista : estado.colaboradores;
+
+    if (contador) {
+        if (itens.length === estado.colaboradores.length) {
+            contador.textContent = `Exibindo todos os ${itens.length} colaboradores ativos`;
+        } else {
+            contador.textContent = `Exibindo ${itens.length} de ${estado.colaboradores.length} colaboradores`;
+        }
+    }
+
+    if (itens.length === 0) {
+        grid.innerHTML = '';
+        empty?.classList.remove('hidden');
+        return;
+    }
+
+    empty?.classList.add('hidden');
+
+    grid.innerHTML = itens.map(c => {
+        const nomes = (c.nome || 'Colaborador').trim().split(' ');
+        const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+        const urlFoto = formatarUrlFoto(c.foto_url);
+
+        const badgeFilial = `Filial ${c.idfilial}`;
+        const temCustom = !!c.perfil_editado;
+        const temUser = !!c.usuario_portal;
+
+        return `
+            <div class="ch-card p-4 flex flex-col justify-between hover:shadow-md transition group border border-slate-200/80 hover:border-emerald-300">
+                <div>
+                    <!-- TOPO DO CARD: AVATAR + BADGES -->
+                    <div class="flex items-start justify-between gap-3 mb-3">
+                        <div class="relative flex-none">
+                            <div class="w-14 h-14 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white font-black text-base flex items-center justify-center overflow-hidden shadow-xs border-2 border-white ring-2 ring-slate-100">
+                                ${urlFoto ? `
+                                    <img src="${urlFoto}?t=${Date.now()}" alt="${esc(c.nome)}" class="w-full h-full object-cover" onerror="this.classList.add('hidden'); this.nextElementSibling.classList.remove('hidden');">
+                                    <span class="hidden">${iniciais}</span>
+                                ` : `
+                                    <span>${iniciais}</span>
+                                `}
+                            </div>
+                            <!-- Botão de Câmera Rápida sobreposto -->
+                            <button type="button" onclick="abrirModalCapturaFoto(${c.idcliforemp})" title="Alterar ou Bater Foto" class="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-slate-900 hover:bg-emerald-600 text-white text-[10px] flex items-center justify-center transition shadow-md cursor-pointer border border-white">
+                                <i class="fa-solid fa-camera"></i>
+                            </button>
+                        </div>
+
+                        <div class="flex flex-col items-end gap-1 overflow-hidden">
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700">
+                                ${badgeFilial}
+                            </span>
+                            ${temUser ? `
+                                <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200" title="Usuário vinculado ao portal - fotos e dados sincronizados">
+                                    <i class="fa-solid fa-circle-check text-emerald-600 text-[9px]"></i> @${esc(c.usuario_portal)}
+                                </span>
+                            ` : `
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-medium bg-slate-100 text-slate-400" title="Sem usuário cadastrado no portal">
+                                    <i class="fa-regular fa-user text-[8px]"></i> Sem login
+                                </span>
+                            `}
+                            ${temCustom ? `
+                                <span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[9px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-200" title="Perfil customizado na área separada C.H.A.P.D">
+                                    <i class="fa-solid fa-user-gear text-[8px]"></i> Custom
+                                </span>
+                            ` : ''}
+                        </div>
+                    </div>
+
+                    <!-- DADOS DO COLABORADOR -->
+                    <div class="space-y-1">
+                        <div class="font-black text-slate-800 text-sm leading-snug line-clamp-2" title="${esc(c.nome)}">
+                            ${esc(c.nome)}
+                        </div>
+                        ${(c.nome_erp && c.nome_erp !== c.nome) ? `
+                            <div class="text-[10px] text-slate-400 font-semibold truncate" title="Nome original no ERP: ${esc(c.nome_erp)}">
+                                ERP: ${esc(c.nome_erp)}
+                            </div>
+                        ` : ''}
+                        <div class="text-xs text-slate-600 font-medium flex items-center gap-1.5 pt-0.5 truncate" title="${esc(c.cargo)}">
+                            <i class="fa-solid fa-briefcase text-emerald-600 text-[11px] flex-none"></i>
+                            <span class="truncate">${esc(c.cargo)}</span>
+                        </div>
+                        ${(c.setor_custom || c.celula_custom) ? `
+                            <div class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5 truncate">
+                                <i class="fa-solid fa-layer-group text-indigo-500 text-[10px] flex-none"></i>
+                                <span class="truncate">${esc([c.setor_custom, c.celula_custom].filter(Boolean).join(' • '))}</span>
+                            </div>
+                        ` : ''}
+                        ${c.data_admissao ? `
+                            <div class="text-[10px] text-slate-400 font-medium flex items-center gap-1.5">
+                                <i class="fa-solid fa-calendar text-slate-400 text-[10px] flex-none"></i>
+                                <span>Admissão: ${formatarDataBR(c.data_admissao)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+
+                <!-- AÇÕES DO CARD -->
+                <div class="pt-3 mt-3 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                    <button type="button" onclick="abrirModalEditarPerfilColab(${c.idcliforemp})" class="flex-1 py-1.5 px-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer" title="Editar dados e perfil na área separada">
+                        <i class="fa-solid fa-user-pen text-[10px]"></i> Editar
+                    </button>
+                    <button type="button" onclick="abrirModalCapturaFoto(${c.idcliforemp})" class="py-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 font-extrabold text-[11px] transition flex items-center justify-center gap-1 cursor-pointer" title="Tirar foto ou enviar arquivo">
+                        <i class="fa-solid fa-camera text-[10px]"></i> Foto
+                    </button>
+                    <button type="button" onclick="iniciarAvaliacaoDireta(${c.idcliforemp})" class="py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] transition flex items-center justify-center gap-1 shadow-xs cursor-pointer" title="Iniciar Avaliação C.H.A.P.D deste colaborador">
+                        <i class="fa-solid fa-clipboard-check text-[10px]"></i> Avaliar
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
 }
 
 function abrirModalManual() {

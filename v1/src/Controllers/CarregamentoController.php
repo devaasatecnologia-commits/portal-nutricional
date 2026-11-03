@@ -54,79 +54,126 @@ private function iniciarTransacaoSegura(): void
             : $this->json($response, ['error' => 'Acesso não autorizado ao módulo Carregamento'], 403);
     }
 
-    // =========================================================================
-    // GET /v1/carregamento/embarques
-    // =========================================================================
-    public function getEmbarques(Request $request, Response $response): Response
-    {
-        if ($denied = $this->validarAcesso($request, $response)) return $denied;
-
-        try {
-            $sql = "SELECT DISTINCT 
-                        ep.idembarque, 
-                        ep.observacao as rota, 
-                        ep.placa,
-                        COALESCE(s.status_atual, 'PENDENTE') as status_logistico,
-                        (SELECT COUNT(DISTINCT pi.iditem)
-                         FROM pedido_item pi
-                         JOIN pedido p ON p.idpedido = pi.idpedido
-                         WHERE p.idembarque = ep.idembarque
-                           AND pi.ativo = 'S'
-                           AND COALESCE((
-                               SELECT SUM(l.qt_separada) FROM pedido_item_logistica l
-                               WHERE l.idembarque = ep.idembarque AND l.iditem = pi.iditem
-                           ), 0) >= pi.qt - 0.0001
-                        ) as itens_prontos,
-                        (SELECT COUNT(DISTINCT pi.iditem)
-                         FROM pedido_item pi
-                         JOIN pedido p ON p.idpedido = pi.idpedido
-                         WHERE p.idembarque = ep.idembarque AND pi.ativo = 'S'
-                        ) as total_itens,
-                        (SELECT COUNT(DISTINCT pi.iditem)
-                         FROM pedido_item pi
-                         JOIN pedido p ON p.idpedido = pi.idpedido
-                         WHERE p.idembarque = ep.idembarque
-                           AND pi.ativo = 'S'
-                           AND COALESCE((
-                               SELECT SUM(c.qt_carregada) FROM pedido_item_carregamento c
-                               WHERE c.idembarque = ep.idembarque AND c.iditem = pi.iditem
-                           ), 0) >= pi.qt - 0.0001
-                        ) as itens_carregados
-                    FROM embarque_pedido ep
-                    LEFT JOIN embarque_status_log s ON s.idembarque = ep.idembarque
-                    WHERE ep.pex_conferido = 'N' 
-                      AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
-                      AND ep.pex_embarque_pronto = 'S'
-                      AND ep.idfilial IN (1,6)
-                      AND ep.data BETWEEN :dt_inicio AND :dt_fim
-                    ORDER BY ep.idembarque DESC";
-
-            $params = $request->getQueryParams();
-            $dtInicio = !empty($params['dt_inicio']) ? trim($params['dt_inicio']) : (!empty($params['data_inicio']) ? trim($params['data_inicio']) : date('Y-m-01'));
-            $dtFim = !empty($params['dt_fim']) ? trim($params['dt_fim']) : (!empty($params['data_fim']) ? trim($params['data_fim']) : date('Y-m-t'));
-
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute([
-                ':dt_inicio' => $dtInicio,
-                ':dt_fim' => $dtFim,
-            ]);
-            $data = $stmt->fetchAll();
-
-            foreach ($data as &$row) {
-                $row['itens_prontos'] = (int)($row['itens_prontos'] ?? 0);
-                $row['total_itens'] = (int)($row['total_itens'] ?? 0);
-                $row['itens_carregados'] = (int)($row['itens_carregados'] ?? 0);
-                $row['progresso_separacao'] = $row['total_itens'] > 0
-                    ? round(($row['itens_prontos'] / $row['total_itens']) * 100)
-                    : 0;
-            }
-
-            return $this->json($response, $data);
-
-        } catch (\Throwable $e) {
-            return $this->json($response, ['error' => $e->getMessage()], 500);
-        }
+// =========================================================================
+// GET /v1/carregamento/embarques
+// =========================================================================
+public function getEmbarques(Request $request, Response $response): Response
+{
+    if ($denied = $this->validarAcesso($request, $response)) {
+        return $denied;
     }
+
+    try {
+
+        $sql = "
+            SELECT DISTINCT
+                ep.idembarque,
+                ep.observacao AS rota,
+                ep.placa,
+                COALESCE(s.status_atual, 'PENDENTE') AS status_logistico,
+
+                (
+                    SELECT COUNT(DISTINCT pi.iditem)
+                    FROM pedido_item pi
+                    JOIN pedido p ON p.idpedido = pi.idpedido
+                    WHERE p.idembarque = ep.idembarque
+                      AND pi.ativo = 'S'
+                      AND COALESCE(
+                          (
+                              SELECT SUM(l.qt_separada)
+                              FROM pedido_item_logistica l
+                              WHERE l.idembarque = ep.idembarque
+                                AND l.iditem = pi.iditem
+                          ), 0
+                      ) >= pi.qt - 0.0001
+                ) AS itens_prontos,
+
+                (
+                    SELECT COUNT(DISTINCT pi.iditem)
+                    FROM pedido_item pi
+                    JOIN pedido p ON p.idpedido = pi.idpedido
+                    WHERE p.idembarque = ep.idembarque
+                      AND pi.ativo = 'S'
+                ) AS total_itens,
+
+                (
+                    SELECT COUNT(DISTINCT pi.iditem)
+                    FROM pedido_item pi
+                    JOIN pedido p ON p.idpedido = pi.idpedido
+                    WHERE p.idembarque = ep.idembarque
+                      AND pi.ativo = 'S'
+                      AND COALESCE(
+                          (
+                              SELECT SUM(c.qt_carregada)
+                              FROM pedido_item_carregamento c
+                              WHERE c.idembarque = ep.idembarque
+                                AND c.iditem = pi.iditem
+                          ), 0
+                      ) >= pi.qt - 0.0001
+                ) AS itens_carregados
+
+            FROM embarque_pedido ep
+
+            LEFT JOIN embarque_status_log s
+                ON s.idembarque = ep.idembarque
+
+            WHERE ep.pex_conferido = 'N'
+              AND (ep.gerou_nf = 'S' OR ep.idfilial = 6)
+              AND ep.pex_embarque_pronto = 'S'
+              AND ep.idfilial IN (1,6)
+              AND ep.data >= :dt_inicio::date
+              AND ep.data <= :dt_fim::date
+
+            ORDER BY ep.idembarque DESC
+        ";
+
+        $params = $request->getQueryParams();
+
+        $dtInicio = !empty($params['dt_inicio'])
+            ? trim($params['dt_inicio'])
+            : (
+                !empty($params['data_inicio'])
+                    ? trim($params['data_inicio'])
+                    : date('Y-m-d', strtotime('-35 days'))
+            );
+
+        $dtFim = !empty($params['dt_fim'])
+            ? trim($params['dt_fim'])
+            : (
+                !empty($params['data_fim'])
+                    ? trim($params['data_fim'])
+                    : date('Y-m-d', strtotime('+7 days'))
+            );
+
+        $stmt = $this->pdo->prepare($sql);
+
+        $stmt->execute([
+            ':dt_inicio' => $dtInicio,
+            ':dt_fim'    => $dtFim,
+        ]);
+
+        $data = $stmt->fetchAll();
+
+        foreach ($data as &$row) {
+            $row['itens_prontos'] = (int)($row['itens_prontos'] ?? 0);
+            $row['total_itens'] = (int)($row['total_itens'] ?? 0);
+            $row['itens_carregados'] = (int)($row['itens_carregados'] ?? 0);
+
+            $row['progresso_separacao'] = $row['total_itens'] > 0
+                ? round(($row['itens_prontos'] / $row['total_itens']) * 100)
+                : 0;
+        }
+
+        return $this->json($response, $data);
+
+    } catch (\Throwable $e) {
+        return $this->json(
+            $response,
+            ['error' => $e->getMessage()],
+            500
+        );
+    }
+}
 
        // =========================================================================
     // GET /v1/carregamento/itens/{idembarque}
@@ -1721,6 +1768,139 @@ public function finalizarEmbarque(Request $request, Response $response, array $a
 
         } catch (\Throwable $e) {
             return $this->json($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    // =========================================================================
+    // POST /v1/carregamento/ajustar-foto
+    // Permite ao operador bater/ajustar foto diretamente para um item pendente
+    // sem precisar estornar a subida
+    // =========================================================================
+    public function ajustarFotoItem(Request $request, Response $response): Response
+    {
+        if ($denied = $this->validarAcesso($request, $response)) return $denied;
+
+        $uploadedFiles = $request->getUploadedFiles();
+        if (empty($uploadedFiles['foto'])) {
+            return $this->json($response, ['error' => 'Nenhuma foto enviada'], 400);
+        }
+
+        $foto = $uploadedFiles['foto'];
+        if ($foto->getError() !== UPLOAD_ERR_OK) {
+            return $this->json($response, ['error' => 'Erro no upload da foto'], 500);
+        }
+
+        $params = $request->getParsedBody();
+        $idembarque = (int)($params['idembarque'] ?? 0);
+        $iditem = (int)($params['iditem'] ?? 0);
+        $idusuario = (int)(($request->getAttribute('user') ?? [])['idusuario'] ?? 0);
+        $doca = $params['doca'] ?? null;
+
+        if ($idembarque <= 0 || $iditem <= 0) {
+            return $this->json($response, ['error' => 'Embarque ou item inválido'], 400);
+        }
+
+        if (($foto->getSize() ?? 0) > 15 * 1024 * 1024) {
+            return $this->json($response, ['error' => 'A foto deve ter no máximo 15 MB'], 413);
+        }
+
+        // Validar MIME
+        $stream = $foto->getStream();
+        $conteudo = $stream->getContents();
+        $stream->rewind();
+        $mimeType = (new \finfo(FILEINFO_MIME_TYPE))->buffer($conteudo);
+        $extensoesPermitidas = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+        ];
+        if (!isset($extensoesPermitidas[$mimeType])) {
+            return $this->json($response, ['error' => 'Tipo não permitido. Use JPEG, PNG ou WEBP.'], 400);
+        }
+
+        $ext = $extensoesPermitidas[$mimeType];
+        $nomeArquivo = sprintf(
+            'emb_%d_item_%d_ajuste_%s.%s',
+            $idembarque,
+            $iditem,
+            date('Ymd_His') . '_' . substr((string)microtime(), 2, 4),
+            $ext
+        );
+
+        $caminhoRelativo = 'uploads/carregamento/' . $nomeArquivo;
+        $caminhoAbsoluto = __DIR__ . '/../../../uploads/carregamento/' . $nomeArquivo;
+
+        $diretorio = dirname($caminhoAbsoluto);
+        if (!is_dir($diretorio)) {
+            mkdir($diretorio, 0755, true);
+        }
+
+        try {
+            $this->iniciarTransacaoSegura();
+
+            // 1. Busca os carregamentos desse item no embarque
+            $stmtCargas = $this->pdo->prepare("
+                SELECT id FROM pedido_item_carregamento
+                WHERE idembarque = ? AND iditem = ?
+                FOR UPDATE
+            ");
+            $stmtCargas->execute([$idembarque, $iditem]);
+            $cargas = $stmtCargas->fetchAll(\PDO::FETCH_COLUMN);
+
+            if (empty($cargas)) {
+                $this->pdo->rollBack();
+                return $this->json($response, ['error' => 'Nenhum carregamento encontrado para este item no embarque'], 404);
+            }
+
+            // 2. Salva arquivo em disco
+            $foto->moveTo($caminhoAbsoluto);
+
+            // 3. Atualiza pedido_item_carregamento para este item
+            $stmtUpd = $this->pdo->prepare("
+                UPDATE pedido_item_carregamento
+                SET path_foto_conferencia = ?, updated_at = NOW()
+                WHERE idembarque = ? AND iditem = ?
+            ");
+            $stmtUpd->execute([$caminhoRelativo, $idembarque, $iditem]);
+
+            // 4. Atualiza também as subidas do item que estiverem sem foto
+            $stmtUpdSub = $this->pdo->prepare("
+                UPDATE carregamento_subidas
+                SET path_foto = ?
+                WHERE idembarque = ? AND iditem = ? AND (path_foto IS NULL OR path_foto = '')
+            ");
+            $stmtUpdSub->execute([$caminhoRelativo, $idembarque, $iditem]);
+
+            // 5. Registra no histórico de fotos
+            $idCarregamentoPrincipal = (int)$cargas[0];
+            $stmtInsFoto = $this->pdo->prepare("
+                INSERT INTO carregamento_fotos 
+                (idembarque, iditem, id_carregamento, caminho_foto, idusuario, doca, data_hora)
+                VALUES (?, ?, ?, ?, ?, ?, NOW())
+            ");
+            $stmtInsFoto->execute([
+                $idembarque,
+                $iditem,
+                $idCarregamentoPrincipal,
+                $caminhoRelativo,
+                $idusuario,
+                $doca
+            ]);
+
+            $this->pdo->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Foto ajustada com sucesso!',
+                'caminho_foto' => $caminhoRelativo,
+                'iditem' => $iditem
+            ]);
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            if (file_exists($caminhoAbsoluto)) {
+                @unlink($caminhoAbsoluto);
+            }
+            return $this->json($response, ['error' => 'Erro ao salvar foto: ' . $e->getMessage()], 500);
         }
     }
 }

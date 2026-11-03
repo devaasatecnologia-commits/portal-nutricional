@@ -107,6 +107,9 @@ require_once __DIR__ . '/../estrutura/header.php';
         <button type="button" id="tabBtnDashboard" onclick="alternarAba('dashboard')" class="ch-tab">
             <i class="fa-solid fa-chart-pie"></i> <span>Dashboard Analytics</span>
         </button>
+        <button type="button" id="tabBtnColaboradores" onclick="alternarAba('colaboradores')" class="ch-tab" data-tooltip="Gestão de Colaboradores: Edite cargos, setores, fotos de perfil em área separada e mantenha sincronizado com o usuário do Portal.">
+            <i class="fa-solid fa-users-gear"></i> <span>Colaboradores & Equipe</span>
+        </button>
         <button type="button" id="tabBtnMatriz" onclick="alternarAba('matriz')" class="ch-tab">
             <i class="fa-solid fa-table-cells"></i> <span>Matriz Anual (Jan a Dez)</span>
         </button>
@@ -187,21 +190,35 @@ require_once __DIR__ . '/../estrutura/header.php';
             <!-- Card Resumo do Colaborador Selecionado -->
             <div id="cardResumoColab" class="hidden mt-5 p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div class="flex items-center gap-3">
-                    <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white font-black text-base flex items-center justify-center shadow-md" id="colabAvatar">
-                        --
+                    <div class="relative w-14 h-14 rounded-2xl bg-emerald-600 text-white font-black text-base flex items-center justify-center shadow-md overflow-hidden flex-none border-2 border-white" id="colabAvatar">
+                        <img id="colabFotoImg" class="w-full h-full object-cover hidden" alt="Foto">
+                        <span id="colabIniciais">--</span>
                     </div>
                     <div>
-                        <div id="colabNome" class="font-black text-slate-800 text-sm sm:text-base">Nome do Colaborador</div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span id="colabNome" class="font-black text-slate-800 text-sm sm:text-base">Nome do Colaborador</span>
+                            <span id="badgePerfilCustom" class="hidden text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-200" title="Perfil possui dados customizados na área separada">Área C.H.A.P.D</span>
+                            <div class="flex items-center gap-1.5">
+                                <button type="button" onclick="abrirModalCapturaFoto()" class="p-1 px-2.5 rounded-lg bg-white hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[11px] font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" data-tip-title="Foto do Colaborador" data-tip-desc="Bata uma foto com a câmera ou envie um arquivo para vincular ao prontuário do colaborador." data-tip-badge="FOTO / AVATAR">
+                                    <i class="fa-solid fa-camera text-emerald-600"></i>
+                                    <span id="colabFotoBtnTexto">Foto</span>
+                                </button>
+                                <button type="button" onclick="abrirModalEditarPerfilColab()" class="p-1 px-2.5 rounded-lg bg-white hover:bg-indigo-50 text-indigo-800 border border-indigo-200 text-[11px] font-bold transition shadow-2xs flex items-center gap-1 cursor-pointer" data-tip-title="Editar Dados do Colaborador" data-tip-desc="Altere nome, cargo, setor, filial e observações do colaborador em área separada preservando o ERP via JOIN." data-tip-badge="ÁREA SEPARADA / ERP">
+                                    <i class="fa-solid fa-user-pen text-indigo-600"></i>
+                                    <span>Editar Dados</span>
+                                </button>
+                            </div>
+                        </div>
                         <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-semibold mt-0.5">
-                            <span id="colabCargo"><i class="fa-solid fa-briefcase text-emerald-600"></i> Cargo</span>
+                            <span id="colabCargo" data-tip-title="Cargo e Função" data-tip-desc="Função registrada no ERP oficial Nutricional." data-tip-badge="ERP"><i class="fa-solid fa-briefcase text-emerald-600"></i> Cargo</span>
                             <span>•</span>
-                            <span id="colabFilial"><i class="fa-solid fa-building text-emerald-600"></i> Filial</span>
+                            <span id="colabFilial" data-tip-title="Filial Operativa" data-tip-desc="Unidade de lotação do colaborador." data-tip-badge="FILIAL"><i class="fa-solid fa-building text-emerald-600"></i> Filial</span>
                             <span>•</span>
-                            <span id="colabAdmissao"><i class="fa-solid fa-calendar text-emerald-600"></i> Admissão</span>
+                            <span id="colabAdmissao" data-tip-title="Data de Admissão" data-tip-desc="Tempo de casa e histórico na empresa." data-tip-badge="ADMISSÃO"><i class="fa-solid fa-calendar text-emerald-600"></i> Admissão</span>
                         </div>
                     </div>
                 </div>
-                <div id="statusAvalAnterior" class="text-xs font-bold text-slate-500 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-100">
+                <div id="statusAvalAnterior" class="text-xs font-bold text-slate-500 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-100" data-tip-title="Status no Período" data-tip-desc="Indica se o colaborador já possui avaliação cadastrada para o mês e ano selecionados." data-tip-badge="STATUS">
                     Nenhuma avaliação neste mês
                 </div>
             </div>
@@ -328,10 +345,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </button>
             </div>
 
-            <!-- PLACAR DE PONTUAÇÃO & CLASSIFICAÇÃO -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <!-- PLACAR DE PONTUAÇÃO & CLASSIFICAÇÃO COM CONJUNTOS DUPLOS -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                 <!-- Pontos Totais -->
-                <div class="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md flex items-center justify-between">
+                <div class="p-5 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md flex items-center justify-between" data-tip-title="Pontuação Geral C.H.A.P.D" data-tip-desc="Soma total dos pontos atribuídos nas 14 questões. Escala máxima: 140 pontos." data-tip-badge="SCORE">
                     <div>
                         <div class="text-xs uppercase font-extrabold text-emerald-100 tracking-wider">Pontuação Total</div>
                         <div class="text-3xl font-black mt-1" id="resumoPontosTotal">0 / 140</div>
@@ -343,7 +360,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
 
                 <!-- Classificação por Pontos -->
-                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between">
+                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col justify-between" data-tip-title="Faixa de Desempenho" data-tip-desc="Classificação oficial conforme pontuação apurada na tabela corporativa." data-tip-badge="FAIXA">
                     <div>
                         <div class="text-xs uppercase font-extrabold text-slate-400 tracking-wider">Classificação Oficial</div>
                         <div class="text-lg font-black text-slate-800 mt-1" id="resumoClassificacao">--</div>
@@ -353,8 +370,21 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
+                <!-- Conjunto Duplo de Letras (A e B / C e D / E e F) -->
+                <div class="p-5 rounded-2xl bg-gradient-to-br from-indigo-50 to-violet-50 border border-indigo-100 flex flex-col justify-between" data-tip-title="Conjunto Duplo de Letras" data-tip-desc="Cálculo combinado em duplas: A&B (Soma Máxima / Alta Performance), C&D (Médio Potencial) e E&F (Pontos Críticos/PDI)." data-tip-badge="METODOLOGIA">
+                    <div>
+                        <div class="text-xs uppercase font-extrabold text-indigo-700 tracking-wider flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group"></i> Conjunto Duplo
+                        </div>
+                        <div class="text-2xl font-black text-indigo-950 mt-1" id="resumoConjuntoDuplo">A &amp; B</div>
+                    </div>
+                    <div id="resumoConjuntoBadge" class="mt-2 text-[11px] font-black inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-indigo-200/80 text-indigo-900 self-start">
+                        Alta Performance
+                    </div>
+                </div>
+
                 <!-- Conceito Letra Escolhida -->
-                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
+                <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between" data-tip-title="Conceito Oficial Atribuído" data-tip-desc="Letra individual selecionada pelo gestor dentro do conjunto de desempenho." data-tip-badge="CONCEITO">
                     <div>
                         <div class="text-xs uppercase font-extrabold text-slate-400 tracking-wider">Conceito Atribuído</div>
                         <div class="text-3xl font-black text-slate-800 mt-1" id="resumoLetraConceito">--</div>
@@ -368,39 +398,40 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- BARRAS DOS 5 PILARES C.H.A.P.D -->
             <div class="p-5 rounded-2xl bg-slate-50/70 border border-slate-100 mb-6">
-                <div class="text-xs font-black uppercase tracking-wider text-slate-500 mb-3 flex items-center gap-2">
-                    <i class="fa-solid fa-chart-simple text-emerald-600"></i> Desempenho por Pilar C.H.A.P.D
+                <div class="text-xs font-black uppercase tracking-wider text-slate-500 mb-3 flex items-center justify-between">
+                    <span class="flex items-center gap-2"><i class="fa-solid fa-chart-simple text-emerald-600"></i> Desempenho por Pilar C.H.A.P.D</span>
+                    <span class="text-[11px] text-slate-400 font-bold hidden sm:inline">Passe o mouse para ver critérios de cada pilar</span>
                 </div>
                 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                    <div class="p-3 bg-white rounded-xl border border-slate-100">
+                    <div class="p-3 bg-white rounded-xl border border-slate-100 cursor-help transition hover:border-sky-300 hover:shadow-xs" data-tip-title="Pilar C: Conhecimento" data-tip-desc="Domínio técnico dos processos, rotinas, sistemas ERP e normas da empresa. Peso: 4 questões (Máximo 40 pontos)." data-tip-badge="CONHECIMENTO (C)">
                         <div class="text-[0.68rem] font-bold text-sky-700">CONHECIMENTO (C)</div>
                         <div class="text-lg font-black text-slate-800 mt-0.5" id="pilarTotalC">0 pts</div>
                         <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
                             <div id="pilarBarraC" class="bg-sky-500 h-full rounded-full" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="p-3 bg-white rounded-xl border border-slate-100">
+                    <div class="p-3 bg-white rounded-xl border border-slate-100 cursor-help transition hover:border-purple-300 hover:shadow-xs" data-tip-title="Pilar H: Habilidade" data-tip-desc="Capacidade prática de executar tarefas com precisão, agilidade, destreza e qualidade. Peso: 2 questões (Máximo 20 pontos)." data-tip-badge="HABILIDADE (H)">
                         <div class="text-[0.68rem] font-bold text-purple-700">HABILIDADE (H)</div>
                         <div class="text-lg font-black text-slate-800 mt-0.5" id="pilarTotalH">0 pts</div>
                         <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
                             <div id="pilarBarraH" class="bg-purple-500 h-full rounded-full" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="p-3 bg-white rounded-xl border border-slate-100">
+                    <div class="p-3 bg-white rounded-xl border border-slate-100 cursor-help transition hover:border-amber-300 hover:shadow-xs" data-tip-title="Pilar A: Atitude" data-tip-desc="Iniciativa, proatividade, vontade de resolver, engajamento e trabalho em equipe. Peso: 3 questões (Máximo 30 pontos)." data-tip-badge="ATITUDE (A)">
                         <div class="text-[0.68rem] font-bold text-amber-700">ATITUDE (A)</div>
                         <div class="text-lg font-black text-slate-800 mt-0.5" id="pilarTotalA">0 pts</div>
                         <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
                             <div id="pilarBarraA" class="bg-amber-500 h-full rounded-full" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="p-3 bg-white rounded-xl border border-slate-100">
+                    <div class="p-3 bg-white rounded-xl border border-slate-100 cursor-help transition hover:border-emerald-300 hover:shadow-xs" data-tip-title="Pilar P: Postura" data-tip-desc="Inteligência emocional, relacionamento interpessoal, respeito, ética e postura profissional. Peso: 3 questões (Máximo 30 pontos)." data-tip-badge="POSTURA (P)">
                         <div class="text-[0.68rem] font-bold text-emerald-700">POSTURA (P)</div>
                         <div class="text-lg font-black text-slate-800 mt-0.5" id="pilarTotalP">0 pts</div>
                         <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
                             <div id="pilarBarraP" class="bg-emerald-500 h-full rounded-full" style="width: 0%"></div>
                         </div>
                     </div>
-                    <div class="p-3 bg-white rounded-xl border border-slate-100 col-span-2 sm:col-span-1">
+                    <div class="p-3 bg-white rounded-xl border border-slate-100 col-span-2 sm:col-span-1 cursor-help transition hover:border-rose-300 hover:shadow-xs" data-tip-title="Pilar D: Disciplina" data-tip-desc="Pontualidade, assiduidade, cumprimento de normas internas, uso de uniforme e segurança. Peso: 2 questões (Máximo 20 pontos)." data-tip-badge="DISCIPLINA (D)">
                         <div class="text-[0.68rem] font-bold text-rose-700">DISCIPLINA (D)</div>
                         <div class="text-lg font-black text-slate-800 mt-0.5" id="pilarTotalD">0 pts</div>
                         <div class="w-full bg-slate-100 h-1.5 rounded-full mt-1.5 overflow-hidden">
@@ -454,7 +485,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div id="painelDashboard" class="hidden space-y-4">
         <!-- 4 CARDS KPIS -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div class="ch-kpi bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 shadow-sm">
+            <div class="ch-kpi bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Total de Avaliações" data-tip-desc="Volume acumulado de avaliações C.H.A.P.D registradas conforme os filtros de ano, mês e filial selecionados." data-tip-badge="KPI OPERACIONAL">
                 <div class="flex items-center justify-between text-emerald-600 mb-1">
                     <span class="ch-label text-emerald-700">Total Avaliações</span>
                     <i class="fa-solid fa-users text-sm"></i>
@@ -463,7 +494,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="text-[0.7rem] text-slate-500 font-semibold mt-1">no período filtrado</div>
             </div>
 
-            <div class="ch-kpi bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 shadow-sm">
+            <div class="ch-kpi bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Média Geral de Pontos" data-tip-desc="Média aritmética das pontuações apuradas no período sobre o total máximo de 140 pontos por colaborador." data-tip-badge="DESEMPENHO MÉDIO">
                 <div class="flex items-center justify-between text-blue-600 mb-1">
                     <span class="ch-label text-blue-700">Média Geral</span>
                     <i class="fa-solid fa-chart-line text-sm"></i>
@@ -472,7 +503,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div id="kpiDashPercentual" class="text-[0.7rem] text-blue-600 font-bold mt-1">0% de aproveitamento</div>
             </div>
 
-            <div class="ch-kpi bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 shadow-sm">
+            <div class="ch-kpi bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Quadro de Destaques (> 125 pts)" data-tip-desc="Colaboradores de alta performance (Conjunto A & B) com nota superior a 125 pontos, elegíveis a reconhecimento e mérito." data-tip-badge="ALTA PERFORMANCE">
                 <div class="flex items-center justify-between text-purple-600 mb-1">
                     <span class="ch-label text-purple-700">Destaques (>125)</span>
                     <i class="fa-solid fa-star text-sm"></i>
@@ -481,7 +512,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="text-[0.7rem] text-slate-500 font-semibold mt-1">quadro de excelência</div>
             </div>
 
-            <div class="ch-kpi bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 shadow-sm">
+            <div class="ch-kpi bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Necessitam PDI (< 85 pts)" data-tip-desc="Colaboradores no Conjunto E & F com pontuação abaixo de 85 pontos, exigindo plano de desenvolvimento corretivo imediato." data-tip-badge="ATENÇÃO CRÍTICA">
                 <div class="flex items-center justify-between text-amber-600 mb-1">
                     <span class="ch-label text-amber-700">Necessitam PDI (<85)</span>
                     <i class="fa-solid fa-triangle-exclamation text-sm"></i>
@@ -547,6 +578,129 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div id="listaAtencaoColaboradores" class="space-y-2">
                     <div class="text-center py-6 text-slate-400 text-xs font-semibold">Nenhum colaborador em nível crítico no período.</div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- ABA: GESTÃO DE COLABORADORES & EQUIPE (ÁREA SEPARADA)-->
+    <!-- =================================================== -->
+    <div id="painelColaboradores" class="hidden space-y-4">
+        <!-- MÉTRICAS DE EQUIPE -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="ch-card p-4 flex items-center gap-3 border-l-4 border-l-emerald-500">
+                <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg flex-none">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Total Colaboradores</div>
+                    <div id="colabMetricaTotal" class="text-xl sm:text-2xl font-black text-slate-800">--</div>
+                </div>
+            </div>
+
+            <div class="ch-card p-4 flex items-center gap-3 border-l-4 border-l-teal-500">
+                <div class="w-11 h-11 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center text-lg flex-none">
+                    <i class="fa-solid fa-camera"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Com Foto Cadastrada</div>
+                    <div id="colabMetricaComFoto" class="text-xl sm:text-2xl font-black text-slate-800">--</div>
+                </div>
+            </div>
+
+            <div class="ch-card p-4 flex items-center gap-3 border-l-4 border-l-indigo-500">
+                <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg flex-none">
+                    <i class="fa-solid fa-user-pen"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Perfis Customizados</div>
+                    <div id="colabMetricaCustom" class="text-xl sm:text-2xl font-black text-slate-800">--</div>
+                </div>
+            </div>
+
+            <div class="ch-card p-4 flex items-center gap-3 border-l-4 border-l-blue-500">
+                <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-lg flex-none">
+                    <i class="fa-solid fa-id-badge"></i>
+                </div>
+                <div class="overflow-hidden">
+                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Usuários Portal</div>
+                    <div id="colabMetricaUsuarios" class="text-xl sm:text-2xl font-black text-slate-800">--</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CARD PRINCIPAL: FILTROS E GRID DE COLABORADORES -->
+        <div class="ch-card p-5">
+            <!-- Header do Card -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
+                <div>
+                    <h2 class="text-lg font-black text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-users-viewfinder text-indigo-600"></i> Prontuário de Colaboradores & Fotos
+                    </h2>
+                    <p class="text-xs text-slate-400 font-semibold mt-0.5">Gerencie fotos corporativas, edite cargos/setores na área customizada e sincronize com a conta do Portal</p>
+                </div>
+
+                <div class="flex items-center gap-2 text-xs">
+                    <span class="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 font-bold flex items-center gap-1.5">
+                        <i class="fa-solid fa-shield-halved text-emerald-600"></i> Integrado ao ERP via JOIN
+                    </span>
+                </div>
+            </div>
+
+            <!-- Barra de Filtros e Busca Rápida -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+                <!-- Busca Textual -->
+                <div class="lg:col-span-2 relative">
+                    <input type="text" id="filtroColabBusca" onkeyup="filtrarColaboradoresGrid()" placeholder="Buscar por nome, cargo, setor ou @usuário..." class="ch-input pl-10 pr-8 py-2.5 text-xs sm:text-sm">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <button type="button" onclick="limparFiltroBuscaColab()" id="btnLimparBuscaColab" class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs">
+                        <i class="fa-solid fa-circle-xmark"></i>
+                    </button>
+                </div>
+
+                <!-- Filtro Filial -->
+                <div>
+                    <select id="filtroColabFilial" onchange="filtrarColaboradoresGrid()" class="ch-input py-2.5 text-xs sm:text-sm">
+                        <option value="">Todas as Filiais</option>
+                        <option value="1">Matriz 1 (SC)</option>
+                        <option value="6">Filial 6 (PR)</option>
+                        <option value="2">Filial 2</option>
+                        <option value="3">Filial 3</option>
+                        <option value="4">Filial 4</option>
+                        <option value="5">Filial 5</option>
+                    </select>
+                </div>
+
+                <!-- Filtro Foto / Status -->
+                <div>
+                    <select id="filtroColabFoto" onchange="filtrarColaboradoresGrid()" class="ch-input py-2.5 text-xs sm:text-sm">
+                        <option value="">Todas as Fotos</option>
+                        <option value="com_foto">Com Foto Cadastrada</option>
+                        <option value="sem_foto">Sem Foto</option>
+                        <option value="customizado">Apenas Perfis Editados</option>
+                        <option value="com_usuario">Com Usuário Portal</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Contador de resultados -->
+            <div class="flex items-center justify-between text-xs text-slate-500 font-semibold mb-3 px-1">
+                <span id="colabContadorExibidos">Exibindo todos os colaboradores</span>
+                <span class="text-[11px] text-slate-400">Clique no ícone de câmera para foto rápida ou em Editar para ajustar o perfil</span>
+            </div>
+
+            <!-- GRID RESPONSIVO DE CARDS DE COLABORADORES -->
+            <div id="gridColaboradores" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                <!-- JS preenche dinamicamente -->
+            </div>
+
+            <!-- EMPTY STATE QUANDO NENHUM COLABORADOR É ENCONTRADO -->
+            <div id="emptyColaboradores" class="hidden py-12 text-center">
+                <div class="w-16 h-16 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center text-2xl mx-auto mb-3">
+                    <i class="fa-solid fa-user-slash"></i>
+                </div>
+                <h4 class="text-sm font-bold text-slate-700">Nenhum colaborador encontrado</h4>
+                <p class="text-xs text-slate-400 mt-1">Tente ajustar o termo de pesquisa ou os filtros selecionados.</p>
             </div>
         </div>
     </div>
@@ -735,29 +889,37 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                     </div>
 
-                    <!-- Dados Cadastrais -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                        <div>
-                            <span class="text-slate-400 font-bold block">COLABORADOR:</span>
-                            <span class="font-black text-slate-900" id="fichaColaborador">--</span>
+                    <!-- Dados Cadastrais com Foto do Colaborador -->
+                    <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+                        <div class="flex-none">
+                            <div class="w-16 h-20 sm:w-20 sm:h-24 rounded-xl border border-slate-300 bg-white shadow-xs overflow-hidden flex items-center justify-center" id="fichaFotoContainer">
+                                <img id="fichaColabFoto" class="w-full h-full object-cover hidden" alt="Foto Colaborador">
+                                <div id="fichaColabIniciais" class="w-full h-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-lg sm:text-xl">--</div>
+                            </div>
                         </div>
-                        <div>
-                            <span class="text-slate-400 font-bold block">CARGO / FUNÇÃO:</span>
-                            <span class="font-extrabold text-slate-800" id="fichaCargo">--</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-400 font-bold block">SETOR:</span>
-                            <span class="font-extrabold text-slate-800" id="fichaSetor">--</span>
-                        </div>
-                        <div>
-                            <span class="text-slate-400 font-bold block">CÉLULA DE TRABALHO:</span>
-                            <span class="font-extrabold text-slate-800" id="fichaCelula">--</span>
+                        <div class="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs w-full">
+                            <div>
+                                <span class="text-slate-400 font-bold block">COLABORADOR:</span>
+                                <span class="font-black text-slate-900" id="fichaColaborador">--</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 font-bold block">CARGO / FUNÇÃO:</span>
+                                <span class="font-extrabold text-slate-800" id="fichaCargo">--</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 font-bold block">SETOR:</span>
+                                <span class="font-extrabold text-slate-800" id="fichaSetor">--</span>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 font-bold block">CÉLULA DE TRABALHO:</span>
+                                <span class="font-extrabold text-slate-800" id="fichaCelula">--</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Resumo dos Resultados -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-center">
                         <div class="text-[0.68rem] uppercase font-bold text-slate-400">PONTUAÇÃO TOTAL</div>
                         <div class="text-2xl font-black text-slate-900 mt-0.5" id="fichaPontos">0 / 140</div>
@@ -767,8 +929,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <div class="text-[0.68rem] uppercase font-bold text-slate-400">CLASSIFICAÇÃO</div>
                         <div class="text-base font-black text-slate-900 mt-1" id="fichaClassificacao">--</div>
                     </div>
+                    <div class="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-center">
+                        <div class="text-[0.68rem] uppercase font-bold text-indigo-500">CONJUNTO DUPLO</div>
+                        <div class="text-xl font-black text-indigo-900 mt-1" id="fichaConjuntoDuplo">A &amp; B</div>
+                    </div>
                     <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-center">
-                        <div class="text-[0.68rem] uppercase font-bold text-slate-400">CONCEITO CARACTERÍSTICA</div>
+                        <div class="text-[0.68rem] uppercase font-bold text-slate-400">CONCEITO ATRIBUÍDO</div>
                         <div class="text-2xl font-black text-emerald-700 mt-0.5" id="fichaLetra">--</div>
                     </div>
                 </div>
@@ -974,6 +1140,214 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </form>
         </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- MODAL 4: FOTO DO COLABORADOR (CÂMERA OU ARQUIVO)    -->
+    <!-- =================================================== -->
+    <div id="modalFotoColab" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-white rounded-3xl max-w-lg w-full flex flex-col shadow-2xl overflow-hidden border border-slate-100">
+            <!-- Header Modal Foto -->
+            <div class="p-5 bg-gradient-to-r from-emerald-700 to-teal-700 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                        <i class="fa-solid fa-camera text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black">Foto do Colaborador</h3>
+                        <p class="text-xs text-emerald-100 font-semibold" id="modalFotoNomeColab">Selecione ou capture uma foto</p>
+                    </div>
+                </div>
+                <button type="button" onclick="fecharModalCapturaFoto()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Abas Câmera vs Enviar Arquivo -->
+            <div class="p-5 space-y-4">
+                <div class="flex rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600">
+                    <button type="button" id="abaFotoModoWebcam" onclick="alternarModoFoto('webcam')" class="flex-1 py-2 rounded-lg bg-white text-emerald-800 shadow-xs flex items-center justify-center gap-1.5 transition">
+                        <i class="fa-solid fa-video text-emerald-600"></i> Bater Foto (Câmera)
+                    </button>
+                    <button type="button" id="abaFotoModoArquivo" onclick="alternarModoFoto('arquivo')" class="flex-1 py-2 rounded-lg text-slate-600 flex items-center justify-center gap-1.5 transition">
+                        <i class="fa-solid fa-upload"></i> Enviar Arquivo
+                    </button>
+                </div>
+
+                <!-- Painel Modo 1: Webcam / Câmera Celular -->
+                <div id="painelFotoWebcam" class="space-y-3">
+                    <div class="relative w-full aspect-4/3 bg-slate-900 rounded-2xl overflow-hidden flex items-center justify-center border-2 border-slate-200">
+                        <video id="videoWebcam" autoplay playsinline muted class="w-full h-full object-cover"></video>
+                        <canvas id="canvasWebcam" class="hidden"></canvas>
+                        <img id="previewFotoCapturada" class="w-full h-full object-cover hidden" alt="Foto Capturada">
+                        
+                        <!-- Overlay quando câmera não iniciou -->
+                        <div id="overlayCameraInativa" class="absolute inset-0 bg-slate-900/80 flex flex-col items-center justify-center text-white p-4 text-center">
+                            <i class="fa-solid fa-video-slash text-3xl mb-2 text-slate-400"></i>
+                            <p class="text-xs font-bold">Câmera desligada</p>
+                            <button type="button" onclick="iniciarWebcam()" class="mt-3 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shadow-md">
+                                <i class="fa-solid fa-power-off"></i> Ligar Câmera
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-center gap-2">
+                        <button type="button" id="btnDispararFoto" onclick="capturarFotoWebcam()" class="ch-btn py-2.5 px-6 text-xs shadow-md">
+                            <i class="fa-solid fa-camera"></i> Bater Foto Agora
+                        </button>
+                        <button type="button" id="btnRepetirFoto" onclick="reiniciarCapturaWebcam()" class="hidden p-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-rotate-left"></i> Tirar Outra
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Painel Modo 2: Enviar Arquivo de Imagem -->
+                <div id="painelFotoArquivo" class="hidden space-y-3">
+                    <label for="inputArquivoFoto" class="border-2 border-dashed border-slate-300 hover:border-emerald-500 rounded-2xl p-6 flex flex-col items-center justify-center cursor-pointer bg-slate-50 hover:bg-emerald-50/40 transition">
+                        <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-400 mb-2"></i>
+                        <span class="text-xs font-bold text-slate-700 text-center">Clique aqui ou arraste uma foto para enviar</span>
+                        <span class="text-[10px] text-slate-400 mt-1">Formatos aceitos: JPG, PNG, WEBP (Máx. 10MB)</span>
+                        <input type="file" id="inputArquivoFoto" accept="image/jpeg,image/png,image/webp" onchange="aoSelecionarArquivoFoto(event)" class="hidden">
+                    </label>
+
+                    <div id="previewArquivoContainer" class="hidden flex items-center gap-3 p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                        <img id="previewFotoArquivo" class="w-14 h-14 rounded-xl object-cover border border-emerald-300 flex-none" alt="Preview">
+                        <div class="overflow-hidden">
+                            <div id="previewArquivoNome" class="text-xs font-bold text-slate-800 truncate">foto.jpg</div>
+                            <div id="previewArquivoTamanho" class="text-[10px] text-slate-500 font-semibold">-- KB</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer Modal Foto -->
+            <div class="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
+                <button type="button" onclick="fecharModalCapturaFoto()" class="p-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition">
+                    Cancelar
+                </button>
+                <button type="button" id="btnSalvarFotoUpload" onclick="salvarFotoColaborador()" class="ch-btn py-2.5 px-6 text-xs" disabled>
+                    <i class="fa-solid fa-check"></i> Salvar Foto no Prontuário
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- MODAL 5: EDITAR DADOS DO COLABORADOR (ÁREA SEPARADA) -->
+    <!-- =================================================== -->
+    <div id="modalEditarPerfilColab" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
+        <div class="bg-white rounded-3xl max-w-xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100">
+            <!-- Header Modal Perfil -->
+            <div class="p-5 bg-gradient-to-r from-indigo-700 to-purple-800 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                        <i class="fa-solid fa-user-gear text-lg"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-base font-black">Editar Perfil do Colaborador</h3>
+                        <p class="text-xs text-indigo-100 font-semibold" id="modalPerfilSubtitulo">Área Separada C.H.A.P.D • Integrada ao ERP via JOIN</p>
+                    </div>
+                </div>
+                <button type="button" onclick="fecharModalEditarPerfilColab()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Formulário de Edição -->
+            <form id="formEditarPerfilColab" onsubmit="salvarPerfilColaborador(event)" class="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
+                <input type="hidden" id="editPerfilIdcliforemp">
+
+                <!-- Alerta Informativo da Área Separada -->
+                <div class="p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-100 flex items-start gap-2.5">
+                    <i class="fa-solid fa-shield-halved text-indigo-600 mt-0.5 text-sm flex-none"></i>
+                    <div class="text-[11px] text-indigo-950 leading-relaxed">
+                        <b>Preservação da Integridade do ERP:</b> Os dados personalizados abaixo são salvos em tabela própria exclusiva do C.H.A.P.D e combinados via <code>LEFT JOIN</code>. O cadastro fiscal/RH nativo do ERP permanece 100% intacto.
+                    </div>
+                </div>
+
+                <!-- Nome / Apelido -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="ch-label mb-0">Nome de Exibição / Apelido</label>
+                        <span class="text-[10px] text-slate-400 font-semibold truncate max-w-[200px]" id="editPerfilNomeErpLabel">ERP: --</span>
+                    </div>
+                    <input type="text" id="editPerfilNome" placeholder="Ex: Nome usual ou como o colaborador é conhecido..." class="ch-input">
+                </div>
+
+                <!-- Cargo / Função -->
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="ch-label mb-0">Cargo / Função no C.H.A.P.D</label>
+                        <span class="text-[10px] text-slate-400 font-semibold truncate max-w-[200px]" id="editPerfilCargoErpLabel">ERP: --</span>
+                    </div>
+                    <input type="text" id="editPerfilCargo" placeholder="Ex: Assistente de Logística, Motorista Truck..." class="ch-input">
+                </div>
+
+                <!-- Setor e Célula de Trabalho -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="ch-label">Setor Operativo</label>
+                        <input type="text" id="editPerfilSetor" placeholder="Ex: Logística, Comercial, TI..." class="ch-input">
+                    </div>
+                    <div>
+                        <label class="ch-label">Célula de Trabalho</label>
+                        <input type="text" id="editPerfilCelula" placeholder="Ex: Expedição Noturna, Balcão SC..." class="ch-input">
+                    </div>
+                </div>
+
+                <!-- Filial e Data de Admissão -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="ch-label">Filial / Lotação</label>
+                        <select id="editPerfilFilial" class="ch-input">
+                            <option value="1">Matriz 1 (SC)</option>
+                            <option value="6">Filial 6 (PR)</option>
+                            <option value="2">Filial 2</option>
+                            <option value="3">Filial 3</option>
+                            <option value="4">Filial 4</option>
+                            <option value="5">Filial 5</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="ch-label">Data de Admissão</label>
+                        <input type="date" id="editPerfilAdmissao" class="ch-input">
+                    </div>
+                </div>
+
+                <!-- Observações do Perfil / Histórico -->
+                <div>
+                    <label class="ch-label">Observações Internas do Perfil / Observações do RH</label>
+                    <textarea id="editPerfilObservacoes" rows="2" placeholder="Informações relevantes sobre histórico ou evolução do colaborador..." class="ch-input text-xs"></textarea>
+                </div>
+
+                <!-- Footer do Formulário -->
+                <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-3 border-t border-slate-100">
+                    <button type="button" onclick="restaurarPadraoErpColaborador()" class="p-2 px-3.5 rounded-xl bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 font-bold text-xs transition flex items-center gap-1.5 self-start sm:self-auto cursor-pointer" title="Limpar personalizações e voltar ao padrão original do ERP">
+                        <i class="fa-solid fa-rotate-left"></i> Restaurar ERP
+                    </button>
+                    <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
+                        <button type="button" onclick="fecharModalEditarPerfilColab()" class="p-2.5 px-4 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition">
+                            Cancelar
+                        </button>
+                        <button type="submit" id="btnSalvarPerfilColab" class="ch-btn py-2.5 px-5 text-xs bg-indigo-600 hover:bg-indigo-700">
+                            <i class="fa-solid fa-check"></i> Salvar Alterações
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- =================================================== -->
+    <!-- TOOLTIP MODERNO FLUTUANTE (RICH HOVER POPOVER)       -->
+    <!-- =================================================== -->
+    <div id="modernTooltipChapd" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+        <div class="flex items-center justify-between gap-2 mb-1.5">
+            <span id="tooltipChapdBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">INFORMAÇÃO</span>
+            <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+        </div>
+        <div id="tooltipChapdTitle" class="font-black text-white text-xs mb-1">Título do Recurso</div>
+        <div id="tooltipChapdDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Explicação do item ao passar o mouse.</div>
     </div>
 
 </div>

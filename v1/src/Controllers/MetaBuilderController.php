@@ -589,7 +589,8 @@ public function alimentarMeta(Request $request, Response $response): Response
         if ($result['success']) {
             return $this->json($response, $result);
         } else {
-            return $this->json($response, $result, 500);
+            $code = (isset($result['error']) && (str_contains(strtolower($result['error']), 'conclu') || str_contains(strtolower($result['error']), 'não informada'))) ? 400 : 500;
+            return $this->json($response, $result, $code);
         }
     } catch (\Exception $e) {
         error_log('Erro em alimentarMeta: ' . $e->getMessage());
@@ -820,5 +821,199 @@ private function registrarLogAlimentacao($idMeta, $usuarioId, $valores)
     {
         $response->getBody()->write(json_encode($data, JSON_UNESCAPED_UNICODE));
         return $response->withStatus($status)->withHeader('Content-Type', 'application/json');
+    }
+
+    /**
+     * GET /v1/meta-builder/projecao-novo-ciclo
+     * Gera projeção inteligente para o novo ciclo com base no histórico real
+     */
+    public function getProjecaoNovoCiclo(Request $request, Response $response): Response
+    {
+        try {
+            // Obter as metas mais recentes do desafio (IDs 33, 42, 45)
+            $stmt = $this->pdo->query("
+                SELECT mi.*, tm.nome as tipo_nome 
+                FROM mkt_metas_instancias mi
+                JOIN mkt_tipos_meta tm ON tm.id = mi.id_tipo_meta
+                WHERE mi.id IN (33, 42, 45) OR mi.status = 'ativa'
+                ORDER BY mi.id DESC
+                LIMIT 3
+            ");
+            $metas = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $projecoes = [];
+            $novoInicio = date('Y-m-01');
+            $novoFim = date('Y-m-t', strtotime('+1 month'));
+
+            foreach ($metas as $m) {
+                $id = (int)$m['id'];
+                $titulo = $m['titulo'];
+                $vals = json_decode($m['valores'], true) ?? [];
+                
+                $stmtSoma = $this->pdo->prepare("SELECT COALESCE(SUM((valores->>'valor_alcancado')::float), 0) FROM mkt_alimentacao_registros WHERE id_meta_instancia = ?");
+                $stmtSoma->execute([$id]);
+                $realAlcancado = (float)$stmtSoma->fetchColumn();
+
+                $taxaAtual = (float)($vals['taxa_atual'] ?? 0);
+                $metaFinalAnterior = (float)($vals['meta_final'] ?? 0);
+
+                if (stripos($titulo, 'D1') !== false || stripos($titulo, 'Seguidores') !== false) {
+                    $novaTaxaInicial = (int)($taxaAtual + $realAlcancado);
+                    if ($novaTaxaInicial <= 0) $novaTaxaInicial = 4766;
+                    $crescimentoEsperado = 184; // Meta para chegar a 4.950 seguidores
+                    $novaMetaFinal = $novaTaxaInicial + $crescimentoEsperado;
+                    $novaMetaPct = round(($crescimentoEsperado / $novaTaxaInicial) * 100, 1);
+
+                    $projecoes[] = [
+                        'tipo_id' => (int)$m['id_tipo_meta'],
+                        'padrao' => 'D1',
+                        'titulo' => 'D1 - Crescimento de Seguidores',
+                        'descricao' => 'Aumentar a base de seguidores do Instagram com qualidade e engajamento orgânico.',
+                        'data_inicio' => $novoInicio,
+                        'data_fim' => $novoFim,
+                        'valores' => [
+                            'taxa_atual' => $novaTaxaInicial,
+                            'meta_percentual' => $novaMetaPct,
+                            'meta_final' => $novaMetaFinal,
+                            'valor_alcancado' => 0
+                        ],
+                        'benchmark' => [
+                            'ciclo_anterior_meta' => $metaFinalAnterior,
+                            'ciclo_anterior_real' => "+{$realAlcancado} seguidores",
+                            'base_atual' => $novaTaxaInicial,
+                            'objetivo_novo' => "+{$crescimentoEsperado} novos seguidores (Meta: " . number_format($novaMetaFinal, 0, ',', '.') . ")",
+                            'crescimento_sugerido' => "+{$novaMetaPct}%"
+                        ]
+                    ];
+                } elseif (stripos($titulo, 'D2') !== false || stripos($titulo, 'Interação') !== false) {
+                    $baseCalculo = $realAlcancado > 0 ? $realAlcancado : 3142;
+                    $metaSugerida = (int)(round(($baseCalculo * 1.18) / 50) * 50);
+
+                    $projecoes[] = [
+                        'tipo_id' => (int)$m['id_tipo_meta'],
+                        'padrao' => 'D2',
+                        'titulo' => 'D2 - Interação da Conta',
+                        'descricao' => 'Volume de curtidas, comentários, compartilhamentos, salvamentos e respostas aos stories.',
+                        'data_inicio' => $novoInicio,
+                        'data_fim' => $novoFim,
+                        'valores' => [
+                            'taxa_atual' => 0,
+                            'meta_percentual' => 18,
+                            'meta_final' => $metaSugerida,
+                            'valor_alcancado' => 0
+                        ],
+                        'benchmark' => [
+                            'ciclo_anterior_meta' => $metaFinalAnterior,
+                            'ciclo_anterior_real' => number_format($baseCalculo, 0, ',', '.'),
+                            'objetivo_novo' => number_format($metaSugerida, 0, ',', '.') . ' interações (+18%)',
+                            'crescimento_sugerido' => '+18.0%'
+                        ]
+                    ];
+                } elseif (stripos($titulo, 'D3') !== false || stripos($titulo, 'Visualização') !== false || stripos($titulo, 'Criação') !== false) {
+                    $baseCalculo = $realAlcancado > 0 ? $realAlcancado : 122629;
+                    $metaSugerida = (int)(round(($baseCalculo * 1.18) / 1000) * 1000);
+
+                    $projecoes[] = [
+                        'tipo_id' => (int)$m['id_tipo_meta'],
+                        'padrao' => 'D3',
+                        'titulo' => 'D3 - Criação (Visualizações)',
+                        'descricao' => 'Alcance e reproduções de vídeos, reels, stories e publicações institucionais e de produto.',
+                        'data_inicio' => $novoInicio,
+                        'data_fim' => $novoFim,
+                        'valores' => [
+                            'taxa_atual' => 0,
+                            'meta_percentual' => 18,
+                            'meta_final' => $metaSugerida,
+                            'valor_alcancado' => 0
+                        ],
+                        'benchmark' => [
+                            'ciclo_anterior_meta' => $metaFinalAnterior,
+                            'ciclo_anterior_real' => number_format($baseCalculo, 0, ',', '.'),
+                            'objetivo_novo' => number_format($metaSugerida, 0, ',', '.') . ' visualizações (+18%)',
+                            'crescimento_sugerido' => '+18.0%'
+                        ]
+                    ];
+                }
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'periodo_sugerido' => [
+                    'inicio' => $novoInicio,
+                    'fim' => $novoFim,
+                    'nome_ciclo' => 'Novembro / Dezembro ' . date('Y')
+                ],
+                'projecoes' => $projecoes
+            ]);
+        } catch (\Exception $e) {
+            error_log('Erro em getProjecaoNovoCiclo: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * POST /v1/meta-builder/aplicar-projecao-ciclo
+     * Conclui o ciclo anterior e cria as novas metas em lote
+     */
+    public function aplicarProjecaoCiclo(Request $request, Response $response): Response
+    {
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $metas = $input['metas'] ?? [];
+        $concluirAnteriores = $input['concluir_anteriores'] ?? true;
+        $usuarioId = $this->getUserIdFromToken($request);
+
+        if (empty($metas)) {
+            return $this->json($response, ['success' => false, 'error' => 'Nenhuma meta enviada para criação'], 400);
+        }
+
+        try {
+            $this->pdo->beginTransaction();
+
+            // 1. Concluir metas ativas que já venceram (ex: ciclo Set/Out)
+            if ($concluirAnteriores) {
+                $this->pdo->exec("
+                    UPDATE mkt_metas_instancias 
+                    SET status = 'concluida', updated_at = NOW() 
+                    WHERE status = 'ativa' AND data_fim <= CURRENT_DATE
+                ");
+            }
+
+            $criadas = [];
+
+            // 2. Inserir as novas metas
+            $stmtInsert = $this->pdo->prepare("
+                INSERT INTO mkt_metas_instancias (id_tipo_meta, titulo, descricao, data_inicio, data_fim, status, valores, created_by, created_at)
+                VALUES (:tipo, :titulo, :desc, :inicio, :fim, 'ativa', :valores::jsonb, :uid, NOW())
+                RETURNING id
+            ");
+
+            foreach ($metas as $m) {
+                $valoresJson = json_encode($m['valores'] ?? []);
+                $stmtInsert->execute([
+                    'tipo' => (int)($m['tipo_id'] ?? 1),
+                    'titulo' => trim($m['titulo'] ?? ''),
+                    'desc' => $m['descricao'] ?? '',
+                    'inicio' => $m['data_inicio'] ?? date('Y-m-01'),
+                    'fim' => $m['data_fim'] ?? date('Y-m-t', strtotime('+1 month')),
+                    'valores' => $valoresJson,
+                    'uid' => $usuarioId
+                ]);
+                $criadas[] = (int)$stmtInsert->fetchColumn();
+            }
+
+            $this->pdo->commit();
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => count($criadas) . ' novas metas do ciclo criadas com sucesso!',
+                'ids_criados' => $criadas
+            ]);
+        } catch (\Exception $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            error_log('Erro em aplicarProjecaoCiclo: ' . $e->getMessage());
+            return $this->json($response, ['success' => false, 'error' => $e->getMessage()], 500);
+        }
     }
 }
