@@ -330,10 +330,10 @@ x-transition.opacity>
         <div class="text-center">
             <div class="relative inline-block">
                 <div class="w-24 h-24 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden border-4 border-[#375a4b]/20 mx-auto shadow-lg">
-                    <img :src="perfilFotoPreview || perfilFoto" x-show="perfilFotoPreview || perfilFoto" 
-                    class="w-full h-full object-cover" style="display:none;"
-                    @load="$el.style.display='block'; $el.nextElementSibling.style.display='none';"
-                    @error="$el.style.display='none'; $el.nextElementSibling.style.display='flex';">
+                    <img :src="perfilFotoPreview || perfilFoto" x-show="Boolean(perfilFotoPreview || perfilFoto)" 
+                    class="w-full h-full object-cover"
+                    @load="$el.style.display='block'; if ($el.nextElementSibling) $el.nextElementSibling.style.display='none';"
+                    @error="$el.style.display='none'; if ($el.nextElementSibling) $el.nextElementSibling.style.display='flex';">
                     <span x-show="!perfilFotoPreview && !perfilFoto" x-text="userIniciais" 
                     class="text-3xl font-bold text-slate-400" style="display:flex;"></span>
                 </div>
@@ -444,7 +444,8 @@ function portalDashboard() {
             const userData = JSON.parse(localStorage.getItem('userData') || '{}');
             this.username = userData.username || 'Usuário';
             const foto = userData.foto_perfil;
-           this.fotoPerfil = foto ? (foto.startsWith('http') ? foto : `https://api.nutricionalbr.com/${foto}`) : null;
+            const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
+            this.fotoPerfil = foto ? (foto.startsWith('http') ? foto : `${window.location.origin}${baseApp}/${foto.replace(/^\/+/, '')}`) : null;
             this.userIniciais = this.username.substring(0, 2).toUpperCase();
             this.perfilUsername = this.username;
             const permissoes = userData.permissoes || [];
@@ -669,7 +670,12 @@ initScrollSpy() {
                     headers: { 'Authorization': 'Bearer ' + token } 
                 });
                 this.perfilDados = await resp.json();
-                this.perfilFoto = this.perfilDados?.foto_url || null;
+                if (this.perfilDados?.foto_url) {
+                    this.perfilFoto = this.perfilDados.foto_url;
+                } else if (this.perfilDados?.foto_perfil) {
+                    const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
+                    this.perfilFoto = this.perfilDados.foto_perfil.startsWith('http') ? this.perfilDados.foto_perfil : `${window.location.origin}${baseApp}/${this.perfilDados.foto_perfil.replace(/^\/+/, '')}`;
+                }
             } catch(e) {}
         },
         
@@ -690,23 +696,45 @@ initScrollSpy() {
             if (!this.perfilFotoFile) return true;
             const formData = new FormData();
             formData.append('foto', this.perfilFotoFile);
-            formData.append('idusuario', JSON.parse(localStorage.getItem('userData') || '{}').idusuario || 0);
-            const token = localStorage.getItem('authToken');
-           const resp = await fetch(`${API_URL}/admin/upload-foto`, { 
-                method: 'POST', 
-                headers: { 'Authorization': 'Bearer ' + token }, 
-                body: formData 
-            });
-            const data = await resp.json();
-            if (data.success) { 
-                const userData = JSON.parse(localStorage.getItem('userData') || '{}'); 
-                userData.foto_perfil = data.foto_url; 
-                localStorage.setItem('userData', JSON.stringify(userData)); 
-                this.fotoPerfil = data.foto_url; 
-                this.perfilFoto = data.foto_url; 
-                return true; 
+            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            const idusuario = userData.idusuario || userData.uid || 0;
+            const idcliforemp = userData.uid || userData.idcliforemp || 0;
+            formData.append('idusuario', idusuario);
+            formData.append('idcliforemp', idcliforemp);
+            const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+
+            let urlUpload = '';
+            if (window.API_URL) {
+                urlUpload = window.API_URL.replace(/\/$/, '') + '/admin/upload-foto';
+            } else {
+                const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
+                urlUpload = `${window.location.origin}${baseApp}/index.php?api_route=/admin/upload-foto`;
             }
-            return false;
+
+            try {
+                const resp = await fetch(urlUpload, { 
+                    method: 'POST', 
+                    headers: { 'Authorization': 'Bearer ' + token }, 
+                    body: formData 
+                });
+                const data = await resp.json();
+                if (data.success) { 
+                    userData.foto_perfil = data.caminho || data.foto_url; 
+                    localStorage.setItem('userData', JSON.stringify(userData)); 
+                    const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
+                    const cleanPath = (data.caminho || '').replace(/^\/+/, '');
+                    const resolvedUrl = data.foto_url || `${window.location.origin}${baseApp}/${cleanPath}`;
+                    this.fotoPerfil = resolvedUrl + '?t=' + Date.now(); 
+                    this.perfilFoto = this.fotoPerfil; 
+                    this.perfilFotoPreview = null;
+                    return true; 
+                }
+                console.error('Erro upload foto:', data.error);
+                return false;
+            } catch(e) {
+                console.error('Erro de conexão ao enviar foto:', e);
+                return false;
+            }
         },
         
         async salvarPerfil() {

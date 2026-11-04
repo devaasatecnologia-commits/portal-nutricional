@@ -1289,11 +1289,18 @@ class VendasDashboardController
         $out = [];
         foreach (self::REGIOES_MACRO as $sigla => $meta) {
             $d = $porSigla[$sigla] ?? null;
-            $val = $d ? round((float)$d['valor'], 2) : 0.0;
-            $peso = $d ? round((float)$d['peso'], 2) : 0.0;
-            $qtd = $d ? round((float)$d['quantidade'], 2) : 0.0;
-            $nfs = $d ? (int)$d['notas'] : 0;
-            $cli = $d ? (int)$d['clientes'] : 0;
+            if (!$d) {
+                continue;
+            }
+            $val = round((float)$d['valor'], 2);
+            $peso = round((float)$d['peso'], 2);
+            $qtd = round((float)$d['quantidade'], 2);
+            $nfs = (int)$d['notas'];
+            $cli = (int)$d['clientes'];
+
+            if ($val <= 0 && $peso <= 0 && $nfs <= 0 && $cli <= 0) {
+                continue;
+            }
 
             $out[] = [
                 'regiao' => $sigla,

@@ -14,7 +14,7 @@ const estoquePrevisaoApp = {
     totalPages: 0,
     chartDetalhe: null,
     debounceTimer: null,
-    modoExibicao: localStorage.getItem('ep_modo_exibicao') || 'peso', // 'peso' ou 'unidade'
+    modoExibicao: localStorage.getItem('ep_modo_exibicao') || 'unidade', // 'peso' ou 'unidade'
     kpiFiltroAtivo: null, // 'fisico', 'reservado', 'livre', 'previsao', 'futuro', 'critico'
     resumoData: null,
     produtosData: [],
@@ -35,6 +35,16 @@ const estoquePrevisaoApp = {
         const relativePath = normalized.substring(markerIndex + marker.length)
             .split('/').map((segment) => encodeURIComponent(segment)).join('/');
         return relativePath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath : null;
+    },
+
+    formatarDataBR(dataStr) {
+        if (!dataStr) return '-';
+        const s = String(dataStr).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            const [ano, mes, dia] = s.split('T')[0].split('-');
+            return `${dia}/${mes}/${ano}`;
+        }
+        return s;
     },
 
     formatNumber(n) {
@@ -61,7 +71,7 @@ const estoquePrevisaoApp = {
         } catch (e) {}
         this.atualizarBotoesModo();
         this.renderResumo();
-        this.renderTabela(this.produtosData);
+        // A lista de produtos é SEMPRE exibida por unidades (peças) como número principal
     },
 
     atualizarBotoesModo() {
@@ -127,71 +137,12 @@ const estoquePrevisaoApp = {
     async init() {
         this.iniciarRelogio();
         this.atualizarBotoesModo();
-        this.initNutriTooltips();
         this.bindEvents();
         await this.carregarFiliais();
         await this.carregarTudo();
     },
 
-    initNutriTooltips() {
-        let tooltipEl = document.getElementById('nutri-tooltip');
-        if (!tooltipEl) {
-            tooltipEl = document.createElement('div');
-            tooltipEl.id = 'nutri-tooltip';
-            document.body.appendChild(tooltipEl);
-        }
-
-        // Converte titles existentes para data-tooltip para evitar o balão nativo feio do navegador
-        const converterTitles = () => {
-            document.querySelectorAll('[title]').forEach((el) => {
-                const txt = el.getAttribute('title');
-                if (txt && !el.hasAttribute('data-tooltip')) {
-                    el.setAttribute('data-tooltip', txt);
-                    el.removeAttribute('title');
-                }
-            });
-        };
-        converterTitles();
-
-        document.addEventListener('mouseover', (e) => {
-            const target = e.target.closest('[data-tooltip]');
-            if (!target) return;
-            const text = target.getAttribute('data-tooltip');
-            if (!text) return;
-
-            tooltipEl.textContent = text;
-            tooltipEl.className = 'nutri-tooltip-visible arrow-bottom';
-
-            const rect = target.getBoundingClientRect();
-            const tipRect = tooltipEl.getBoundingClientRect();
-
-            let top = rect.top - tipRect.height - 8;
-            let arrowClass = 'arrow-bottom';
-
-            if (top < 10) {
-                // Se estiver muito perto do topo, posiciona logo abaixo do elemento
-                top = rect.bottom + 8;
-                arrowClass = 'arrow-top';
-            }
-
-            let left = rect.left + (rect.width / 2) - (tipRect.width / 2);
-            if (left < 10) left = 10;
-            if (left + tipRect.width > window.innerWidth - 10) {
-                left = window.innerWidth - tipRect.width - 10;
-            }
-
-            tooltipEl.style.top = `${top}px`;
-            tooltipEl.style.left = `${left}px`;
-            tooltipEl.className = `nutri-tooltip-visible ${arrowClass}`;
-        });
-
-        document.addEventListener('mouseout', (e) => {
-            const target = e.target.closest('[data-tooltip]');
-            if (target && tooltipEl) {
-                tooltipEl.classList.remove('nutri-tooltip-visible');
-            }
-        });
-    },
+    
 
     // ==========================================================================
     // CARDS RASTREÁVEIS (FILTRO INTERATIVO POR CLIQUE NO CARD)
@@ -280,7 +231,7 @@ const estoquePrevisaoApp = {
         if (selFilial) {
             selFilial.addEventListener('change', () => {
                 this.currentFilial = Number(selFilial.value);
-                this.atualizarBadgeUnificado();
+                this.atualizarBadgeFilial();
                 this.currentPage = 1;
                 this.carregarTudo();
             });
@@ -325,17 +276,17 @@ const estoquePrevisaoApp = {
         }
     },
 
-    atualizarBadgeUnificado() {
-        const badge = document.getElementById('badgeUnificado');
+    atualizarBadgeFilial() {
+        const badge = document.getElementById('badgeFilial');
         if (!badge) return;
         if (this.currentFilial === 0) {
-            badge.innerHTML = '<span class="pulse-dot"></span> Visão Unificada Matriz + PR';
+            badge.innerHTML = '<span class="pulse-dot"></span> Matriz + Filial PR (1 + 6)';
             badge.className = 'ep-chip bg-emerald-400/25 text-emerald-100 border border-emerald-300/30';
         } else if (this.currentFilial === 1) {
-            badge.innerHTML = '<i class="fa-solid fa-building mr-1"></i> Matriz 1 (Santa Catarina)';
+            badge.innerHTML = '<i class="fa-solid fa-building mr-1"></i> Matriz 1 (SC)';
             badge.className = 'ep-chip bg-white/20 text-white';
         } else {
-            badge.innerHTML = '<i class="fa-solid fa-truck-ramp-box mr-1"></i> Filial 6 (Paraná)';
+            badge.innerHTML = '<i class="fa-solid fa-truck-ramp-box mr-1"></i> Filial 6 (PR)';
             badge.className = 'ep-chip bg-amber-400/25 text-amber-100 border border-amber-300/30';
         }
     },
@@ -578,14 +529,14 @@ const estoquePrevisaoApp = {
                                 </div>
                             `}
                             <div class="min-w-0">
-                                <div class="font-extrabold text-slate-800 hover:text-emerald-700 transition leading-snug truncate max-w-sm" title="${this.escapeHtml(nome)}">
+                                <div class="font-extrabold text-slate-800 hover:text-emerald-700 transition leading-snug truncate max-w-sm">
                                     ${this.escapeHtml(nome)}
                                 </div>
                                 <div class="flex items-center flex-wrap gap-2 mt-0.5">
                                     <span class="text-[0.65rem] font-bold text-slate-400">Ref: <b class="text-slate-600">${this.escapeHtml(ref)}</b></span>
                                     <span class="text-[0.65rem] font-bold text-slate-400">ID: <b class="text-slate-600">${idItem}</b></span>
                                     ${pesoLiq > 0 ? `
-                                        <span class="text-[0.65rem] font-extrabold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200" title="Peso líquido da embalagem">
+                                        <span class="text-[0.65rem] font-extrabold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
                                             <i class="fa-solid fa-scale-balanced text-[9px] mr-0.5"></i>${pesoLiq.toLocaleString('pt-BR')} kg
                                         </span>
                                     ` : ''}
@@ -601,83 +552,56 @@ const estoquePrevisaoApp = {
 
                     <!-- Matriz 1 -->
                     <td class="py-3 px-2 text-right">
-                        ${isPeso ? `
-                            <span class="font-bold ${estMatriz > 0 ? 'text-slate-700' : 'text-slate-300'}">${estMatriz > 0 ? this.formatarPeso(pesoMatriz) : '--'}</span>
-                            ${estMatriz > 0 ? `<div class="text-[0.65rem] text-slate-400 font-semibold">${this.formatNumber(estMatriz)} un</div>` : ''}
-                        ` : `
-                            <span class="font-bold ${estMatriz > 0 ? 'text-slate-700' : 'text-slate-300'}">${this.formatNumber(estMatriz)}</span>
-                            ${estMatriz > 0 && pesoLiq > 0 ? `<div class="text-[0.65rem] text-slate-400 font-semibold">${this.formatarPeso(pesoMatriz)}</div>` : ''}
-                        `}
+                        <span class="font-bold ${estMatriz > 0 ? 'text-slate-700' : 'text-slate-300'}">${estMatriz > 0 ? this.formatNumber(estMatriz) : '--'}</span>
+                        ${estMatriz > 0 && pesoLiq > 0 ? `<div class="text-[0.65rem] text-slate-400 font-semibold">${this.formatarPeso(pesoMatriz)}</div>` : ''}
                     </td>
 
                     <!-- Filial PR -->
                     <td class="py-3 px-2 text-right">
-                        ${isPeso ? `
-                            <span class="font-bold ${estFilial > 0 ? 'text-emerald-700' : 'text-slate-300'}">${estFilial > 0 ? this.formatarPeso(pesoFilial) : '--'}</span>
-                            ${estFilial > 0 ? `<div class="text-[0.65rem] text-emerald-600/70 font-semibold">${this.formatNumber(estFilial)} un</div>` : ''}
-                        ` : `
-                            <span class="font-bold ${estFilial > 0 ? 'text-emerald-700' : 'text-slate-300'}">${this.formatNumber(estFilial)}</span>
-                            ${estFilial > 0 && pesoLiq > 0 ? `<div class="text-[0.65rem] text-emerald-600/70 font-semibold">${this.formatarPeso(pesoFilial)}</div>` : ''}
-                        `}
+                        <span class="font-bold ${estFilial > 0 ? 'text-emerald-700' : 'text-slate-300'}">${estFilial > 0 ? this.formatNumber(estFilial) : (estTotal > 0 ? '0' : '--')}</span>
+                        ${estFilial > 0 && pesoLiq > 0 ? `<div class="text-[0.65rem] text-emerald-600/70 font-semibold">${this.formatarPeso(pesoFilial)}</div>` : ''}
                     </td>
 
                     <!-- Total Físico -->
                     <td class="py-3 px-3 text-right">
-                        ${isPeso ? `
-                            <span class="font-black text-slate-800">${this.formatarPeso(pesoTotal)}</span>
-                            <div class="text-[0.65rem] text-slate-500 font-bold">${this.formatNumber(estTotal)} un</div>
-                        ` : `
-                            <span class="font-black text-slate-800">${this.formatNumber(estTotal)}</span>
-                            ${pesoLiq > 0 ? `<div class="text-[0.65rem] text-slate-500 font-bold">${this.formatarPeso(pesoTotal)}</div>` : ''}
-                        `}
+                        <span class="font-black text-slate-800">${this.formatNumber(estTotal)}</span>
+                        ${pesoLiq > 0 && estTotal > 0 ? `<div class="text-[0.65rem] text-slate-500 font-bold">${this.formatarPeso(pesoTotal)}</div>` : ''}
                     </td>
 
                     <!-- Carteira Reservada -->
                     <td class="py-3 px-3 text-right">
-                        ${isPeso ? `
-                            <span class="font-black ${cartReservado > 0 ? 'text-amber-600' : 'text-slate-300'}">${cartReservado > 0 ? this.formatarPeso(pesoReservado) : '0'}</span>
-                            ${cartReservado > 0 ? `<div class="text-[0.65rem] text-amber-600/80 font-bold">${this.formatNumber(cartReservado)} un</div>` : ''}
+                        ${cartReservado > 0 ? `
+                            <button type="button" onclick="event.stopPropagation(); estoquePrevisaoApp.abrirRastreioReservado(${idItem}, 0, '${this.escapeHtml(nome)}')" class="inline-flex flex-col items-end group/res cursor-pointer text-right" title="Clique para rastrear os pedidos em carteira">
+                                <span class="font-black text-amber-600 group-hover/res:text-amber-700 group-hover/res:underline flex items-center gap-1">
+                                    ${this.formatNumber(cartReservado)} <i class="fa-solid fa-arrow-up-right-from-square text-[8px] opacity-70"></i>
+                                </span>
+                                ${pesoLiq > 0 ? `<div class="text-[0.65rem] text-amber-600/80 font-bold">${this.formatarPeso(pesoReservado)}</div>` : ''}
+                            </button>
                         ` : `
-                            <span class="font-black ${cartReservado > 0 ? 'text-amber-600' : 'text-slate-300'}">${this.formatNumber(cartReservado)}</span>
-                            ${cartReservado > 0 && pesoLiq > 0 ? `<div class="text-[0.65rem] text-amber-600/80 font-bold">${this.formatarPeso(pesoReservado)}</div>` : ''}
+                            <span class="font-black text-slate-300">0</span>
                         `}
                     </td>
 
                     <!-- Livre Disponível -->
                     <td class="py-3 px-3 text-right">
-                        ${isPeso ? `
-                            <span class="font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'}">${this.formatarPeso(pesoLivre)}</span>
-                            <div class="text-[0.65rem] ${estLivre > 0 ? 'text-emerald-600/80' : 'text-rose-500'} font-bold">${this.formatNumber(estLivre)} un</div>
-                        ` : `
-                            <span class="font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'}">${this.formatNumber(estLivre)}</span>
-                            ${pesoLiq > 0 ? `<div class="text-[0.65rem] ${estLivre > 0 ? 'text-emerald-600/80' : 'text-rose-500'} font-bold">${this.formatarPeso(pesoLivre)}</div>` : ''}
-                        `}
+                        <span class="font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'}">${this.formatNumber(estLivre)}</span>
+                        ${pesoLiq > 0 ? `<div class="text-[0.65rem] ${estLivre > 0 ? 'text-emerald-600/80' : 'text-rose-500'} font-bold">${this.formatarPeso(pesoLivre)}</div>` : ''}
                     </td>
 
                     <!-- A Chegar (OCs Matriz + Filial) -->
                     <td class="py-3 px-3 text-right">
-                        ${prevChegada > 0 ? (isPeso ? `
-                            <span class="ep-chip bg-blue-50 text-blue-700 border border-blue-200 font-black">
-                                <i class="fa-solid fa-truck-fast text-[0.65rem]"></i> ${this.formatarPeso(pesoPrev)}
-                            </span>
-                            <div class="text-[0.65rem] text-blue-600/80 font-bold mt-0.5">${this.formatNumber(prevChegada)} un</div>
-                        ` : `
+                        ${prevChegada > 0 ? `
                             <span class="ep-chip bg-blue-50 text-blue-700 border border-blue-200 font-black">
                                 <i class="fa-solid fa-truck-fast text-[0.65rem]"></i> ${this.formatNumber(prevChegada)}
                             </span>
                             ${pesoLiq > 0 ? `<div class="text-[0.65rem] text-blue-600/80 font-bold mt-0.5">${this.formatarPeso(pesoPrev)}</div>` : ''}
-                        `) : '<span class="text-slate-300 font-bold">--</span>'}
+                        ` : '<span class="text-slate-300 font-bold">--</span>'}
                     </td>
 
                     <!-- Estoque Futuro -->
                     <td class="py-3 px-3 text-right">
-                        ${isPeso ? `
-                            <span class="font-black ${estFuturo > 0 ? 'text-purple-700' : 'text-slate-400'}">${this.formatarPeso(pesoFuturo)}</span>
-                            <div class="text-[0.65rem] text-purple-600/80 font-bold">${this.formatNumber(estFuturo)} un</div>
-                        ` : `
-                            <span class="font-black ${estFuturo > 0 ? 'text-purple-700' : 'text-slate-400'}">${this.formatNumber(estFuturo)}</span>
-                            ${pesoLiq > 0 ? `<div class="text-[0.65rem] text-purple-600/80 font-bold">${this.formatarPeso(pesoFuturo)}</div>` : ''}
-                        `}
+                        <span class="font-black ${estFuturo > 0 ? 'text-purple-700' : 'text-slate-400'}">${this.formatNumber(estFuturo)}</span>
+                        ${pesoLiq > 0 && estFuturo > 0 ? `<div class="text-[0.65rem] text-purple-600/80 font-bold">${this.formatarPeso(pesoFuturo)}</div>` : ''}
                     </td>
 
                     <!-- Status -->
@@ -765,7 +689,7 @@ const estoquePrevisaoApp = {
         if (sFilial) sFilial.value = '0';
 
         this.atualizarDestaqueCardsKpi();
-        this.atualizarBadgeUnificado();
+        this.atualizarBadgeFilial();
         this.carregarTudo();
     },
 
@@ -835,7 +759,7 @@ const estoquePrevisaoApp = {
                                             </td>
                                             <td class="py-2 px-2.5 font-bold text-slate-700 truncate max-w-xs">${this.escapeHtml(oc.fornecedor || oc['Fornecedor'])}</td>
                                             <td class="py-2 px-2.5 text-right font-black text-blue-700">${this.formatNumber(oc.quantidade_saldo || oc['Quantidade Saldo'])}</td>
-                                            <td class="py-2 px-2.5 text-center font-bold text-slate-600">${oc.data_prevista || oc['Data Prevista'] || '-'}</td>
+                                            <td class="py-2 px-2.5 text-center font-bold text-slate-600">${this.formatarDataBR(oc.data_prevista || oc['Data Prevista'])}</td>
                                             <td class="py-2 px-2.5 text-center">
                                                 <span class="ep-chip border ${corPrazo}">${txtPrazo}</span>
                                             </td>
@@ -882,33 +806,39 @@ const estoquePrevisaoApp = {
                             </div>
                         </div>
 
-                        <!-- GRID COMPARATIVO DE SALDOS -->
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                            <!-- Matriz 1 -->
-                            <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200">
-                                <div class="text-[0.65rem] font-black uppercase text-slate-500 tracking-wider mb-1">Matriz 1 (SC)</div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_matriz)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_matriz)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_matriz)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-slate-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_matriz)}</b></div>
+                        <!-- GRID COMPARATIVO DE SALDOS (MATRIZ 1 E TOTAL 1 + 6) -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <!-- Matriz 1 (SC) -->
+                            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
+                                <div class="text-[0.7rem] font-black uppercase text-slate-600 tracking-wider mb-2 flex items-center justify-between">
+                                    <span><i class="fa-solid fa-building mr-1 text-slate-400"></i> Matriz 1 (SC)</span>
+                                </div>
+                                <div class="flex justify-between text-xs py-1"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_matriz)} un</b></div>
+                                <div class="flex justify-between text-xs py-1 items-center">
+                                    <span>Reservado (Pedidos):</span>
+                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 1, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer" title="Rastrear pedidos reservados na Matriz 1">
+                                        ${this.formatNumber(item.reservado_matriz)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                                    </button>
+                                </div>
+                                <div class="flex justify-between text-xs py-1"><span>Livre para Venda:</span><b class="text-emerald-700 font-black">${this.formatNumber(item.livre_matriz)} un</b></div>
+                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-slate-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_matriz)} un</b></div>
                             </div>
 
-                            <!-- Filial 6 PR -->
-                            <div class="p-3 rounded-2xl bg-emerald-50/60 border border-emerald-200">
-                                <div class="text-[0.65rem] font-black uppercase text-emerald-700 tracking-wider mb-1">Filial 6 (PR)</div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_filial)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_filial)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_filial)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-emerald-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_filial)}</b></div>
-                            </div>
-
-                            <!-- Total Consolidado -->
-                            <div class="p-3 rounded-2xl bg-purple-50/60 border border-purple-200">
-                                <div class="text-[0.65rem] font-black uppercase text-purple-700 tracking-wider mb-1">Consolidado Total (1 + 6)</div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Total Físico:</span><b class="text-slate-900">${this.formatNumber(item.estoque_total)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Total Reservado:</span><b class="text-amber-600">${this.formatNumber(item.reservado_total)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5"><span>Total Livre:</span><b class="text-emerald-700">${this.formatNumber(item.livre_total)}</b></div>
-                                <div class="flex justify-between text-xs py-0.5 pt-1 border-t border-purple-200"><span class="font-extrabold text-purple-900">Estoque Futuro:</span><b class="text-purple-700 text-sm">${this.formatNumber(item.estoque_futuro)}</b></div>
+                            <!-- Matriz + Filial PR (1 + 6) -->
+                            <div class="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50/60 to-teal-50/60 border border-emerald-200">
+                                <div class="text-[0.7rem] font-black uppercase text-emerald-800 tracking-wider mb-2 flex items-center justify-between">
+                                    <span><i class="fa-solid fa-cubes mr-1 text-emerald-600"></i> Matriz + Filial PR (1 + 6)</span>
+                                    <span class="text-[0.65rem] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">Total</span>
+                                </div>
+                                <div class="flex justify-between text-xs py-1"><span>Total Físico:</span><b class="text-slate-900">${this.formatNumber(item.estoque_total)} un</b></div>
+                                <div class="flex justify-between text-xs py-1 items-center">
+                                    <span>Total Reservado:</span>
+                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 0, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer" title="Rastrear todos os pedidos reservados (1 + 6)">
+                                        ${this.formatNumber(item.reservado_total)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                                    </button>
+                                </div>
+                                <div class="flex justify-between text-xs py-1"><span>Total Livre:</span><b class="text-emerald-700 font-black">${this.formatNumber(item.livre_total)} un</b></div>
+                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-emerald-200"><span class="font-extrabold text-emerald-950">Estoque Futuro:</span><b class="text-emerald-800 font-black text-sm">${this.formatNumber(item.estoque_futuro)} un</b></div>
                             </div>
                         </div>
 
@@ -1028,10 +958,248 @@ const estoquePrevisaoApp = {
                 customClass: { popup: 'rounded-3xl' }
             });
         }
+    },
+
+    /**
+     * Rastreia os pedidos em carteira que compõem o saldo reservado do produto,
+     * respeitando a permissão de filial do usuário.
+     */
+    async abrirRastreioReservado(iditem, filial = 0, nomeItem = '') {
+        Swal.fire({
+            title: 'Carregando Pedidos Reservados...',
+            text: 'Buscando carteira de pedidos em aberto...',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+            customClass: { popup: 'rounded-3xl' }
+        });
+
+        try {
+            const res = await this.api(`item/${iditem}/pedidos-reservados?filial=${filial}`, null, 'GET');
+            if (!res.success) {
+                if (res.sem_permissao) {
+                    Swal.fire({
+                        icon: 'warning',
+                        title: 'Acesso Restrito',
+                        text: res.error || 'Você não possui permissão para visualizar os pedidos desta filial.',
+                        confirmButtonText: 'Entendi',
+                        confirmButtonColor: '#059669',
+                        customClass: { popup: 'rounded-3xl' }
+                    });
+                    return;
+                }
+                throw new Error(res.error || 'Erro ao buscar pedidos reservados');
+            }
+
+            const data = res.data;
+            const pedidos = data.pedidos || [];
+            const item = data.item || {};
+            const tituloFilial = filial === 1 ? 'Matriz 1 (SC)' : (filial === 6 ? 'Filial 6 (PR)' : 'Matriz + Filial PR (1 + 6)');
+
+            if (!pedidos.length) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Nenhum Pedido em Aberto',
+                    text: `Não foram encontrados pedidos pendentes de faturamento para o item ${item.referencia || ''} nesta filial.`,
+                    confirmButtonText: 'Fechar',
+                    confirmButtonColor: '#059669',
+                    customClass: { popup: 'rounded-3xl' }
+                });
+                return;
+            }
+
+            const htmlTabela = `
+                <div class="text-left space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                        <div>
+                            <span class="text-[10px] font-black uppercase text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                <i class="fa-solid fa-cart-shopping mr-1"></i> CARTEIRA RESERVADA · ${tituloFilial}
+                            </span>
+                            <h4 class="font-black text-slate-800 text-sm mt-1">${this.escapeHtml(item.nome || nomeItem)}</h4>
+                            <div class="text-[11px] text-slate-500 font-semibold">Ref: <b>${item.referencia || '-'}</b> · ID: <b>${item.id || iditem}</b></div>
+                        </div>
+                    </div>
+
+                    <div class="overflow-x-auto max-h-72 overflow-y-auto rounded-xl border border-slate-200">
+                        <table class="w-full text-left text-xs min-w-[760px] border-collapse">
+                            <thead class="bg-slate-100 text-[0.68rem] uppercase tracking-wider text-slate-600 font-black sticky top-0 shadow-xs">
+                                <tr>
+                                    <th class="py-2.5 px-3 whitespace-nowrap">Pedido</th>
+                                    <th class="py-2.5 px-2.5 whitespace-nowrap">Filial</th>
+                                    <th class="py-2.5 px-2.5 whitespace-nowrap">Data</th>
+                                    <th class="py-2.5 px-3">Cliente</th>
+                                    <th class="py-2.5 px-3">Representante</th>
+                                    <th class="py-2.5 px-3 text-right whitespace-nowrap">Saldo Res.</th>
+                                    <th class="py-2.5 px-3 text-right whitespace-nowrap">Peso Res.</th>
+                                    <th class="py-2.5 px-2.5 text-center whitespace-nowrap">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                ${pedidos.map(p => `
+                                    <tr class="hover:bg-amber-50/40 transition-colors">
+                                        <td class="py-2 px-3 font-mono font-black text-amber-700 whitespace-nowrap">#${p.idpedido}</td>
+                                        <td class="py-2 px-2.5 whitespace-nowrap">
+                                            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold ${p.idfilial === 1 ? 'bg-slate-100 text-slate-700 border border-slate-200' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}">
+                                                ${p.filial_nome}
+                                            </span>
+                                        </td>
+                                        <td class="py-2 px-2.5 text-slate-600 text-[11px] whitespace-nowrap">${p.data_fmt}</td>
+                                        <td class="py-2 px-3 font-bold text-slate-800 truncate max-w-[220px]" title="${this.escapeHtml(p.cliente)}">${this.escapeHtml(p.cliente)}</td>
+                                        <td class="py-2 px-3 text-slate-600 truncate max-w-[150px] text-[11px]" title="${this.escapeHtml(p.representante)}">${this.escapeHtml(p.representante)}</td>
+                                        <td class="py-2 px-3 text-right font-black text-slate-900 whitespace-nowrap">${this.formatNumber(p.qtd_reservada)} un</td>
+                                        <td class="py-2 px-3 text-right font-bold text-amber-700 whitespace-nowrap">${this.formatarPeso(p.peso_reservado)}</td>
+                                        <td class="py-2 px-2.5 text-center whitespace-nowrap">
+                                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${p.status_id === 4 ? 'bg-sky-50 text-sky-700 border border-sky-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}">
+                                                ${p.status_id === 4 ? 'Parcial' : 'Aberto'}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                        <span class="text-slate-500 font-bold">Total: <b>${pedidos.length}</b> pedido(s) em carteira</span>
+                        <div class="flex items-center gap-3">
+                            <span class="text-slate-700 font-extrabold">Qtd: <b class="text-amber-700">${this.formatNumber(data.total_qtd_reservada)} un</b></span>
+                            <span class="text-slate-400">·</span>
+                            <span class="text-slate-700 font-extrabold">Peso: <b class="text-amber-700">${this.formatarPeso(data.total_peso_reservado)}</b></span>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            Swal.fire({
+                html: htmlTabela,
+                width: '980px',
+                showConfirmButton: true,
+                confirmButtonText: 'Voltar ao Raio-X do Produto',
+                confirmButtonColor: '#059669',
+                showCloseButton: true,
+                customClass: { popup: 'rounded-3xl p-5 max-w-[96vw]' }
+            }).then(() => {
+                this.abrirModalDetalhe(iditem);
+            });
+        } catch (e) {
+            Swal.fire({
+                icon: 'warning',
+                title: 'Aviso de Acesso',
+                text: e.message || 'Não foi possível consultar os pedidos reservados.',
+                confirmButtonColor: '#059669',
+                customClass: { popup: 'rounded-3xl' }
+            });
+        }
     }
 };
+
+// Vinculação explícita no escopo global para handlers inline de HTML (onclick)
+window.estoquePrevisaoApp = estoquePrevisaoApp;
 
 // Auto inicialização
 window.addEventListener('DOMContentLoaded', () => {
     estoquePrevisaoApp.init();
+});
+
+
+/**
+ * Sistema Universal de Tooltip Moderno Flutuante para Estoque & Previsão
+ */
+function initModernTooltipsEstoque() {
+    const tooltipEl = document.getElementById('modernTooltipEstoque');
+    const badgeEl = document.getElementById('tooltipEstoqueBadge');
+    const titleEl = document.getElementById('tooltipEstoqueTitle');
+    const descEl = document.getElementById('tooltipEstoqueDesc');
+
+    if (!tooltipEl || !titleEl || !descEl) return;
+    if (window.__tooltipsEstoqueInitialized) return;
+    window.__tooltipsEstoqueInitialized = true;
+
+    let targetAtivo = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tooltip]');
+        if (!el) return;
+
+        targetAtivo = el;
+        const rawContent = el.getAttribute('data-tooltip');
+        if (!rawContent) return;
+
+        let titulo = 'Informação';
+        let descricao = rawContent;
+        let badge = 'ESTOQUE';
+
+        if (rawContent.includes('|')) {
+            const partes = rawContent.split('|');
+            titulo = partes[0].trim();
+            descricao = partes.slice(1).join('|').trim();
+        } else {
+            titulo = el.innerText ? el.innerText.trim().slice(0, 30) : 'Estoque';
+        }
+
+        const descLower = (titulo + ' ' + descricao).toLowerCase();
+        if (descLower.includes('reservado') || descLower.includes('pedido')) {
+            badge = 'CARTEIRA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded-md border border-amber-700/50';
+        } else if (descLower.includes('livre') || descLower.includes('disponív')) {
+            badge = 'DISPONÍVEL';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        } else if (descLower.includes('previsão') || descLower.includes('compra') || descLower.includes('chegar') || descLower.includes('oc')) {
+            badge = 'A CAMINHO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-blue-400 bg-blue-950/90 px-2 py-0.5 rounded-md border border-blue-700/50';
+        } else if (descLower.includes('futuro') || descLower.includes('projeção')) {
+            badge = 'PROJEÇÃO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-950/90 px-2 py-0.5 rounded-md border border-purple-700/50';
+        } else if (descLower.includes('crítico') || descLower.includes('zerad') || descLower.includes('atrasad') || descLower.includes('alerta')) {
+            badge = 'ALERTA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-700/50';
+        } else if (descLower.includes('matriz') || descLower.includes('filial') || descLower.includes('unidade')) {
+            badge = 'UNIDADE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-950/90 px-2 py-0.5 rounded-md border border-indigo-700/50';
+        } else {
+            badge = 'ESTOQUE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        }
+
+        if (badgeEl) badgeEl.textContent = badge;
+        titleEl.textContent = titulo;
+        descEl.textContent = descricao;
+
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.opacity = '1';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!targetAtivo || tooltipEl.classList.contains('hidden')) return;
+
+        const offset = 14;
+        let left = e.clientX + offset;
+        let top = e.clientY + offset;
+
+        const tipWidth = tooltipEl.offsetWidth || 270;
+        const tipHeight = tooltipEl.offsetHeight || 95;
+
+        if (left + tipWidth > window.innerWidth - 12) {
+            left = e.clientX - tipWidth - offset;
+        }
+        if (top + tipHeight > window.innerHeight - 12) {
+            top = e.clientY - tipHeight - offset;
+        }
+
+        tooltipEl.style.left = `${Math.max(10, left)}px`;
+        tooltipEl.style.top = `${Math.max(10, top)}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (targetAtivo && (e.target === targetAtivo || targetAtivo.contains(e.target))) {
+            const related = e.relatedTarget;
+            if (related && targetAtivo.contains(related)) return;
+
+            tooltipEl.classList.add('hidden');
+            targetAtivo = null;
+        }
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    initModernTooltipsEstoque();
 });

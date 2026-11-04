@@ -312,12 +312,16 @@ class AvaliacaoChapdController
             $stLetras->execute($binds);
             $distrLetras = $stLetras->fetchAll(PDO::FETCH_ASSOC);
 
-            // 4. Top Colaboradores (Destaques)
+            // 4. Top Colaboradores (Destaques) com Foto
             $sqlTop = "
                 SELECT 
                     a.id, a.idcliforemp, a.nome_colaborador, a.cargo, a.pontuacao_total, 
-                    a.conceito_letra, a.classificacao_pontos, a.mes, a.ano
+                    a.conceito_letra, a.classificacao_pontos, a.mes, a.ano,
+                    COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url
                 FROM avaliacao_chapd a
+                LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = a.idcliforemp
+                LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = a.idcliforemp
+                LEFT JOIN usuario u ON u.idcliforemp = a.idcliforemp
                 WHERE {$whereStr}
                 ORDER BY a.pontuacao_total DESC, a.data_avaliacao DESC
                 LIMIT 5
@@ -326,12 +330,16 @@ class AvaliacaoChapdController
             $stTop->execute($binds);
             $topColaboradores = $stTop->fetchAll(PDO::FETCH_ASSOC);
 
-            // 5. Colaboradores que Requerem PDI / Baixo Potencial (< 85)
+            // 5. Colaboradores que Requerem PDI / Baixo Potencial (< 85) com Foto
             $sqlAtencao = "
                 SELECT 
                     a.id, a.idcliforemp, a.nome_colaborador, a.cargo, a.pontuacao_total, 
-                    a.conceito_letra, a.classificacao_pontos, a.pontos_desenvolver, a.plano_acao, a.mes, a.ano
+                    a.conceito_letra, a.classificacao_pontos, a.pontos_desenvolver, a.plano_acao, a.mes, a.ano,
+                    COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url
                 FROM avaliacao_chapd a
+                LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = a.idcliforemp
+                LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = a.idcliforemp
+                LEFT JOIN usuario u ON u.idcliforemp = a.idcliforemp
                 WHERE {$whereStr} AND a.pontuacao_total < 85
                 ORDER BY a.pontuacao_total ASC
                 LIMIT 5

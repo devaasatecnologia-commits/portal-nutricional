@@ -415,11 +415,13 @@ class AuthController
     public function getDadosPerfil($request, $response) 
     {
         $user = $request->getAttribute('user');
-        $uid = $user['uid'] ?? 0;
+        $uid = (int)($user['uid'] ?? 0);
+        $idusuario = (int)($user['idusuario'] ?? 0);
         
         try {
             $sql = "SELECT DISTINCT 
                         u.idusuario,
+                        u.idcliforemp,
                         u.username, 
                         u.foto_perfil,
                         c.fantasia,
@@ -433,12 +435,13 @@ class AuthController
                         e.cargo,
                         e.datanascimento
                     FROM usuario u
-                    JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
-                    JOIN empregado e ON e.idcliforemp = c.idcliforemp
-                    WHERE u.idcliforemp = :uid AND u.inativo = 'N'";
+                    LEFT JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
+                    LEFT JOIN empregado e ON e.idcliforemp = c.idcliforemp
+                    WHERE (u.idcliforemp = :uid OR u.idusuario = :uid OR u.idusuario = :idusuario) AND u.inativo = 'N'
+                    LIMIT 1";
             
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['uid' => $uid]);
+            $stmt->execute(['uid' => $uid, 'idusuario' => $idusuario]);
             $dados = $stmt->fetch(\PDO::FETCH_ASSOC);
             
             if ($dados && !empty($dados['foto_perfil'])) {

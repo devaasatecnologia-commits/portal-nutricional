@@ -266,19 +266,31 @@ function popularSelectColaboradores() {
 }
 
 /**
- * Converte caminhos relativos de foto (ex: uploads/chapd/colab_1.jpg)
- * na URL absoluta correta baseada na origem e prefixo da API/Portal
+ * Converte caminhos relativos de foto (ex: uploads/perfil/colab_1.jpg)
+ * na URL absoluta estática correta baseada na origem e prefixo da aplicação.
+ * NUNCA passa por index.php?api_route= pois uploads são arquivos estáticos do servidor web.
  */
 function formatarUrlFoto(caminho) {
     if (!caminho) return '';
+    
+    // Se for URL absoluta (http/https/data/blob)
     if (caminho.startsWith('http://') || caminho.startsWith('https://') || caminho.startsWith('data:') || caminho.startsWith('blob:')) {
+        // Se veio com o roteador api_route para pasta uploads, limpa para rota estática direta
+        if (caminho.includes('index.php?api_route=/uploads/') || caminho.includes('index.php?api_route=uploads/')) {
+            caminho = caminho.replace(/\/index\.php\?api_route=\/?/, '/');
+        }
+        // Se estiver rodando localmente (localhost / 127.0.0.1) e a URL gravada for de produção
+        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalHost && caminho.includes('api.nutricionalbr.com/uploads/')) {
+            const pathAfterDomain = caminho.split('api.nutricionalbr.com/')[1];
+            const basePrefix = window.location.pathname.includes('/API/') ? '/API' : '';
+            return `${window.location.origin}${basePrefix}/${pathAfterDomain}`;
+        }
         return caminho;
     }
+
+    // Caminho relativo (ex: uploads/perfil/perfil_4.jpg) -> sempre direto na raiz estática
     const cleanPath = caminho.replace(/^\/+/, '');
-    if (window.API_URL) {
-        const apiBase = window.API_URL.replace(/\/v1\/?$/, '').replace(/\/$/, '');
-        return `${apiBase}/${cleanPath}`;
-    }
     const basePrefix = window.location.pathname.includes('/API/') ? '/API' : '';
     return `${window.location.origin}${basePrefix}/${cleanPath}`;
 }
@@ -399,6 +411,34 @@ function abrirModalEditarPerfilColab(idcliforemp = null) {
     $('modalPerfilSubtitulo').textContent = `${c.nome} (Cód. ${c.idcliforemp}) • Área C.H.A.P.D`;
     $('editPerfilNomeErpLabel').textContent = `ERP: ${c.nome_erp || c.nome}`;
     $('editPerfilCargoErpLabel').textContent = `ERP: ${c.cargo_erp || c.cargo}`;
+
+    // Miniatura da foto no topo do modal de edição
+    const fotoColabImg = $('editPerfilColabFotoImg');
+    const fotoColabIniciais = $('editPerfilColabIniciais');
+    const fotoColabNomeDestaque = $('editPerfilColabNomeDestaque');
+    const fotoColabSubInfo = $('editPerfilColabSubInfo');
+
+    if (fotoColabNomeDestaque) fotoColabNomeDestaque.textContent = c.nome;
+    if (fotoColabSubInfo) {
+        fotoColabSubInfo.textContent = `Código ERP: ${c.idcliforemp} • ${c.foto_url ? 'Foto personalizada ativa' : 'Sem foto cadastrada'}`;
+    }
+
+    const nomesColab = (c.nome || 'C').trim().split(' ');
+    const iniciaisColab = (nomesColab[0][0] + (nomesColab.length > 1 ? nomesColab[nomesColab.length - 1][0] : '')).toUpperCase();
+    if (fotoColabIniciais) fotoColabIniciais.textContent = iniciaisColab;
+
+    if (c.foto_url && fotoColabImg) {
+        fotoColabImg.src = formatarUrlFoto(c.foto_url) + '?t=' + Date.now();
+        fotoColabImg.classList.remove('hidden');
+        if (fotoColabIniciais) fotoColabIniciais.classList.add('hidden');
+        fotoColabImg.onerror = () => {
+            fotoColabImg.classList.add('hidden');
+            if (fotoColabIniciais) fotoColabIniciais.classList.remove('hidden');
+        };
+    } else {
+        if (fotoColabImg) fotoColabImg.classList.add('hidden');
+        if (fotoColabIniciais) fotoColabIniciais.classList.remove('hidden');
+    }
 
     $('editPerfilNome').value = (c.nome !== c.nome_erp) ? c.nome : '';
     $('editPerfilCargo').value = (c.cargo !== c.cargo_erp) ? c.cargo : '';
@@ -600,6 +640,35 @@ function abrirModalCapturaFoto(idcliforemp = null) {
     estado.fotoBlob = null;
     estado.fotoArquivo = null;
     $('btnSalvarFotoUpload').disabled = true;
+
+    // Miniatura da foto atual no modal de captura
+    const fotoAtualImg = $('modalFotoAtualImg');
+    const fotoAtualIniciais = $('modalFotoAtualIniciais');
+    const fotoAtualStatus = $('modalFotoAtualStatus');
+    const nomesAtuais = (colab.nome || 'C').trim().split(' ');
+    const iniciaisAtuais = (nomesAtuais[0][0] + (nomesAtuais.length > 1 ? nomesAtuais[nomesAtuais.length - 1][0] : '')).toUpperCase();
+    if (fotoAtualIniciais) fotoAtualIniciais.textContent = iniciaisAtuais;
+
+    if (colab.foto_url && fotoAtualImg) {
+        fotoAtualImg.src = formatarUrlFoto(colab.foto_url) + '?t=' + Date.now();
+        fotoAtualImg.classList.remove('hidden');
+        if (fotoAtualIniciais) fotoAtualIniciais.classList.add('hidden');
+        fotoAtualImg.onerror = () => {
+            fotoAtualImg.classList.add('hidden');
+            if (fotoAtualIniciais) fotoAtualIniciais.classList.remove('hidden');
+        };
+        if (fotoAtualStatus) fotoAtualStatus.textContent = 'Foto ativa no cadastro • Selecione nova foto abaixo para substituir';
+    } else {
+        if (fotoAtualImg) fotoAtualImg.classList.add('hidden');
+        if (fotoAtualIniciais) fotoAtualIniciais.classList.remove('hidden');
+        if (fotoAtualStatus) fotoAtualStatus.textContent = 'Nenhuma foto cadastrada ainda';
+    }
+
+    // Resetar preview de arquivo anterior se houver
+    $('previewArquivoContainer')?.classList.add('hidden');
+    $('previewFotoCapturada')?.classList.add('hidden');
+    const inputArq = $('inputArquivoFoto');
+    if (inputArq) inputArq.value = '';
 
     $('modalFotoColab')?.classList.remove('hidden');
     alternarModoFoto('webcam');
@@ -808,6 +877,17 @@ async function salvarFotoColaborador() {
             iniciaisEl.classList.add('hidden');
         }
         $('colabFotoBtnTexto').textContent = 'Alterar Foto';
+
+        // Atualiza a miniatura no modal de edição de perfil se estiver aberto
+        const editImg = $('editPerfilColabFotoImg');
+        const editIniciais = $('editPerfilColabIniciais');
+        const editSub = $('editPerfilColabSubInfo');
+        if (editImg) {
+            editImg.src = urlFinal;
+            editImg.classList.remove('hidden');
+            if (editIniciais) editIniciais.classList.add('hidden');
+            if (editSub) editSub.textContent = `Código ERP: ${estado.colaboradorSelecionado.idcliforemp} • Foto personalizada ativa`;
+        }
 
         // Atualiza a Grid de Colaboradores
         if (typeof renderizarGridColaboradores === 'function') {
@@ -1453,23 +1533,37 @@ function renderizarTopColaboradores(lista) {
         return;
     }
 
-    box.innerHTML = lista.map((c, idx) => `
-        <div class="p-3 bg-slate-50 hover:bg-emerald-50/50 rounded-2xl border border-slate-100 flex items-center justify-between transition cursor-pointer" onclick="abrirModalFicha(${c.id})">
-            <div class="flex items-center gap-3">
-                <span class="w-7 h-7 rounded-full ${idx === 0 ? 'bg-amber-400 text-slate-900' : 'bg-slate-200 text-slate-600'} flex items-center justify-center font-black text-xs">
-                    ${idx + 1}
+    box.innerHTML = lista.map((c, idx) => {
+        const urlFoto = c.foto_url ? formatarUrlFoto(c.foto_url) : '';
+        const nomes = (c.nome_colaborador || 'C').trim().split(' ');
+        const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+        
+        const avatarHtml = urlFoto 
+            ? `<div class="relative w-10 h-10 rounded-xl overflow-hidden border border-slate-200 flex-none shadow-2xs bg-emerald-100">
+                 <img src="${urlFoto}" class="w-full h-full object-cover" alt="Foto" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                 <span class="w-full h-full text-emerald-800 font-black text-xs items-center justify-center hidden">${iniciais}</span>
+               </div>`
+            : `<div class="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center flex-none border border-emerald-200 shadow-2xs">${iniciais}</div>`;
+
+        return `
+        <div class="p-3 bg-slate-50 hover:bg-emerald-50/60 rounded-2xl border border-slate-100 flex items-center justify-between transition cursor-pointer gap-2.5" onclick="abrirModalFicha(${c.id})" title="Clique para ver a ficha completa de ${esc(c.nome_colaborador)}">
+            <div class="flex items-center gap-2.5 overflow-hidden">
+                <span class="w-6 h-6 rounded-lg ${idx === 0 ? 'bg-amber-400 text-slate-900 font-black' : 'bg-slate-200 text-slate-600 font-bold'} flex items-center justify-center text-[11px] flex-none shadow-2xs">
+                    ${idx + 1}º
                 </span>
-                <div>
-                    <div class="font-black text-slate-800 text-xs sm:text-sm">${esc(c.nome_colaborador)}</div>
-                    <div class="text-[0.68rem] text-slate-500 font-semibold">${esc(c.cargo)}</div>
+                ${avatarHtml}
+                <div class="overflow-hidden">
+                    <div class="font-black text-slate-800 text-xs sm:text-sm truncate">${esc(c.nome_colaborador)}</div>
+                    <div class="text-[0.68rem] text-slate-500 font-semibold truncate">${esc(c.cargo)}</div>
                 </div>
             </div>
-            <div class="text-right">
-                <span class="font-black text-emerald-700 text-sm">${c.pontuacao_total} pts</span>
+            <div class="text-right flex-none">
+                <span class="font-black text-emerald-700 text-xs sm:text-sm">${c.pontuacao_total} pts</span>
                 <span class="block text-[0.68rem] font-bold text-slate-400">Conceito ${c.conceito_letra}</span>
             </div>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 function renderizarAtencaoColaboradores(lista) {
@@ -1481,18 +1575,34 @@ function renderizarAtencaoColaboradores(lista) {
         return;
     }
 
-    box.innerHTML = lista.map(c => `
-        <div class="p-3 bg-rose-50/60 rounded-2xl border border-rose-100 flex items-center justify-between transition cursor-pointer" onclick="abrirModalFicha(${c.id})">
-            <div>
-                <div class="font-black text-slate-800 text-xs sm:text-sm">${esc(c.nome_colaborador)}</div>
-                <div class="text-[0.68rem] text-rose-700 font-semibold">${esc(c.cargo)} • Pontos: <b>${c.pontuacao_total}</b></div>
-                <div class="text-[0.65rem] text-slate-500 mt-0.5 line-clamp-1 italic">${esc(c.plano_acao || c.pontos_desenvolver || 'Sem PDI cadastrado')}</div>
+    box.innerHTML = lista.map(c => {
+        const urlFoto = c.foto_url ? formatarUrlFoto(c.foto_url) : '';
+        const nomes = (c.nome_colaborador || 'C').trim().split(' ');
+        const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
+        
+        const avatarHtml = urlFoto 
+            ? `<div class="relative w-10 h-10 rounded-xl overflow-hidden border border-rose-200 flex-none shadow-2xs bg-rose-100">
+                 <img src="${urlFoto}" class="w-full h-full object-cover" alt="Foto" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                 <span class="w-full h-full text-rose-800 font-black text-xs items-center justify-center hidden">${iniciais}</span>
+               </div>`
+            : `<div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 font-black text-xs flex items-center justify-center flex-none border border-rose-200 shadow-2xs">${iniciais}</div>`;
+
+        return `
+        <div class="p-3 bg-rose-50/60 hover:bg-rose-100/60 rounded-2xl border border-rose-100 flex items-center justify-between transition cursor-pointer gap-2.5" onclick="abrirModalFicha(${c.id})" title="Clique para ver o PDI de ${esc(c.nome_colaborador)}">
+            <div class="flex items-center gap-2.5 overflow-hidden">
+                ${avatarHtml}
+                <div class="overflow-hidden">
+                    <div class="font-black text-slate-800 text-xs sm:text-sm truncate">${esc(c.nome_colaborador)}</div>
+                    <div class="text-[0.68rem] text-rose-700 font-semibold truncate">${esc(c.cargo)} • Pontos: <b>${c.pontuacao_total}</b></div>
+                    <div class="text-[0.65rem] text-slate-500 mt-0.5 line-clamp-1 italic">${esc(c.plano_acao || c.pontos_desenvolver || 'Sem PDI cadastrado')}</div>
+                </div>
             </div>
-            <span class="p-1 px-2.5 rounded-xl bg-rose-200 text-rose-900 font-black text-xs">
+            <span class="p-1 px-2.5 rounded-xl bg-rose-200 text-rose-900 font-black text-xs flex-none shadow-2xs">
                 ${c.conceito_letra || 'E'}
             </span>
         </div>
-    `).join('');
+    `;
+    }).join('');
 }
 
 // ==========================================

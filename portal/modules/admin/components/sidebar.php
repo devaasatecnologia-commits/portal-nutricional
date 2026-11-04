@@ -154,9 +154,20 @@ document.addEventListener('DOMContentLoaded', function() {
         const iniciaisEl = document.getElementById('sidebarIniciais');
         
         if (fotoPerfil) {
-            const fotoUrl = fotoPerfil.startsWith('http') 
-                ? fotoPerfil 
-                : 'https://api.nutricionalbr.com/' + fotoPerfil;
+            const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
+            let fotoUrl = '';
+            if (fotoPerfil.startsWith('http')) {
+                if (isLocal && fotoPerfil.includes('api.nutricionalbr.com/uploads/')) {
+                    const pathAfter = fotoPerfil.split('api.nutricionalbr.com/')[1];
+                    fotoUrl = `${window.location.origin}${baseApp}/${pathAfter}`;
+                } else {
+                    fotoUrl = fotoPerfil;
+                }
+            } else {
+                const clean = fotoPerfil.replace(/^\/+/, '');
+                fotoUrl = isLocal ? `${window.location.origin}${baseApp}/${clean}` : `https://api.nutricionalbr.com/${clean}`;
+            }
             
             if (fotoEl) {
                 fotoEl.src = fotoUrl;

@@ -14,8 +14,49 @@ $extraCss = '
   .ch-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
   .ch-input { width: 100%; margin-top: 0.35rem; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.75rem 1rem; font-size: 0.95rem; background: #f8fafc; font-weight: 600; color: #1e293b; transition: all 0.2s; }
   .ch-input:focus { outline: none; border-color: #059669; background: #ffffff; box-shadow: 0 0 0 4px rgba(5, 150, 105, 0.12); }
-  .ch-tabs { display: flex; gap: 0.4rem; overflow-x: auto; padding: 0.35rem; background: #ffffff; border-radius: 1.25rem; border: 1px solid #f1f5f9; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); }
-  .ch-tab { flex: 1; white-space: nowrap; padding: 0.75rem 1.25rem; border-radius: 1rem; font-weight: 800; font-size: 0.85rem; color: #64748b; transition: all 0.2s ease; display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; cursor: pointer; }
+  .ch-tabs { 
+    display: grid; 
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.35rem; 
+    padding: 0.35rem; 
+    background: #ffffff; 
+    border-radius: 1.25rem; 
+    border: 1px solid #f1f5f9; 
+    box-shadow: 0 6px 20px rgba(15, 23, 42, 0.04); 
+    overflow: hidden;
+  }
+  @media (min-width: 640px) {
+    .ch-tabs {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (min-width: 1024px) {
+    .ch-tabs {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+    }
+  }
+  .ch-tab { 
+    width: 100%;
+    white-space: nowrap; 
+    padding: 0.65rem 0.4rem; 
+    border-radius: 1rem; 
+    font-weight: 800; 
+    font-size: 0.75rem; 
+    color: #64748b; 
+    transition: all 0.2s ease; 
+    display: inline-flex; 
+    align-items: center; 
+    justify-content: center; 
+    gap: 0.35rem; 
+    cursor: pointer; 
+  }
+  @media (min-width: 1280px) {
+    .ch-tab {
+      font-size: 0.8rem;
+      padding: 0.65rem 0.75rem;
+      gap: 0.45rem;
+    }
+  }
   .ch-tab.on { background: linear-gradient(135deg, #047857, #10b981); color: #ffffff; box-shadow: 0 6px 16px rgba(4, 120, 87, 0.3); }
   .ch-tab:not(.on):hover { background: #f8fafc; color: #1e293b; }
   .ch-kpi { border-radius: 1.25rem; padding: 1.15rem; transition: transform 0.2s; }
@@ -1163,6 +1204,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </button>
             </div>
 
+            <!-- Miniatura da Foto Atual -->
+            <div id="modalFotoAtualContainer" class="px-5 pt-4 flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-800 font-black text-sm flex items-center justify-center border border-emerald-200 shadow-2xs overflow-hidden flex-none">
+                    <img id="modalFotoAtualImg" class="w-full h-full object-cover hidden" alt="Foto Atual">
+                    <span id="modalFotoAtualIniciais">--</span>
+                </div>
+                <div class="text-[11px] text-slate-600">
+                    <span class="font-bold text-slate-700">Foto atual no cadastro</span>
+                    <div id="modalFotoAtualStatus" class="text-[10px] text-slate-400">Nenhuma foto cadastrada</div>
+                </div>
+            </div>
+
             <!-- Abas Câmera vs Enviar Arquivo -->
             <div class="p-5 space-y-4">
                 <div class="flex rounded-xl bg-slate-100 p-1 text-xs font-bold text-slate-600">
@@ -1256,6 +1309,24 @@ require_once __DIR__ . '/../estrutura/header.php';
             <!-- Formulário de Edição -->
             <form id="formEditarPerfilColab" onsubmit="salvarPerfilColaborador(event)" class="p-5 sm:p-6 overflow-y-auto space-y-4 text-xs sm:text-sm">
                 <input type="hidden" id="editPerfilIdcliforemp">
+
+                <!-- Miniatura da Foto do Colaborador no Modal de Edição -->
+                <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between gap-3">
+                    <div class="flex items-center gap-3">
+                        <div class="relative w-14 h-14 rounded-2xl bg-indigo-600 text-white font-black text-sm flex items-center justify-center shadow-sm overflow-hidden flex-none border-2 border-white">
+                            <img id="editPerfilColabFotoImg" class="w-full h-full object-cover hidden" alt="Foto">
+                            <span id="editPerfilColabIniciais">--</span>
+                        </div>
+                        <div>
+                            <div class="font-extrabold text-slate-800 text-xs sm:text-sm" id="editPerfilColabNomeDestaque">Nome do Colaborador</div>
+                            <div class="text-[10px] text-slate-500 font-semibold" id="editPerfilColabSubInfo">Código: -- • Sem foto personalizada</div>
+                        </div>
+                    </div>
+                    <button type="button" onclick="abrirModalCapturaFoto(parseInt($('editPerfilIdcliforemp').value))" class="py-2 px-3 rounded-xl bg-white hover:bg-emerald-50 text-emerald-800 border border-emerald-300 font-bold text-xs transition shadow-2xs flex items-center gap-1.5 cursor-pointer flex-none" title="Tirar foto com câmera ou enviar arquivo">
+                        <i class="fa-solid fa-camera text-emerald-600"></i>
+                        <span>Alterar Foto</span>
+                    </button>
+                </div>
 
                 <!-- Alerta Informativo da Área Separada -->
                 <div class="p-3.5 rounded-2xl bg-indigo-50/80 border border-indigo-100 flex items-start gap-2.5">

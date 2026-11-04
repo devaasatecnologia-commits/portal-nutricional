@@ -941,6 +941,7 @@ $protected->group('/estoque-previsao', function ($group) {
     $group->post('/produtos', [$controller, 'getProdutos']);
     $group->get('/buscar-item', [$controller, 'buscarItem']);
     $group->get('/item/{id}', [$controller, 'getItemDetalhe']);
+    $group->get('/item/{id}/pedidos-reservados', [$controller, 'getPedidosReservados']);
     $group->get('/filiais', [$controller, 'getFiliais']);
     $group->post('/exportar', [$controller, 'exportar']);
 })->add(new ModulePermissionMiddleware('estoque-previsao'));

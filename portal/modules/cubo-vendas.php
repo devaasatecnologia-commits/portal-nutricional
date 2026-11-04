@@ -38,7 +38,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- HEADER DESKTOP -->
     <div class="glass rounded-3xl p-5 mb-6 flex justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
-            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline" title="Voltar ao Portal">
+            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline" >
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
             <div class="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">
@@ -85,13 +85,13 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                 <!-- Botões de Ação -->
                 <div class="flex flex-wrap items-center gap-2">
-                    <button @click="abrirModalFiltrosAvancados()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all">
+                    <button @click="abrirModalFiltrosAvancados()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer" data-tooltip="Filtros Avançados|Abra para filtrar por Região, Cidade, Grupo, Marca ou Tipo de Pedido">
                         <i class="fa-solid fa-filter mr-1.5 text-slate-500"></i>Filtros<span x-show="filtrosAvancadosAtivos > 0" class="ml-1.5 text-[11px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5" x-text="filtrosAvancadosAtivos"></span>
                     </button>
-                    <button @click="abrirModalMetricas()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all">
+                    <button @click="abrirModalMetricas()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer" data-tooltip="Personalizar Métricas|Selecione quais colunas de valores, pesos e quantidades exibir">
                         <i class="fa-solid fa-chart-simple mr-1.5 text-slate-500"></i>Métricas
                     </button>
-                    <button @click="exportarDados()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all">
+                    <button @click="exportarDados()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all cursor-pointer" data-tooltip="Exportar para Excel|Baixar a tabela consolidada em formato CSV">
                         <i class="fa-regular fa-file-excel mr-1.5"></i>Exportar CSV
                     </button>
                 </div>
@@ -117,7 +117,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-building mr-1"></i> Filial
                     </label>
                     <select x-model="filialSelecionada" @change="mudarFilial()" 
-                    class="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all">
+                    class="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all"
+                    >
                         <option value="">Todas as Filiais</option>
                         <template x-for="f in filiaisPermitidas" :key="f.idfilial">
                             <option :value="f.idfilial" x-text="f.nome"></option>
@@ -131,7 +132,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-user-tie mr-1 text-amber-500"></i> Gestor
                     </label>
                     <select x-model="gestorSelecionado" @change="mudarGestor()" 
-                    class="w-full p-2.5 border-2 border-amber-200 bg-amber-50/50 rounded-xl text-sm font-semibold cursor-pointer hover:border-amber-400 transition-all">
+                    class="w-full p-2.5 border-2 border-amber-200 bg-amber-50/50 rounded-xl text-sm font-semibold cursor-pointer hover:border-amber-400 transition-all"
+                    >
                         <option value="">Todos os Gestores</option>
                         <template x-for="g in gestoresDisponiveis" :key="g.id">
                             <option :value="g.id" x-text="g.nome"></option>
@@ -145,7 +147,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-user mr-1"></i> Representante
                     </label>
                     <select x-model="representanteSelecionado" @change="mudarRepresentante()" 
-                    class="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all">
+                    class="w-full p-2.5 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all"
+                    >
                         <option value="">Todos os Representantes</option>
                         <template x-for="r in representantesDisponiveis" :key="r.id">
                             <option :value="r.id" x-text="r.nome"></option>
@@ -158,7 +161,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                         <i class="fa-solid fa-layer-group mr-1 text-emerald-600"></i> Agrupar por
                     </label>
-                    <select x-model="rowDimension" @change="atualizar()" class="w-full p-2.5 border-2 border-emerald-200 bg-emerald-50/30 rounded-xl text-sm font-semibold cursor-pointer hover:border-emerald-400 transition-all">
+                    <select x-model="rowDimension" @change="atualizar()" class="w-full p-2.5 border-2 border-emerald-200 bg-emerald-50/30 rounded-xl text-sm font-semibold cursor-pointer hover:border-emerald-400 transition-all"
+                    >
                         <template x-for="(dim, key) in dimensionsDisponiveis" :key="key">
                             <option :value="key" x-text="dim.label"></option>
                         </template>
@@ -181,83 +185,113 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- NÍVEL 1: 3 CARDS PRINCIPAIS DE DESTAQUE (HERO KPIs) -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4" :class="carregando ? 'opacity-60' : ''">
-            <!-- Card Principal 1: Comissão Ajustada -->
-            <div class="bg-white p-5 rounded-2xl border-l-8 border-amber-500 shadow-sm hover:shadow-md transition-all">
+            <!-- Card Principal 1: Venda Bruta -->
+            <div class="bg-white p-5 rounded-2xl border-l-8 border-blue-600 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
+                 @click="abrirRastreioCard('bruto')"
+                 data-tooltip="Venda Bruta Total|Soma dos pedidos faturados e pedidos em carteira antes de abater devoluções. Clique para detalhar.">
                 <div class="flex items-start justify-between mb-2">
                     <div>
-                        <span class="text-xs uppercase font-extrabold text-slate-400 tracking-wider block">Comissão Ajustada</span>
-                        <span class="text-[11px] text-amber-600 font-semibold" x-text="totals.valor_bruto > 0 ? 'Média ' + ((totals.comissao / totals.valor_bruto) * 100).toFixed(2).replace('.', ',') + '% sobre valor líquido' : 'Líquida de devoluções'"></span>
+                        <span class="text-xs uppercase font-extrabold text-slate-400 tracking-wider block">Venda Bruta</span>
+                        <span class="text-[11px] text-blue-600 font-semibold">Faturado + Pedidos em Carteira</span>
                     </div>
-                    <div class="w-10 h-10 rounded-xl bg-amber-50 text-amber-500 flex items-center justify-center flex-shrink-0">
-                        <i class="fa-solid fa-coins text-lg"></i>
-                    </div>
-                </div>
-                <span class="block text-2xl xl:text-3xl font-black text-amber-600 tracking-tight my-1" x-text="formatMoney(totals.comissao)">R$ 0,00</span>
-                <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
-                    <span class="text-[11px] font-bold" :class="variacaoClasse('comissao')" x-text="variacao('comissao') || 'Sem comparativo anterior'"></span>
-                    <span class="text-[10px] text-slate-400">NFs − Devoluções</span>
-                </div>
-            </div>
-
-            <!-- Card Principal 2: Valor Líquido -->
-            <div class="bg-white p-5 rounded-2xl border-l-8 border-emerald-500 shadow-sm hover:shadow-md transition-all">
-                <div class="flex items-start justify-between mb-2">
-                    <div>
-                        <span class="text-xs uppercase font-extrabold text-slate-400 tracking-wider block">Valor Líquido</span>
-                        <span class="text-[11px] text-emerald-600 font-semibold">Faturado + Carteira − Devoluções</span>
-                    </div>
-                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0">
-                        <i class="fa-solid fa-sack-dollar text-lg"></i>
+                    <div class="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center flex-shrink-0 group-hover:bg-blue-100 transition-colors">
+                        <i class="fa-solid fa-file-invoice-dollar text-lg"></i>
                     </div>
                 </div>
-                <span class="block text-2xl xl:text-3xl font-black text-emerald-600 tracking-tight my-1" x-text="formatMoney(totals.valor_bruto)">R$ 0,00</span>
+                <span class="block text-2xl xl:text-3xl font-black text-blue-600 tracking-tight my-1" x-text="formatMoney(totals.valor_bruto)">R$ 0,00</span>
                 <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
                     <span class="text-[11px] font-bold" :class="variacaoClasse('valor_bruto')" x-text="variacao('valor_bruto') || 'Sem comparativo anterior'"></span>
-                    <span class="text-[10px] text-slate-400">Receita líquida</span>
+                    <span class="text-[10px] text-slate-400 flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-blue-500"></i> Rastrear Bruto</span>
                 </div>
             </div>
 
-            <!-- Card Principal 3: Devolução -->
-            <div class="bg-white p-5 rounded-2xl border-l-8 border-rose-500 shadow-sm hover:shadow-md transition-all">
+            <!-- Card Principal 2: Devolução -->
+            <div class="bg-white p-5 rounded-2xl border-l-8 border-rose-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
+                 @click="abrirRastreioCard('devolucao')"
+                 data-tooltip="Total de Devoluções|Soma das notas fiscais de devolução de vendas do período. Clique para auditar.">
                 <div class="flex items-start justify-between mb-2">
                     <div>
                         <span class="text-xs uppercase font-extrabold text-slate-400 tracking-wider block">Devolução</span>
-                        <span class="text-[11px] text-rose-600 font-semibold" x-text="(totals.valor_bruto + totals.valor_devolvido) > 0 ? ((totals.valor_devolvido / (totals.valor_bruto + totals.valor_devolvido)) * 100).toFixed(2).replace('.', ',') + '% sobre faturamento bruto' : 'NFs de entrada abatidas'"></span>
+                        <span class="text-[11px] text-rose-600 font-semibold" x-text="totals.valor_bruto > 0 ? ((totals.valor_devolvido / totals.valor_bruto) * 100).toFixed(2).replace('.', ',') + '% sobre faturamento bruto' : 'NFs de entrada abatidas'"></span>
                     </div>
-                    <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center flex-shrink-0">
+                    <div class="w-10 h-10 rounded-xl bg-rose-50 text-rose-500 flex items-center justify-center flex-shrink-0 group-hover:bg-rose-100 transition-colors">
                         <i class="fa-solid fa-rotate-left text-lg"></i>
                     </div>
                 </div>
                 <span class="block text-2xl xl:text-3xl font-black text-rose-600 tracking-tight my-1" x-text="formatMoney(totals.valor_devolvido)">R$ 0,00</span>
                 <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
                     <span class="text-[11px] font-bold" :class="variacaoClasse('valor_devolvido')" x-text="variacao('valor_devolvido') || 'Sem comparativo anterior'"></span>
-                    <span class="text-[10px] text-slate-400">Abatido no período</span>
+                    <span class="text-[10px] text-slate-400 flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-rose-500"></i> Auditar Devoluções</span>
+                </div>
+            </div>
+
+            <!-- Card Principal 3: Valor Líquido -->
+            <div class="bg-white p-5 rounded-2xl border-l-8 border-emerald-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer group"
+                 @click="abrirRastreioCard('todos')"
+                 data-tooltip="Valor Líquido Real|Receita líquida total (Venda Bruta menos Devoluções). Clique para rastrear.">
+                <div class="flex items-start justify-between mb-2">
+                    <div>
+                        <span class="text-xs uppercase font-extrabold text-slate-400 tracking-wider block">Valor Líquido</span>
+                        <span class="text-[11px] text-emerald-600 font-semibold">Venda Bruta − Devoluções</span>
+                    </div>
+                    <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center flex-shrink-0 group-hover:bg-emerald-100 transition-colors">
+                        <i class="fa-solid fa-sack-dollar text-lg"></i>
+                    </div>
+                </div>
+                <span class="block text-2xl xl:text-3xl font-black text-emerald-600 tracking-tight my-1" x-text="formatMoney(totals.valor_liquido)">R$ 0,00</span>
+                <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100">
+                    <span class="text-[11px] font-bold" :class="variacaoClasse('valor_liquido')" x-text="variacao('valor_liquido') || 'Sem comparativo anterior'"></span>
+                    <span class="text-[10px] text-slate-400 flex items-center gap-1"><i class="fa-solid fa-arrow-up-right-from-square text-[9px] text-emerald-500"></i> Rastrear Receita</span>
                 </div>
             </div>
         </div>
 
         <!-- NÍVEL 2: 4 CARDS OPERACIONAIS -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-2" :class="carregando ? 'opacity-60' : ''">
-            <!-- Card Quantidade -->
-            <div class="bg-white p-4 rounded-2xl border-l-4 border-blue-500 shadow-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-2" :class="carregando ? 'opacity-60' : ''">
+            <!-- Card 1: Comissão Ajustada -->
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-amber-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                 @click="abrirRastreioCard('comissao')"
+                 data-tooltip="Comissão Ajustada|Comissão de faturamentos deduzindo a comissão estornada por devoluções. Clique para detalhar.">
                 <div class="flex items-center justify-between">
-                    <span class="text-[10px] uppercase font-bold text-slate-400">Quantidade Líquida</span>
-                    <i class="fa-solid fa-boxes-stacked text-blue-400 text-xs"></i>
+                    <span class="text-[10px] uppercase font-bold text-slate-400">Comissão Ajustada</span>
+                    <i class="fa-solid fa-coins text-amber-500 text-xs"></i>
                 </div>
-                <span class="block text-xl font-black text-blue-600 mt-0.5" x-text="formatNumber(totals.quantidade)">0</span>
-                <span class="block text-[10px] font-semibold" :class="variacaoClasse('quantidade')" x-text="variacao('quantidade')"></span>
-            </div>
-            <!-- Card Peso -->
-            <div class="bg-white p-4 rounded-2xl border-l-4 border-indigo-500 shadow-sm">
-                <div class="flex items-center justify-between">
-                    <span class="text-[10px] uppercase font-bold text-slate-400">Peso Líquido (kg)</span>
-                    <i class="fa-solid fa-weight-hanging text-indigo-400 text-xs"></i>
+                <span class="block text-xl font-black text-amber-600 mt-0.5" x-text="formatMoney(totals.comissao)">R$ 0,00</span>
+                <div class="flex items-center justify-between mt-1">
+                    <span class="text-[10px] font-semibold" :class="variacaoClasse('comissao')" x-text="variacao('comissao')"></span>
+                    <span class="text-[9px] text-slate-400" x-text="totals.valor_liquido > 0 ? ((totals.comissao / totals.valor_liquido) * 100).toFixed(2).replace('.', ',') + '% s/ líq.' : ''"></span>
                 </div>
-                <span class="block text-xl font-black text-indigo-600 mt-0.5" x-text="formatNumber(totals.peso)">0</span>
-                <span class="block text-[10px] font-semibold" :class="variacaoClasse('peso')" x-text="variacao('peso')"></span>
             </div>
-            <!-- Card Documentos -->
-            <div class="bg-white p-4 rounded-2xl border-l-4 border-slate-500 shadow-sm">
+
+            <!-- Card 2: Peso & Quantidade (Dividido) -->
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-indigo-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                 @click="abrirRastreioCard('todos')"
+                 data-tooltip="Peso & Quantidade|Volume comercializado líquido (faturamento + carteira menos devoluções). Clique para detalhar.">
+                <div class="flex items-center justify-between mb-1">
+                    <span class="text-[10px] uppercase font-bold text-slate-400">Peso & Quantidade</span>
+                    <div class="flex items-center gap-1.5 text-xs">
+                        <i class="fa-solid fa-weight-hanging text-indigo-400"></i>
+                        <i class="fa-solid fa-boxes-stacked text-blue-400"></i>
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                    <div>
+                        <span class="block text-[9px] uppercase font-bold text-slate-400">Peso Líq.</span>
+                        <span class="block text-sm sm:text-base font-black text-indigo-600 truncate" x-text="formatNumber(totals.peso) + ' kg'">0 kg</span>
+                        <span class="block text-[9px] font-semibold truncate" :class="variacaoClasse('peso')" x-text="variacao('peso')"></span>
+                    </div>
+                    <div class="border-l border-slate-100 pl-2">
+                        <span class="block text-[9px] uppercase font-bold text-slate-400">Quantidade</span>
+                        <span class="block text-sm sm:text-base font-black text-blue-600 truncate" x-text="formatNumber(totals.quantidade) + ' un'">0 un</span>
+                        <span class="block text-[9px] font-semibold truncate" :class="variacaoClasse('quantidade')" x-text="variacao('quantidade')"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 3: Documentos -->
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-slate-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                 @click="abrirRastreioCard('todos')"
+                 data-tooltip="Nº Documentos|Total de pedidos e notas fiscais distintos no período. Clique para listar.">
                 <div class="flex items-center justify-between">
                     <span class="text-[10px] uppercase font-bold text-slate-400">Nº Documentos</span>
                     <i class="fa-solid fa-file-invoice text-slate-400 text-xs"></i>
@@ -265,8 +299,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <span class="block text-xl font-black text-slate-700 mt-0.5" x-text="formatNumber(totals.qtd_documentos)">0</span>
                 <span class="block text-[10px] font-semibold" :class="variacaoClasse('qtd_documentos')" x-text="variacao('qtd_documentos')"></span>
             </div>
-            <!-- Card Ticket Médio -->
-            <div class="bg-white p-4 rounded-2xl border-l-4 border-teal-500 shadow-sm">
+
+            <!-- Card 4: Ticket Médio -->
+            <div class="bg-white p-4 rounded-2xl border-l-4 border-teal-500 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all cursor-pointer"
+                 @click="abrirRastreioCard('todos')"
+                 data-tooltip="Ticket Médio|Média de receita líquida por documento emitido (R$).">
                 <div class="flex items-center justify-between">
                     <span class="text-[10px] uppercase font-bold text-slate-400">Ticket Médio</span>
                     <i class="fa-solid fa-receipt text-teal-400 text-xs"></i>
@@ -286,9 +323,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-regular fa-chart-line mr-2 text-emerald-500"></i> EVOLUÇÃO MENSAL
                     </h4>
                     <select id="graficoTipo" onchange="mudarTipoGrafico()" class="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">
-                        <option value="valor_total">Valor Líquido (R$)</option>
-                        <option value="comissao_total">Comissão Ajustada (R$)</option>
+                        <option value="valor_total">Venda Líquida (R$)</option>
+                        <option value="valor_bruto">Venda Bruta (R$)</option>
                         <option value="valor_devolvido">Devolução (R$)</option>
+                        <option value="comissao_total">Comissão Ajustada (R$)</option>
                         <option value="quantidade_total">Quantidade</option>
                         <option value="peso_total">Peso líquido (kg)</option>
                     </select>
@@ -565,91 +603,87 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div x-show="!detalhesCarregando && !detalhesErro && documentosAgrupados.length === 0" class="text-center py-6 text-slate-400 text-sm">Nenhum documento encontrado.</div>
                 
                 <!-- Tabela de Documentos (AGRUPADO) -->
-                <div class="overflow-x-auto border border-slate-200 rounded-xl">
-                    <table class="w-full text-sm">
-                        <thead class="bg-slate-50 border-b border-slate-200">
+                <div class="overflow-x-auto border border-slate-200 rounded-xl bg-white shadow-xs">
+                    <table class="w-full text-sm border-collapse">
+                        <thead class="bg-slate-50 border-b border-slate-200 text-slate-500">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase w-8"></th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Documento</th>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Cliente</th>
-                                <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Valor</th>
-                                <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Comissão</th>
-                                <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Qtd</th>
-                                <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase">Peso</th>
-                                <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Tipo</th>
-                                <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase w-10">Itens</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold uppercase w-10"></th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase w-28 whitespace-nowrap">Documento</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold uppercase min-w-[200px]">Cliente</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold uppercase w-28 whitespace-nowrap">Valor</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold uppercase w-24 whitespace-nowrap">Comissão</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold uppercase w-20 whitespace-nowrap">Qtd</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold uppercase w-24 whitespace-nowrap">Peso</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold uppercase w-24 whitespace-nowrap">Tipo</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold uppercase w-14 whitespace-nowrap">Itens</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <template x-for="(doc, docIdx) in documentosAgrupados" :key="doc.chave">
-                                <tr>
-                                    <td colspan="9" class="p-0 border-0">
-                                        <!-- Linha principal -->
-                                        <table class="w-full text-sm">
-                                            <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer"
-                                            @click="toggleDocumento(doc, docIdx)">
-                                                <td class="px-4 py-3 text-center w-8">
-                                                    <i class="fa-solid text-xs text-slate-400 transition-transform" 
-                                                    :class="doc.expandido ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
-                                                </td>
-                                                <td class="px-4 py-3 font-mono text-xs font-bold text-emerald-600" x-text="doc.numero_fiscal || doc.numero_nf || '---'"></td>
-                                                <td class="px-4 py-3 text-slate-700 text-xs max-w-[180px] truncate" :title="doc.cliente" x-text="doc.cliente || '---'"></td>
-                                                <td class="px-4 py-3 text-right font-bold text-xs whitespace-nowrap" :class="doc.tipo_documento === 'DEVOLUCAO' ? 'text-red-600' : 'text-emerald-600'" x-text="formatMoney(doc.valor_bruto)"></td>
-                                                <td class="px-4 py-3 text-right font-bold text-xs whitespace-nowrap" :class="doc.tipo_documento === 'DEVOLUCAO' ? 'text-red-600' : 'text-amber-600'" x-text="formatMoney(doc.comissao)"></td>
-                                                <td class="px-4 py-3 text-right text-blue-600 text-xs" x-text="formatNumber(doc.quantidade)"></td>
-                                                <td class="px-4 py-3 text-right text-indigo-600 text-xs" x-text="formatNumber(doc.peso)"></td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold" 
-                                                    :class="doc.tipo_documento === 'NF' ? 'bg-blue-100 text-blue-700' : (doc.tipo_documento === 'DEVOLUCAO' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')"
-                                                    x-text="doc.tipo_documento || '---'"></span>
-                                                </td>
-                                                <td class="px-4 py-3 text-center">
-                                                    <span class="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full" 
-                                                    x-text="doc.qtd_itens || '-'"></span>
-                                                </td>
-                                            </tr>
-                                        </table>
-                                        
-                                        <!-- Linha expandida com itens -->
-                                        <div x-show="doc.expandido" class="bg-slate-50/50 px-4 py-3 border-b border-slate-100">
-                                            <div x-show="doc.carregando" class="text-center py-4 text-slate-400 text-xs">
-                                                <i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando itens...
-                                            </div>
-                                            <div x-show="!doc.carregando && doc.itens && doc.itens.length > 0">
-                                                <table class="w-full text-xs border border-slate-200 rounded-lg overflow-hidden">
-                                                    <thead class="bg-slate-100">
-                                                        <tr>
-                                                            <th class="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Produto</th>
-                                                            <th class="px-3 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Qtd</th>
-                                                            <th class="px-3 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Vl. Unit.</th>
-                                                            <th class="px-3 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Vl. Total</th>
-                                                            <th class="px-3 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Comissão</th>
-                                                            <th class="px-3 py-2 text-right text-[10px] font-bold text-slate-500 uppercase">Peso</th>
-                                                            <th class="px-3 py-2 text-left text-[10px] font-bold text-slate-500 uppercase">Grupo</th>
+                        <template x-for="(doc, docIdx) in documentosAgrupados" :key="doc.chave">
+                            <tbody class="border-b border-slate-100">
+                                <!-- Linha principal -->
+                                <tr class="hover:bg-slate-50/80 transition-colors cursor-pointer border-b border-slate-100"
+                                    @click="toggleDocumento(doc, docIdx)">
+                                    <td class="px-3 py-3 text-center w-10 text-slate-400">
+                                        <i class="fa-solid text-xs transition-transform" 
+                                           :class="doc.expandido ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+                                    </td>
+                                    <td class="px-3 py-3 font-mono text-xs font-bold text-emerald-600 whitespace-nowrap w-28" x-text="doc.numero_fiscal || doc.numero_nf || '---'"></td>
+                                    <td class="px-3 py-3 text-slate-700 text-xs min-w-[200px]"  x-text="doc.cliente || '---'"></td>
+                                    <td class="px-3 py-3 text-right font-bold text-xs whitespace-nowrap w-28" :class="doc.tipo_documento === 'DEVOLUCAO' ? 'text-red-600' : 'text-emerald-600'" x-text="formatMoney(doc.valor_bruto)"></td>
+                                    <td class="px-3 py-3 text-right font-bold text-xs whitespace-nowrap w-24" :class="doc.tipo_documento === 'DEVOLUCAO' ? 'text-red-600' : 'text-amber-600'" x-text="formatMoney(doc.comissao)"></td>
+                                    <td class="px-3 py-3 text-right text-blue-600 text-xs whitespace-nowrap w-20" x-text="formatNumber(doc.quantidade)"></td>
+                                    <td class="px-3 py-3 text-right text-indigo-600 text-xs whitespace-nowrap w-24" x-text="formatNumber(doc.peso)"></td>
+                                    <td class="px-3 py-3 text-center whitespace-nowrap w-24">
+                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider" 
+                                              :class="doc.tipo_documento === 'NF' ? 'bg-blue-100 text-blue-700' : (doc.tipo_documento === 'DEVOLUCAO' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700')"
+                                              x-text="doc.tipo_documento || '---'"></span>
+                                    </td>
+                                    <td class="px-3 py-3 text-center w-14">
+                                        <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full" 
+                                              x-text="doc.qtd_itens || '-'"></span>
+                                    </td>
+                                </tr>
+                                
+                                <!-- Linha expandida com itens -->
+                                <tr x-show="doc.expandido" class="bg-slate-50/70">
+                                    <td colspan="9" class="p-3">
+                                        <div x-show="doc.carregando" class="text-center py-4 text-slate-400 text-xs">
+                                            <i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando itens...
+                                        </div>
+                                        <div x-show="!doc.carregando && doc.itens && doc.itens.length > 0" class="overflow-x-auto">
+                                            <table class="w-full text-xs border border-slate-200 rounded-lg overflow-hidden bg-white shadow-2xs">
+                                                <thead class="bg-slate-100 text-slate-500">
+                                                    <tr>
+                                                        <th class="px-3 py-2 text-left text-[10px] font-bold uppercase">Produto</th>
+                                                        <th class="px-3 py-2 text-right text-[10px] font-bold uppercase">Qtd</th>
+                                                        <th class="px-3 py-2 text-right text-[10px] font-bold uppercase">Vl. Unit.</th>
+                                                        <th class="px-3 py-2 text-right text-[10px] font-bold uppercase">Vl. Total</th>
+                                                        <th class="px-3 py-2 text-right text-[10px] font-bold uppercase">Comissão</th>
+                                                        <th class="px-3 py-2 text-right text-[10px] font-bold uppercase">Peso</th>
+                                                        <th class="px-3 py-2 text-left text-[10px] font-bold uppercase">Grupo</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    <template x-for="(item, itemIdx) in doc.itens" :key="itemIdx">
+                                                        <tr class="border-b border-slate-100 hover:bg-slate-50/50">
+                                                            <td class="px-3 py-2 text-slate-700 font-medium" x-text="item.produto"></td>
+                                                            <td class="px-3 py-2 text-right text-blue-600 font-semibold" x-text="formatNumber(item.quantidade)"></td>
+                                                            <td class="px-3 py-2 text-right text-slate-500" x-text="formatMoney(item.valor_unitario)"></td>
+                                                            <td class="px-3 py-2 text-right font-bold" :class="parseFloat(item.valor_total) < 0 ? 'text-red-600' : 'text-emerald-600'" x-text="formatMoney(item.valor_total)"></td>
+                                                            <td class="px-3 py-2 text-right font-bold" :class="parseFloat(item.comissao) < 0 ? 'text-red-600' : 'text-amber-600'" x-text="formatMoney(item.comissao)"></td>
+                                                            <td class="px-3 py-2 text-right text-indigo-500" x-text="formatNumber(item.peso)"></td>
+                                                            <td class="px-3 py-2 text-slate-400" x-text="item.grupo || '---'"></td>
                                                         </tr>
-                                                    </thead>
-                                                    <tbody>
-                                                        <template x-for="(item, itemIdx) in doc.itens" :key="itemIdx">
-                                                            <tr class="border-b border-slate-100">
-                                                                <td class="px-3 py-2 text-slate-600" x-text="item.produto"></td>
-                                                                <td class="px-3 py-2 text-right text-blue-600" x-text="formatNumber(item.quantidade)"></td>
-                                                                <td class="px-3 py-2 text-right text-slate-500" x-text="formatMoney(item.valor_unitario)"></td>
-                                                                <td class="px-3 py-2 text-right font-bold" :class="parseFloat(item.valor_total) < 0 ? 'text-red-600' : 'text-emerald-600'" x-text="formatMoney(item.valor_total)"></td>
-                                                                <td class="px-3 py-2 text-right font-bold" :class="parseFloat(item.comissao) < 0 ? 'text-red-600' : 'text-amber-600'" x-text="formatMoney(item.comissao)"></td>
-                                                                <td class="px-3 py-2 text-right text-indigo-500" x-text="formatNumber(item.peso)"></td>
-                                                                <td class="px-3 py-2 text-slate-400" x-text="item.grupo || '---'"></td>
-                                                            </tr>
-                                                        </template>
-                                                    </tbody>
-                                                </table>
-                                            </div>
-                                            <div x-show="!doc.carregando && (!doc.itens || doc.itens.length === 0)" class="text-center py-4 text-slate-400 text-xs" x-text="doc.erro || 'Nenhum item encontrado'">
-                                            </div>
+                                                    </template>
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div x-show="!doc.carregando && (!doc.itens || doc.itens.length === 0)" class="text-center py-4 text-slate-400 text-xs" x-text="doc.erro || 'Nenhum item encontrado'">
                                         </div>
                                     </td>
                                 </tr>
-                            </template>
-                        </tbody>
+                            </tbody>
+                        </template>
                     </table>
                 </div>
                 
@@ -685,6 +719,18 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
     </div>
+</div>
+
+<!-- =================================================== -->
+<!-- TOOLTIP MODERNO FLUTUANTE (RICH HOVER POPOVER)       -->
+<!-- =================================================== -->
+<div id="modernTooltipCubo" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+        <span id="tooltipCuboBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">AÇÃO</span>
+        <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+    </div>
+    <div id="tooltipCuboTitle" class="font-black text-white text-xs mb-1">Título da Ação</div>
+    <div id="tooltipCuboDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Explicação do item ao passar o mouse.</div>
 </div>
 
 <script>

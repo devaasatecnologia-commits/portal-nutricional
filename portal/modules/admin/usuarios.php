@@ -330,37 +330,66 @@ async function uploadFoto(idcliforemp, idusuario) {
     
     const formData = new FormData();
     formData.append('foto', fotoFile);
-    formData.append('idusuario', idusuario);
-    formData.append('idcliforemp', idcliforemp);
+    formData.append('idusuario', idusuario || 0);
+    formData.append('idcliforemp', idcliforemp || 0);
     
     try {
-        const token = localStorage.getItem('authToken');
-        const resp = await fetch('https://api.nutricionalbr.com/v1/admin/upload-foto', {
+        const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+        let urlUpload = '';
+        if (typeof API_BASE !== 'undefined') {
+            urlUpload = `${API_BASE}/admin/upload-foto`;
+        } else if (window.API_URL) {
+            urlUpload = window.API_URL.replace(/\/$/, '') + '/admin/upload-foto';
+        } else {
+            const base = window.location.pathname.includes('/API/') ? '/API' : '';
+            urlUpload = `${window.location.origin}${base}/index.php?api_route=/admin/upload-foto`;
+        }
+        
+        const headers = {};
+        if (token) headers['Authorization'] = 'Bearer ' + token;
+        if (typeof getCsrfToken === 'function') {
+            const csrf = getCsrfToken(token);
+            if (csrf) headers['X-CSRF-Token'] = csrf;
+        }
+        
+        const resp = await fetch(urlUpload, {
             method: 'POST',
-            headers: { 'Authorization': 'Bearer ' + token },
+            headers: headers,
             body: formData
         });
         
         const data = await resp.json();
-     
         
         if (data.success) {
-            return data.foto_url;
+            return data.foto_url || data.caminho;
         } else {
             showError('Erro', data.error || 'Falha ao enviar foto');
             return null;
         }
     } catch (e) {
         console.error('Erro upload foto:', e);
-        showError('Erro', 'Falha de conexão ao enviar foto');
+        showError('Erro', 'Falha ao enviar foto: ' + e.message);
         return null;
     }
 }
 
 function getFotoUrl(fotoPerfil) {
     if (!fotoPerfil) return null;
-    if (fotoPerfil.startsWith('http')) return fotoPerfil;
-    return 'https://api.nutricionalbr.com/' + fotoPerfil;
+    if (fotoPerfil.startsWith('http://') || fotoPerfil.startsWith('https://') || fotoPerfil.startsWith('data:') || fotoPerfil.startsWith('blob:')) {
+        if (fotoPerfil.includes('index.php?api_route=/uploads/') || fotoPerfil.includes('index.php?api_route=uploads/')) {
+            fotoPerfil = fotoPerfil.replace(/\/index\.php\?api_route=\/?/, '/');
+        }
+        const isLocalHost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (isLocalHost && fotoPerfil.includes('api.nutricionalbr.com/uploads/')) {
+            const pathAfterDomain = fotoPerfil.split('api.nutricionalbr.com/')[1];
+            const base = window.location.pathname.includes('/API/') ? '/API' : '';
+            return `${window.location.origin}${base}/${pathAfterDomain}`;
+        }
+        return fotoPerfil;
+    }
+    const clean = fotoPerfil.replace(/^\/+/, '');
+    const base = window.location.pathname.includes('/API/') ? '/API' : '';
+    return `${window.location.origin}${base}/${clean}`;
 }
 
 // ======================================================================

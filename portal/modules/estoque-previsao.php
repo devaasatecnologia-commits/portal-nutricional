@@ -33,14 +33,14 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="ep-hero rounded-3xl p-5 sm:p-7 text-white shadow-xl mb-5">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div class="flex items-center gap-3">
-                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white no-underline transition shadow-sm" title="Voltar ao Portal">
+                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white no-underline transition shadow-sm" aria-label="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left"></i>
                 </a>
                 <div>
                     <div class="flex items-center gap-2">
                         <span class="ep-chip bg-white/20 text-white backdrop-blur-sm"><i class="fa-solid fa-boxes-stacked"></i> Estoque & Previsão</span>
-                        <span id="badgeUnificado" class="ep-chip bg-emerald-400/25 text-emerald-100 border border-emerald-300/30">
-                            <span class="pulse-dot"></span> Visão Unificada Matriz + PR
+                        <span id="badgeFilial" class="ep-chip bg-emerald-400/25 text-emerald-100 border border-emerald-300/30">
+                            <span class="pulse-dot"></span> Matriz + Filial PR (1 + 6)
                         </span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-1">Estoque com Previsão de Chegada</h1>
@@ -48,20 +48,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <!-- FILIAL & ATALHOS -->
+            <!-- ATALHOS & EXPORTAR -->
             <div class="flex flex-wrap items-center gap-2.5">
-                <div class="bg-white/15 backdrop-blur-md rounded-2xl p-2 px-3.5 border border-white/20 flex items-center gap-2">
-                    <i class="fa-solid fa-building text-emerald-200 text-sm"></i>
-                    <div>
-                        <div class="text-[0.65rem] uppercase tracking-wider text-emerald-200 font-bold">Unidade de Estoque</div>
-                        <select id="select-filial" class="bg-transparent text-white font-extrabold text-sm focus:outline-none cursor-pointer pr-2">
-                            <option value="0" class="text-slate-800 font-bold">Unificado (Matriz 1 + Filial PR 6)</option>
-                            <option value="1" class="text-slate-800 font-bold">Matriz 1 (Santa Catarina)</option>
-                            <option value="6" class="text-slate-800 font-bold">Filial 6 (Paraná)</option>
-                        </select>
-                    </div>
-                </div>
-
                 <button id="btn-exportar" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm" onclick="estoquePrevisaoApp.exportarCsv()">
                     <i class="fa-solid fa-file-excel"></i> Exportar CSV
                 </button>
@@ -77,20 +65,20 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- BARRA DE SELEÇÃO DE MÉTRICA (PESO VS UNIDADES) -->
     <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3 px-1">
         <div class="flex items-center gap-2">
-            <span class="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+            <span class="text-xs font-extrabold text-slate-600 uppercase tracking-wider flex items-center gap-1.5" data-tooltip="Métrica dos Cards|Alterne a unidade de medida exibida exclusivamente nos 6 cards do topo.">
                 <i class="fa-solid fa-sliders text-emerald-600"></i> Exibir Cards por:
             </span>
             <div class="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-bold shadow-inner">
-                <button type="button" id="btn-modo-peso" class="py-1 px-3 rounded-lg bg-emerald-600 text-white shadow-sm transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('peso')">
+                <button type="button" id="btn-modo-peso" class="py-1 px-3 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('peso')" data-tooltip="Cards por Peso|Exibe os 6 cards do topo em Toneladas (t) ou Quilos (kg).">
                     <i class="fa-solid fa-weight-hanging text-[10px]"></i> Peso (KG / Ton)
                 </button>
-                <button type="button" id="btn-modo-unidade" class="py-1 px-3 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('unidade')">
+                <button type="button" id="btn-modo-unidade" class="py-1 px-3 rounded-lg bg-emerald-600 text-white shadow-sm transition flex items-center gap-1.5" onclick="estoquePrevisaoApp.setModoExibicao('unidade')" data-tooltip="Cards por Unidades|Exibe os 6 cards do topo em quantidade de embalagens/peças.">
                     <i class="fa-solid fa-boxes-stacked text-[10px]"></i> Unidades (Peças)
                 </button>
             </div>
         </div>
         <div class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
-            <i class="fa-solid fa-circle-info text-emerald-600"></i> Valores em peso refletem a tonelagem real para logística e suprimentos
+            <i class="fa-solid fa-circle-info text-emerald-600"></i> Cards alternam entre peso e peças · Lista de produtos sempre exibida por unidades
         </div>
     </div>
 
@@ -98,7 +86,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5 select-none">
         <!-- KPI 1: Estoque Físico -->
         <div id="kpi-card-fisico" class="ep-kpi bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Estoque Físico Total: Soma do saldo físico atual (ESTOQUE_FILIAL) nos armazéns. Clique para filtrar todos com saldo físico."
+             data-tooltip="Estoque Físico Total|Soma do saldo físico atual em armazém (Matriz SC + Filial PR). Clique para filtrar produtos com saldo físico."
              onclick="estoquePrevisaoApp.clicarCardKpi('fisico')">
             <div class="flex items-center justify-between text-slate-500 mb-1">
                 <span class="ep-label text-slate-600">Estoque Físico</span>
@@ -110,7 +98,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 2: Carteira Reservada -->
         <div id="kpi-card-reservado" class="ep-kpi bg-gradient-to-br from-amber-50 to-yellow-50/70 border border-amber-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Carteira Reservada: Produtos empenhados em pedidos de venda abertos ou aprovados (Status 1 e 4). Clique para filtrar os itens reservados."
+             data-tooltip="Carteira Reservada|Quantidade empenhada em pedidos de venda abertos ou aprovados (Status 1 e 4). Clique para filtrar itens reservados."
              onclick="estoquePrevisaoApp.clicarCardKpi('reservado')">
             <div class="flex items-center justify-between text-amber-600 mb-1">
                 <span class="ep-label text-amber-700">Reservado (Pedidos)</span>
@@ -122,7 +110,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 3: Estoque Livre -->
         <div id="kpi-card-livre" class="ep-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Livre Disponível: Saldo real pronto para venda imediata (Físico menos Reservado). Clique para filtrar produtos com estoque livre adequado."
+             data-tooltip="Livre Disponível|Estoque real imediatamente liberado para novas vendas (Físico menos Reservado). Clique para filtrar itens disponíveis."
              onclick="estoquePrevisaoApp.clicarCardKpi('livre')">
             <div class="flex items-center justify-between text-emerald-600 mb-1">
                 <span class="ep-label text-emerald-700">Livre Disponível</span>
@@ -134,7 +122,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 4: Previsão Chegada (OCs) -->
         <div id="kpi-card-previsao" class="ep-kpi bg-gradient-to-br from-blue-50 to-sky-50/70 border border-blue-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Previsão de Compras: Cargas compradas e a caminho registradas em OCs com fornecedores. Clique para filtrar os itens a caminho."
+             data-tooltip="Previsão de Compras (OCs)|Cargas compradas com fornecedores em trânsito com ordens de compra abertas. Clique para filtrar itens a caminho."
              onclick="estoquePrevisaoApp.clicarCardKpi('previsao')">
             <div class="flex items-center justify-between text-blue-600 mb-1">
                 <span class="ep-label text-blue-700">Previsão Compras</span>
@@ -146,7 +134,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 5: Estoque Futuro -->
         <div id="kpi-card-futuro" class="ep-kpi bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Estoque Futuro: Projeção de disponibilidade no curto prazo (Livre + Previsão). Clique para ordenar pelos maiores volumes projetados."
+             data-tooltip="Estoque Futuro Projetado|Disponibilidade total no curto prazo (Estoque Livre + Compras a Chegar). Clique para ordenar pelos maiores volumes."
              onclick="estoquePrevisaoApp.clicarCardKpi('futuro')">
             <div class="flex items-center justify-between text-purple-600 mb-1">
                 <span class="ep-label text-purple-700">Estoque Futuro</span>
@@ -158,7 +146,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 6: Zerados / Críticos -->
         <div id="kpi-card-critico" class="ep-kpi bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
-             data-tooltip="Críticos / Zerados: Produtos com saldo zerado ou abaixo de 10 unidades. Clique para filtrar imediatamente para reposição."
+             data-tooltip="Críticos / Zerados|Produtos com saldo livre zerado ou abaixo de 10 unidades para reposição imediata. Clique para filtrar."
              onclick="estoquePrevisaoApp.clicarCardKpi('critico')">
             <div class="flex items-center justify-between text-rose-600 mb-1">
                 <span class="ep-label text-rose-700">Críticos / Zerados</span>
@@ -240,36 +228,36 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <div class="overflow-x-auto">
             <table class="w-full text-left text-xs sm:text-sm">
-                <thead class="sticky top-[80px] z-20 bg-slate-50 shadow-sm">
-                    <tr class="bg-slate-50 border-b border-slate-200 text-[0.7rem] uppercase tracking-wider text-slate-400 font-extrabold select-none">
-                        <th class="py-3 px-4 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('produto')">
-                            Produto & Referência <i class="fa-solid fa-sort ml-1"></i>
+                <thead class="bg-slate-50 border-b border-slate-200">
+                    <tr class="bg-slate-50 text-[0.7rem] uppercase tracking-wider text-slate-500 font-extrabold select-none">
+                        <th class="py-3.5 px-4 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('produto')" data-tooltip="Produto & Referência|Nome do item, referência, ID interno e peso líquido unitário. Clique para ordenar.">
+                            Produto & Referência <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('marca')">
-                            Marca <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('marca')" data-tooltip="Marca Comercial|Fabricante ou linha de produtos. Clique para ordenar.">
+                            Marca <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-2 text-right cursor-pointer hover:text-emerald-700 transition" title="Estoque físico Matriz (SC)">
+                        <th class="py-3.5 px-2 text-right cursor-pointer hover:text-emerald-700 transition" data-tooltip="Estoque Matriz 1 (SC)|Saldo físico em unidades/peças no armazém da Matriz (Içara/SC).">
                             Matriz 1
                         </th>
-                        <th class="py-3 px-2 text-right cursor-pointer hover:text-emerald-700 transition" title="Estoque físico Filial (PR)">
+                        <th class="py-3.5 px-2 text-right cursor-pointer hover:text-emerald-700 transition" data-tooltip="Estoque Filial PR|Saldo físico em unidades/peças no armazém da Filial Paraná.">
                             Filial PR
                         </th>
-                        <th class="py-3 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('estoque')">
-                            Total Físico <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('estoque')" data-tooltip="Total Físico (1 + 6)|Soma do saldo físico em peças em todas as unidades ativas. Clique para ordenar.">
+                            Total Físico <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('reservado')">
-                            Reservado <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('reservado')" data-tooltip="Carteira Reservada|Quantidade em peças comprometida em pedidos de venda (Status 1 e 4). Clique para ordenar.">
+                            Reservado <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('liquido')">
-                            Livre <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('liquido')" data-tooltip="Estoque Livre|Peças imediatamente liberadas para faturamento (Físico - Reservado). Clique para ordenar.">
+                            Livre <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('previsao')">
-                            A Chegar (OCs) <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('previsao')" data-tooltip="A Chegar (OCs)|Peças compradas com fornecedores em Ordens de Compra a caminho. Clique para ordenar.">
+                            A Chegar (OCs) <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('futuro')">
-                            Futuro <i class="fa-solid fa-sort ml-1"></i>
+                        <th class="py-3.5 px-3 text-right cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('futuro')" data-tooltip="Estoque Futuro Total|Projeção total em peças (Livre + A Chegar). Clique para ordenar.">
+                            Futuro <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
                         </th>
-                        <th class="py-3 px-3 text-center">Status</th>
+                        <th class="py-3.5 px-3 text-center" data-tooltip="Situação do Estoque|Classificação: Ok (>50 un), Baixo (11-50 un), Crítico (1-10 un) ou Zerado (0).">Status</th>
                     </tr>
                 </thead>
                 <tbody id="table-body" class="divide-y divide-slate-100">
@@ -290,6 +278,18 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+</div>
+
+<!-- =================================================== -->
+<!-- TOOLTIP MODERNO FLUTUANTE (ESTOQUE & PREVISÃO)     -->
+<!-- =================================================== -->
+<div id="modernTooltipEstoque" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+        <span id="tooltipEstoqueBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">ESTOQUE</span>
+        <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+    </div>
+    <div id="tooltipEstoqueTitle" class="font-black text-white text-xs mb-1">Título</div>
+    <div id="tooltipEstoqueDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Descrição detalhada ao passar o mouse.</div>
 </div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

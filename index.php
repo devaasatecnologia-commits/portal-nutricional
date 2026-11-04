@@ -90,6 +90,35 @@ $routePath = $_GET['api_route']
     ?? $apiRouteFromQueryString 
     ?? (preg_replace('#^/API(?=/|$)#', '', $path) ?: '/');
 
+// Se routePath for um arquivo em uploads/ (mesmo vindo via ?api_route=/uploads/...)
+$checkUpload = preg_replace('#^(API/|v1/|portal/)+#i', '', ltrim($routePath, '/'));
+if (strpos($checkUpload, 'uploads/') === 0) {
+    $cleanUploadPath = explode('?', $checkUpload)[0];
+    $candidates = [
+        __DIR__ . '/' . $cleanUploadPath,
+        __DIR__ . '/portal/' . $cleanUploadPath
+    ];
+    foreach ($candidates as $fullUploadFile) {
+        if (is_file($fullUploadFile)) {
+            $ext = strtolower(pathinfo($fullUploadFile, PATHINFO_EXTENSION));
+            $mimeTypes = [
+                'png'   => 'image/png',
+                'jpg'   => 'image/jpeg',
+                'jpeg'  => 'image/jpeg',
+                'webp'  => 'image/webp',
+                'gif'   => 'image/gif',
+                'svg'   => 'image/svg+xml',
+                'pdf'   => 'application/pdf',
+            ];
+            $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+            header('Content-Type: ' . $mime);
+            header('Cache-Control: public, max-age=86400');
+            readfile($fullUploadFile);
+            exit;
+        }
+    }
+}
+
 if (strpos($routePath, '/v2') === 0) {
     $routePath = '/v1' . substr($routePath, 3);
     $_SERVER['REQUEST_URI'] = $routePath;
@@ -155,6 +184,32 @@ if (strpos($routePath, '/portal/') === 0) {
             'woff'  => 'font/woff',
             'woff2' => 'font/woff2',
             'ttf'   => 'font/ttf',
+        ];
+        $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
+        header('Content-Type: ' . $mime);
+        header('Cache-Control: public, max-age=86400');
+        readfile($file);
+        exit;
+    }
+}
+
+// ------------------------------------------------------------
+// 1.1. SERVE ARQUIVOS ESTÁTICOS DE UPLOADS (/uploads/*)
+// ------------------------------------------------------------
+if (strpos($routePath, '/uploads/') === 0) {
+    $relativePath = ltrim($routePath, '/');
+    $file = __DIR__ . '/' . $relativePath;
+
+    if (is_file($file)) {
+        $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));
+        $mimeTypes = [
+            'png'   => 'image/png',
+            'jpg'   => 'image/jpeg',
+            'jpeg'  => 'image/jpeg',
+            'webp'  => 'image/webp',
+            'gif'   => 'image/gif',
+            'svg'   => 'image/svg+xml',
+            'pdf'   => 'application/pdf',
         ];
         $mime = $mimeTypes[$ext] ?? 'application/octet-stream';
         header('Content-Type: ' . $mime);

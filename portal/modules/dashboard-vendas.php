@@ -75,34 +75,34 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
                         <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>Período rápido:
                     </span>
-                    <button type="button" @click="definirPeriodoRapido('hoje')"
+                    <button type="button" @click="definirPeriodoRapido('hoje')" data-tooltip="Filtro Hoje|Filtra apenas as vendas faturadas na data corrente."
                         :class="periodoRapidoAtivo === 'hoje' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Hoje</button>
-                    <button type="button" @click="definirPeriodoRapido('mes_atual')"
+                    <button type="button" @click="definirPeriodoRapido('mes_atual')" data-tooltip="Este Mês|Filtra do primeiro até o último dia do mês corrente."
                         :class="periodoRapidoAtivo === 'mes_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Mês</button>
-                    <button type="button" @click="definirPeriodoRapido('mes_passado')"
+                    <button type="button" @click="definirPeriodoRapido('mes_passado')" data-tooltip="Mês Passado|Filtra o mês civil imediatamente anterior por completo."
                         :class="periodoRapidoAtivo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Mês Passado</button>
-                    <button type="button" @click="definirPeriodoRapido('ultimos_30')"
+                    <button type="button" @click="definirPeriodoRapido('ultimos_30')" data-tooltip="Últimos 30 Dias|Filtra o intervalo de 30 dias retroativos a partir de hoje."
                         :class="periodoRapidoAtivo === 'ultimos_30' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Últimos 30 dias</button>
-                    <button type="button" @click="definirPeriodoRapido('ultimos_90')"
+                    <button type="button" @click="definirPeriodoRapido('ultimos_90')" data-tooltip="Últimos 90 Dias|Filtra o trimestre retroativo para análise de tendência média."
                         :class="periodoRapidoAtivo === 'ultimos_90' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Últimos 90 dias</button>
-                    <button type="button" @click="definirPeriodoRapido('ano_atual')"
+                    <button type="button" @click="definirPeriodoRapido('ano_atual')" data-tooltip="Este Ano|Filtra desde 01 de janeiro até 31 de dezembro do ano corrente."
                         :class="periodoRapidoAtivo === 'ano_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
                         class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Ano</button>
                 </div>
 
                 <div class="flex flex-wrap items-center gap-2">
-                    <button @click="abrirModalProjecao('representantes')" class="px-3.5 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-all">
+                    <button @click="abrirModalProjecao('representantes')" data-tooltip="Projeção Detalhada|Abre o simulador e detalhamento de metas e projeções por representante e região." class="px-3.5 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-all">
                         <i class="fa-solid fa-bullseye mr-1.5"></i>Projeção Detalhada
                     </button>
-                    <button @click="carregarDados()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all">
+                    <button @click="carregarDados()" data-tooltip="Atualizar Dados|Recarrega todos os KPIs, gráficos e tabelas com os filtros selecionados." class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all">
                         <i class="fa-solid fa-rotate-right mr-1.5" :class="loading ? 'fa-spin' : ''"></i>Atualizar
                     </button>
-                    <button @click="exportarDados()" class="px-4 py-2 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-50 transition-all">
+                    <button @click="exportarDados()" data-tooltip="Exportar CSV|Baixa uma planilha completa com todos os dados executivos do dashboard." class="px-4 py-2 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-50 transition-all">
                         <i class="fa-regular fa-file-excel mr-1.5"></i>Exportar Excel (.CSV)
                     </button>
                 </div>
@@ -156,42 +156,42 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- BARRA EXECUTIVA DE FOCO: VALOR + PESO + QUANTIDADE + ESCOPO -->
             <div class="mt-4 pt-3.5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                <div class="bg-emerald-50/70 border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-emerald-50/70 border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-emerald-300 transition-all" data-tooltip="Valor Faturado|Soma total das NFs de venda emitidas e autorizadas no período filtrado.">
                     <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-sack-dollar"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-emerald-700 uppercase leading-none">Valor Faturado</p>
                         <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatMoney(kpis.faturamento)"></p>
                     </div>
                 </div>
-                <div class="bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-amber-300 transition-all" data-tooltip="Peso Líquido Total|Volume físico faturado em quilogramas (kg) e convertido em toneladas no escopo atual.">
                     <div class="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-weight-hanging"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-amber-700 uppercase leading-none">Peso Líquido Total</p>
                         <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatPeso(kpis.peso_faturado) + ' (' + formatPesoTon(kpis.peso_faturado) + ')'"></p>
                     </div>
                 </div>
-                <div class="bg-blue-50/70 border border-blue-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-blue-50/70 border border-blue-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-blue-300 transition-all" data-tooltip="Quantidade Total|Soma de unidades de produtos entregues/faturados nas NFs do período.">
                     <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-boxes-stacked"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-blue-700 uppercase leading-none">Quantidade Total</p>
                         <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatNumber(kpis.quantidade_faturada) + ' unid.'"></p>
                     </div>
                 </div>
-                <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-indigo-300 transition-all" data-tooltip="NFs & Clientes|Total de documentos fiscais emitidos e quantidade de clientes distintos atendidos.">
                     <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-file-invoice-dollar"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-indigo-700 uppercase leading-none">NFs &amp; Clientes</p>
                         <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatNumber(kpis.notas) + ' NFs • ' + formatNumber(kpis.clientes_faturados) + ' cli'"></p>
                     </div>
                 </div>
-                <div class="bg-sky-50/70 border border-sky-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-sky-50/70 border border-sky-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-sky-300 transition-all" data-tooltip="Carteira Aberta|Valor e peso de pedidos liberados ou com saldo pendente ainda não faturado.">
                     <div class="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-clipboard-list"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-sky-700 uppercase leading-none">Carteira Aberta</p>
                         <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatMoney(kpis.carteira.valor) + ' (' + formatPesoTon(kpis.carteira.peso) + ')'"></p>
                     </div>
                 </div>
-                <div class="bg-purple-50/70 border border-purple-100 rounded-xl px-3 py-2 flex items-center gap-2.5">
+                <div class="bg-purple-50/70 border border-purple-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-purple-300 transition-all" data-tooltip="Dias Úteis|Total de dias úteis comerciais (seg–sex) do período e quantos dias tiveram emissão de notas.">
                     <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-calendar-check"></i></div>
                     <div class="min-w-0">
                         <p class="text-[10px] font-bold text-purple-700 uppercase leading-none">Dias Úteis Período</p>
@@ -212,12 +212,10 @@ require_once __DIR__ . '/../estrutura/header.php';
             
             <!-- 1. Faturamento Total -->
             <div class="group relative bg-gradient-to-br from-emerald-600 to-emerald-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Faturamento', 'Faturamento (NFs Faturadas)')">
+                 @click="abrirDetalhesCard('Faturamento', 'Faturamento (NFs Faturadas)')"
+                 data-tooltip="Faturamento Líquido|Soma de NFs de venda autorizadas (status=2, idtransacao=1) com encargos fiscais. Clique para auditar detalhes e rastreio de NFs.">
                 <!-- Tooltip ao passar o mouse -->
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-emerald-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Regra do Faturamento (Padrão Cubo)</p>
-                    <p class="leading-relaxed text-slate-200">Soma das NFs de venda autorizadas (<code class="text-emerald-300">status=2, idtransacao=1</code>) com IPI, ST, frete, seguro e despesas. Clique para auditar por Representante, Evolução Diária e Rastreio de NFs.</p>
-                </div>
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-emerald-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -252,11 +250,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 2. NFs Emitidas & Volume Físico -->
             <div class="group relative bg-gradient-to-br from-blue-600 to-blue-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Notas', 'NFs Emitidas & Volume Faturado')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-blue-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>NFs Emitidas &amp; Volume Físico</p>
-                    <p class="leading-relaxed text-slate-200">Total de Notas Fiscais distintas faturadas no período, acompanhado do Peso Médio por NF (kg) e Quantidade Média de itens por nota. Clique para listar todas as NFs.</p>
-                </div>
+                 @click="abrirDetalhesCard('Notas', 'NFs Emitidas & Volume Faturado')"
+                 data-tooltip="NFs Emitidas & Volume|Total de NFs faturadas no período, peso médio por nota e volume médio de unidades por pedido. Clique para listar todas as notas.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-blue-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -293,11 +289,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 3. Ticket Médio & Preço Médio por Kg -->
             <div class="group relative bg-gradient-to-br from-amber-500 to-amber-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Ticket Médio', 'Auditoria de Ticket Médio & Preço/Kg')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-amber-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Ticket Médio &amp; Rentabilidade por Kg</p>
-                    <p class="leading-relaxed text-slate-200">Ticket Médio = Faturamento ÷ Nº de NFs distintas. Exibe também o Preço Médio por Kg faturado (R$/kg) e por Unidade (R$/un). Clique para ver menor/maior NF por representante.</p>
-                </div>
+                 @click="abrirDetalhesCard('Ticket Médio', 'Auditoria de Ticket Médio & Preço/Kg')"
+                 data-tooltip="Ticket Médio & Preço/Kg|Ticket médio por nota fiscal faturada e rentabilidade média apurada por quilo (R$/kg) e unidade (R$/un). Clique para auditar.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-amber-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -331,11 +325,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 4. Média por Dia Útil (Ritmo Diário) -->
             <div class="group relative bg-gradient-to-br from-purple-600 to-purple-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Vendas por Dia', 'Ritmo Diário de Vendas (Valor, Peso e Qtd)')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-purple-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Velocidade &amp; Ritmo por Dia Útil</p>
-                    <p class="leading-relaxed text-slate-200">Divide o Faturamento, Peso e Quantidade pelos dias úteis decorridos (seg–sex). Base do motor de Projeção de Fechamento. Clique para ver o desempenho por dia da semana.</p>
-                </div>
+                 @click="abrirDetalhesCard('Vendas por Dia', 'Ritmo Diário de Vendas (Valor, Peso e Qtd)')"
+                 data-tooltip="Média por Dia Útil|Ritmo diário de vendas (Faturamento, Peso e Qtd dividido pelos dias úteis decorridos). Base da projeção mensal. Clique para ver desempenho diário.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-purple-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -365,11 +357,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 5. Carteira de Pedidos em Aberto -->
             <div class="group relative bg-gradient-to-br from-sky-600 to-sky-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Carteira', 'Carteira de Pedidos em Aberto / Parciais')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-sky-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Carteira de Pedidos (Saldo Não Faturado)</p>
-                    <p class="leading-relaxed text-slate-200">Saldo pendente de pedidos abertos (<code class="text-sky-300">status=1</code>) ou faturados parcialmente (<code class="text-sky-300">status=4</code>). Não se mistura ao faturamento até a emissão da NF. Clique para rastrear cada pedido.</p>
-                </div>
+                 @click="abrirDetalhesCard('Carteira', 'Carteira de Pedidos em Aberto / Parciais')"
+                 data-tooltip="Carteira de Pedidos|Saldo pendente em pedidos abertos (status=1) ou faturados parcialmente (status=4). Clique para rastrear cada pedido em aberto.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-sky-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -399,11 +389,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 6. NFs Canceladas -->
             <div class="group relative bg-gradient-to-br from-rose-600 to-rose-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Cancelados', 'Auditorias de NFs Canceladas')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-rose-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>NFs de Venda Canceladas</p>
-                    <p class="leading-relaxed text-slate-200">Notas fiscais de venda com <code class="text-rose-300">status=3</code> no período. Já estão excluídas do card de Faturamento. Clique para auditar os documentos e clientes.</p>
-                </div>
+                 @click="abrirDetalhesCard('Cancelados', 'Auditorias de NFs Canceladas')"
+                 data-tooltip="NFs Canceladas|Auditoria de notas fiscais de venda canceladas (status=3) no período. Já excluídas automaticamente do faturamento. Clique para auditar.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-rose-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -433,11 +421,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 7. Devoluções de Venda -->
             <div class="group relative bg-gradient-to-br from-orange-500 to-orange-700 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Devoluções', 'Auditoria de Devoluções de Venda')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-orange-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Devoluções de Venda (NFe Entrada)</p>
-                    <p class="leading-relaxed text-slate-200">NFs de entrada por devolução de venda validada (bonificações excluídas). Exibe valor, peso devolvido, itens e % sobre o faturamento bruto. Clique para rastrear.</p>
-                </div>
+                 @click="abrirDetalhesCard('Devoluções', 'Auditoria de Devoluções de Venda')"
+                 data-tooltip="Devoluções de Venda|Notas de devolução de venda emitidas (NFe entrada). Abatimentos e impacto sobre o faturamento bruto. Clique para rastrear.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-orange-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -467,11 +453,9 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- 8. Positivação da Carteira -->
             <div class="group relative bg-gradient-to-br from-teal-600 to-teal-800 rounded-2xl p-5 text-white shadow-lg cursor-pointer hover:-translate-y-1 transition-all"
-                 @click="abrirDetalhesCard('Positivação', 'Positivação da Carteira por Representante')">
-                <div class="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute -top-2 left-4 right-4 -translate-y-full z-30 bg-slate-900/95 text-white text-[11px] p-3 rounded-xl shadow-xl border border-slate-700">
-                    <p class="font-bold text-teal-400 mb-1"><i class="fa-solid fa-circle-info mr-1"></i>Cobertura &amp; Positivação da Carteira</p>
-                    <p class="leading-relaxed text-slate-200">Clientes distintos faturados no período ÷ Total de clientes ativos na carteira do escopo. Clique para ver o ranking de positivação por representante.</p>
-                </div>
+                 @click="abrirDetalhesCard('Positivação', 'Positivação da Carteira por Representante')"
+                 data-tooltip="Positivação da Carteira|Clientes com ao menos 1 compra no período dividido pela base de clientes ativos da carteira do escopo. Clique para ranking de positivação.">
+                
                 <div class="flex justify-between items-start">
                     <div>
                         <span class="inline-flex items-center gap-1 text-teal-100 text-[11px] uppercase tracking-wider font-extrabold">
@@ -561,9 +545,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="flex items-start justify-between gap-2 mb-2">
                     <div>
                         <h3 class="text-sm font-extrabold text-slate-800 uppercase">
-                            <i class="fa-solid fa-chart-simple mr-1.5 text-amber-500"></i> PROJEÇÃO &amp; RITMO MENSAL
+                            <i class="fa-solid fa-chart-line mr-1.5 text-indigo-600"></i> HISTÓRICO &amp; TENDÊNCIA MULTIMENSAL (M-3 A M+1)
                         </h3>
-                        <p class="text-[10px] text-slate-400 mt-0.5">3 últimos meses fechados + Mês Atual (Realizado e Projeção) + Tendência M+1</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Histórico comparativo de 3 meses + Mês Atual e Tendência estimada M+1</p>
                     </div>
                     <div class="flex items-center gap-1 shrink-0">
                         <button type="button" @click="abrirModalProjecao('representantes')" title="Expandir Projeção por Representante e Região"
@@ -729,9 +713,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div>
                         <h3 class="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2">
                             <i class="fa-solid fa-map-location-dot text-indigo-600"></i>
-                            <span>DISTRIBUIÇÃO POR REGIÃO — 6 MACRO-REGIÕES UNIFICADAS</span>
+                            <span>DISTRIBUIÇÃO POR REGIÃO DO ESCOPO</span>
                         </h3>
-                        <p class="text-[11px] text-slate-400 mt-0.5">Consolidação oficial: <strong>SUL, PLN, GRF, AVI, NOR e RMC</strong>. Clique em qualquer região para auditar representantes e NFs.</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Macro-regiões comerciais ativas no escopo liberado. Clique em qualquer região para auditar representantes e NFs.</p>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <button type="button" @click="mudarMetricaRegiao('valor')" :class="metricaRegiao === 'valor' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">Por Valor (R$)</button>
@@ -906,9 +890,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="bg-gradient-to-r from-purple-700 to-indigo-700 px-5 py-3.5 flex items-center justify-between text-white">
                     <div>
                         <h3 class="text-sm font-extrabold uppercase flex items-center gap-1.5">
-                            <i class="fa-solid fa-rocket text-amber-300"></i> PROJEÇÃO DE FECHAMENTO
+                            <i class="fa-solid fa-rocket text-amber-300"></i> PROJEÇÃO DO MÊS ATUAL (FECHAMENTO ESTIMADO)
                         </h3>
-                        <p class="text-[10px] text-purple-100 mt-0.5">Matemática de Ritmo por Dia Útil + Carteira em Aberto</p>
+                        <p class="text-[10px] text-purple-100 mt-0.5">Cálculo matemático por ritmo/dia útil decorrido + Carteira Aberta do mês vigente</p>
                     </div>
                     <div class="flex items-center gap-1.5">
                         <button type="button" @click="abrirModalProjecao('representantes')"
@@ -1059,15 +1043,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região (6 Unificadas)</label>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região</label>
                         <select x-model="filtroRiscoRegiao" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700">
-                            <option value="">Todas as 6 Regiões</option>
-                            <option value="SUL">SUL — Sul Catarinense</option>
-                            <option value="GRF">GRF — Grande Florianópolis</option>
-                            <option value="AVI">AVI — Vale do Itajaí &amp; Litoral</option>
-                            <option value="NOR">NOR — Norte &amp; Planalto Norte</option>
-                            <option value="PLN">PLN — Planalto Serrano &amp; Alto Vale</option>
-                            <option value="RMC">RMC — Curitiba &amp; Litoral PR</option>
+                            <option value="">Todas as Regiões do Escopo</option>
+                            <template x-for="reg in distribuicaoRegiao" :key="reg.regiao">
+                                <option :value="reg.regiao" x-text="reg.regiao + ' — ' + reg.nome"></option>
+                            </template>
                         </select>
                     </div>
                     <div>
@@ -1816,7 +1797,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </select>
                     </div>
                     <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região (6 Unificadas)</label>
+                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região</label>
                         <select x-model="filtroRiscoRegiao" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
                             <option value="">Todas as 6 Regiões</option>
                             <option value="SUL">SUL — Sul Catarinense</option>
@@ -2003,5 +1984,18 @@ setInterval(() => {
     if (dataTopo) dataTopo.innerText = dataFormatada;
 }, 1000);
 </script>
+
+
+<!-- =================================================== -->
+<!-- TOOLTIP MODERNO FLUTUANTE (RICH HOVER POPOVER DASH) -->
+<!-- =================================================== -->
+<div id="modernTooltipDash" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+        <span id="tooltipDashBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">INDICADOR</span>
+        <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+    </div>
+    <div id="tooltipDashTitle" class="font-black text-white text-xs mb-1">Título do Indicador</div>
+    <div id="tooltipDashDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Explicação do item ao passar o mouse.</div>
+</div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

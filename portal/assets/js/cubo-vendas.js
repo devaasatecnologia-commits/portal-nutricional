@@ -55,12 +55,12 @@ function cuboVendasHandler() {
         // Config
         dimensionsDisponiveis: {},
         metricsDisponiveis: {},
-        metricsSelecionadas: ['comissao_total', 'valor_devolvido', 'valor_total', 'quantidade_total', 'peso_total'],
-        rowDimension: 'data_documento',
-        rowDimensionLabel: 'Data',
+        metricsSelecionadas: ['valor_bruto', 'valor_devolvido', 'valor_total', 'comissao_total', 'quantidade_total', 'peso_total'],
+        rowDimension: 'tipo_documento',
+        rowDimensionLabel: 'Tipo (Pedido/NF/Devolução)',
 
         // Dados
-        totals: { valor_bruto: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0, ticket_medio: 0 },
+        totals: { valor_bruto: 0, valor_liquido: 0, valor_devolvido: 0, quantidade: 0, peso: 0, comissao: 0, qtd_documentos: 0, ticket_medio: 0 },
         comparativo: null,
         tableData: [],
         buscaTabela: '',
@@ -73,6 +73,7 @@ function cuboVendasHandler() {
         // ================================================================
         async init() {
             window.__cuboVendasData = this;
+            initModernTooltipsCubo();
             this.carregando = true;
             try {
                 await this.carregarConfig();
@@ -356,7 +357,7 @@ function cuboVendasHandler() {
                 });
                 if (seq !== undefined && seq !== this.reqSeq) return;
 
-                const total = parseFloat(data.totals?.valor_bruto || 0);
+                const totalLiq = parseFloat((data.totals?.valor_liquido ?? data.totals?.valor_total ?? data.totals?.valor_bruto) || 0);
                 const isDateDim = this.rowDimension === 'data_documento' || this.rowDimension === 'data_nf';
                 this.tableData = (data.data || []).map(row => {
                     const r = {
@@ -364,14 +365,18 @@ function cuboVendasHandler() {
                         dimensao: isDateDim ? this.formatDate(row.dimensao) : row.dimensao
                     };
                     Object.keys(this.metricsDisponiveis).forEach(m => { r[m] = parseFloat(row[m] || 0); });
-                    r.percentual_participacao = total > 0 && row.valor_total !== undefined
-                        ? ((parseFloat(row.valor_total || 0) / total) * 100).toFixed(2)
+                    if (r.valor_bruto === undefined || isNaN(r.valor_bruto)) {
+                        r.valor_bruto = (parseFloat(row.valor_total || 0) + parseFloat(row.valor_devolvido || 0));
+                    }
+                    r.percentual_participacao = totalLiq > 0 && row.valor_total !== undefined
+                        ? ((parseFloat(row.valor_total || 0) / totalLiq) * 100).toFixed(2)
                         : null;
                     return r;
                 });
 
                 this.totals = {
-                    valor_bruto: total,
+                    valor_bruto: parseFloat(data.totals?.valor_bruto || (totalLiq + parseFloat(data.totals?.valor_devolvido || 0))),
+                    valor_liquido: totalLiq,
                     valor_devolvido: parseFloat(data.totals?.valor_devolvido || 0),
                     quantidade: parseFloat(data.totals?.quantidade || 0),
                     peso: parseFloat(data.totals?.peso || 0),
@@ -435,10 +440,32 @@ function cuboVendasHandler() {
             container.innerHTML = '';
             this.ranking.forEach((item, idx) => {
                 const div = document.createElement('div');
-                div.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-slate-50 cursor-pointer';
-                const medal = idx === 0 ? 'bg-amber-500 text-white' : idx === 1 ? 'bg-slate-300' : idx === 2 ? 'bg-amber-700 text-white' : 'bg-slate-100';
+                div.className = 'flex items-center justify-between p-2 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer gap-2 border-b border-slate-50 last:border-b-0';
+                const medal = idx === 0 ? 'bg-amber-500 text-white shadow-2xs font-black' : idx === 1 ? 'bg-slate-300 text-slate-700 font-bold' : idx === 2 ? 'bg-amber-700 text-white font-bold' : 'bg-slate-100 text-slate-600 font-bold';
                 const nome = this.esc(item.nome || '---');
-                div.innerHTML = `<div class="flex items-center gap-2"><span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${medal}">${idx + 1}</span><span class="text-sm truncate max-w-[150px]" title="${nome}">${nome}</span></div><div class="text-right"><span class="text-xs font-bold text-emerald-600">${this.esc(this.formatMoney(item.valor))}</span><span class="text-[10px] ml-1">(${this.esc(item.percentual)}%)</span></div>`;
+                const valNum = parseFloat(item.valor || 0);
+                const valorClasse = valNum < 0 ? 'text-rose-600' : 'text-emerald-600';
+                
+                div.setAttribute('data-tooltip', `${idx + 1}º Cliente: ${nome}|Faturamento Líquido: ${this.formatMoney(valNum)} (${item.percentual}% do período). Clique para detalhar todos os pedidos e notas deste cliente.`);
+
+                div.innerHTML = `
+                    <div class="flex items-center gap-2 flex-1 min-w-0">
+                        <span class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] flex-none ${medal}">
+                            ${idx + 1}
+                        </span>
+                        <span class="text-[11px] sm:text-xs font-bold text-slate-700 truncate leading-tight flex-1" >
+                            ${nome}
+                        </span>
+                    </div>
+                    <div class="text-right flex-none whitespace-nowrap pl-1">
+                        <span class="text-xs font-black ${valorClasse}">
+                            ${this.esc(this.formatMoney(item.valor))}
+                        </span>
+                        <span class="text-[10px] font-semibold text-slate-400 ml-0.5">
+                            (${this.esc(item.percentual)}%)
+                        </span>
+                    </div>
+                `;
                 div.addEventListener('click', () => this.verDetalhes({ dimensao_id: item.id, dimensao: item.nome }, 'cliente'));
                 container.appendChild(div);
             });
@@ -457,7 +484,8 @@ function cuboVendasHandler() {
 
             const metrica = document.getElementById('graficoTipo')?.value || 'valor_total';
             const rotulos = {
-                valor_total: 'Valor Líquido (R$)',
+                valor_total: 'Venda Líquida (R$)',
+                valor_bruto: 'Venda Bruta (R$)',
                 comissao_total: 'Comissão Ajustada (R$)',
                 valor_devolvido: 'Devolução (R$)',
                 quantidade_total: 'Quantidade',
@@ -469,7 +497,10 @@ function cuboVendasHandler() {
 
             const ctx = canvas.getContext('2d');
             const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-            if (metrica === 'valor_devolvido') {
+            if (metrica === 'valor_bruto') {
+                gradient.addColorStop(0, '#2563eb');
+                gradient.addColorStop(1, '#60a5fa');
+            } else if (metrica === 'valor_devolvido') {
                 gradient.addColorStop(0, '#dc2626');
                 gradient.addColorStop(1, '#f87171');
             } else if (metrica === 'comissao_total') {
@@ -495,7 +526,9 @@ function cuboVendasHandler() {
         getMetricLabel(m) { return this.metricsDisponiveis[m]?.label || m; },
         getMetricClass(m) {
             const c = {
+                valor_bruto: 'text-blue-700 font-bold',
                 valor_total: 'text-emerald-600 font-bold',
+                valor_liquido: 'text-emerald-600 font-bold',
                 valor_devolvido: 'text-red-600 font-bold',
                 quantidade_total: 'text-blue-600',
                 peso_total: 'text-indigo-600',
@@ -506,7 +539,7 @@ function cuboVendasHandler() {
             return c[m] || '';
         },
         formatMetric(v, m) {
-            return ['valor_total', 'valor_devolvido', 'comissao_total', 'ticket_medio'].includes(m)
+            return ['valor_bruto', 'valor_total', 'valor_liquido', 'valor_devolvido', 'comissao_total', 'ticket_medio'].includes(m)
                 ? this.formatMoney(v)
                 : this.formatNumber(v);
         },
@@ -573,8 +606,22 @@ function cuboVendasHandler() {
         },
 
         // ================================================================
-        // DRILL-DOWN
+        // DRILL-DOWN E RASTREIO
         // ================================================================
+        abrirRastreioCard(tipo) {
+            if (tipo === 'bruto') {
+                this.verDetalhes({ dimensao: 'TODOS OS DOCUMENTOS (FATURADO + CARTEIRA)', dimensao_id: null }, 'todos');
+            } else if (tipo === 'devolucao') {
+                this.verDetalhes({ dimensao: 'DEVOLUCAO', dimensao_id: 'DEVOLUCAO' }, 'tipo_documento');
+            } else if (tipo === 'pedidos') {
+                this.verDetalhes({ dimensao: 'PEDIDO', dimensao_id: 'PEDIDO' }, 'tipo_documento');
+            } else if (tipo === 'faturado' || tipo === 'nf') {
+                this.verDetalhes({ dimensao: 'NF', dimensao_id: 'NF' }, 'tipo_documento');
+            } else {
+                this.verDetalhes({ dimensao: 'TODOS OS DOCUMENTOS', dimensao_id: null }, 'todos');
+            }
+        },
+
         async verDetalhes(row, dimensao) {
             const dim = dimensao || this.rowDimension;
             this.modalDetalhesTitulo = `Detalhamento: ${row.dimensao ?? ''}`;
@@ -653,3 +700,100 @@ function mudarTipoGrafico() {
     if (data?.renderGrafico) data.renderGrafico();
 }
 window.mudarTipoGrafico = mudarTipoGrafico;
+
+// ======================================================================
+// TOOLTIPS MODERNOS FLUTUANTES (CUBO DE VENDAS)
+// ======================================================================
+function initModernTooltipsCubo() {
+    const tooltipEl = document.getElementById('modernTooltipCubo');
+    const badgeEl = document.getElementById('tooltipCuboBadge');
+    const titleEl = document.getElementById('tooltipCuboTitle');
+    const descEl = document.getElementById('tooltipCuboDesc');
+
+    if (!tooltipEl || !titleEl || !descEl) return;
+    if (window.__tooltipsCuboInitialized) return;
+    window.__tooltipsCuboInitialized = true;
+
+    let targetAtivo = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tooltip]');
+        if (!el) return;
+
+        targetAtivo = el;
+        const rawContent = el.getAttribute('data-tooltip');
+        if (!rawContent) return;
+
+        let titulo = 'Informação';
+        let descricao = rawContent;
+        let badge = 'ANÁLISE';
+
+        if (rawContent.includes('|')) {
+            const partes = rawContent.split('|');
+            titulo = partes[0].trim();
+            descricao = partes.slice(1).join('|').trim();
+        } else {
+            titulo = el.innerText ? el.innerText.trim().slice(0, 30) : 'Detalhe';
+        }
+
+        const descLower = descricao.toLowerCase();
+        if (descLower.includes('devolu') || descLower.includes('abatid') || descLower.includes('negativ')) {
+            badge = 'DEVOLUÇÃO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-700/50';
+        } else if (descLower.includes('comiss') || descLower.includes('comissão')) {
+            badge = 'COMISSÃO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded-md border border-amber-700/50';
+        } else if (descLower.includes('receita') || descLower.includes('líquid') || descLower.includes('fatur')) {
+            badge = 'VENDAS';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        } else if (descLower.includes('filtro') || descLower.includes('períod') || descLower.includes('agrup')) {
+            badge = 'FILTRO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-blue-400 bg-blue-950/90 px-2 py-0.5 rounded-md border border-blue-700/50';
+        } else {
+            badge = 'DETALHE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-950/90 px-2 py-0.5 rounded-md border border-indigo-700/50';
+        }
+
+        if (badgeEl) badgeEl.textContent = badge;
+        titleEl.textContent = titulo;
+        descEl.textContent = descricao;
+
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.opacity = '1';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!targetAtivo || tooltipEl.classList.contains('hidden')) return;
+
+        const offset = 14;
+        let left = e.clientX + offset;
+        let top = e.clientY + offset;
+
+        const tipWidth = tooltipEl.offsetWidth || 260;
+        const tipHeight = tooltipEl.offsetHeight || 90;
+
+        if (left + tipWidth > window.innerWidth - 12) {
+            left = e.clientX - tipWidth - offset;
+        }
+        if (top + tipHeight > window.innerHeight - 12) {
+            top = e.clientY - tipHeight - offset;
+        }
+
+        tooltipEl.style.left = `${Math.max(10, left)}px`;
+        tooltipEl.style.top = `${Math.max(10, top)}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (targetAtivo && (e.target === targetAtivo || targetAtivo.contains(e.target))) {
+            const related = e.relatedTarget;
+            if (related && targetAtivo.contains(related)) return;
+
+            tooltipEl.classList.add('hidden');
+            targetAtivo = null;
+        }
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    initModernTooltipsCubo();
+});

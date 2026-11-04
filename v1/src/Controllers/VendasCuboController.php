@@ -33,11 +33,12 @@ class VendasCuboController
 
     /** Métricas oficiais: chave => [label, formato, definição, aliases aceitos] */
     private const METRICAS = [
-        'valor_total' => ['label' => 'Valor Líquido (R$)', 'format' => 'currency', 'alias' => ['valor_bruto', 'valor']],
+        'valor_bruto' => ['label' => 'Venda Bruta (R$)', 'format' => 'currency', 'alias' => ['bruto']],
         'valor_devolvido' => ['label' => 'Devolução (R$)', 'format' => 'currency', 'alias' => ['devolucao']],
+        'valor_total' => ['label' => 'Venda Líquida (R$)', 'format' => 'currency', 'alias' => ['valor_liquido', 'valor']],
+        'comissao_total' => ['label' => 'Comissão (R$)', 'format' => 'currency', 'alias' => ['comissao', 'comissao_ajustada']],
         'quantidade_total' => ['label' => 'Quantidade', 'format' => 'number', 'alias' => ['quantidade']],
         'peso_total' => ['label' => 'Peso líquido (kg)', 'format' => 'decimal', 'alias' => ['peso']],
-        'comissao_total' => ['label' => 'Comissão Ajustada (R$)', 'format' => 'currency', 'alias' => ['comissao', 'comissao_ajustada']],
         'qtd_documentos' => ['label' => 'Nº Documentos', 'format' => 'number', 'alias' => []],
         'ticket_medio' => ['label' => 'Ticket médio (R$)', 'format' => 'currency', 'alias' => []],
     ];
@@ -143,7 +144,7 @@ class VendasCuboController
             $gestores = $scope->resolverGestores(null);
 
             $sql = "SELECT DISTINCT idgestor AS id, gestor AS nome FROM vw_gestor_repre WHERE inativo = 'N'";
-            if (!empty($gestores)) {
+            if ($scope->gestorRestrito()) {
                 $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
             }
             $sql .= ' ORDER BY nome';
@@ -511,40 +512,44 @@ class VendasCuboController
             $input = $this->input($request);
             $scope = UserScope::fromRequest($request, $this->pdo);
 
-            $dimKey = $this->dimensao($input['dimensao'] ?? 'data_documento');
-            $dim = self::DIMENSOES[$dimKey];
             [$f] = $this->filtros($scope, $input['filters'] ?? []);
-
-            $hasId = array_key_exists('id', $input);
-            $idDrill = $hasId ? $input['id'] : ($input['valor'] ?? null);
-
             $params = [];
             $base = $this->baseSql($f, $params);
             $cond = '1=1';
-            if ($idDrill === null || $idDrill === '') {
-                if ($hasId) {
-                    $cond = "{$dim['id']} IS NULL";
-                } else {
-                    throw new \InvalidArgumentException('Valor da dimensão não informado.');
-                }
-            } else {
-                if ($dim['kind'] === 'int') {
-                    if (!is_numeric($idDrill) || (string)(int)$idDrill !== (string)(int)$idDrill) {
-                        throw new \InvalidArgumentException('Identificador inválido para a dimensão.');
+
+            $isTodos = ($input['dimensao'] ?? '') === 'todos';
+            if (!$isTodos) {
+                $dimKey = $this->dimensao($input['dimensao'] ?? 'tipo_documento');
+                $dim = self::DIMENSOES[$dimKey];
+
+                $hasId = array_key_exists('id', $input);
+                $idDrill = $hasId ? $input['id'] : ($input['valor'] ?? null);
+
+                if ($idDrill === null || $idDrill === '') {
+                    if ($hasId) {
+                        $cond = "{$dim['id']} IS NULL";
+                    } else {
+                        throw new \InvalidArgumentException('Valor da dimensão não informado.');
                     }
-                    $params['drill'] = (int)$idDrill;
-                    $cond = "{$dim['id']} = :drill";
-                } elseif ($dim['kind'] === 'date') {
-                    $dStr = (string)$idDrill;
-                    if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dStr, $m)) {
-                        $dStr = "{$m[3]}-{$m[2]}-{$m[1]}";
-                    }
-                    $this->validarData($dStr);
-                    $params['drill'] = $dStr;
-                    $cond = "{$dim['id']} = CAST(:drill AS date)";
                 } else {
-                    $params['drill'] = (string)$idDrill;
-                    $cond = "{$dim['id']} = :drill";
+                    if ($dim['kind'] === 'int') {
+                        if (!is_numeric($idDrill) || (string)(int)$idDrill !== (string)(int)$idDrill) {
+                            throw new \InvalidArgumentException('Identificador inválido para a dimensão.');
+                        }
+                        $params['drill'] = (int)$idDrill;
+                        $cond = "{$dim['id']} = :drill";
+                    } elseif ($dim['kind'] === 'date') {
+                        $dStr = (string)$idDrill;
+                        if (preg_match('/^(\d{2})\/(\d{2})\/(\d{4})$/', $dStr, $m)) {
+                            $dStr = "{$m[3]}-{$m[2]}-{$m[1]}";
+                        }
+                        $this->validarData($dStr);
+                        $params['drill'] = $dStr;
+                        $cond = "{$dim['id']} = CAST(:drill AS date)";
+                    } else {
+                        $params['drill'] = (string)$idDrill;
+                        $cond = "{$dim['id']} = :drill";
+                    }
                 }
             }
 
@@ -976,7 +981,8 @@ class VendasCuboController
         $base = $this->baseSql($f, $params);
         $sql = "
             WITH base AS ($base)
-            SELECT COALESCE(SUM(valor), 0) AS valor_total,
+            SELECT COALESCE(SUM(valor + valor_devolvido), 0) AS valor_bruto,
+                   COALESCE(SUM(valor), 0) AS valor_total,
                    COALESCE(SUM(valor_devolvido), 0) AS valor_devolvido,
                    COALESCE(SUM(qtd), 0) AS quantidade_total,
                    COALESCE(SUM(peso), 0) AS peso_total,
@@ -988,10 +994,13 @@ class VendasCuboController
         $stmt->execute($params);
         $t = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-        $valor = (float)$t['valor_total'];
+        $valorBruto = (float)$t['valor_bruto'];
+        $valorLiquido = (float)$t['valor_total'];
         $docs = (int)$t['qtd_documentos'];
         return [
-            'valor_bruto' => $valor,
+            'valor_bruto' => $valorBruto,
+            'valor_liquido' => $valorLiquido,
+            'valor_total' => $valorLiquido,
             'valor_devolvido' => (float)$t['valor_devolvido'],
             'quantidade' => (float)$t['quantidade_total'],
             'peso' => (float)$t['peso_total'],
@@ -1007,7 +1016,7 @@ class VendasCuboController
         $base = $this->baseSql($f, $params);
         $sql = "
             WITH base AS ($base)
-            SELECT TO_CHAR(data_documento, 'YYYY-MM') AS periodo, SUM(valor) AS valor,
+            SELECT TO_CHAR(data_documento, 'YYYY-MM') AS periodo, SUM(valor + valor_devolvido) AS valor_bruto, SUM(valor) AS valor,
                    SUM(valor_devolvido) AS valor_devolvido, SUM(comissao) AS comissao,
                    SUM(qtd) AS quantidade, SUM(peso) AS peso
             FROM base GROUP BY 1 ORDER BY 1
@@ -1020,6 +1029,7 @@ class VendasCuboController
         }
 
         $labels = [];
+        $bruto = [];
         $valor = [];
         $dev = [];
         $com = [];
@@ -1030,6 +1040,7 @@ class VendasCuboController
         while ($cur <= $fim) {
             $k = $cur->format('Y-m');
             $labels[] = $k;
+            $bruto[] = (float)($porMes[$k]['valor_bruto'] ?? 0);
             $valor[] = (float)($porMes[$k]['valor'] ?? 0);
             $dev[] = (float)($porMes[$k]['valor_devolvido'] ?? 0);
             $com[] = (float)($porMes[$k]['comissao'] ?? 0);
@@ -1042,6 +1053,7 @@ class VendasCuboController
             'labels' => $labels,
             'values' => $valor,
             'series' => [
+                'valor_bruto' => $bruto,
                 'valor_total' => $valor,
                 'valor_devolvido' => $dev,
                 'comissao_total' => $com,
@@ -1064,7 +1076,7 @@ class VendasCuboController
     private function comparativo(array $atual, array $ant, array $periodo): array
     {
         $out = ['periodo_anterior' => ['data_inicio' => $periodo[0], 'data_fim' => $periodo[1]]];
-        foreach (['valor_bruto', 'valor_devolvido', 'quantidade', 'peso', 'comissao', 'qtd_documentos', 'ticket_medio'] as $k) {
+        foreach (['valor_bruto', 'valor_liquido', 'valor_devolvido', 'quantidade', 'peso', 'comissao', 'qtd_documentos', 'ticket_medio'] as $k) {
             $a = (float)($atual[$k] ?? 0);
             $b = (float)($ant[$k] ?? 0);
             $out[$k] = [
@@ -1079,7 +1091,9 @@ class VendasCuboController
     private function totalDaMetrica(array $totais, string $metric): float
     {
         $map = [
-            'valor_total' => 'valor_bruto',
+            'valor_bruto' => 'valor_bruto',
+            'valor_total' => 'valor_liquido',
+            'valor_liquido' => 'valor_liquido',
             'valor_devolvido' => 'valor_devolvido',
             'quantidade_total' => 'quantidade',
             'peso_total' => 'peso',
@@ -1093,6 +1107,8 @@ class VendasCuboController
     private function exprMetrica(string $m): string
     {
         switch ($m) {
+            case 'valor_bruto':
+                return 'COALESCE(SUM(valor + valor_devolvido), 0)';
             case 'valor_total':
                 return 'COALESCE(SUM(valor), 0)';
             case 'valor_devolvido':

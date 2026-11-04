@@ -68,10 +68,10 @@ class EstoquePrevisaoController
             $permissions = $this->getUserPermissions($request);
             $filiais = [];
 
-            // Opção Unificada para quem tem acesso à Matriz e Filial PR
+            // Opção Matriz + Filial PR para quem tem acesso às filiais
             $filiais[] = [
                 'idfilial' => 0,
-                'nome' => 'UNIFICADO (MATRIZ 1 + FILIAL PR 6)',
+                'nome' => 'Matriz + Filial PR (1 + 6)',
                 'razao' => 'ESTOQUE & PREVISÃO CONSOLIDADOS'
             ];
 
@@ -80,7 +80,7 @@ class EstoquePrevisaoController
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $f) {
                 $filiais[] = [
                     'idfilial' => (int)$f['idfilial'],
-                    'nome' => ((int)$f['idfilial'] === 1 ? 'MATRIZ 1 - SANTA CATARINA' : 'FILIAL 6 - PARANÁ (PR)'),
+                    'nome' => ((int)$f['idfilial'] === 1 ? 'Matriz 1 (SC)' : 'Filial 6 (PR)'),
                     'razao' => $f['nome']
                 ];
             }
@@ -212,9 +212,9 @@ class EstoquePrevisaoController
             $totalFuturoKg = $totalLivreKg + $totalPrevisaoKg;
 
             $listaFiliais = [
-                ['idfilial' => 0, 'nome' => 'UNIFICADO (MATRIZ + PR)'],
-                ['idfilial' => 1, 'nome' => 'MATRIZ 1 (SC)'],
-                ['idfilial' => 6, 'nome' => 'FILIAL 6 (PR)'],
+                ['idfilial' => 0, 'nome' => 'Matriz + Filial PR (1 + 6)'],
+                ['idfilial' => 1, 'nome' => 'Matriz 1 (SC)'],
+                ['idfilial' => 6, 'nome' => 'Filial 6 (PR)'],
             ];
 
             return $this->json($response, [
@@ -571,7 +571,7 @@ class EstoquePrevisaoController
                 $item['enderecos'] = 'Nenhum endereço vinculado';
             }
 
-            // 3. PREVISÃO DE COMPRAS (OCs) - UNIFICADO MATRIZ (1) + FILIAL (6)
+            // 3. PREVISÃO DE COMPRAS (OCs) - MATRIZ (1) + FILIAL (6)
             $sqlPrevisao = "
                 SELECT 
                     OC.IDOC as numero_oc,
@@ -584,8 +584,8 @@ class EstoquePrevisaoController
                     OC_ITEM.QT as \"Quantidade\",
                     OC_ITEM.QTSALDO as quantidade_saldo,
                     OC_ITEM.QTSALDO as \"Quantidade Saldo\",
-                    OC.DATAPREVISAO as data_prevista,
-                    OC.DATAPREVISAO as \"Data Prevista\",
+                    TO_CHAR(OC.DATAPREVISAO, 'DD/MM/YYYY') as data_prevista,
+                    TO_CHAR(OC.DATAPREVISAO, 'DD/MM/YYYY') as \"Data Prevista\",
                     (OC.DATAPREVISAO - CURRENT_DATE) as dias_para_chegada,
                     (OC.DATAPREVISAO - CURRENT_DATE) as \"Dias para Chegada\"
                 FROM OC
@@ -657,6 +657,131 @@ class EstoquePrevisaoController
     /**
      * POST /v1/estoque-previsao/exportar
      */
+
+    /**
+     * GET /v1/estoque-previsao/item/{id}/pedidos-reservados
+     * Rastreia os pedidos em carteira que compõem o estoque reservado do produto,
+     * respeitando a política de permissão de acesso à filial do usuário logado.
+     */
+    public function getPedidosReservados(Request $request, Response $response, array $args): Response
+    {
+        try {
+            $iditem = (int)($args['id'] ?? 0);
+            if ($iditem <= 0) {
+                return $this->json($response, ['success' => false, 'error' => 'ID do item inválido.'], 400);
+            }
+
+            $filialFiltro = (int)($request->getQueryParams()['filial'] ?? 0);
+
+            $permissions = $this->getUserPermissions($request);
+            $userFiliais = $permissions['filiais'] ?? [];
+            $isAdmin = (bool)($permissions['is_admin'] ?? false);
+
+            // Validação de permissão por filial
+            if (!$isAdmin && !empty($userFiliais)) {
+                if ($filialFiltro > 0 && !in_array($filialFiltro, $userFiliais, true)) {
+                    $nomeFilial = ($filialFiltro === 1 ? 'Matriz 1 (SC)' : 'Filial 6 (PR)');
+                    return $this->json($response, [
+                        'success' => false,
+                        'sem_permissao' => true,
+                        'error' => "Acesso restrito: seu perfil de usuário não possui permissão para detalhar os pedidos da filial {$nomeFilial}."
+                    ], 403);
+                }
+            }
+
+            $filiaisPermitidas = [1, 6];
+            if (!$isAdmin && !empty($userFiliais)) {
+                $filiaisPermitidas = array_values(array_intersect([1, 6], $userFiliais));
+                if (empty($filiaisPermitidas)) {
+                    return $this->json($response, [
+                        'success' => false,
+                        'sem_permissao' => true,
+                        'error' => 'Acesso restrito: seu perfil de usuário não possui permissão para detalhar pedidos nas filiais disponíveis.'
+                    ], 403);
+                }
+            }
+
+            $whereFilial = "p.IDFILIAL IN (" . implode(',', $filiaisPermitidas) . ")";
+            if ($filialFiltro > 0) {
+                $whereFilial = "p.IDFILIAL = " . (int)$filialFiltro;
+            }
+
+            // Dados do produto
+            $stmtItem = $this->pdo->prepare("SELECT IDITEM, REFERENCIA, DESCRICAO, COALESCE(PESOLIQUIDO, 0) as pesoliquido FROM ITEM WHERE IDITEM = :iditem");
+            $stmtItem->execute([':iditem' => $iditem]);
+            $itemInfo = $stmtItem->fetch(PDO::FETCH_ASSOC);
+
+            if (!$itemInfo) {
+                return $this->json($response, ['success' => false, 'error' => 'Item não encontrado.'], 404);
+            }
+
+            $sql = "
+                SELECT 
+                    p.IDPEDIDO as idpedido,
+                    p.IDFILIAL as idfilial,
+                    CASE WHEN p.IDFILIAL = 1 THEN 'Matriz 1 (SC)' ELSE 'Filial 6 (PR)' END as filial_nome,
+                    TO_CHAR(p.DATA, 'DD/MM/YYYY') as data_fmt,
+                    p.STATUS as status_id,
+                    CASE WHEN p.STATUS = 1 THEN 'Aberto / Liberado' WHEN p.STATUS = 4 THEN 'Faturado Parcial' ELSE 'Outro' END as status_nome,
+                    COALESCE(c.FANTASIA, c.RAZAO, 'Cliente #' || p.IDCLIFOREMP) as cliente,
+                    COALESCE(r.FANTASIA, r.RAZAO, 'Venda Direta') as representante,
+                    pi.QT as qtd_pedida,
+                    COALESCE(pi.QTSALDO, pi.QT) as qtd_reservada,
+                    ROUND((COALESCE(pi.QTSALDO, pi.QT) * COALESCE(i.PESOLIQUIDO, 0))::numeric, 2) as peso_reservado,
+                    ROUND((COALESCE(pi.QTSALDO, pi.QT) * COALESCE(pi.VALOR, 0))::numeric, 2) as valor_reservado
+                FROM PEDIDO_ITEM pi
+                JOIN PEDIDO p ON p.IDPEDIDO = pi.IDPEDIDO
+                JOIN ITEM i ON i.IDITEM = pi.IDITEM
+                LEFT JOIN CLIFOREMP c ON c.IDCLIFOREMP = p.IDCLIFOREMP
+                LEFT JOIN CLIFOREMP r ON r.IDCLIFOREMP = p.IDVENDREPRE
+                WHERE p.STATUS IN (1, 4)
+                  AND pi.IDITEM = :iditem
+                  AND {$whereFilial}
+                  AND COALESCE(pi.QTSALDO, pi.QT) > 0
+                ORDER BY p.DATA DESC, p.IDPEDIDO DESC
+            ";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute([':iditem' => $iditem]);
+            $pedidos = $stmt->fetchAll(PDO::FETCH_ASSOC) ?: [];
+
+            $totalQtd = 0;
+            $totalPeso = 0;
+            $totalValor = 0;
+            foreach ($pedidos as &$ped) {
+                $ped['idpedido'] = (int)$ped['idpedido'];
+                $ped['idfilial'] = (int)$ped['idfilial'];
+                $ped['qtd_pedida'] = (float)$ped['qtd_pedida'];
+                $ped['qtd_reservada'] = (float)$ped['qtd_reservada'];
+                $ped['peso_reservado'] = (float)$ped['peso_reservado'];
+                $ped['valor_reservado'] = (float)$ped['valor_reservado'];
+                $totalQtd += $ped['qtd_reservada'];
+                $totalPeso += $ped['peso_reservado'];
+                $totalValor += $ped['valor_reservado'];
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'data' => [
+                    'item' => [
+                        'id' => (int)$itemInfo['iditem'],
+                        'referencia' => $itemInfo['referencia'],
+                        'nome' => $itemInfo['descricao'],
+                        'peso_liquido' => (float)$itemInfo['pesoliquido']
+                    ],
+                    'filial_filtro' => $filialFiltro,
+                    'pedidos' => $pedidos,
+                    'total_pedidos' => count($pedidos),
+                    'total_qtd_reservada' => $totalQtd,
+                    'total_peso_reservado' => $totalPeso,
+                    'total_valor_reservado' => $totalValor
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return $this->json($response, ['success' => false, 'error' => $e->getMessage()], 500);
+        }
+    }
+
     public function exportar(Request $request, Response $response): Response
     {
         try {

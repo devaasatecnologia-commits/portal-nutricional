@@ -197,50 +197,101 @@ public function uploadFotoPerfil(Request $request, Response $response): Response
 
     $foto = $uploadedFiles['foto'];
     if ($foto->getError() !== UPLOAD_ERR_OK) {
-        return $this->jsonResponse($response, ['error' => 'Erro no upload'], 500);
+        return $this->jsonResponse($response, ['error' => 'Erro no upload: ' . $foto->getError()], 500);
     }
 
     $params = $request->getParsedBody();
+    $userAttr = $request->getAttribute('user');
+    $user = is_object($userAttr) ? (array)$userAttr : (array)($userAttr ?? []);
+
     $idusuario = (int)($params['idusuario'] ?? 0);
-    
+    $idcliforemp = (int)($params['idcliforemp'] ?? 0);
+
+    // Fallback: se não veio nos parâmetros, utiliza a identidade autenticada no token JWT
+    if ($idusuario <= 0 && !empty($user['idusuario'])) {
+        $idusuario = (int)$user['idusuario'];
+    }
+    if ($idusuario <= 0 && !empty($user['uid'])) {
+        $idusuario = (int)$user['uid'];
+    }
+    if ($idcliforemp <= 0 && !empty($user['uid'])) {
+        $idcliforemp = (int)$user['uid'];
+    }
+
     // Valida tipo
     $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
     if (!in_array($foto->getClientMediaType(), $allowedTypes)) {
         return $this->jsonResponse($response, ['error' => 'Tipo não permitido. Use JPEG, PNG ou WEBP.'], 400);
     }
 
-    // Gera nome único usando idusuario
+    // Gera nome único usando idusuario ou idcliforemp
+    $identificador = $idusuario > 0 ? $idusuario : ($idcliforemp > 0 ? $idcliforemp : rand(1000, 9999));
     $ext = pathinfo($foto->getClientFilename(), PATHINFO_EXTENSION) ?: 'jpg';
-    $nomeArquivo = 'perfil_' . $idusuario . '_' . time() . '.' . $ext;
+    $nomeArquivo = 'perfil_' . $identificador . '_' . time() . '.' . strtolower($ext);
     $caminhoRelativo = 'uploads/perfil/' . $nomeArquivo;
     $caminhoAbsoluto = __DIR__ . '/../../../uploads/perfil/' . $nomeArquivo;
 
     // Cria diretório se não existir
     $diretorio = dirname($caminhoAbsoluto);
     if (!is_dir($diretorio)) {
-        mkdir($diretorio, 0755, true);
+        @mkdir($diretorio, 0755, true);
     }
 
     try {
         $foto->moveTo($caminhoAbsoluto);
 
-        // ✅ CORRIGIDO: Atualiza usando idusuario (que é a chave correta para a tabela usuario)
-        $stmt = $this->pdo->prepare("UPDATE usuario SET foto_perfil = ? WHERE idusuario = ?");
-        $stmt->execute([$caminhoRelativo, $idusuario]);
+        // 1. Atualiza na tabela usuario por idusuario
+        $linhasAfetadas = 0;
+        if ($idusuario > 0) {
+            $stmt = $this->pdo->prepare("UPDATE usuario SET foto_perfil = ? WHERE idusuario = ?");
+            $stmt->execute([$caminhoRelativo, $idusuario]);
+            $linhasAfetadas = $stmt->rowCount();
+        }
         
-        // Log para debug
-        error_log("Foto atualizada: idusuario={$idusuario}, path={$caminhoRelativo}, linhas afetadas=" . $stmt->rowCount());
-
-        // ✅ Se não atualizou (idusuario não encontrado), tenta pelo idcliforemp
-        if ($stmt->rowCount() === 0) {
-            // Tenta com idcliforemp (fallback)
-            $idcliforemp = (int)($params['idcliforemp'] ?? $params['idusuario'] ?? 0);
+        // 2. Se não afetou linhas ou se temos idcliforemp, tenta por idcliforemp
+        if ($linhasAfetadas === 0 && $idcliforemp > 0) {
             $stmt2 = $this->pdo->prepare("UPDATE usuario SET foto_perfil = ? WHERE idcliforemp = ?");
             $stmt2->execute([$caminhoRelativo, $idcliforemp]);
-            error_log("Tentativa fallback: idcliforemp={$idcliforemp}, linhas afetadas=" . $stmt2->rowCount());
+            $linhasAfetadas = $stmt2->rowCount();
         }
 
-        $fotoUrl = 'https://api.nutricionalbr.com/' . $caminhoRelativo;
+        // 3. Se ainda não sabemos o idcliforemp, busca na tabela usuario para sincronizar C.H.A.P.D
+        if ($idcliforemp <= 0 && $idusuario > 0) {
+            $stBusca = $this->pdo->prepare("SELECT idcliforemp FROM usuario WHERE idusuario = ? LIMIT 1");
+            $stBusca->execute([$idusuario]);
+            $colabFound = $stBusca->fetch(\PDO::FETCH_ASSOC);
+            if (!empty($colabFound['idcliforemp'])) {
+                $idcliforemp = (int)$colabFound['idcliforemp'];
+            }
+        }
+
+        // 4. Sincroniza com as tabelas de colaborador C.H.A.P.D se houver idcliforemp
+        if ($idcliforemp > 0) {
+            try {
+                $this->pdo->prepare("
+                    INSERT INTO avaliacao_chapd_colaborador_perfil (idcliforemp, foto_url, atualizado_em)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (idcliforemp) DO UPDATE SET foto_url = EXCLUDED.foto_url, atualizado_em = CURRENT_TIMESTAMP
+                ")->execute([$idcliforemp, $caminhoRelativo]);
+
+                $this->pdo->prepare("
+                    INSERT INTO avaliacao_chapd_colaborador_foto (idcliforemp, foto_url, atualizado_em)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT (idcliforemp) DO UPDATE SET foto_url = EXCLUDED.foto_url, atualizado_em = CURRENT_TIMESTAMP
+                ")->execute([$idcliforemp, $caminhoRelativo]);
+            } catch (\Throwable $t) {
+                error_log('Aviso: sync foto chapd: ' . $t->getMessage());
+            }
+        }
+
+        $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'api.nutricionalbr.com';
+        $isLocal = strpos($host, 'localhost') !== false || strpos($host, '127.0.0.1') !== false;
+        $baseUrl = $isLocal ? ($protocol . '://' . $host) : 'https://api.nutricionalbr.com';
+        if (!empty($_SERVER['REQUEST_URI']) && strpos($_SERVER['REQUEST_URI'], '/API/') !== false) {
+            $baseUrl .= '/API';
+        }
+        $fotoUrl = $baseUrl . '/' . $caminhoRelativo;
         
         return $this->jsonResponse($response, [
             'success' => true,

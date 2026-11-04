@@ -167,6 +167,7 @@ function dashboardVendasHandler() {
         async init() {
             if (this._inicializado) return;
             this._inicializado = true;
+            initModernTooltipsDash();
 
             if (!this.filters.data_inicio) {
                 this.filters.data_inicio = this.getPrimeiroDiaMes();
@@ -687,10 +688,10 @@ function dashboardVendasHandler() {
             const el = document.querySelector('#chartRegiao');
             if (!el) return;
             el.innerHTML = '';
-            const regs = this.distribuicaoRegiao || [];
+            const isPeso = this.metricaRegiao === 'peso';
+            const regs = (this.distribuicaoRegiao || []).filter(r => (parseFloat(isPeso ? r.peso : r.valor) || 0) > 0 || (r.notas || 0) > 0);
             if (!regs.length) return;
 
-            const isPeso = this.metricaRegiao === 'peso';
             const series = regs.map(r => parseFloat(isPeso ? r.peso : r.valor) || 0);
             const labels = regs.map(r => `${r.regiao} — ${r.nome || ''}`);
             const colors = regs.map(r => r.cor || '#059669');
@@ -725,7 +726,7 @@ function dashboardVendasHandler() {
                                 },
                                 total: {
                                     show: true,
-                                    label: isPeso ? 'Peso Total (6 Regiões)' : 'Total 6 Regiões',
+                                    label: isPeso ? 'Peso Total Regiões' : 'Total Regiões',
                                     fontSize: '10px',
                                     fontWeight: 700,
                                     color: '#64748b',
@@ -1424,3 +1425,113 @@ function dashboardVendasHandler() {
         }
     };
 }
+
+
+/**
+ * Sistema Universal de Tooltip Moderno Flutuante do Dashboard de Vendas
+ */
+function initModernTooltipsDash() {
+    const tooltipEl = document.getElementById('modernTooltipDash');
+    const badgeEl = document.getElementById('tooltipDashBadge');
+    const titleEl = document.getElementById('tooltipDashTitle');
+    const descEl = document.getElementById('tooltipDashDesc');
+
+    if (!tooltipEl || !titleEl || !descEl) return;
+    if (window.__tooltipsDashInitialized) return;
+    window.__tooltipsDashInitialized = true;
+
+    let targetAtivo = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tooltip], [title]');
+        if (!el) return;
+
+        targetAtivo = el;
+        const rawContent = el.getAttribute('data-tooltip') || el.getAttribute('title');
+        if (!rawContent) return;
+
+        // Limpa o title nativo para evitar tooltip duplo feio do navegador
+        if (el.hasAttribute('title')) {
+            el.setAttribute('data-tooltip-backup', el.getAttribute('title'));
+            el.removeAttribute('title');
+        }
+
+        let titulo = 'Informação';
+        let descricao = rawContent;
+        let badge = 'ANÁLISE';
+
+        if (rawContent.includes('|')) {
+            const partes = rawContent.split('|');
+            titulo = partes[0].trim();
+            descricao = partes.slice(1).join('|').trim();
+        } else {
+            titulo = el.innerText ? el.innerText.trim().slice(0, 30) : 'Indicador';
+        }
+
+        const descLower = (titulo + ' ' + descricao).toLowerCase();
+        if (descLower.includes('devolu') || descLower.includes('cancel')) {
+            badge = 'AUDITORIA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-700/50';
+        } else if (descLower.includes('comiss') || descLower.includes('ticket')) {
+            badge = 'RENTABILIDADE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded-md border border-amber-700/50';
+        } else if (descLower.includes('proj') || descLower.includes('ritmo') || descLower.includes('meta')) {
+            badge = 'PROJEÇÃO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-950/90 px-2 py-0.5 rounded-md border border-purple-700/50';
+        } else if (descLower.includes('fatur') || descLower.includes('venda') || descLower.includes('positiv')) {
+            badge = 'COMERCIAL';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        } else if (descLower.includes('carteira') || descLower.includes('pedido')) {
+            badge = 'CARTEIRA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-sky-400 bg-sky-950/90 px-2 py-0.5 rounded-md border border-sky-700/50';
+        } else if (descLower.includes('regi') || descLower.includes('macro') || descLower.includes('escopo')) {
+            badge = 'ESCOPO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-950/90 px-2 py-0.5 rounded-md border border-indigo-700/50';
+        } else {
+            badge = 'DETALHE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700';
+        }
+
+        if (badgeEl) badgeEl.textContent = badge;
+        titleEl.textContent = titulo;
+        descEl.textContent = descricao;
+
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.opacity = '1';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!targetAtivo || tooltipEl.classList.contains('hidden')) return;
+
+        const offset = 14;
+        let left = e.clientX + offset;
+        let top = e.clientY + offset;
+
+        const tipWidth = tooltipEl.offsetWidth || 270;
+        const tipHeight = tooltipEl.offsetHeight || 95;
+
+        if (left + tipWidth > window.innerWidth - 12) {
+            left = e.clientX - tipWidth - offset;
+        }
+        if (top + tipHeight > window.innerHeight - 12) {
+            top = e.clientY - tipHeight - offset;
+        }
+
+        tooltipEl.style.left = `${Math.max(10, left)}px`;
+        tooltipEl.style.top = `${Math.max(10, top)}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (targetAtivo && (e.target === targetAtivo || targetAtivo.contains(e.target))) {
+            const related = e.relatedTarget;
+            if (related && targetAtivo.contains(related)) return;
+
+            tooltipEl.classList.add('hidden');
+            targetAtivo = null;
+        }
+    });
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    initModernTooltipsDash();
+});

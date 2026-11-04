@@ -111,3 +111,4 @@ ON avaliacao_chapd_colaborador_perfil(idfilial_custom);
    - Adicionar botão de exportação em PDF direto (além da impressão nativa do navegador já disponível).
 3. **Auditoria Geral de Desempenho nos Demais Módulos do Portal:**
    - Fazer varredura de lentidão nas telas de Comercial, Estoque e Faturamento conforme padrão otimizado no Marketing.
+
