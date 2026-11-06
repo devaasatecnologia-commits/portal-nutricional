@@ -203,44 +203,75 @@ function showToast(message, type = 'success') {
 }
 
 // ==========================================================================
-// COMPRESSÃO DE IMAGEM
+// COMPRESSÃO DE IMAGEM ULTRARRÁPIDA (HARDWARE-ACCELERATED / ZERO-BASE64)
 // ==========================================================================
 async function comprimirImagemRapida(file) {
-    return new Promise((resolve) => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const img = new Image();
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let width = img.width;
-                let height = img.height;
-                const maxDim = 1280;
+    const maxDim = 960;
+    const qualidade = 0.55;
 
-                if (width > maxDim) {
-                    height = (height * maxDim) / width;
+    // 1. Caminho ultra-rápido moderno nativo (createImageBitmap - C++ / GPU)
+    if (typeof window.createImageBitmap === 'function') {
+        try {
+            const bmp = await createImageBitmap(file);
+            let width = bmp.width;
+            let height = bmp.height;
+            if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                    height = Math.round((height * maxDim) / width);
                     width = maxDim;
-                }
-                if (height > maxDim) {
-                    width = (width * maxDim) / height;
+                } else {
+                    width = Math.round((width * maxDim) / height);
                     height = maxDim;
                 }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.drawImage(bmp, 0, 0, width, height);
+            bmp.close();
 
-                canvas.width = width;
-                canvas.height = height;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
+            const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', qualidade));
+            if (blob) {
+                return new File([blob], 'foto.jpg', { type: 'image/jpeg', lastModified: Date.now() });
+            }
+        } catch (err) {
+            console.warn('[Compressão] Fallback createImageBitmap:', err);
+        }
+    }
 
-                canvas.toBlob((blob) => {
-                    const compressedFile = new File([blob], 'foto.jpg', {
-                        type: 'image/jpeg',
-                        lastModified: Date.now()
-                    });
-                    resolve(compressedFile);
-                }, 'image/jpeg', 0.7);
-            };
-            img.src = e.target.result;
+    // 2. Fallback rápido via URL.createObjectURL (evita ler base64 na memória)
+    return new Promise((resolve) => {
+        const objectUrl = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+            let width = img.naturalWidth || img.width;
+            let height = img.naturalHeight || img.height;
+            if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                    height = Math.round((height * maxDim) / width);
+                    width = maxDim;
+                } else {
+                    width = Math.round((width * maxDim) / height);
+                    height = maxDim;
+                }
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d', { alpha: false });
+            ctx.drawImage(img, 0, 0, width, height);
+            canvas.toBlob((blob) => {
+                const finalBlob = blob || file;
+                resolve(new File([finalBlob], 'foto.jpg', { type: 'image/jpeg', lastModified: Date.now() }));
+            }, 'image/jpeg', qualidade);
         };
-        reader.readAsDataURL(file);
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            resolve(file);
+        };
+        img.src = objectUrl;
     });
 }
 
@@ -394,28 +425,8 @@ async function capturarFoto(iditem, idCarregamento, idSubida = null) {
             const file = input.files[0];
             input.value = '';
 
-            if (file.size > 15 * 1024 * 1024) {
-                await Swal.fire({
-                    icon: 'warning',
-                    title: '⚠️ Foto de alta resolução',
-                    html: `Sua foto tem <strong>${(file.size / 1024 / 1024).toFixed(1)}MB</strong><br>Vamos comprimir automaticamente.`,
-                    confirmButtonText: 'OK',
-                    confirmButtonColor: '#f59e0b',
-                    timer: 2000,
-                    timerProgressBar: true
-                });
-            }
-
-            Swal.fire({
-                title: '📸 Processando foto...',
-                text: 'Comprimindo imagem para envio',
-                allowOutsideClick: false,
-                showConfirmButton: false,
-                didOpen: () => Swal.showLoading()
-            });
-
+            // Compressão instantânea sem travar a tela
             const fileToUpload = await comprimirImagemRapida(file);
-            Swal.close();
 
             const sucesso = await uploadFotoRapida(fileToUpload, iditem, nomeItem, idCarregamento, idSubida);
             resolve(sucesso);
@@ -1184,8 +1195,9 @@ async function abrirModalAjustarFotosPendentes(itensSemFoto) {
 
             Swal.showLoading();
             try {
+                const fileComprimido = await comprimirImagemRapida(file);
                 const formData = new FormData();
-                formData.append('foto', file);
+                formData.append('foto', fileComprimido);
                 formData.append('idembarque', state.embarque);
                 formData.append('iditem', iditem);
                 formData.append('idusuario', getUserId());

@@ -55,8 +55,21 @@
 
 ---
 
-## 2. Arquivos Modificados para Deploy FTP
+## 3. Otimização de Performance: Módulo de Carregamento (Fotos de Subida)
+- **Local:** `portal/assets/js/carregamento.js`
+- **Problema:** O processo de tirar e enviar foto no carregamento levava cerca de 30 segundos por item, acumulando mais de 1h30 em embarques com 100 itens.
+- **Causas e Soluções:**
+  1. **Compressão Lenta / Base64:** Substituído `FileReader.readAsDataURL` por `createImageBitmap` nativo via GPU/hardware multithread (com fallback leve via `URL.createObjectURL`), eliminando o travamento de memória e decodificação Base64.
+  2. **Dimensões e Peso:** Ajustado de 1280px / 70% para 960px / 55%, mantendo excelente nitidez para paletes e sacarias e derrubando o peso de ~500KB para ~60KB.
+  3. **Eliminação de Esperas:** Removido aviso bloqueante de 2 segundos que paralisava o operador após tirar a foto.
+  4. **Ajuste de Fotos Pendentes:** Adicionada a mesma compressão ultrarrápida antes do upload no modal de fotos pendentes.
+- **Resultado:** Redução de tempo por item de ~30s para cerca de 2 a 3 segundos.
+
+---
+
+## 4. Arquivos Modificados para Deploy FTP
 
 1. `v1/src/Controllers/VendasDashboardController.php`
 2. `portal/modules/dashboard-vendas.php`
 3. `portal/assets/js/dashboard-vendas.js`
+4. `portal/assets/js/carregamento.js`
