@@ -24,6 +24,13 @@ class CronRotinasController
     public function __construct()
     {
         $this->pdo = \getPDO();
+        $rootDir = dirname(__DIR__, 3);
+        if (!class_exists('\Uteis', false) && is_file($rootDir . '/uteis.php')) {
+            require_once $rootDir . '/uteis.php';
+        }
+        if (!function_exists('getEmails') && is_file($rootDir . '/email_listas.php')) {
+            require_once $rootDir . '/email_listas.php';
+        }
     }
 
     /**
@@ -182,18 +189,27 @@ class CronRotinasController
             case 'gestores':
                 try {
                     $ehUltimoDia = method_exists('\Uteis', 'isUltimoDiaUtil') ? \Uteis::isUltimoDiaUtil() : false;
+                    $gestoresMap = $this->mapearGestoresInadimplencia();
                     $checks[] = [
                         'etapa' => 'Regra de Calendário (Último Dia Útil)',
                         'status' => 'ok',
                         'detalhe' => $ehUltimoDia
-                            ? 'Hoje É o último dia útil do mês (o envio seria disparado).'
-                            : 'Hoje NÃO é o último dia útil do mês (a rotina encerraria sem enviar e-mails).'
+                            ? 'Hoje É o último dia útil do mês (o envio agendado será disparado normalmente).'
+                            : 'Hoje NÃO é o último dia útil do mês (Nota: clicar em "Executar" no painel força o reenvio imediato para todos os gestores!).'
+                    ];
+                    $checks[] = [
+                        'etapa' => 'Destinatários Mapeados (Gestores)',
+                        'status' => count($gestoresMap) > 0 ? 'ok' : 'error',
+                        'detalhe' => count($gestoresMap) . ' carteira(s) de gestão mapeadas para envio com anexos Excel.'
                     ];
                     return [
                         'success' => true,
-                        'message' => 'Configuração validada com sucesso.',
+                        'message' => 'Configuração validada! Ao clicar em "Executar de Verdade Agora", o sistema força o envio imediato mesmo fora do último dia útil.',
                         'checks' => $checks,
-                        'detalhes' => ['hoje_ultimo_dia_util' => $ehUltimoDia]
+                        'detalhes' => [
+                            'hoje_ultimo_dia_util' => $ehUltimoDia,
+                            'gestores_mapeados' => $gestoresMap
+                        ]
                     ];
                 } catch (\Throwable $e) {
                     return ['success' => false, 'message' => $e->getMessage(), 'checks' => $checks];
@@ -770,8 +786,114 @@ class CronRotinasController
     }
 
     // ======================================================================
-    // GESTORES - Relatório de inadimplência
+    // GESTORES - Relatório de inadimplência (com planilhas Excel em anexo)
     // ======================================================================
+    private function mapearGestoresInadimplencia(): array
+    {
+        $emailsGestores = function_exists('getEmails')
+            ? getEmails('gestores_destino')
+            : (class_exists('\EmailListas') ? \EmailListas::get('gestores_destino') : []);
+
+        if (empty($emailsGestores) || !is_array($emailsGestores)) {
+            $emailsGestores = [
+                'alan@nutricionalbr.com',
+                'robson@nutricionalbr.com',
+                'tiago@nutricionalbr.com',
+                'financeiro@nutricionalbr.com',
+                'michel@nutricionalbr.com',
+                'tales@nutricionalbr.com'
+            ];
+        }
+
+        // Mapeamento corporativo oficial de e-mails para IDs de carteira de gestão no ERP
+        $mapaEmailParaSupervisor = [
+            'tiago@nutricionalbr.com'      => ['id' => 11258, 'nome' => 'TIAGO GUSTAVO HERRMANN (Matriz SC)'],
+            'tales@nutricionalbr.com'      => ['id' => 11371, 'nome' => 'TALES FERNANDO DE JESUS BINDE (Filial PR)'],
+            'tales_fjb@outlook.com'        => ['id' => 11371, 'nome' => 'TALES FERNANDO DE JESUS BINDE (Filial PR)'],
+            'michel@nutricionalbr.com'     => ['id' => 15520, 'nome' => 'MICHEL PLATINI DE SOUZA AGUIAR'],
+            'a.eleodoro@nutricionalbr.com' => ['id' => 13878, 'nome' => 'ADRIANO ROGERIO ELEODORO'],
+            'robson@nutricionalbr.com'     => ['id' => 5297,  'nome' => 'ROBSON DE ALMEIDA BECKER (Visão Geral)'],
+            'robsonbecker@outlook.com'     => ['id' => 5297,  'nome' => 'ROBSON DE ALMEIDA BECKER (Visão Geral)'],
+            'financeiro@nutricionalbr.com' => ['id' => 5297,  'nome' => 'FINANCEIRO / DIRETORIA (Visão Geral)'],
+            'alan@nutricionalbr.com'       => ['id' => 5297,  'nome' => 'DIRETORIA / VISÃO GERAL CONSOLIDADA'],
+        ];
+
+        $gestoresArray = [];
+
+        foreach ($emailsGestores as $rawEmail) {
+            $email = strtolower(trim((string)$rawEmail));
+            if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                continue;
+            }
+
+            if (isset($mapaEmailParaSupervisor[$email])) {
+                $id = $mapaEmailParaSupervisor[$email]['id'];
+                $nome = $mapaEmailParaSupervisor[$email]['nome'];
+                if (!isset($gestoresArray[$id])) {
+                    $gestoresArray[$id] = ['emails' => [], 'nome' => $nome];
+                }
+                if (!in_array($email, $gestoresArray[$id]['emails'], true)) {
+                    $gestoresArray[$id]['emails'][] = $email;
+                }
+                continue;
+            }
+
+            // Fallback: busca na tabela cliforemp c (c.email) vinculada a usuario ativo
+            $stmt = $this->pdo->prepare("
+                SELECT u.idcliforemp, c.fantasia 
+                FROM usuario u
+                JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
+                WHERE LOWER(TRIM(c.email)) = LOWER(:email) AND u.inativo = 'N'
+                LIMIT 1
+            ");
+            $stmt->execute(['email' => $email]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if ($row) {
+                $id = (int)$row['idcliforemp'];
+                // Se o usuário encontrado for admin/TI (ex: 5166), vincula à visão geral (5297)
+                if (!in_array($id, [11258, 11371, 15520, 13878, 5297], true)) {
+                    $id = 5297;
+                }
+                if (!isset($gestoresArray[$id])) {
+                    $gestoresArray[$id] = [
+                        'emails' => [],
+                        'nome' => $row['fantasia'] ?: 'Gestor'
+                    ];
+                }
+                if (!in_array($email, $gestoresArray[$id]['emails'], true)) {
+                    $gestoresArray[$id]['emails'][] = $email;
+                }
+            }
+        }
+
+        if (empty($gestoresArray)) {
+            $gestoresArray[5297] = [
+                'emails' => ['alan@nutricionalbr.com'],
+                'nome' => 'Visão Geral Consolidada'
+            ];
+        }
+
+        return $gestoresArray;
+    }
+
+    private function obterCondicaoFiltroGestor(int $idGestor): string
+    {
+        switch ($idGestor) {
+            case 11258:
+                return "varg.idvendrepre IN (SELECT DISTINCT idrepresentante FROM vw_gestor_repre WHERE idfilial = 1 AND idgestor NOT IN (5297,11371)) AND varg.idfilial = 1";
+            case 11371:
+                return "varg.idsupervisor = 11371 AND varg.idfilial = 6";
+            case 15520:
+                return "varg.idsupervisor = 15520";
+            case 13878:
+                return "varg.idsupervisor = 13878";
+            case 5297:
+                return "varg.idvendrepre IN (SELECT idrepresentante FROM vw_gestor_repre WHERE inativo = 'N')";
+            default:
+                return "varg.idsupervisor = {$idGestor}";
+        }
+    }
+
     private function executarGestores(string $usuario, string $ip, array $params = []): array
     {
         try {
@@ -784,34 +906,7 @@ class CronRotinasController
                 ];
             }
 
-            $emailsGestores = function_exists('getEmails') ? getEmails('gestores_destino') : [];
-            if (empty($emailsGestores)) {
-                $emailsGestores = ['alan@nutricionalbr.com'];
-            }
-
-            $gestoresArray = [];
-            foreach ($emailsGestores as $email) {
-                $stmt = $this->pdo->prepare("
-                    SELECT u.idcliforemp, c.fantasia 
-                    FROM usuario u
-                    JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
-                    WHERE u.email = :email AND u.inativo = 'N'
-                ");
-                $stmt->execute(['email' => $email]);
-                $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-                if ($row) {
-                    $id = (int)$row['idcliforemp'];
-                    $gestoresArray[$id] = [
-                        'email' => $email,
-                        'nome' => $row['fantasia'] ?: 'Gestor'
-                    ];
-                }
-            }
-
-            if (empty($gestoresArray)) {
-                $gestoresArray[11258] = ['email' => 'alan@nutricionalbr.com', 'nome' => 'Administrador'];
-            }
-
+            $gestoresArray = $this->mapearGestoresInadimplencia();
             $listaIdsStr = implode(',', array_keys($gestoresArray));
 
             $sql = "SELECT
@@ -834,7 +929,7 @@ class CronRotinasController
                         ROUND(SUM(varg.mais_60_dias) * 100.0 / NULLIF(SUM(varg.vencidos), 0), 2) AS percentual_mais_60,
                         avg(varg.prazo_medio) as prazo_medio
                     FROM vw_analise_receber_geral varg 
-                    CROSS JOIN LATERAL pkg_ema.retorna_lista(:lista_ids) AS user_id_param(out_id)
+                    CROSS JOIN LATERAL pkg_ema.retorna_lista(:lista_ids, ',') AS user_id_param(out_id)
                     WHERE (
                         (user_id_param.out_id = 11258 AND varg.idvendrepre IN (SELECT DISTINCT idrepresentante FROM vw_gestor_repre WHERE idfilial = 1 AND idgestor NOT IN (5297,11371)) and varg.idfilial = 1)
                         OR (user_id_param.out_id = 11371 AND varg.idsupervisor = 11371 and varg.idfilial = 6)
@@ -850,30 +945,111 @@ class CronRotinasController
             $dadosGestores = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             $enviados = 0;
+            $falhas = 0;
+            $resumoEnvios = [];
+
             foreach ($dadosGestores as $g) {
                 $idSup = (int)$g['idsupervisor'];
                 $info = $gestoresArray[$idSup] ?? null;
-                if (!$info) continue;
+                if (!$info || empty($info['emails'])) {
+                    continue;
+                }
 
-                $htmlGestor = "<div style='font-family:Arial,sans-serif;max-width:650px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
-                    . "<h2 style='color:#1e3a8a;'>Relatório Mensal de Inadimplência - " . htmlspecialchars($info['nome']) . "</h2>"
-                    . "<p><b>Total a Vencer:</b> " . $this->moedaBonif((float)$g['a_vencer']) . "<br>"
-                    . "<b>Total Vencidos:</b> <span style='color:#dc2626;font-weight:bold;'>" . $this->moedaBonif((float)$g['vencidos']) . "</span><br>"
-                    . "<b>Inadimplência Geral:</b> <b>{$g['percentual_geral']}%</b></p>"
-                    . "<ul>"
-                    . "<li>Até 30 dias: " . $this->moedaBonif((float)$g['dias_30']) . " ({$g['percentual_30']}%)</li>"
-                    . "<li>31 a 60 dias: " . $this->moedaBonif((float)$g['dias_60']) . " ({$g['percentual_60']}%)</li>"
-                    . "<li>Mais de 60 dias: " . $this->moedaBonif((float)$g['mais_60_dias']) . " ({$g['percentual_mais_60']}%)</li>"
-                    . "</ul></div>";
+                if ($idSup === 5297) {
+                    $g['nomegestor'] = 'ROBSON DE ALMEIDA BECKER (Visão Geral Consolidada)';
+                }
 
-                $this->enviarEmailNotificacao($info['email'], "Relatório de Inadimplência Gestor - " . $info['nome'] . " - " . date('m/Y'), $htmlGestor);
-                $enviados++;
+                $condicao = $this->obterCondicaoFiltroGestor($idSup);
+
+                // 1. Planilha Excel de Resumo dos Representantes da Carteira do Gestor
+                $sqlRep = "SELECT DISTINCT
+                                idvendrepre,
+                                nomerepresentante as \"Nome do Representante\",
+                                valor_carteira as \"Valor Total\",
+                                vencidos as \"Vencidos\",
+                                percentual_inadimplencia as \"Percentual\",
+                                total_titulos as \"Total Titulos\",
+                                total_cliente as \"Total Clientes\",
+                                dias_30 as \"30 Dias\",
+                                perc_30_dias as \"Perc. 30 Dias\",
+                                dias_60 as \"60 Dias\",
+                                perc_60_dias as \"Perc. 60 Dias\",
+                                mais_60_dias as \"Mais 60 Dias\",
+                                perc_mais_60_dias as \"Perc. Mais 60 Dias\",
+                                prazo_medio as \"Prazo Médio\"
+                            FROM vw_analise_receber_geral varg 
+                            WHERE ({$condicao})
+                            ORDER BY nomerepresentante";
+                $stmtRep = $this->pdo->prepare($sqlRep);
+                $stmtRep->execute();
+                $dadosRep = $stmtRep->fetchAll(\PDO::FETCH_ASSOC);
+                $arqExcelRep = method_exists('\Uteis', 'gerarExcelRepresentantes')
+                    ? \Uteis::gerarExcelRepresentantes($idSup, $dadosRep)
+                    : null;
+
+                // 2. Planilha Excel Detalhada de Clientes Inadimplentes da Carteira do Gestor
+                $sqlCli = "SELECT DISTINCT
+                                varg.nomerepresentante AS nome_representante,
+                                vfe.nomefantasia AS \"Nome Fantasia\",
+                                vfe.documento,
+                                TO_CHAR(vfe.vencimento, 'DD/MM/YYYY') as \"Vencimento\",
+                                vfe.valorsaldo::float as \"Valor Saldo\",
+                                vfe.valor as \"Valor Total\",
+                                vfe.dataemissao as \"Data Emissão\",
+                                vfe.dias_atraso as \"Dias em Atraso\",
+                                vfe.ult_evento_dias as \"Dias do Último Evento\",
+                                vfe.usuario as \"Usuário\",
+                                COALESCE(varg.prazo_medio, 0) as \"Prazo medio cliente\"
+                            FROM vw_financeiro_eventos vfe
+                            JOIN vw_analise_receber_geral varg ON varg.idvendrepre = vfe.idrepresentante
+                            WHERE ({$condicao})
+                              AND vfe.vencimento < (CURRENT_DATE - INTERVAL '3 days')
+                              AND vfe.valorsaldo > 0
+                            ORDER BY nome_representante, \"Nome Fantasia\" ASC";
+                $stmtCli = $this->pdo->prepare($sqlCli);
+                $stmtCli->execute();
+                $dadosCli = $stmtCli->fetchAll(\PDO::FETCH_ASSOC);
+                $arqExcelCli = method_exists('\Uteis', 'gerarExcelClientesDetalhado')
+                    ? \Uteis::gerarExcelClientesDetalhado($dadosCli)
+                    : null;
+
+                $anexos = [];
+                if ($arqExcelRep && file_exists($arqExcelRep)) {
+                    $anexos[$arqExcelRep] = 'resumo_representantes.xlsx';
+                }
+                if ($arqExcelCli && file_exists($arqExcelCli)) {
+                    $anexos[$arqExcelCli] = 'detalhado_clientes.xlsx';
+                }
+
+                $htmlGestor = method_exists('\Uteis', 'construirEmailGestor')
+                    ? \Uteis::construirEmailGestor($g)
+                    : "<p>Relatório de Inadimplência - {$g['nomegestor']}</p>";
+
+                $assunto = 'Relatório de Inadimplência - ' . $g['nomegestor'] . ' - ' . date('d/m/Y');
+                $ok = $this->enviarEmailNotificacao($info['emails'], $assunto, $htmlGestor, $anexos);
+
+                if ($arqExcelRep && file_exists($arqExcelRep)) @unlink($arqExcelRep);
+                if ($arqExcelCli && file_exists($arqExcelCli)) @unlink($arqExcelCli);
+
+                if ($ok) {
+                    $enviados += count($info['emails']);
+                    $resumoEnvios[] = "[OK] {$g['nomegestor']} -> " . implode(', ', $info['emails']) . " (Vencidos: R$ " . number_format((float)$g['vencidos'], 2, ',', '.') . " | {$g['percentual_geral']}%)";
+                } else {
+                    $falhas += count($info['emails']);
+                    $resumoEnvios[] = "[FALHA] {$g['nomegestor']} (" . implode(', ', $info['emails']) . ")";
+                }
             }
 
             return [
-                'success' => true,
-                'message' => "Relatório de inadimplência processado para {$enviados} gestores.",
-                'detalhes' => ['enviados' => $enviados]
+                'success' => $enviados > 0 && $falhas === 0,
+                'message' => "Relatório de inadimplência enviado com sucesso para {$enviados} destinatário(s) em " . count($dadosGestores) . " carteiras de gestão!",
+                'detalhes' => [
+                    'enviados' => $enviados,
+                    'falhas' => $falhas,
+                    'carteiras_processadas' => count($dadosGestores),
+                    'forcado_manual' => $forcar,
+                    'resumo' => $resumoEnvios
+                ]
             ];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => 'Erro ao processar gestores: ' . $e->getMessage()];
@@ -2206,8 +2382,10 @@ class CronRotinasController
                 }
             }
 
-            foreach ($anexos as $anexo) {
-                if (is_string($anexo) && file_exists($anexo)) {
+            foreach ($anexos as $chave => $anexo) {
+                if (is_string($chave) && is_string($anexo) && file_exists($chave)) {
+                    $mail->addAttachment($chave, $anexo);
+                } elseif (is_string($anexo) && file_exists($anexo)) {
                     $mail->addAttachment($anexo);
                 }
             }

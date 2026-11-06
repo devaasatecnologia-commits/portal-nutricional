@@ -194,7 +194,7 @@ class VendasDashboardController
     {
         return $this->run($request, $response, function (array $in, array $e) {
             [$ini, $fim] = $this->periodo($in, self::MAX_DIAS);
-            $idproduto = (int)($in['idproduto'] ?? 0);
+            $idproduto = (int)($in['idproduto'] ?? $in['iditem'] ?? 0);
             if ($idproduto <= 0) {
                 throw new \InvalidArgumentException('Produto inválido.');
             }
@@ -278,12 +278,13 @@ class VendasDashboardController
                     COUNT(DISTINCT n.idnfs) AS total_notas,
                     MAX(n.dataemissao) AS ultima_compra
                 $from", $p);
-            $notas = (int)$r['total_notas'];
-            $valor = (float)$r['valor'];
-            $peso = (float)$r['peso'];
+            $notas = (int)($r['total_notas'] ?? 0);
+            $valor = (float)($r['valor'] ?? 0);
+            $peso = (float)($r['peso'] ?? 0);
+            $qtd = (float)($r['quantidade'] ?? 0);
 
             $macroExpr = $this->regiaoMacroSql('rg', 'cid');
-            $info = $this->one("SELECT c.fantasia AS cliente, c.cnpj, cid.descricao AS cidade, cid.uf AS estado,
+            $info = $this->one("SELECT c.idcliforemp, c.fantasia AS cliente, c.cnpj, cid.descricao AS cidade, cid.uf AS estado,
                     ($macroExpr) AS regiao,
                     COALESCE(rg.descricao, 'SEM REGIAO') AS subregiao,
                     COALESCE(v.fantasia, '—') AS representante
@@ -294,15 +295,58 @@ class VendasDashboardController
                 LEFT JOIN cliforemp v ON v.idcliforemp = cli.idvendedor
                 WHERE c.idcliforemp = :cl", ['cl' => $idcliente]);
 
-            $produtos = $this->all("SELECT i.iditem, i.descricao AS produto, i.referencia,
-                    SUM(ni.qt) AS quantidade,
-                    SUM(" . self::PESO . ") AS peso,
-                    SUM(" . self::VAL . ") AS valor,
-                    SUM(" . self::VAL . ") / NULLIF(SUM(ni.qt),0) AS preco_medio
-                $from GROUP BY i.iditem, i.descricao, i.referencia ORDER BY valor DESC LIMIT 10", $p, 'quantidade', 'peso', 'valor', 'preco_medio');
+            // Última compra geral no ERP
+            $ultGeral = $this->one("SELECT MAX(n.dataemissao) AS ultima_compra, COUNT(DISTINCT n.idnfs) AS total_nfs_vida
+                FROM nfs n
+                WHERE n.status = 2 AND n.idtransacao = 1 AND n.idcliforemp = :cl", ['cl' => $idcliente]);
+            $ultimaCompraReal = $ultGeral['ultima_compra'] ?? $r['ultima_compra'] ?? null;
+            $diasSemComprar = null;
+            if ($ultimaCompraReal) {
+                $dtUlt = new \DateTimeImmutable($ultimaCompraReal);
+                $hoje = new \DateTimeImmutable('today');
+                $diasSemComprar = $hoje >= $dtUlt ? (int)$hoje->diff($dtUlt)->days : 0;
+            }
+
+            // Se o cliente não comprou no período filtrado do dashboard, busca consolidado dos últimos 12 meses
+            $modo = 'periodo';
+            if ($notas === 0) {
+                $modo = 'historico';
+                $pHist = [
+                    'di' => (new \DateTimeImmutable('-12 months'))->format('Y-m-d'),
+                    'df' => (new \DateTimeImmutable('today'))->format('Y-m-d'),
+                    'cl' => $idcliente
+                ];
+                $fromHist = $this->nfFrom('n.dataemissao BETWEEN :di AND :df') . ' AND n.idcliforemp = :cl';
+                $rHist = $this->one("SELECT SUM(" . self::VAL . ") AS valor,
+                        SUM(ni.qt) AS quantidade,
+                        SUM(" . self::PESO . ") AS peso,
+                        COUNT(DISTINCT n.idnfs) AS total_notas
+                    $fromHist", $pHist);
+                $notas = (int)($rHist['total_notas'] ?? 0);
+                $valor = (float)($rHist['valor'] ?? 0);
+                $peso = (float)($rHist['peso'] ?? 0);
+                $qtd = (float)($rHist['quantidade'] ?? 0);
+
+                $produtos = $this->all("SELECT i.iditem, i.descricao AS produto, i.referencia,
+                        SUM(ni.qt) AS quantidade,
+                        SUM(" . self::PESO . ") AS peso,
+                        SUM(" . self::VAL . ") AS valor,
+                        SUM(" . self::VAL . ") / NULLIF(SUM(ni.qt),0) AS preco_medio
+                    $fromHist GROUP BY i.iditem, i.descricao, i.referencia ORDER BY valor DESC LIMIT 10",
+                    $pHist, 'quantidade', 'peso', 'valor', 'preco_medio');
+            } else {
+                $produtos = $this->all("SELECT i.iditem, i.descricao AS produto, i.referencia,
+                        SUM(ni.qt) AS quantidade,
+                        SUM(" . self::PESO . ") AS peso,
+                        SUM(" . self::VAL . ") AS valor,
+                        SUM(" . self::VAL . ") / NULLIF(SUM(ni.qt),0) AS preco_medio
+                    $from GROUP BY i.iditem, i.descricao, i.referencia ORDER BY valor DESC LIMIT 10",
+                    $p, 'quantidade', 'peso', 'valor', 'preco_medio');
+            }
 
             return [
                 'cliente' => [
+                    'idcliforemp' => $idcliente,
                     'cliente' => $info['cliente'] ?? null,
                     'cnpj' => $info['cnpj'] ?? null,
                     'cidade' => $info['cidade'] ?? null,
@@ -311,11 +355,14 @@ class VendasDashboardController
                     'subregiao' => $info['subregiao'] ?? null,
                     'representante' => $info['representante'] ?? null,
                     'valor' => round($valor, 2),
-                    'quantidade' => round((float)$r['quantidade'], 2),
+                    'quantidade' => round($qtd, 2),
                     'peso' => round($peso, 2),
                     'total_notas' => $notas,
                     'ticket_medio' => $notas > 0 ? round($valor / $notas, 2) : 0,
-                    'ultima_compra' => $r['ultima_compra'],
+                    'ultima_compra' => $ultimaCompraReal,
+                    'dias_sem_comprar' => $diasSemComprar,
+                    'modo' => $modo,
+                    'periodo_label' => $modo === 'historico' ? 'Histórico Geral (Últimos 12 meses)' : 'Período Selecionado',
                 ],
                 'top_produtos' => $produtos,
             ];
@@ -1522,10 +1569,6 @@ class VendasDashboardController
         $mediaPesoDia = $decorridos > 0 ? ($pesoAtual / $decorridos) : 0;
         $mediaQtdDia = $decorridos > 0 ? ($qtdAtual / $decorridos) : 0;
 
-        $fechamentoEstimadoAtual = round($realizadoAtual + ($mediaDiaUtil * $restantes), 2);
-        $pesoProjetadoAtual = round($pesoAtual + ($mediaPesoDia * $restantes), 2);
-        $qtdProjetadaAtual = round($qtdAtual + ($mediaQtdDia * $restantes), 2);
-
         $out = [];
         for ($k = 3; $k >= 1; $k--) {
             $d = $mesAtualIni->modify("-$k month");
@@ -1551,6 +1594,44 @@ class VendasDashboardController
             ];
         }
 
+        // Histórico diário ponderado dos meses anteriores (60% M-1 + 40% M-2)
+        $m1Media = $out[2]['media_diaria'] ?? 0;
+        $m2Media = $out[1]['media_diaria'] ?? 0;
+        $mediaHistPondValor = ($m1Media > 0 || $m2Media > 0)
+            ? (($m1Media * 0.60) + ($m2Media * 0.40))
+            : $mediaDiaUtil;
+
+        $m1PesoDia = ($out[2]['dias_uteis'] ?? 0) > 0 ? ($out[2]['peso'] / $out[2]['dias_uteis']) : 0;
+        $m2PesoDia = ($out[1]['dias_uteis'] ?? 0) > 0 ? ($out[1]['peso'] / $out[1]['dias_uteis']) : 0;
+        $mediaHistPondPeso = ($m1PesoDia > 0 || $m2PesoDia > 0)
+            ? (($m1PesoDia * 0.60) + ($m2PesoDia * 0.40))
+            : $mediaPesoDia;
+
+        $m1QtdDia = ($out[2]['dias_uteis'] ?? 0) > 0 ? ($out[2]['quantidade'] / $out[2]['dias_uteis']) : 0;
+        $m2QtdDia = ($out[1]['dias_uteis'] ?? 0) > 0 ? ($out[1]['quantidade'] / $out[1]['dias_uteis']) : 0;
+        $mediaHistPondQtd = ($m1QtdDia > 0 || $m2QtdDia > 0)
+            ? (($m1QtdDia * 0.60) + ($m2QtdDia * 0.40))
+            : $mediaQtdDia;
+
+        // Ritmo diário estimado para o mês atual:
+        // Se decorridos > 7 e realizadoAtual > 0, usamos o ritmo real do próprio mês.
+        // Se estivermos no início do mês (decorridos <= 7) ou sem faturamento ainda (realizadoAtual == 0),
+        // interpolamos suavemente com a média histórica para evitar distorções de projeção zerada.
+        if ($decorridos > 7 && $realizadoAtual > 0) {
+            $taxaProjecaoValor = $mediaDiaUtil;
+            $taxaProjecaoPeso = $mediaPesoDia;
+            $taxaProjecaoQtd = $mediaQtdDia;
+        } else {
+            $pesoRitmoAtual = ($realizadoAtual > 0 && $decorridos > 0) ? min($decorridos / 15.0, 1.0) : 0.0;
+            $taxaProjecaoValor = ($mediaDiaUtil * $pesoRitmoAtual) + ($mediaHistPondValor * (1.0 - $pesoRitmoAtual));
+            $taxaProjecaoPeso = ($mediaPesoDia * $pesoRitmoAtual) + ($mediaHistPondPeso * (1.0 - $pesoRitmoAtual));
+            $taxaProjecaoQtd = ($mediaQtdDia * $pesoRitmoAtual) + ($mediaHistPondQtd * (1.0 - $pesoRitmoAtual));
+        }
+
+        $fechamentoEstimadoAtual = round($realizadoAtual + ($taxaProjecaoValor * $restantes), 2);
+        $pesoProjetadoAtual = round($pesoAtual + ($taxaProjecaoPeso * $restantes), 2);
+        $qtdProjetadaAtual = round($qtdAtual + ($taxaProjecaoQtd * $restantes), 2);
+
         $out[] = [
             'mes' => $mesAtualIni->format('Y-m-01'),
             'valor' => $realizadoAtual,
@@ -1566,22 +1647,20 @@ class VendasDashboardController
             'dias_uteis' => $totaisUteis,
             'dias_decorridos' => $decorridos,
             'dias_restantes' => $restantes,
-            'media_diaria' => round($mediaDiaUtil, 2),
+            'media_diaria' => round($taxaProjecaoValor, 2),
             'tipo' => 'atual',
         ];
 
-        // Projeção M+1 (Próximo Mês) por Média Móvel Ponderada por Dia Útil (50% M0, 30% M-1, 20% M-2)
+        // Projeção M+1 (Próximo Mês) por Média Móvel Ponderada por Dia Útil
         $proxIni = $mesAtualIni->modify('+1 month');
         $proxFim = $proxIni->modify('last day of this month');
         $uteisProx = $this->diasUteis($proxIni, $proxFim);
-        $m1Media = $out[2]['media_diaria'] ?? $mediaDiaUtil;
-        $m2Media = $out[1]['media_diaria'] ?? $mediaDiaUtil;
-        $mediaPondValor = ($mediaDiaUtil > 0)
-            ? (($mediaDiaUtil * 0.50) + ($m1Media * 0.30) + ($m2Media * 0.20))
+        $mediaM0 = $totaisUteis > 0 ? ($fechamentoEstimadoAtual / $totaisUteis) : $mediaHistPondValor;
+        $mediaPondValor = ($mediaM0 > 0)
+            ? (($mediaM0 * 0.50) + ($m1Media * 0.30) + ($m2Media * 0.20))
             : (($m1Media * 0.60) + ($m2Media * 0.40));
-        $m1PesoDia = ($out[2]['dias_uteis'] ?? 0) > 0 ? ($out[2]['peso'] / $out[2]['dias_uteis']) : $mediaPesoDia;
-        $mediaPondPeso = ($mediaPesoDia > 0) ? (($mediaPesoDia * 0.60) + ($m1PesoDia * 0.40)) : $m1PesoDia;
-        $mediaPondQtd = ($mediaQtdDia > 0) ? $mediaQtdDia : (($out[2]['dias_uteis'] ?? 0) > 0 ? ($out[2]['quantidade'] / $out[2]['dias_uteis']) : 0);
+        $mediaPondPeso = ($mediaHistPondPeso > 0) ? $mediaHistPondPeso : $mediaPesoDia;
+        $mediaPondQtd = ($mediaHistPondQtd > 0) ? $mediaHistPondQtd : $mediaQtdDia;
 
         $out[] = [
             'mes' => $proxIni->format('Y-m-01'),
@@ -1692,10 +1771,22 @@ class VendasDashboardController
         $decorridos = max($this->diasUteis($mIni, $hoje), 1);
         $restantes = $hoje < $mFim ? $this->diasUteis($hoje->modify('+1 day'), $mFim) : 0;
         $totaisUteis = $decorridos + $restantes;
+        $diasUteisAnt = max($this->diasUteis($mAntIni, $mAntFim), 20);
 
-        $mediaValor = $atual['valor'] / $decorridos;
-        $mediaPeso = $atual['peso'] / $decorridos;
-        $mediaQtd = $atual['quantidade'] / $decorridos;
+        $mediaValorAnt = $mesPassado['valor'] > 0 ? ($mesPassado['valor'] / $diasUteisAnt) : 0;
+        $mediaPesoAnt = $mesPassado['peso'] > 0 ? ($mesPassado['peso'] / $diasUteisAnt) : 0;
+        $mediaQtdAnt = $mesPassado['quantidade'] > 0 ? ($mesPassado['quantidade'] / $diasUteisAnt) : 0;
+
+        if ($decorridos > 7 && $atual['valor'] > 0) {
+            $mediaValor = $atual['valor'] / $decorridos;
+            $mediaPeso = $atual['peso'] / $decorridos;
+            $mediaQtd = $atual['quantidade'] / $decorridos;
+        } else {
+            $pesoRitmo = ($atual['valor'] > 0 && $decorridos > 0) ? min($decorridos / 15.0, 1.0) : 0.0;
+            $mediaValor = (($atual['valor'] / $decorridos) * $pesoRitmo) + ($mediaValorAnt * (1.0 - $pesoRitmo));
+            $mediaPeso = (($atual['peso'] / $decorridos) * $pesoRitmo) + ($mediaPesoAnt * (1.0 - $pesoRitmo));
+            $mediaQtd = (($atual['quantidade'] / $decorridos) * $pesoRitmo) + ($mediaQtdAnt * (1.0 - $pesoRitmo));
+        }
         $mediaNotas = $atual['notas'] / $decorridos;
 
         $adicionalValor = $mediaValor * $restantes;
@@ -1775,10 +1866,21 @@ class VendasDashboardController
             $cartV = round((float)$rr['carteira_valor'], 2);
             $cartP = round((float)$rr['carteira_peso'], 2);
             $antV = round((float)$rr['mes_anterior'], 2);
+            $antP = round((float)$rr['peso_anterior'], 2);
 
-            $medDia = $real / $decorridos;
-            $medPesoDia = $pesoR / $decorridos;
-            $medQtdDia = $qtdR / $decorridos;
+            $medDiaAnt = $antV > 0 ? ($antV / $diasUteisAnt) : 0;
+            $medPesoDiaAnt = $antP > 0 ? ($antP / $diasUteisAnt) : 0;
+
+            if ($decorridos > 7 && $real > 0) {
+                $medDia = $real / $decorridos;
+                $medPesoDia = $pesoR / $decorridos;
+                $medQtdDia = $qtdR / $decorridos;
+            } else {
+                $pesoRitmo = ($real > 0 && $decorridos > 0) ? min($decorridos / 15.0, 1.0) : 0.0;
+                $medDia = (($real / $decorridos) * $pesoRitmo) + ($medDiaAnt * (1.0 - $pesoRitmo));
+                $medPesoDia = (($pesoR / $decorridos) * $pesoRitmo) + ($medPesoDiaAnt * (1.0 - $pesoRitmo));
+                $medQtdDia = $qtdR / $decorridos;
+            }
 
             $projRep = round($real + ($medDia * $restantes), 2);
             $projPesoRep = round($pesoR + ($medPesoDia * $restantes), 2);
@@ -1802,7 +1904,7 @@ class VendasDashboardController
                 'peso_projetado' => $projPesoRep,
                 'qtd_projetada' => $projQtdRep,
                 'mes_anterior' => $antV,
-                'peso_anterior' => round((float)$rr['peso_anterior'], 2),
+                'peso_anterior' => $antP,
                 'variacao_projecao' => $this->variacao($projRep, $antV),
             ];
         }

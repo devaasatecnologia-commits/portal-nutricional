@@ -605,9 +605,10 @@ case 'v3r1f1c4Ult1m0D14':
     echo "Data Atual: " . date('d/m/Y H:i:s') . "\n";
 
     try {
+        $forcarDisparo = !empty($_GET['forcar']);
         // Utilizamos a inteligência centralizada na classe Uteis
-        if (Uteis::isUltimoDiaUtil()) {
-            echo "✅ HOJE É O ÚLTIMO DIA ÚTIL DO MÊS.\n";
+        if (Uteis::isUltimoDiaUtil() || $forcarDisparo) {
+            echo $forcarDisparo ? "✅ DISPARO FORÇADO MANUALMENTE (BYPASS DATA).\n" : "✅ HOJE É O ÚLTIMO DIA ÚTIL DO MÊS.\n";
             echo "Gerando token de acesso e disparando processo real...\n";
             
             // 1. Gera o token criptografado para o processo de e-mails
@@ -724,39 +725,64 @@ case '3M411g3St0':
         // CONFIGURA OS GESTORES DINAMICAMENTE A PARTIR DA LISTA
         // ============================================================
         $gestoresArray = [];
-        $listaIds = [];
-        
-        foreach ($emailsGestores as $email) {
-            // Busca o ID e nome do gestor pelo e-mail
-            $sql = "SELECT u.idcliforemp, c.fantasia 
-                    FROM usuario u
-                    JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
-                    WHERE u.email = :email AND u.inativo = 'N'";
-            $stmt = $pdo->prepare($sql);
-            $stmt->execute(['email' => $email]);
-            $row = $stmt->fetch(PDO::FETCH_ASSOC);
-            
-            if ($row) {
-                $id = $row['idcliforemp'];
-                $nome = $row['fantasia'] ?: 'Gestor';
-                
-                $gestoresArray[$id] = [
-                    'emails' => [$email],
-                    'nome' => $nome
-                ];
-                $listaIds[] = $id;
+        $mapaDireto = [
+            'tiago@nutricionalbr.com'      => ['id' => 11258, 'nome' => 'Tiago (Matriz SC)'],
+            'tales@nutricionalbr.com'      => ['id' => 11371, 'nome' => 'Tales (Filial PR)'],
+            'michel@nutricionalbr.com'     => ['id' => 15520, 'nome' => 'Michel'],
+            'a.eleodoro@nutricionalbr.com' => ['id' => 13878, 'nome' => 'Adriano Eleodoro'],
+            'robson@nutricionalbr.com'     => ['id' => 5297,  'nome' => 'Visão Geral Consolidada'],
+            'financeiro@nutricionalbr.com' => ['id' => 5297,  'nome' => 'Visão Geral Consolidada'],
+            'alan@nutricionalbr.com'       => ['id' => 5297,  'nome' => 'Visão Geral Consolidada'],
+        ];
+
+        foreach ($emailsGestores as $emailRaw) {
+            $email = strtolower(trim((string) $emailRaw));
+            if ($email === '') continue;
+
+            $id = null;
+            $nome = 'Gestor';
+
+            if (isset($mapaDireto[$email])) {
+                $id = $mapaDireto[$email]['id'];
+                $nome = $mapaDireto[$email]['nome'];
+            } else {
+                // Busca o ID e nome do gestor pelo e-mail na tabela cliforemp
+                $sql = "SELECT u.idcliforemp, c.fantasia 
+                        FROM usuario u
+                        JOIN cliforemp c ON c.idcliforemp = u.idcliforemp
+                        WHERE LOWER(TRIM(c.email)) = :email AND u.inativo = 'N'
+                        LIMIT 1";
+                $stmt = $pdo->prepare($sql);
+                $stmt->execute(['email' => $email]);
+                $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if ($row) {
+                    $id = (int) $row['idcliforemp'];
+                    $nome = $row['fantasia'] ?: 'Gestor';
+                }
+            }
+
+            if ($id !== null) {
+                if (!isset($gestoresArray[$id])) {
+                    $gestoresArray[$id] = [
+                        'emails' => [],
+                        'nome' => $nome
+                    ];
+                }
+                if (!in_array($emailRaw, $gestoresArray[$id]['emails'], true)) {
+                    $gestoresArray[$id]['emails'][] = $emailRaw;
+                }
             }
         }
-        
+
         // Se não encontrou nenhum gestor, usa o fallback
         if (empty($gestoresArray)) {
             $gestoresArray = [
-                11258 => [
+                5297 => [
                     'emails' => ['alan@nutricionalbr.com'],
-                    'nome' => 'Administrador'
+                    'nome' => 'Visão Geral Consolidada'
                 ]
             ];
-            $listaIds = [11258];
         }
 
         if ($isCli) echo "✅ Gestores carregados: " . count($gestoresArray) . " gestores\n";

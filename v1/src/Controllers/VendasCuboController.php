@@ -994,19 +994,19 @@ class VendasCuboController
         $stmt->execute($params);
         $t = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-        $valorBruto = (float)$t['valor_bruto'];
-        $valorLiquido = (float)$t['valor_total'];
-        $docs = (int)$t['qtd_documentos'];
+        $valorBruto = (float)($t['valor_bruto'] ?? 0);
+        $valorLiquido = (float)($t['valor_total'] ?? 0);
+        $docs = (int)($t['qtd_documentos'] ?? 0);
         return [
             'valor_bruto' => $valorBruto,
             'valor_liquido' => $valorLiquido,
             'valor_total' => $valorLiquido,
-            'valor_devolvido' => (float)$t['valor_devolvido'],
-            'quantidade' => (float)$t['quantidade_total'],
-            'peso' => (float)$t['peso_total'],
-            'comissao' => (float)$t['comissao_total'],
+            'valor_devolvido' => (float)($t['valor_devolvido'] ?? 0),
+            'quantidade' => (float)($t['quantidade_total'] ?? 0),
+            'peso' => (float)($t['peso_total'] ?? 0),
+            'comissao' => (float)($t['comissao_total'] ?? 0),
             'qtd_documentos' => $docs,
-            'ticket_medio' => $docs > 0 ? $valor / $docs : 0.0,
+            'ticket_medio' => $docs > 0 ? round($valorLiquido / $docs, 2) : 0.0,
         ];
     }
 

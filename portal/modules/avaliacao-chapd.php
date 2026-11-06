@@ -130,9 +130,14 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- ATALHOS HEADER -->
             <div class="flex flex-wrap items-center gap-2">
-                <button type="button" onclick="iniciarNovaAvaliacao()" class="bg-white text-emerald-900 hover:bg-emerald-50 font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm">
+                <button type="button" onclick="iniciarNovaAvaliacao()" class="bg-white text-emerald-900 hover:bg-emerald-50 font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm cursor-pointer">
                     <i class="fa-solid fa-circle-plus text-emerald-600"></i> Nova Avaliação
                 </button>
+                <a href="<?= $appBase ?>/portal/modules/plano-acao-chapd.php" class="bg-rose-500 hover:bg-rose-400 text-white font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm no-underline">
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>Plano de Ação & PDI</span>
+                    <span id="badgeHeaderPdiCount" class="hidden px-2 py-0.5 text-[10px] font-black rounded-full bg-white text-rose-700">0</span>
+                </a>
                 <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=avaliacao-chapd" class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition flex items-center gap-2 shadow-sm no-underline">
                     <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
                 </a>
@@ -142,11 +147,11 @@ require_once __DIR__ . '/../estrutura/header.php';
 
     <!-- ABAS DE NAVEGAÇÃO -->
     <div class="ch-tabs mb-5">
-        <button type="button" id="tabBtnAvaliar" onclick="alternarAba('avaliar')" class="ch-tab on">
-            <i class="fa-solid fa-clipboard-check"></i> <span>Avaliar Colaborador</span>
-        </button>
-        <button type="button" id="tabBtnDashboard" onclick="alternarAba('dashboard')" class="ch-tab">
+        <button type="button" id="tabBtnDashboard" onclick="alternarAba('dashboard')" class="ch-tab on">
             <i class="fa-solid fa-chart-pie"></i> <span>Dashboard Analytics</span>
+        </button>
+        <button type="button" id="tabBtnAvaliar" onclick="alternarAba('avaliar')" class="ch-tab">
+            <i class="fa-solid fa-clipboard-check"></i> <span>Avaliar Colaborador</span>
         </button>
         <button type="button" id="tabBtnColaboradores" onclick="alternarAba('colaboradores')" class="ch-tab" data-tooltip="Gestão de Colaboradores: Edite cargos, setores, fotos de perfil em área separada e mantenha sincronizado com o usuário do Portal.">
             <i class="fa-solid fa-users-gear"></i> <span>Colaboradores & Equipe</span>
@@ -165,7 +170,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- =================================================== -->
     <!-- ABA 1: MODO AVALIAR (WIZARD INTERATIVO MOBILE-FIRST) -->
     <!-- =================================================== -->
-    <div id="painelAvaliar" class="space-y-4">
+    <div id="painelAvaliar" class="hidden space-y-4">
 
         <!-- ETAPA 1: SELEÇÃO DO COLABORADOR E PERÍODO -->
         <div id="stepSelecao" class="ch-card p-5 sm:p-7">
@@ -193,10 +198,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div>
                     <label class="ch-label">Mês / Ano de Referência <span class="text-rose-500">*</span></label>
                     <div class="grid grid-cols-2 gap-2 mt-1">
-                        <select id="selMes" class="ch-input mt-0">
+                        <select id="selMes" onchange="verificarAvaliacaoExistentePeriodo()" class="ch-input mt-0">
                             <!-- JS preenche 1 a 12 -->
                         </select>
-                        <select id="selAno" class="ch-input mt-0">
+                        <select id="selAno" onchange="verificarAvaliacaoExistentePeriodo()" class="ch-input mt-0">
                             <option value="2026">2026</option>
                             <option value="2025">2025</option>
                         </select>
@@ -490,6 +495,33 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
+            <!-- ATIVAÇÃO DE PDI / PLANO DE AÇÃO 5W2H -->
+            <div id="cardAtivacaoPdi" class="p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 mb-5 transition-all">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div class="flex items-start gap-3">
+                        <label class="relative inline-flex items-center cursor-pointer mt-0.5 select-none">
+                            <input type="checkbox" id="chkRequerPdi" onchange="aoAlternarRequerPdi()" class="w-5 h-5 rounded-lg text-rose-600 focus:ring-rose-500 border-slate-300 cursor-pointer">
+                        </label>
+                        <div>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <label for="chkRequerPdi" class="text-sm font-black text-slate-800 cursor-pointer">
+                                    Encaminhar Colaborador para PDI / Plano de Ação (5W2H)
+                                </label>
+                                <span id="badgeMotivoPdi" class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700">
+                                    Opcional pelo Avaliador
+                                </span>
+                            </div>
+                            <p id="textoAjudaPdi" class="text-xs text-slate-500 font-semibold mt-0.5">
+                                Marque esta opção se o colaborador necessita de acompanhamento no módulo de Plano de Ação & PDI (ativado automaticamente quando a nota é menor que 85 pontos).
+                            </p>
+                        </div>
+                    </div>
+                    <a href="<?= $appBase ?>/portal/modules/plano-acao-chapd.php" target="_blank" class="px-3.5 py-2 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 font-extrabold text-xs transition flex items-center gap-1.5 self-start sm:self-center no-underline shadow-2xs">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i> Módulo Plano de Ação
+                    </a>
+                </div>
+            </div>
+
             <!-- PONTOS FORTES, PONTOS A DESENVOLVER E PLANO DE AÇÃO -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                 <div>
@@ -501,20 +533,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <textarea id="inputPontosDesenvolver" rows="3" placeholder="O que o colaborador precisa ajustar ou desenvolver?..." class="ch-input text-xs sm:text-sm"></textarea>
                 </div>
                 <div class="md:col-span-2">
-                    <label class="ch-label">Plano de Ação / PDI (Plano de Desenvolvimento Individual)</label>
-                    <textarea id="inputPlanoAcao" rows="2" placeholder="Ações práticas, metas de capacitação, prazos acordados..." class="ch-input text-xs sm:text-sm"></textarea>
+                    <label class="ch-label">Resumo Inicial para o Plano de Ação / PDI (Opcional)</label>
+                    <textarea id="inputPlanoAcao" rows="2" placeholder="Ações práticas iniciais, metas de capacitação ou direcionamento para o módulo 5W2H..." class="ch-input text-xs sm:text-sm"></textarea>
                 </div>
             </div>
 
             <!-- BOTÃO SALVAR AVALIAÇÃO FINAL -->
-            <div class="flex items-center justify-between pt-4 border-t border-slate-100">
-                <button type="button" onclick="cancelarAvaliacao()" class="p-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm transition">
+            <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+                <button type="button" onclick="cancelarAvaliacao()" class="p-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm transition cursor-pointer">
                     Descartar
                 </button>
-                <button type="button" id="btnSalvarAvaliacao" onclick="salvarAvaliacaoFinal()" class="ch-btn py-3 px-7 text-sm">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    <span>Concluir e Salvar Avaliação</span>
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" id="btnSalvarEAbrirPdi" onclick="salvarAvaliacaoFinal(true)" class="hidden py-3 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
+                        <i class="fa-solid fa-list-check"></i>
+                        <span>Salvar e Abrir Plano de Ação 5W2H</span>
+                    </button>
+                    <button type="button" id="btnSalvarAvaliacao" onclick="salvarAvaliacaoFinal(false)" class="ch-btn py-3 px-7 text-sm cursor-pointer">
+                        <i class="fa-solid fa-cloud-arrow-up"></i>
+                        <span>Concluir e Salvar Avaliação</span>
+                    </button>
+                </div>
             </div>
         </div>
 
@@ -523,7 +561,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- =================================================== -->
     <!-- ABA 2: DASHBOARD & PEOPLE ANALYTICS                 -->
     <!-- =================================================== -->
-    <div id="painelDashboard" class="hidden space-y-4">
+    <div id="painelDashboard" class="space-y-4">
         <!-- 4 CARDS KPIS -->
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <div class="ch-kpi bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Total de Avaliações" data-tip-desc="Volume acumulado de avaliações C.H.A.P.D registradas conforme os filtros de ano, mês e filial selecionados." data-tip-badge="KPI OPERACIONAL">
@@ -553,13 +591,15 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="text-[0.7rem] text-slate-500 font-semibold mt-1">quadro de excelência</div>
             </div>
 
-            <div class="ch-kpi bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 shadow-sm cursor-help transition hover:shadow-md" data-tip-title="Necessitam PDI (< 85 pts)" data-tip-desc="Colaboradores no Conjunto E & F com pontuação abaixo de 85 pontos, exigindo plano de desenvolvimento corretivo imediato." data-tip-badge="ATENÇÃO CRÍTICA">
+            <div onclick="window.location.href='<?= $appBase ?>/portal/modules/plano-acao-chapd.php'" class="ch-kpi bg-gradient-to-br from-amber-50 to-orange-50 border border-amber-100 shadow-sm cursor-pointer transition hover:shadow-md" data-tip-title="Necessitam PDI / Plano de Ação" data-tip-desc="Colaboradores com pontuação abaixo de 85 pontos ou encaminhados pelo avaliador para PDI. Clique para abrir o módulo Plano de Ação 5W2H." data-tip-badge="PLANO DE AÇÃO & PDI">
                 <div class="flex items-center justify-between text-amber-600 mb-1">
-                    <span class="ch-label text-amber-700">Necessitam PDI (<85)</span>
+                    <span class="ch-label text-amber-700">Necessitam PDI / PA</span>
                     <i class="fa-solid fa-triangle-exclamation text-sm"></i>
                 </div>
                 <div id="kpiDashAtencao" class="text-2xl font-black text-slate-800">0</div>
-                <div class="text-[0.7rem] text-slate-500 font-semibold mt-1">baixo potencial / suporte</div>
+                <div class="text-[0.7rem] text-rose-600 font-bold mt-1 flex items-center gap-1">
+                    <span>&lt; 85 pts ou indicado</span> <i class="fa-solid fa-arrow-right text-[9px]"></i>
+                </div>
             </div>
         </div>
 
@@ -581,9 +621,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
                 <div class="flex items-center gap-1.5">
                     <span class="text-xs font-bold text-slate-500">Filial:</span>
-                    <select id="filtroDashFilial" onchange="carregarDashboard()" class="ch-input mt-0 py-1.5 px-3 text-xs w-36">
-                        <option value="">Todas</option>
+                    <select id="filtroDashFilial" onchange="carregarDashboard()" class="ch-input mt-0 py-1.5 px-3 text-xs w-40">
+                        <option value="">Todas (1, 2 e 6)</option>
                         <option value="1">Matriz 1 (SC)</option>
+                        <option value="2">Filial 2 (SC)</option>
                         <option value="6">Filial 6 (PR)</option>
                     </select>
                 </div>
@@ -610,14 +651,19 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- Colaboradores que Precisam de Atenção / PDI -->
             <div class="ch-card p-5">
-                <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-3">
-                    <h3 class="font-black text-slate-800 text-sm flex items-center gap-2">
-                        <i class="fa-solid fa-hand-holding-heart text-rose-500"></i> Foco de Desenvolvimento (PDI)
-                    </h3>
-                    <span class="text-[0.7rem] text-rose-500 font-bold">Pontuação &lt; 85</span>
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-3 mb-3">
+                    <div>
+                        <h3 class="font-black text-slate-800 text-sm flex items-center gap-2">
+                            <i class="fa-solid fa-hand-holding-heart text-rose-500"></i> Foco de Desenvolvimento (PDI & Plano de Ação)
+                        </h3>
+                        <span class="text-[0.68rem] text-rose-500 font-bold">Pontuação &lt; 85 ou Indicado pelo Avaliador</span>
+                    </div>
+                    <a href="<?= $appBase ?>/portal/modules/plano-acao-chapd.php" class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-[11px] transition flex items-center gap-1.5 no-underline">
+                        <i class="fa-solid fa-list-check"></i> Gerir Planos 5W2H
+                    </a>
                 </div>
                 <div id="listaAtencaoColaboradores" class="space-y-2">
-                    <div class="text-center py-6 text-slate-400 text-xs font-semibold">Nenhum colaborador em nível crítico no período.</div>
+                    <div class="text-center py-6 text-slate-400 text-xs font-semibold">Nenhum colaborador pendente de PDI no período.</div>
                 </div>
             </div>
         </div>
@@ -702,13 +748,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <!-- Filtro Filial -->
                 <div>
                     <select id="filtroColabFilial" onchange="filtrarColaboradoresGrid()" class="ch-input py-2.5 text-xs sm:text-sm">
-                        <option value="">Todas as Filiais</option>
+                        <option value="">Todas as Filiais (1, 2 e 6)</option>
                         <option value="1">Matriz 1 (SC)</option>
+                        <option value="2">Filial 2 (SC)</option>
                         <option value="6">Filial 6 (PR)</option>
-                        <option value="2">Filial 2</option>
-                        <option value="3">Filial 3</option>
-                        <option value="4">Filial 4</option>
-                        <option value="5">Filial 5</option>
                     </select>
                 </div>
 
@@ -763,9 +806,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <option value="2026">Ano 2026</option>
                         <option value="2025">Ano 2025</option>
                     </select>
-                    <select id="filtroMatrizFilial" onchange="carregarMatrizAnual()" class="ch-input mt-0 py-1.5 px-3 text-xs w-36">
-                        <option value="">Todas Filiais</option>
+                    <select id="filtroMatrizFilial" onchange="carregarMatrizAnual()" class="ch-input mt-0 py-1.5 px-3 text-xs w-40">
+                        <option value="">Todas Filiais (1, 2 e 6)</option>
                         <option value="1">Matriz 1 (SC)</option>
+                        <option value="2">Filial 2 (SC)</option>
                         <option value="6">Filial 6 (PR)</option>
                     </select>
                     <button type="button" onclick="carregarMatrizAnual()" class="p-2 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition">
@@ -1011,6 +1055,25 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div>
                         <b class="text-slate-800">Plano de Ação (PDI):</b>
                         <span id="fichaPlanoAcao" class="text-slate-600 block mt-0.5">--</span>
+                    </div>
+                </div>
+
+                <!-- Feedback e Ciência do Colaborador -->
+                <div class="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2.5 text-xs">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <div class="font-black text-indigo-950 flex items-center gap-1.5">
+                            <i class="fa-solid fa-comments text-indigo-600"></i> Feedback & Ciência do Colaborador (Reunião 1:1)
+                        </div>
+                        <span id="fichaCienciaStatus" class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600">Aguardando feedback</span>
+                    </div>
+                    <div id="fichaFeedbackTextoExibicao" class="text-slate-700 font-medium hidden"></div>
+                    <div class="no-print space-y-2 pt-1">
+                        <textarea id="fichaInputFeedbackColab" rows="2" placeholder="Registre a percepção, comentários ou compromisso assumido pelo colaborador durante o feedback..." class="ch-input bg-white text-xs mt-0"></textarea>
+                        <div class="flex justify-end">
+                            <button type="button" onclick="salvarFeedbackFichaAvaliacao()" class="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer">
+                                <i class="fa-solid fa-signature"></i> Registrar Ciência / Feedback do Colaborador
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1372,11 +1435,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <label class="ch-label">Filial / Lotação</label>
                         <select id="editPerfilFilial" class="ch-input">
                             <option value="1">Matriz 1 (SC)</option>
+                            <option value="2">Filial 2 (SC)</option>
                             <option value="6">Filial 6 (PR)</option>
-                            <option value="2">Filial 2</option>
-                            <option value="3">Filial 3</option>
-                            <option value="4">Filial 4</option>
-                            <option value="5">Filial 5</option>
                         </select>
                     </div>
                     <div>

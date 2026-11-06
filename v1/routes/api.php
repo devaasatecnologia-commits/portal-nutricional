@@ -956,6 +956,25 @@ $protected->group('/amostras', function ($group) {
     $group->post('/pedidos', [$controller, 'criar']);
 })->add(new ModulePermissionMiddleware('pedido-amostra'));
 
+$protected->group('/fluxo-ecomerce', function ($group) {
+    $controller = new \Nutricional\Controllers\FluxoEcomerceController();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/itens', [$controller, 'itens']);
+    $group->get('/dashboard', [$controller, 'dashboard']);
+    $group->get('/pedidos', [$controller, 'pedidos']);
+    $group->get('/pedidos/{id:[0-9]+}', [$controller, 'detalhesPedido']);
+    $group->post('/pedidos', [$controller, 'criar']);
+})->add(new ModulePermissionMiddleware(['fluxo-ecomerce', 'pedido-amostra']));
+
+$protected->group('/migracao-carteira', function ($group) {
+    $controller = new \Nutricional\Controllers\MigracaoCarteiraController();
+    $group->get('/representantes', [$controller, 'listarRepresentantes']);
+    $group->get('/mercos-status', [$controller, 'verificarMercos']);
+    $group->get('/clientes', [$controller, 'listarClientesCarteira']);
+    $group->post('/executar', [$controller, 'executarMigracao']);
+    $group->get('/historico', [$controller, 'listarHistorico']);
+})->add(new ModulePermissionMiddleware(['migracao-carteira', 'pedido-amostra']));
+
 $protected->group('/flex', function ($group) {
     $controller = new \Nutricional\Controllers\FlexTransferenciaController();
     $group->get('/contexto', [$controller, 'contexto']);
@@ -998,7 +1017,15 @@ $protected->group('/avaliacao-chapd', function ($group) {
     $group->post('/salvar', [$controller, 'salvar']);
     $group->post('/upload-foto', [$controller, 'uploadFoto']);
     $group->post('/colaborador/salvar-perfil', [$controller, 'salvarPerfilColaborador']);
-})->add(new ModulePermissionMiddleware(['avaliacao-chapd', 'rh', 'admin']));
+    // Plano de Ação 5W2H & PDI
+    $group->get('/planos-acao/pendentes', [$controller, 'listarPendentesPdi']);
+    $group->get('/planos-acao', [$controller, 'listarPlanosAcao']);
+    $group->get('/planos-acao/{id:[0-9]+}', [$controller, 'detalhesPlanoAcao']);
+    $group->post('/planos-acao/salvar', [$controller, 'salvarPlanoAcao']);
+    $group->post('/planos-acao/item/status', [$controller, 'atualizarStatusItemPlano']);
+    $group->delete('/planos-acao/{id:[0-9]+}', [$controller, 'excluirPlanoAcao']);
+    $group->post('/feedback-colaborador', [$controller, 'salvarFeedbackColaborador']);
+})->add(new ModulePermissionMiddleware(['avaliacao-chapd', 'plano-acao-chapd', 'rh', 'admin']));
 
 $protected->group('/treinamentos', function ($group) {
     $c = new \Nutricional\Controllers\TreinamentoController();

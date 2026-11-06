@@ -115,7 +115,16 @@ function cuboVendasHandler() {
                 options.body = body ? JSON.stringify(body) : '{}';
             }
 
-            const resp = await fetch(`/v1/vendas/cubo/${endpoint}`, options);
+            let url = `/v1/vendas/cubo/${endpoint}`;
+            if (window.API_URL) {
+                if (window.API_URL.includes('api_route=')) {
+                    url = window.API_URL + (endpoint.startsWith('/') ? '' : '/') + `vendas/cubo/${endpoint}`;
+                } else if (window.API_URL.startsWith('http')) {
+                    url = window.API_URL.replace(/\/+$/, '') + `/vendas/cubo/${endpoint}`;
+                }
+            }
+
+            const resp = await fetch(url, options);
             if (resp.status === 401) {
                 window.location.href = '/portal/login.php';
                 throw new Error('Sessão expirada.');
@@ -123,7 +132,18 @@ function cuboVendasHandler() {
 
             const text = await resp.text();
             let json = null;
-            try { json = JSON.parse(text); } catch (e) { /* tratado abaixo */ }
+            try {
+                json = JSON.parse(text);
+            } catch (e) {
+                // Resiliência caso haja warning/output prévio na resposta
+                const firstBrace = text.indexOf('{');
+                const lastBrace = text.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace > firstBrace) {
+                    try {
+                        json = JSON.parse(text.substring(firstBrace, lastBrace + 1));
+                    } catch (e2) { /* tratado abaixo */ }
+                }
+            }
             if (!resp.ok) {
                 throw new Error((json && json.error) || `Erro ${resp.status} ao consultar o servidor.`);
             }
@@ -584,7 +604,15 @@ function cuboVendasHandler() {
                 return;
             }
             try {
-                const r = await fetch('/v1/vendas/cubo/exportar', {
+                let expUrl = '/v1/vendas/cubo/exportar';
+                if (window.API_URL) {
+                    if (window.API_URL.includes('api_route=')) {
+                        expUrl = window.API_URL + '/vendas/cubo/exportar';
+                    } else if (window.API_URL.startsWith('http')) {
+                        expUrl = window.API_URL.replace(/\/+$/, '') + '/vendas/cubo/exportar';
+                    }
+                }
+                const r = await fetch(expUrl, {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken'), 'Content-Type': 'application/json' },
                     body: JSON.stringify({ row_dimension: this.rowDimension, metrics: this.metricsSelecionadas, filters: this.montarFiltros() })

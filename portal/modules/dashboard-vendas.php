@@ -153,52 +153,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </select>
                 </div>
             </div>
-
-            <!-- BARRA EXECUTIVA DE FOCO: VALOR + PESO + QUANTIDADE + ESCOPO -->
-            <div class="mt-4 pt-3.5 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
-                <div class="bg-emerald-50/70 border border-emerald-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-emerald-300 transition-all" data-tooltip="Valor Faturado|Soma total das NFs de venda emitidas e autorizadas no período filtrado.">
-                    <div class="w-8 h-8 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-sack-dollar"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-emerald-700 uppercase leading-none">Valor Faturado</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatMoney(kpis.faturamento)"></p>
-                    </div>
-                </div>
-                <div class="bg-amber-50/70 border border-amber-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-amber-300 transition-all" data-tooltip="Peso Líquido Total|Volume físico faturado em quilogramas (kg) e convertido em toneladas no escopo atual.">
-                    <div class="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-weight-hanging"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-amber-700 uppercase leading-none">Peso Líquido Total</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatPeso(kpis.peso_faturado) + ' (' + formatPesoTon(kpis.peso_faturado) + ')'"></p>
-                    </div>
-                </div>
-                <div class="bg-blue-50/70 border border-blue-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-blue-300 transition-all" data-tooltip="Quantidade Total|Soma de unidades de produtos entregues/faturados nas NFs do período.">
-                    <div class="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-boxes-stacked"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-blue-700 uppercase leading-none">Quantidade Total</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatNumber(kpis.quantidade_faturada) + ' unid.'"></p>
-                    </div>
-                </div>
-                <div class="bg-indigo-50/70 border border-indigo-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-indigo-300 transition-all" data-tooltip="NFs & Clientes|Total de documentos fiscais emitidos e quantidade de clientes distintos atendidos.">
-                    <div class="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-file-invoice-dollar"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-indigo-700 uppercase leading-none">NFs &amp; Clientes</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatNumber(kpis.notas) + ' NFs • ' + formatNumber(kpis.clientes_faturados) + ' cli'"></p>
-                    </div>
-                </div>
-                <div class="bg-sky-50/70 border border-sky-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-sky-300 transition-all" data-tooltip="Carteira Aberta|Valor e peso de pedidos liberados ou com saldo pendente ainda não faturado.">
-                    <div class="w-8 h-8 rounded-lg bg-sky-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-clipboard-list"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-sky-700 uppercase leading-none">Carteira Aberta</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="formatMoney(kpis.carteira.valor) + ' (' + formatPesoTon(kpis.carteira.peso) + ')'"></p>
-                    </div>
-                </div>
-                <div class="bg-purple-50/70 border border-purple-100 rounded-xl px-3 py-2 flex items-center gap-2.5 cursor-pointer hover:border-purple-300 transition-all" data-tooltip="Dias Úteis|Total de dias úteis comerciais (seg–sex) do período e quantos dias tiveram emissão de notas.">
-                    <div class="w-8 h-8 rounded-lg bg-purple-600 text-white flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-calendar-check"></i></div>
-                    <div class="min-w-0">
-                        <p class="text-[10px] font-bold text-purple-700 uppercase leading-none">Dias Úteis Período</p>
-                        <p class="text-xs font-black text-slate-800 truncate mt-0.5" x-text="kpis.dias_uteis + ' úteis (' + kpis.dias_com_venda + ' c/ venda)'"></p>
-                    </div>
-                </div>
-            </div>
         </div>
 
         <div x-show="erro" x-cloak class="mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm"><i class="fa-solid fa-circle-exclamation mr-1"></i><span x-text="erro"></span></div>
@@ -592,7 +546,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <span x-text="formatPeso(item.atual ? item.peso_projetado : item.peso)"></span>
                                     </span>
                                     <span x-show="item.realizado" x-text="formatNumber(item.quantidade) + ' un • ' + item.notas + ' NFs'"></span>
-                                    <span x-show="item.atual" class="text-indigo-700 font-bold" x-text="'Realizado: ' + formatMoney(item.valor) + ' (' + formatPesoTon(item.peso) + ')'"></span>
+                                    <span x-show="item.atual" class="text-indigo-700 font-bold" x-text="'Realizado: ' + formatMoney(item.valor) + ' (' + formatPesoTon(item.peso) + ')' + (item.carteira_aberta > 0 ? ' • Cart: ' + formatMoney(item.carteira_aberta) : '')"></span>
                                     <span x-show="item.tendencia" x-text="'Média ponderada (' + item.dias_uteis + 'd úteis)'"></span>
                                 </div>
                             </div>
@@ -1389,39 +1343,88 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- ================================================================== -->
-    <!-- MODAL DETALHES CLIENTE (COM PESO, QUANTIDADE E VALOR)              -->
+    <!-- MODAL DETALHES CLIENTE (COM DADOS CADASTRAIS, PESO, QT E HISTÓRICO) -->
     <!-- ================================================================== -->
     <div x-show="modalClienteOpen" x-cloak @click.self="modalClienteOpen = false" class="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-        <div class="bg-white rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden">
-            <div class="bg-gradient-to-r from-blue-700 to-blue-600 px-6 py-4 flex justify-between items-center">
-                <h3 class="text-white font-bold text-sm lg:text-base"><i class="fa-solid fa-user mr-2"></i> <span x-text="clienteDetalhes.nome"></span></h3>
-                <button @click="modalClienteOpen = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-times text-xl"></i></button>
+        <div class="bg-white rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div class="bg-gradient-to-r from-blue-700 to-blue-600 px-6 py-4 flex justify-between items-center text-white">
+                <div>
+                    <h3 class="font-black text-sm lg:text-base flex items-center gap-2">
+                        <i class="fa-solid fa-building-user"></i>
+                        <span x-text="clienteDetalhes.nome"></span>
+                    </h3>
+                    <div class="flex flex-wrap items-center gap-3 text-[11px] text-blue-100 mt-1">
+                        <span x-show="clienteDetalhes.cnpj"><i class="fa-solid fa-id-card mr-1"></i>CNPJ: <span x-text="clienteDetalhes.cnpj"></span></span>
+                        <span x-show="clienteDetalhes.cidade"><i class="fa-solid fa-location-dot mr-1"></i><span x-text="clienteDetalhes.cidade + (clienteDetalhes.estado ? '/' + clienteDetalhes.estado : '')"></span></span>
+                        <span x-show="clienteDetalhes.representante"><i class="fa-solid fa-user-tie mr-1"></i>Rep: <span x-text="clienteDetalhes.representante"></span></span>
+                    </div>
+                </div>
+                <button @click="modalClienteOpen = false" class="text-white/70 hover:text-white transition"><i class="fa-solid fa-times text-xl"></i></button>
             </div>
             <div class="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
-                <div x-show="clienteLoading" class="text-center py-6 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i>Carregando...</div>
+                <div x-show="clienteLoading" class="text-center py-8 text-slate-400 text-sm"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Carregando detalhes do cliente...</div>
                 <div x-show="clienteErro" class="p-3 mb-4 rounded-xl bg-rose-50 text-rose-700 text-sm" x-text="clienteErro"></div>
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 text-center">
-                    <div class="bg-emerald-50 rounded-xl p-3"><p class="text-[10px] text-emerald-600 uppercase font-bold">Valor Total</p><p class="text-base font-black text-emerald-700" x-text="formatMoney(clienteDetalhes.valor)">R$ 0</p></div>
-                    <div class="bg-amber-50 rounded-xl p-3"><p class="text-[10px] text-amber-700 uppercase font-bold">Peso Comprado</p><p class="text-base font-black text-amber-800" x-text="formatPeso(clienteDetalhes.peso)">0 kg</p></div>
-                    <div class="bg-blue-50 rounded-xl p-3"><p class="text-[10px] text-blue-600 uppercase font-bold">Quantidade</p><p class="text-base font-black text-blue-700" x-text="formatNumber(clienteDetalhes.quantidade) + ' un'">0</p></div>
-                    <div class="bg-purple-50 rounded-xl p-3"><p class="text-[10px] text-purple-600 uppercase font-bold">Ticket Médio</p><p class="text-base font-black text-purple-700" x-text="formatMoney(clienteDetalhes.ticket_medio)">R$ 0</p></div>
-                    <div class="bg-slate-50 rounded-xl p-3"><p class="text-[10px] text-slate-600 uppercase font-bold">Total NFs</p><p class="text-base font-black text-slate-800" x-text="formatNumber(clienteDetalhes.total_notas)">0</p></div>
-                </div>
-                <h4 class="text-sm font-bold text-slate-700 mb-3">Top 10 Produtos comprados por este cliente no período</h4>
-                <div class="space-y-2 max-h-64 overflow-y-auto">
-                    <template x-for="(item, idx) in clienteDetalhes.produtos" :key="idx">
-                        <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50/70 hover:bg-slate-100">
-                            <div class="flex items-center gap-2 min-w-0 flex-1">
-                                <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-white border border-slate-200 shrink-0" x-text="idx + 1"></span>
-                                <span class="text-xs font-bold text-slate-800 break-words" x-text="item.produto"></span>
-                            </div>
-                            <div class="text-right shrink-0 ml-3">
-                                <span class="text-xs font-black text-emerald-600" x-text="formatMoney(item.valor)"></span>
-                                <span class="text-[11px] font-bold text-amber-700 ml-2" x-text="formatPeso(item.peso || 0)"></span>
-                                <span class="text-[10px] text-slate-400 ml-2" x-text="formatNumber(item.quantidade) + ' un.'"></span>
+
+                <div x-show="!clienteLoading && !clienteErro">
+                    <!-- Banner de Contexto (Histórico vs Período) -->
+                    <div x-show="clienteDetalhes.modo === 'historico'" class="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-amber-900">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-info text-amber-600 text-base"></i>
+                            <div>
+                                <p class="font-bold">Sem compras no período filtrado do dashboard.</p>
+                                <p class="text-[11px] text-amber-700">Exibindo histórico consolidado dos últimos 12 meses e hábitos de compra do cliente.</p>
                             </div>
                         </div>
-                    </template>
+                        <span x-show="clienteDetalhes.ultima_compra" class="px-2.5 py-1 rounded-lg bg-amber-200/80 font-bold text-amber-950 text-[11px]">
+                            <i class="fa-regular fa-calendar-check mr-1"></i>Última compra: <span x-text="formatDate(clienteDetalhes.ultima_compra)"></span>
+                            <span x-show="clienteDetalhes.dias_sem_comprar" x-text="' (' + clienteDetalhes.dias_sem_comprar + ' dias)'"></span>
+                        </span>
+                    </div>
+
+                    <div x-show="clienteDetalhes.modo === 'periodo'" class="mb-4 p-2.5 bg-blue-50 border border-blue-100 rounded-xl flex flex-wrap items-center justify-between gap-2 text-xs text-blue-900">
+                        <div class="flex items-center gap-2">
+                            <i class="fa-solid fa-circle-check text-blue-600"></i>
+                            <span class="font-semibold">Compras faturadas no período selecionado no dashboard.</span>
+                        </div>
+                        <span x-show="clienteDetalhes.ultima_compra" class="px-2 py-0.5 rounded bg-blue-100 text-blue-900 font-bold text-[11px]">
+                            Última compra: <span x-text="formatDate(clienteDetalhes.ultima_compra)"></span>
+                        </span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6 text-center">
+                        <div class="bg-emerald-50 border border-emerald-100 rounded-xl p-3"><p class="text-[10px] text-emerald-600 uppercase font-bold">Valor Total</p><p class="text-base font-black text-emerald-700" x-text="formatMoney(clienteDetalhes.valor)">R$ 0</p></div>
+                        <div class="bg-amber-50 border border-amber-100 rounded-xl p-3"><p class="text-[10px] text-amber-700 uppercase font-bold">Peso Comprado</p><p class="text-base font-black text-amber-800" x-text="formatPeso(clienteDetalhes.peso)">0 kg</p></div>
+                        <div class="bg-blue-50 border border-blue-100 rounded-xl p-3"><p class="text-[10px] text-blue-600 uppercase font-bold">Quantidade</p><p class="text-base font-black text-blue-700" x-text="formatNumber(clienteDetalhes.quantidade) + ' un'">0</p></div>
+                        <div class="bg-purple-50 border border-purple-100 rounded-xl p-3"><p class="text-[10px] text-purple-600 uppercase font-bold">Ticket Médio</p><p class="text-base font-black text-purple-700" x-text="formatMoney(clienteDetalhes.ticket_medio)">R$ 0</p></div>
+                        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3"><p class="text-[10px] text-slate-600 uppercase font-bold">Total NFs</p><p class="text-base font-black text-slate-800" x-text="formatNumber(clienteDetalhes.total_notas)">0</p></div>
+                    </div>
+
+                    <div class="flex justify-between items-center mb-3">
+                        <h4 class="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+                            <i class="fa-solid fa-boxes-stacked text-blue-600"></i>
+                            <span x-text="clienteDetalhes.modo === 'historico' ? 'Top 10 Produtos mais comprados pelo cliente (Histórico Geral)' : 'Top 10 Produtos comprados por este cliente no período'"></span>
+                        </h4>
+                        <span class="text-xs text-slate-400 font-semibold" x-text="(clienteDetalhes.produtos || []).length + ' produto(s)'"></span>
+                    </div>
+
+                    <div class="space-y-2 max-h-72 overflow-y-auto">
+                        <template x-for="(item, idx) in clienteDetalhes.produtos" :key="idx">
+                            <div class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50/70 hover:bg-slate-100 transition">
+                                <div class="flex items-center gap-2 min-w-0 flex-1">
+                                    <span class="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold bg-white border border-slate-200 shrink-0 text-slate-700" x-text="idx + 1"></span>
+                                    <span class="text-xs font-bold text-slate-800 break-words" x-text="item.produto"></span>
+                                </div>
+                                <div class="text-right shrink-0 ml-3">
+                                    <span class="text-xs font-black text-emerald-600" x-text="formatMoney(item.valor)"></span>
+                                    <span class="text-[11px] font-bold text-amber-700 ml-2" x-text="formatPeso(item.peso || 0)"></span>
+                                    <span class="text-[10px] text-slate-500 ml-2" x-text="formatNumber(item.quantidade) + ' un.'"></span>
+                                </div>
+                            </div>
+                        </template>
+                        <div x-show="!clienteDetalhes.produtos || clienteDetalhes.produtos.length === 0" class="text-center py-6 text-slate-400 text-xs">
+                            Nenhum produto registrado no histórico deste cliente.
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

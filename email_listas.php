@@ -89,6 +89,12 @@ class EmailListas {
                 'robson@nutricionalbr.com',
                 'tiago@nutricionalbr.com'
             ],
+
+            // 8.1 MIGRAÇÃO DE CARTEIRA (CÓPIAS CC)
+            'migracao_carteira_cc' => [
+                'alan@nutricionalbr.com',
+                'robson@nutricionalbr.com'
+            ],
             
             // 9. DEFAULT
             'default' => [

@@ -829,17 +829,48 @@ function dashboardVendasHandler() {
             this.modalClienteOpen = true;
             this.clienteLoading = true;
             this.clienteErro = '';
-            this.clienteDetalhes = { nome, valor: 0, total_notas: 0, ticket_medio: 0, quantidade: 0, peso: 0, produtos: [] };
+            this.clienteDetalhes = {
+                id: idcliente,
+                nome: nome || 'Cliente #' + idcliente,
+                cnpj: '',
+                cidade: '',
+                estado: '',
+                regiao: '',
+                subregiao: '',
+                representante: '',
+                ultima_compra: null,
+                dias_sem_comprar: null,
+                modo: 'periodo',
+                periodo_label: '',
+                valor: 0,
+                total_notas: 0,
+                ticket_medio: 0,
+                quantidade: 0,
+                peso: 0,
+                produtos: []
+            };
 
             try {
                 const data = await this.apiFetch('/v1/vendas/dashboard/cliente-detalhes', this.corpoFiltros({ idcliente }));
+                const c = data.cliente || {};
                 this.clienteDetalhes = {
-                    nome,
-                    valor: data.cliente?.valor || 0,
-                    total_notas: data.cliente?.total_notas || 0,
-                    ticket_medio: data.cliente?.ticket_medio || 0,
-                    quantidade: data.cliente?.quantidade || 0,
-                    peso: data.cliente?.peso || 0,
+                    id: idcliente,
+                    nome: c.cliente || nome || ('Cliente #' + idcliente),
+                    cnpj: c.cnpj || '',
+                    cidade: c.cidade || '',
+                    estado: c.estado || '',
+                    regiao: c.regiao || '',
+                    subregiao: c.subregiao || '',
+                    representante: c.representante || '—',
+                    ultima_compra: c.ultima_compra || null,
+                    dias_sem_comprar: c.dias_sem_comprar ?? null,
+                    modo: c.modo || 'periodo',
+                    periodo_label: c.periodo_label || (c.modo === 'historico' ? 'Histórico Geral (Últimos 12 meses)' : 'Período Selecionado'),
+                    valor: c.valor || 0,
+                    total_notas: c.total_notas || 0,
+                    ticket_medio: c.ticket_medio || 0,
+                    quantidade: c.quantidade || 0,
+                    peso: c.peso || 0,
                     produtos: data.top_produtos || []
                 };
             } catch (e) {

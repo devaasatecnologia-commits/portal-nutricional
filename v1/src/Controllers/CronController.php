@@ -422,9 +422,13 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         $startTime = microtime(true);
         
         try {
-            // ✅ Delegar para o CronRotinasController
+            // ✅ Delegar para o CronRotinasController (execução manual sempre força disparo de calendário)
+            $paramsExec = $this->parametrosDoJob($jobData);
+            if ($origem === 'MANUAL' || !empty($input['forcar'])) {
+                $paramsExec['forcar'] = true;
+            }
             $rotinasController = new CronRotinasController();
-            $resultado = $rotinasController->executarRotina($comando, $this->parametrosDoJob($jobData), $usuario, $ip);
+            $resultado = $rotinasController->executarRotina($comando, $paramsExec, $usuario, $ip);
             
             $duracao = round(microtime(true) - $startTime, 2);
             

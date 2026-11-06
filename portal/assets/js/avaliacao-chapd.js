@@ -6,7 +6,12 @@
 
 const apiFetch = async function (acao, metodo = 'GET', body = null) {
     const apiRoot = (window.API_URL || (window.location.origin + (window.location.pathname.includes('/API/') ? '/API/v1' : '/v1'))).replace(/\/$/, '');
-    let url = apiRoot + '/avaliacao-chapd/' + acao.replace(/^\/+/, '').replace(/^avaliacao-chapd\//, '');
+    const cleanAcao = acao.replace(/^\/+/, '').replace(/^avaliacao-chapd\//, '');
+    const [acaoPath, acaoQuery] = cleanAcao.split('?');
+    let url = apiRoot + '/avaliacao-chapd/' + acaoPath;
+    if (acaoQuery) {
+        url += (url.includes('?') ? '&' : '?') + acaoQuery;
+    }
     const options = { method: metodo, headers: {}, credentials: 'include' };
     const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
     if (token) options.headers.Authorization = 'Bearer ' + token;
@@ -50,7 +55,7 @@ const apiFetch = async function (acao, metodo = 'GET', body = null) {
 // ESTADO GLOBAL DA APLICAÇÃO
 // ==========================================
 const estado = {
-    abaAtiva: 'avaliar',
+    abaAtiva: 'dashboard',
     anoAtual: new Date().getFullYear(),
     mesAtual: new Date().getMonth() + 1,
     usuario: null,
@@ -68,6 +73,7 @@ const estado = {
     indicePerguntaAtual: 0,
     respostas: {}, // { idpergunta: { pontuacao: 10, observacao_item: '' } }
     conceitoLetraSelecionada: '',
+    requerPdiManual: false,
     
     // Estado do Módulo de Fotos
     fotoStream: null,
@@ -102,6 +108,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     popularSelectMeses();
     initModernTooltipsChapd();
     await carregarContexto();
+    await carregarDashboard();
+
+    // Suporte a deep-link via querystring (?aba=avaliar, ?ficha=ID)
+    const params = new URLSearchParams(window.location.search);
+    const abaParam = params.get('aba');
+    const fichaParam = params.get('ficha');
+    if (abaParam && ['dashboard', 'avaliar', 'colaboradores', 'matriz', 'historico', 'perguntas'].includes(abaParam)) {
+        alternarAba(abaParam);
+    }
+    if (fichaParam && parseInt(fichaParam) > 0) {
+        abrirModalFicha(parseInt(fichaParam));
+    }
 });
 
 /**
@@ -164,6 +182,18 @@ async function carregarContexto() {
         estado.conceitosLetras = data.conceitos_letras || [];
         estado.conjuntosLetras = data.conjuntos_letras || [];
         estado.faixasClassificacao = data.faixas_classificacao || [];
+
+        // Atualiza badge de pendentes PDI no header se houver
+        const badgePdi = $('badgeHeaderPdiCount');
+        if (badgePdi) {
+            const qtdPdi = parseInt(data.pendentes_pdi_count || 0);
+            if (qtdPdi > 0) {
+                badgePdi.textContent = qtdPdi;
+                badgePdi.classList.remove('hidden');
+            } else {
+                badgePdi.classList.add('hidden');
+            }
+        }
 
         // Preenche o Select de Colaboradores
         popularSelectColaboradores();
@@ -362,7 +392,7 @@ function aoSelecionarColaborador() {
     if (inputSetor) {
         if (colab.setor_custom) {
             inputSetor.value = colab.setor_custom;
-        } else if (!inputSetor.value) {
+        } else {
             const cargoUpper = (colab.cargo || '').toUpperCase();
             if (cargoUpper.includes('COMERCIAL') || cargoUpper.includes('VEND')) inputSetor.value = 'Comercial';
             else if (cargoUpper.includes('CARGA') || cargoUpper.includes('MOTOR') || cargoUpper.includes('EXPED')) inputSetor.value = 'Logística';
@@ -377,12 +407,49 @@ function aoSelecionarColaborador() {
     if (inputCelula) {
         if (colab.celula_custom) {
             inputCelula.value = colab.celula_custom;
-        } else if (!inputCelula.value) {
+        } else {
             inputCelula.value = colab.idfilial === 1 ? 'Matriz SC' : (colab.idfilial === 6 ? 'Filial PR' : `Filial ${colab.idfilial}`);
         }
     }
 
     cardResumo?.classList.remove('hidden');
+    verificarAvaliacaoExistentePeriodo();
+}
+
+/**
+ * Verifica no backend se o colaborador já possui avaliação no mês/ano selecionado
+ */
+async function verificarAvaliacaoExistentePeriodo() {
+    const elStatus = $('statusAvalAnterior');
+    if (!elStatus || !estado.colaboradorSelecionado) return;
+
+    const mes = parseInt($('selMes')?.value || estado.mesAtual);
+    const ano = parseInt($('selAno')?.value || estado.anoAtual);
+    estado.mesSelecionado = mes;
+    estado.anoSelecionado = ano;
+
+    elStatus.className = 'text-xs font-bold text-slate-500 bg-white/80 px-3 py-1.5 rounded-xl border border-emerald-100';
+    elStatus.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Verificando período...';
+
+    try {
+        const idColab = Number(estado.colaboradorSelecionado.idcliforemp);
+        const res = await apiFetch(`historico?idcliforemp=${idColab}&ano=${ano}&mes=${mes}`);
+        const avs = (res.avaliacoes || []).filter(x => Number(x.idcliforemp) === idColab);
+        if (avs.length > 0) {
+            const av = avs[0]; // A primeira é sempre a mais recente (Principal do mês)
+            const qtdTxt = avs.length > 1 ? `${avs.length} avaliações em ${mes.toString().padStart(2, '0')}/${ano}` : `Já avaliado em ${mes.toString().padStart(2, '0')}/${ano}`;
+            elStatus.className = 'text-xs font-extrabold text-amber-800 bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 flex items-center gap-2 cursor-pointer';
+            elStatus.innerHTML = `<i class="fa-solid fa-circle-check text-amber-600"></i> <span>${qtdTxt} (Última/Principal: <b>${av.pontuacao_total} pts [${av.conceito_letra}]</b>)</span> <u class="text-[11px] ml-1">Ver Ficha</u>`;
+            elStatus.onclick = () => abrirModalFicha(av.id);
+        } else {
+            elStatus.className = 'text-xs font-bold text-emerald-700 bg-white/90 px-3 py-1.5 rounded-xl border border-emerald-200';
+            elStatus.innerHTML = `<i class="fa-regular fa-calendar-check mr-1"></i> Disponível para avaliação em ${mes.toString().padStart(2, '0')}/${ano}`;
+            elStatus.onclick = null;
+        }
+    } catch (e) {
+        elStatus.textContent = 'Nenhuma avaliação neste mês';
+        elStatus.onclick = null;
+    }
 }
 
 // ==========================================
@@ -1152,9 +1219,19 @@ function exibirStepSintese() {
     $('stepQuestionario').classList.add('hidden');
     $('stepSintese').classList.remove('hidden');
 
-    // 1. Apura pontuação total e por pilares
+    // 1. Apura pontuação total e por pilares respeitando peso das perguntas
     let totalPontos = 0;
     const pilares = { 'C': 0, 'H': 0, 'A': 0, 'P': 0, 'D': 0 };
+    const maxPilares = { 'C': 0, 'H': 0, 'A': 0, 'P': 0, 'D': 0 };
+    let maxPossivel = 0;
+
+    (estado.perguntas || []).forEach(p => {
+        const peso = parseFloat(p.peso || 1);
+        const pil = (p.pilar || 'C').toUpperCase();
+        const maxItem = 10 * peso;
+        maxPossivel += maxItem;
+        if (maxPilares[pil] !== undefined) maxPilares[pil] += maxItem;
+    });
 
     Object.values(estado.respostas).forEach(r => {
         totalPontos += r.pontuacao;
@@ -1162,7 +1239,6 @@ function exibirStepSintese() {
         if (pilares[pil] !== undefined) pilares[pil] += r.pontuacao;
     });
 
-    const maxPossivel = estado.perguntas.length * 10;
     const perc = maxPossivel > 0 ? ((totalPontos / maxPossivel) * 100).toFixed(1) : 0;
 
     // Placar
@@ -1199,25 +1275,92 @@ function exibirStepSintese() {
         badgeConjunto.innerHTML = `<i class="fa-solid fa-layer-group"></i> ${conjunto.badge}`;
     }
 
-    // Barras dos 5 Pilares
+    // Barras dos 5 Pilares (com máximo dinâmico por pilar)
     $('pilarTotalC').textContent = `${pilares.C} pts`;
-    $('pilarBarraC').style.width = `${Math.min(100, (pilares.C / 40) * 100)}%`;
+    $('pilarBarraC').style.width = `${Math.min(100, (pilares.C / (maxPilares.C || 40)) * 100)}%`;
 
     $('pilarTotalH').textContent = `${pilares.H} pts`;
-    $('pilarBarraH').style.width = `${Math.min(100, (pilares.H / 20) * 100)}%`;
+    $('pilarBarraH').style.width = `${Math.min(100, (pilares.H / (maxPilares.H || 20)) * 100)}%`;
 
     $('pilarTotalA').textContent = `${pilares.A} pts`;
-    $('pilarBarraA').style.width = `${Math.min(100, (pilares.A / 30) * 100)}%`;
+    $('pilarBarraA').style.width = `${Math.min(100, (pilares.A / (maxPilares.A || 30)) * 100)}%`;
 
     $('pilarTotalP').textContent = `${pilares.P} pts`;
-    $('pilarBarraP').style.width = `${Math.min(100, (pilares.P / 30) * 100)}%`;
+    $('pilarBarraP').style.width = `${Math.min(100, (pilares.P / (maxPilares.P || 30)) * 100)}%`;
 
     $('pilarTotalD').textContent = `${pilares.D} pts`;
-    $('pilarBarraD').style.width = `${Math.min(100, (pilares.D / 20) * 100)}%`;
+    $('pilarBarraD').style.width = `${Math.min(100, (pilares.D / (maxPilares.D || 20)) * 100)}%`;
 
     // Sugestão Automática de Letra Conceito com base na dupla calculada
     if (!estado.conceitoLetraSelecionada) {
         selecionarLetra(conjunto.sugestaoLetra);
+    }
+
+    // Ativação automática de PDI se nota < 85 ou manual pelo avaliador
+    const chkPdi = $('chkRequerPdi');
+    if (chkPdi) {
+        if (totalPontos < 85) {
+            chkPdi.checked = true;
+            chkPdi.disabled = true;
+        } else {
+            chkPdi.disabled = false;
+            chkPdi.checked = !!estado.requerPdiManual;
+        }
+    }
+    atualizarVisualCardPdi(totalPontos);
+}
+
+function aoAlternarRequerPdi() {
+    const chkPdi = $('chkRequerPdi');
+    if (!chkPdi) return;
+    estado.requerPdiManual = chkPdi.checked;
+    let totalPontos = 0;
+    Object.values(estado.respostas).forEach(r => { totalPontos += r.pontuacao; });
+    atualizarVisualCardPdi(totalPontos);
+}
+
+function atualizarVisualCardPdi(totalPontos) {
+    const chkPdi = $('chkRequerPdi');
+    const cardPdi = $('cardAtivacaoPdi');
+    const badgeMotivo = $('badgeMotivoPdi');
+    const textoAjuda = $('textoAjudaPdi');
+    const btnSalvarPdi = $('btnSalvarEAbrirPdi');
+
+    const ativo = chkPdi ? chkPdi.checked : (totalPontos < 85);
+
+    if (totalPontos < 85) {
+        if (cardPdi) cardPdi.className = 'p-4 sm:p-5 rounded-2xl bg-rose-50 border-2 border-rose-300 mb-5 transition-all shadow-xs';
+        if (badgeMotivo) {
+            badgeMotivo.className = 'text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-rose-600 text-white';
+            badgeMotivo.innerHTML = '<i class="fa-solid fa-triangle-exclamation mr-1"></i> Obrigatório (Nota &lt; 85 pts)';
+        }
+        if (textoAjuda) {
+            textoAjuda.className = 'text-xs text-rose-800 font-bold mt-0.5';
+            textoAjuda.textContent = 'A pontuação ficou abaixo de 85 pontos (Conjunto E & F). O colaborador será capturado automaticamente na fila do módulo Plano de Ação & PDI 5W2H.';
+        }
+        btnSalvarPdi?.classList.remove('hidden');
+    } else if (ativo) {
+        if (cardPdi) cardPdi.className = 'p-4 sm:p-5 rounded-2xl bg-amber-50 border-2 border-amber-300 mb-5 transition-all shadow-xs';
+        if (badgeMotivo) {
+            badgeMotivo.className = 'text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-amber-500 text-slate-900';
+            badgeMotivo.innerHTML = '<i class="fa-solid fa-user-check mr-1"></i> Ativado pelo Avaliador';
+        }
+        if (textoAjuda) {
+            textoAjuda.className = 'text-xs text-amber-900 font-bold mt-0.5';
+            textoAjuda.textContent = 'Você marcou que este colaborador necessita de PDI. Ele será disponibilizado na fila do módulo Plano de Ação 5W2H.';
+        }
+        btnSalvarPdi?.classList.remove('hidden');
+    } else {
+        if (cardPdi) cardPdi.className = 'p-4 sm:p-5 rounded-2xl bg-slate-50 border border-slate-200 mb-5 transition-all';
+        if (badgeMotivo) {
+            badgeMotivo.className = 'text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-700';
+            badgeMotivo.textContent = 'Opcional pelo Avaliador';
+        }
+        if (textoAjuda) {
+            textoAjuda.className = 'text-xs text-slate-500 font-semibold mt-0.5';
+            textoAjuda.textContent = 'Marque esta opção se o colaborador necessita de acompanhamento no módulo de Plano de Ação & PDI (ativado automaticamente quando a nota é menor que 85 pontos).';
+        }
+        btnSalvarPdi?.classList.add('hidden');
     }
 }
 
@@ -1341,9 +1484,21 @@ function selecionarLetra(letra) {
 }
 
 /**
+ * Redireciona para o módulo de Plano de Ação 5W2H & PDI vinculado à avaliação
+ */
+function abrirPlanoAcaoColaborador(idavaliacao, idplano = null) {
+    const basePrefix = window.location.pathname.includes('/API/') ? '/API' : '';
+    let url = `${basePrefix}/portal/modules/plano-acao-chapd.php?idavaliacao=${idavaliacao}`;
+    if (idplano) {
+        url += `&idplano=${idplano}`;
+    }
+    window.location.href = url;
+}
+
+/**
  * Salva a avaliação final no banco de dados
  */
-async function salvarAvaliacaoFinal() {
+async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
     if (!estado.colaboradorSelecionado) return;
 
     if (!estado.conceitoLetraSelecionada) {
@@ -1356,23 +1511,27 @@ async function salvarAvaliacaoFinal() {
         return;
     }
 
+    const chkPdi = $('chkRequerPdi');
+    const requerPdi = irParaPlanoAcao || (chkPdi ? chkPdi.checked : false);
+
     const confirm = await Swal.fire({
         ...swalBase,
-        title: 'Confirmar Avaliação?',
+        title: irParaPlanoAcao ? 'Salvar e Gerar Plano 5W2H?' : 'Confirmar Avaliação?',
         html: `
             <div class="text-left text-xs space-y-2">
                 <p>Confirma o registro da avaliação de <b>${estado.colaboradorSelecionado.nome}</b>?</p>
-                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
                     <div><b>Período:</b> ${estado.mesSelecionado}/${estado.anoSelecionado}</div>
                     <div><b>Pontuação Total:</b> ${$('resumoPontosTotal').textContent}</div>
                     <div><b>Classificação:</b> ${$('resumoClassificacao').textContent}</div>
                     <div><b>Conceito:</b> Letra ${estado.conceitoLetraSelecionada}</div>
+                    <div><b>Plano de Ação / PDI:</b> ${requerPdi ? '<span class="text-rose-600 font-black">SIM (Ativado)</span>' : 'Não solicitado'}</div>
                 </div>
             </div>
         `,
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'Sim, Gravar Avaliação',
+        confirmButtonText: irParaPlanoAcao ? 'Sim, Salvar e Abrir 5W2H' : 'Sim, Gravar Avaliação',
         cancelButtonText: 'Revisar'
     });
 
@@ -1394,6 +1553,7 @@ async function salvarAvaliacaoFinal() {
         pontos_fortes: $('inputPontosFortes').value.trim(),
         pontos_desenvolver: $('inputPontosDesenvolver').value.trim(),
         plano_acao: $('inputPlanoAcao').value.trim(),
+        requer_pdi: requerPdi,
         observacoes_gerais: '',
         respostas: respostasArray
     };
@@ -1409,31 +1569,51 @@ async function salvarAvaliacaoFinal() {
             throw new Error(data.mensagem || 'Erro ao registrar avaliação.');
         }
 
+        if (irParaPlanoAcao) {
+            abrirPlanoAcaoColaborador(data.id);
+            return;
+        }
+
+        const nomeSalvo = estado.colaboradorSelecionado.nome;
+        const precisaPdi = !!data.requer_pdi;
+
         Swal.fire({
             ...swalBase,
             icon: 'success',
             title: 'Avaliação Registrada!',
             html: `
                 <div class="text-xs space-y-2">
-                    <p>A avaliação de <b>${estado.colaboradorSelecionado.nome}</b> foi gravada com sucesso.</p>
+                    <p>A avaliação de <b>${nomeSalvo}</b> foi gravada com sucesso.</p>
                     <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl font-bold">
                         Pontos: ${data.pontuacao_total} • Conceito: ${data.conceito_letra} (${data.classificacao})
                     </div>
+                    ${precisaPdi ? `
+                    <div class="p-2.5 bg-rose-50 text-rose-800 border border-rose-200 rounded-xl font-bold">
+                        <i class="fa-solid fa-list-check mr-1"></i> PDI / Plano de Ação 5W2H ativado para este colaborador!
+                    </div>` : ''}
                 </div>
             `,
             showDenyButton: true,
-            confirmButtonText: 'Ver Ficha Completa',
-            denyButtonText: 'Ir para Matriz Anual'
+            confirmButtonText: precisaPdi ? 'Estruturar Plano de Ação 5W2H' : 'Ver Ficha Completa',
+            denyButtonText: precisaPdi ? 'Ver Ficha Completa' : 'Ir para Dashboard'
         }).then((result) => {
             if (result.isConfirmed) {
-                abrirModalFicha(data.id);
-            } else {
-                alternarAba('matriz');
+                if (precisaPdi) {
+                    abrirPlanoAcaoColaborador(data.id);
+                } else {
+                    abrirModalFicha(data.id);
+                }
+            } else if (result.isDenied) {
+                if (precisaPdi) {
+                    abrirModalFicha(data.id);
+                } else {
+                    alternarAba('dashboard');
+                }
             }
         });
 
         // Limpa formulário
-        iniciarNovaAvaliacao();
+        iniciarNovaAvaliacao(false);
 
     } catch (err) {
         console.error('Erro ao salvar avaliação:', err);
@@ -1465,19 +1645,26 @@ function cancelarAvaliacao() {
     });
 }
 
-function iniciarNovaAvaliacao() {
+function iniciarNovaAvaliacao(mudarParaAbaAvaliar = true) {
     estado.colaboradorSelecionado = null;
     estado.respostas = {};
     estado.indicePerguntaAtual = 0;
     estado.conceitoLetraSelecionada = '';
+    estado.requerPdiManual = false;
 
     $('selColaborador').value = '';
     $('cardResumoColab')?.classList.add('hidden');
     $('inputPontosFortes').value = '';
     $('inputPontosDesenvolver').value = '';
     $('inputPlanoAcao').value = '';
+    if ($('chkRequerPdi')) {
+        $('chkRequerPdi').checked = false;
+        $('chkRequerPdi').disabled = false;
+    }
 
-    alternarAba('avaliar');
+    if (mudarParaAbaAvaliar) {
+        alternarAba('avaliar');
+    }
     $('stepSelecao').classList.remove('hidden');
     $('stepQuestionario').classList.add('hidden');
     $('stepSintese').classList.add('hidden');
@@ -1510,13 +1697,15 @@ async function carregarDashboard() {
             if (f.faixa.includes('Baixo')) atencao += parseInt(f.quantidade);
         });
 
+        const totalPdi = m.total_requer_pdi !== undefined ? parseInt(m.total_requer_pdi) : atencao;
+
         $('kpiDashExcelentes').textContent = excelentes;
-        $('kpiDashAtencao').textContent = atencao;
+        $('kpiDashAtencao').textContent = totalPdi;
 
         // Renderiza Top Colaboradores
         renderizarTopColaboradores(data.top_colaboradores || []);
 
-        // Renderiza Colaboradores em Atenção
+        // Renderiza Colaboradores em Atenção / PDI
         renderizarAtencaoColaboradores(data.atencao_colaboradores || []);
 
     } catch (err) {
@@ -1571,7 +1760,7 @@ function renderizarAtencaoColaboradores(lista) {
     if (!box) return;
 
     if (lista.length === 0) {
-        box.innerHTML = '<div class="text-center py-6 text-emerald-600 text-xs font-bold"><i class="fa-solid fa-check-circle"></i> Parabéns! Nenhum colaborador em nível crítico no período.</div>';
+        box.innerHTML = '<div class="text-center py-6 text-emerald-600 text-xs font-bold"><i class="fa-solid fa-check-circle"></i> Parabéns! Nenhum colaborador pendente de PDI no período.</div>';
         return;
     }
 
@@ -1579,7 +1768,17 @@ function renderizarAtencaoColaboradores(lista) {
         const urlFoto = c.foto_url ? formatarUrlFoto(c.foto_url) : '';
         const nomes = (c.nome_colaborador || 'C').trim().split(' ');
         const iniciais = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
-        
+        const pts = parseFloat(c.pontuacao_total || 0);
+        const motivoBadge = pts < 85
+            ? '<span class="px-1.5 py-0.5 rounded bg-rose-600 text-white text-[9px] font-black">NOTA &lt; 85</span>'
+            : '<span class="px-1.5 py-0.5 rounded bg-amber-500 text-slate-900 text-[9px] font-black">INDICADO PELO AVALIADOR</span>';
+
+        const temPlano = !!c.idplano;
+        const btnPlanoTexto = temPlano ? 'Ver Plano 5W2H' : 'Criar Plano 5W2H';
+        const btnPlanoClass = temPlano
+            ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+            : 'bg-rose-600 hover:bg-rose-700 text-white';
+
         const avatarHtml = urlFoto 
             ? `<div class="relative w-10 h-10 rounded-xl overflow-hidden border border-rose-200 flex-none shadow-2xs bg-rose-100">
                  <img src="${urlFoto}" class="w-full h-full object-cover" alt="Foto" onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -1588,18 +1787,26 @@ function renderizarAtencaoColaboradores(lista) {
             : `<div class="w-10 h-10 rounded-xl bg-rose-100 text-rose-800 font-black text-xs flex items-center justify-center flex-none border border-rose-200 shadow-2xs">${iniciais}</div>`;
 
         return `
-        <div class="p-3 bg-rose-50/60 hover:bg-rose-100/60 rounded-2xl border border-rose-100 flex items-center justify-between transition cursor-pointer gap-2.5" onclick="abrirModalFicha(${c.id})" title="Clique para ver o PDI de ${esc(c.nome_colaborador)}">
+        <div class="p-3 bg-rose-50/60 hover:bg-rose-100/60 rounded-2xl border border-rose-100 flex flex-col sm:flex-row sm:items-center justify-between transition cursor-pointer gap-2.5" onclick="abrirModalFicha(${c.id})" title="Clique para ver a ficha de ${esc(c.nome_colaborador)}">
             <div class="flex items-center gap-2.5 overflow-hidden">
                 ${avatarHtml}
                 <div class="overflow-hidden">
-                    <div class="font-black text-slate-800 text-xs sm:text-sm truncate">${esc(c.nome_colaborador)}</div>
-                    <div class="text-[0.68rem] text-rose-700 font-semibold truncate">${esc(c.cargo)} • Pontos: <b>${c.pontuacao_total}</b></div>
-                    <div class="text-[0.65rem] text-slate-500 mt-0.5 line-clamp-1 italic">${esc(c.plano_acao || c.pontos_desenvolver || 'Sem PDI cadastrado')}</div>
+                    <div class="flex flex-wrap items-center gap-1.5">
+                        <span class="font-black text-slate-800 text-xs sm:text-sm truncate">${esc(c.nome_colaborador)}</span>
+                        ${motivoBadge}
+                    </div>
+                    <div class="text-[0.68rem] text-rose-700 font-semibold truncate">${esc(c.cargo)} • Pontos: <b>${c.pontuacao_total}</b> (${String(c.mes).padStart(2,'0')}/${c.ano})</div>
+                    <div class="text-[0.65rem] text-slate-500 mt-0.5 line-clamp-1 italic">${esc(c.pontos_desenvolver || c.plano_acao || 'Requer estruturação de Plano de Ação 5W2H')}</div>
                 </div>
             </div>
-            <span class="p-1 px-2.5 rounded-xl bg-rose-200 text-rose-900 font-black text-xs flex-none shadow-2xs">
-                ${c.conceito_letra || 'E'}
-            </span>
+            <div class="flex items-center gap-2 self-end sm:self-center flex-none">
+                <span class="p-1 px-2 rounded-xl bg-rose-200 text-rose-900 font-black text-xs shadow-2xs">
+                    ${c.conceito_letra || 'E'}
+                </span>
+                <button type="button" onclick="event.stopPropagation(); abrirPlanoAcaoColaborador(${c.id}, ${c.idplano || 'null'})" class="py-1.5 px-3 rounded-xl ${btnPlanoClass} font-extrabold text-[11px] transition flex items-center gap-1 shadow-xs cursor-pointer">
+                    <i class="fa-solid fa-list-check"></i> ${btnPlanoTexto}
+                </button>
+            </div>
         </div>
     `;
     }).join('');
@@ -1651,10 +1858,12 @@ function renderizarTabelaMatriz() {
                 else if (item.pontos >= 85) badgeClass = 'bg-amber-100 text-amber-800 font-extrabold';
                 else badgeClass = 'bg-rose-100 text-rose-800 font-extrabold';
 
+                const qtdMes = parseInt(item.qtd_no_mes || 1);
+                const multiBadge = qtdMes > 1 ? `<span class="ml-0.5 px-1 rounded bg-white/70 text-[9px] font-black" title="${qtdMes} avaliações realizadas neste mês (exibindo a última/principal)">${qtdMes}x</span>` : '';
                 colsMeses += `
                     <td class="py-2.5 px-1.5 text-center">
-                        <button type="button" onclick="abrirModalFicha(${item.id})" class="p-1 px-1.5 rounded-lg text-[0.68rem] ${badgeClass} hover:opacity-80 transition shadow-xs" title="Ver avaliação">
-                            ${item.pontos} <span class="text-[0.6rem] opacity-75">[${item.letra || ''}]</span>
+                        <button type="button" onclick="abrirModalFicha(${item.id})" class="p-1 px-1.5 rounded-lg text-[0.68rem] ${badgeClass} hover:opacity-80 transition shadow-xs inline-flex items-center gap-0.5" title="Ver avaliação principal do mês${qtdMes > 1 ? ` (${qtdMes} avaliações no histórico do mês)` : ''}">
+                            <span>${item.pontos}</span> <span class="text-[0.6rem] opacity-75">[${item.letra || ''}]</span>${multiBadge}
                         </button>
                     </td>
                 `;
@@ -1745,15 +1954,35 @@ function renderizarTabelaHistorico() {
             ? `<img src="${fotoUrlFormatada}" class="w-8 h-8 rounded-xl object-cover flex-none border border-slate-200 shadow-2xs" alt="Foto" onerror="this.onerror=null; this.src=''; this.classList.add('hidden');">`
             : `<div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-800 font-black text-xs flex items-center justify-center flex-none">${(a.nome_colaborador || 'C')[0]}</div>`;
 
+        const precisaPdi = !!a.requer_pdi || parseFloat(a.pontuacao_total || 0) < 85;
+        const btnPdiHtml = precisaPdi
+            ? `<button type="button" onclick="abrirPlanoAcaoColaborador(${a.id}, ${a.idplano || 'null'})" class="p-1.5 px-2.5 rounded-xl ${a.idplano ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-rose-50 text-rose-700 border border-rose-200'} hover:opacity-80 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="${a.idplano ? 'Ver Plano de Ação 5W2H' : 'Gerar Plano de Ação 5W2H'}">
+                 <i class="fa-solid fa-list-check"></i> ${a.idplano ? '5W2H' : 'Criar PDI'}
+               </button>`
+            : '';
+
+        const isPrincipal = a.is_principal !== false;
+        const totMes = parseInt(a.total_no_mes || 1);
+        const verMes = parseInt(a.versao_mes || 1);
+        const badgeVigencia = isPrincipal
+            ? `<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 text-[9px] font-black" title="Avaliação Principal Vigente do Mês">PRINCIPAL${totMes > 1 ? ` (${verMes}ª/${totMes})` : ''}</span>`
+            : `<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 text-[9px] font-bold" title="Avaliação anterior do mesmo mês preservada no histórico">HISTÓRICO (${verMes}ª/${totMes})</span>`;
+
         return `
-            <tr class="hover:bg-slate-50 transition">
-                <td class="py-3 px-3 font-bold text-slate-700">${a.mes.toString().padStart(2, '0')}/${a.ano}</td>
+            <tr class="hover:bg-slate-50 transition ${!isPrincipal ? 'opacity-80 bg-slate-50/40' : ''}">
+                <td class="py-3 px-3 font-bold text-slate-700">
+                    <div>${a.mes.toString().padStart(2, '0')}/${a.ano}</div>
+                    <div class="mt-0.5">${badgeVigencia}</div>
+                </td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-2.5">
                         ${fotoHtml}
                         <div>
-                            <div class="font-black text-slate-800">${esc(a.nome_colaborador)}</div>
-                            <div class="text-[0.68rem] text-slate-400 font-semibold">${esc(a.cargo)}</div>
+                            <div class="font-black text-slate-800 flex items-center gap-1.5">
+                                <span>${esc(a.nome_colaborador)}</span>
+                                ${precisaPdi ? '<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9px] font-black">PDI</span>' : ''}
+                            </div>
+                            <div class="text-[0.68rem] text-slate-400 font-semibold">${esc(a.cargo)} • Avaliada em ${esc(a.data_formatada || '')}</div>
                         </div>
                     </div>
                 </td>
@@ -1767,9 +1996,12 @@ function renderizarTabelaHistorico() {
                 <td class="py-3 px-3 font-bold text-slate-700">${esc(a.classificacao_pontos)}</td>
                 <td class="py-3 px-3 text-slate-500">${esc(a.avaliador_nome)}</td>
                 <td class="py-3 px-3 text-center">
-                    <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 mx-auto">
-                        <i class="fa-solid fa-file-lines"></i> Ficha
-                    </button>
+                    <div class="flex items-center justify-center gap-1.5">
+                        <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 cursor-pointer">
+                            <i class="fa-solid fa-file-lines"></i> Ficha
+                        </button>
+                        ${btnPdiHtml}
+                    </div>
                 </td>
             </tr>
         `;
@@ -1799,7 +2031,7 @@ async function abrirModalFicha(id) {
         $('fichaSetor').textContent = a.setor || 'Geral';
         $('fichaCelula').textContent = a.celula_trabalho || `Filial ${a.idfilial}`;
 
-        // Foto do Colaborador na Ficha Oficial
+        // Foto do Colaborador na Ficha Oficial (sem sobrescrita duplicada)
         const fotoUrl = a.foto_colaborador || a.foto_url;
         const imgFicha = $('fichaColabFoto');
         const iniciaisFicha = $('fichaColabIniciais');
@@ -1811,20 +2043,6 @@ async function abrirModalFicha(id) {
                     imgFicha.classList.add('hidden');
                     if (iniciaisFicha) iniciaisFicha.classList.remove('hidden');
                 };
-            }
-            if (iniciaisFicha) iniciaisFicha.classList.add('hidden');
-        } else {
-            if (imgFicha) imgFicha.classList.add('hidden');
-            if (iniciaisFicha) {
-                const nomes = (a.nome_colaborador || '').trim().split(' ');
-                iniciaisFicha.textContent = (nomes[0][0] + (nomes.length > 1 ? nomes[nomes.length - 1][0] : '')).toUpperCase();
-                iniciaisFicha.classList.remove('hidden');
-            }
-        }
-        if (fotoUrl) {
-            if (imgFicha) {
-                imgFicha.src = fotoUrl;
-                imgFicha.classList.remove('hidden');
             }
             if (iniciaisFicha) iniciaisFicha.classList.add('hidden');
         } else {
@@ -1852,6 +2070,32 @@ async function abrirModalFicha(id) {
         $('fichaPontosFortes').textContent = a.pontos_fortes || 'Nenhum ponto forte registrado.';
         $('fichaPontosDesenvolver').textContent = a.pontos_desenvolver || 'Nenhum ponto registrado.';
         $('fichaPlanoAcao').textContent = a.plano_acao || 'Nenhum plano de ação formalizado.';
+
+        // Feedback & Ciência do Colaborador
+        estado.fichaAbertaId = a.id;
+        const elCienciaStatus = $('fichaCienciaStatus');
+        const elFeedbackExib = $('fichaFeedbackTextoExibicao');
+        const elInputFeedback = $('fichaInputFeedbackColab');
+        if (elInputFeedback) elInputFeedback.value = a.feedback_colaborador || '';
+        if (a.feedback_colaborador || a.data_ciencia_colaborador) {
+            if (elCienciaStatus) {
+                elCienciaStatus.className = 'text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+                elCienciaStatus.innerHTML = `<i class="fa-solid fa-check-double mr-1"></i> Ciência registrada${a.data_ciencia_colaborador ? ' em ' + formatarDataBR(String(a.data_ciencia_colaborador).substring(0, 10)) : ''}`;
+            }
+            if (elFeedbackExib) {
+                elFeedbackExib.textContent = a.feedback_colaborador || 'Colaborador declarou ciência da avaliação.';
+                elFeedbackExib.classList.remove('hidden');
+            }
+        } else {
+            if (elCienciaStatus) {
+                elCienciaStatus.className = 'text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600';
+                elCienciaStatus.textContent = 'Aguardando feedback / ciência';
+            }
+            if (elFeedbackExib) {
+                elFeedbackExib.textContent = '';
+                elFeedbackExib.classList.add('hidden');
+            }
+        }
 
         $('fichaAssinaturaAvaliador').textContent = a.avaliador_nome || 'Sandro Rafo';
         $('fichaAssinaturaAprovador').textContent = a.aprovador_nome || 'Robson Becker';
@@ -1882,6 +2126,50 @@ async function abrirModalFicha(id) {
             title: 'Erro ao abrir ficha',
             text: err.message
         });
+    }
+}
+
+async function salvarFeedbackFichaAvaliacao() {
+    if (!estado.fichaAbertaId) return;
+    const feedback = ($('fichaInputFeedbackColab')?.value || '').trim();
+    if (!feedback) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'warning',
+            title: 'Informe o Feedback',
+            text: 'Digite o comentário ou percepção do colaborador para registrar a ciência na ficha.'
+        });
+        return;
+    }
+
+    try {
+        const res = await apiFetch('feedback-colaborador', 'POST', {
+            idavaliacao: estado.fichaAbertaId,
+            feedback_colaborador: feedback
+        });
+        if (!res.sucesso) throw new Error(res.mensagem);
+
+        const elCienciaStatus = $('fichaCienciaStatus');
+        const elFeedbackExib = $('fichaFeedbackTextoExibicao');
+        if (elCienciaStatus) {
+            elCienciaStatus.className = 'text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300';
+            elCienciaStatus.innerHTML = `<i class="fa-solid fa-check-double mr-1"></i> Ciência registrada em ${res.data_ciencia_fmt || 'agora'}`;
+        }
+        if (elFeedbackExib) {
+            elFeedbackExib.textContent = feedback;
+            elFeedbackExib.classList.remove('hidden');
+        }
+
+        Swal.fire({
+            ...swalBase,
+            icon: 'success',
+            title: 'Feedback Registrado!',
+            text: res.mensagem,
+            timer: 1800,
+            showConfirmButton: false
+        });
+    } catch (err) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro', text: err.message });
     }
 }
 
