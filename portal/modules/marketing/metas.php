@@ -101,136 +101,98 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <i class="fa-solid fa-arrow-left text-slate-600"></i>
             </a>
             <div class="w-12 h-12 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
-                <i class="fa-solid fa-bullseye text-white text-xl"></i>
+                <i class="fa-solid fa-pen-to-square text-white text-xl"></i>
             </div>
             <div>
-                <h2 class="text-lg font-bold text-slate-800 leading-none">METAS & OBJETIVOS</h2>
-                <span class="text-xs text-slate-400 font-medium">Acompanhamento e Alimentação</span>
+                <h2 class="text-lg font-bold text-slate-800 leading-none">ALIMENTAÇÃO DE METAS DIÁRIAS</h2>
+                <span class="text-xs text-slate-400 font-medium">Lançamento rápido e acompanhamento da equipe de Marketing</span>
             </div>
         </div>
-        <div class="flex gap-2 w-full lg:w-auto">
-            <button x-show="podeCriarMeta" @click="abrirModalNovaMeta()" class="flex-1 lg:flex-none px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
-                <i class="fa-solid fa-plus"></i> Nova Meta
-            </button>
-            <button @click="exportarRelatorio" class="flex-1 lg:flex-none px-4 py-2 bg-slate-600 text-white rounded-xl text-sm font-bold hover:bg-slate-700 transition-all flex items-center justify-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap w-full lg:w-auto justify-end">
+            <template x-if="isAdminOrSupervisor()">
+                <a href="/portal/modules/admin/metas-marketing.php" class="px-4 py-2.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 no-underline shadow-xs">
+                    <i class="fa-solid fa-gear text-amber-600"></i>
+                    <span>ADMINISTRAR METAS</span>
+                </a>
+            </template>
+            <button @click="exportarRelatorio" class="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition flex items-center gap-1.5">
                 <i class="fa-solid fa-download"></i> Exportar
             </button>
         </div>
     </div>
 
-    <!-- ✨ BANNER PROJEÇÃO INTELIGENTE DE NOVO CICLO (VISÍVEL PARA ADMIN) -->
-    <div x-show="podeCriarMeta && projecao && projecao.projecoes && projecao.projecoes.length > 0 && projecaoAberta" 
-         x-transition:enter="transition ease-out duration-300"
-         x-transition:enter-start="opacity-0 transform -translate-y-2"
-         x-transition:enter-end="opacity-100 transform translate-y-0"
-         class="mb-6 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 rounded-3xl p-5 lg:p-6 text-white shadow-xl border border-indigo-500/20 relative overflow-hidden">
-        
-        <div class="absolute -right-10 -bottom-10 opacity-10 pointer-events-none">
-            <i class="fa-solid fa-wand-magic-sparkles text-[180px]"></i>
-        </div>
-
-        <div class="relative z-10">
-            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-white/10">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-2xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
-                        <i class="fa-solid fa-sparkles text-lg"></i>
-                    </div>
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h2 class="text-base sm:text-lg font-black tracking-tight" x-text="'✨ Projeção do Novo Ciclo: ' + (projecao?.periodo_sugerido?.nome_ciclo || 'Novembro / Dezembro')"></h2>
-                            <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">Calibrada por Histórico</span>
-                        </div>
-                        <p class="text-xs text-slate-300 mt-0.5">Sugestão automática baseada no volume real alcançado nos ciclos anteriores de Instagram & Engajamento.</p>
-                    </div>
+    <!-- ⚡ PAINEL DE ENTRADA RÁPIDA / ALIMENTAÇÃO DIÁRIA DIRETA -->
+    <div class="bg-white rounded-3xl p-5 mb-6 border border-emerald-100 shadow-sm">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 pb-4 border-b border-slate-100">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center font-bold">
+                    <i class="fa-solid fa-bolt text-lg"></i>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button @click="abrirAjusteProjecao()" class="px-3.5 py-2 bg-white/10 hover:bg-white/20 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 border border-white/10">
-                        <i class="fa-solid fa-sliders"></i> Ajustar Valores
-                    </button>
-                    <button @click="aplicarProjecaoDireta()" :disabled="salvandoProjecao" class="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-emerald-500/20">
-                        <i class="fa-solid fa-rocket" :class="salvandoProjecao ? 'fa-spin' : ''"></i>
-                        <span x-text="salvandoProjecao ? 'Criando metas...' : 'Criar Ciclo em 1 Clique'"></span>
-                    </button>
-                    <button @click="projecaoAberta = false" class="text-slate-400 hover:text-white p-1 transition" title="Ocultar sugestão">
-                        <i class="fa-solid fa-xmark text-sm"></i>
-                    </button>
+                <div>
+                    <h3 class="text-sm font-extrabold text-slate-800 leading-tight">ENTRADA RÁPIDA DE ALIMENTAÇÃO</h3>
+                    <p class="text-xs text-slate-400">Preencha os valores do dia para as metas ativas e grave com 1 clique.</p>
                 </div>
             </div>
-
-            <!-- CARDS DE METAS PROJETADAS -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-4">
-                <template x-for="p in projecao?.projecoes || []" :key="p.padrao">
-                    <div class="bg-white/5 backdrop-blur-md rounded-2xl p-4 border border-white/10 hover:border-indigo-400/40 transition">
-                        <div class="flex items-center justify-between mb-2">
-                            <span class="text-xs font-black text-indigo-300 truncate" x-text="p.titulo"></span>
-                            <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-400/20 text-indigo-200" x-text="p.benchmark?.crescimento_sugerido || '+18%'"></span>
-                        </div>
-                        
-                        <div class="my-2.5">
-                            <div class="text-[11px] text-slate-400">Meta Final Sugerida</div>
-                            <div class="text-xl sm:text-2xl font-black text-white mt-0.5" x-text="formatarValor(p.valores?.meta_final, 'padrao')"></div>
-                        </div>
-
-                        <div class="text-[11px] text-slate-300 space-y-1 pt-2 border-t border-white/10">
-                            <div class="flex justify-between">
-                                <span class="text-slate-400">Real Anterior:</span>
-                                <b class="text-emerald-300" x-text="p.benchmark?.ciclo_anterior_real"></b>
-                            </div>
-                            <div class="flex justify-between" x-show="p.valores?.taxa_atual > 0">
-                                <span class="text-slate-400">Ponto de Partida:</span>
-                                <b class="text-slate-200" x-text="formatarValor(p.valores?.taxa_atual, 'padrao') + ' seguidores'"></b>
-                            </div>
-                        </div>
-                    </div>
-                </template>
+            <!-- Seletor de Data -->
+            <div class="flex items-center gap-2 w-full sm:w-auto">
+                <button type="button" @click="definirDataRapida('hoje')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">Hoje</button>
+                <button type="button" @click="definirDataRapida('ontem')" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition">Ontem</button>
+                <input type="date" x-model="dataEntradaRapida" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-emerald-500">
             </div>
         </div>
-    </div>
 
-    <!-- MODAL DE AJUSTE DE PROJEÇÃO -->
-    <div id="modalAjusteProjecao" class="fixed inset-0 z-50 overflow-y-auto" x-show="modalAjusteProjecaoAberta" x-cloak>
-        <div class="flex items-center justify-center min-h-screen p-4">
-            <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" @click="modalAjusteProjecaoAberta = false"></div>
-            <div class="relative bg-white rounded-3xl max-w-xl w-full shadow-2xl overflow-hidden">
-                <div class="bg-gradient-to-r from-indigo-700 to-purple-700 px-6 py-4 text-white flex items-center justify-between">
-                    <h3 class="text-lg font-bold flex items-center gap-2">
-                        <i class="fa-solid fa-sliders"></i> Calibrar Projeção do Novo Ciclo
-                    </h3>
-                    <button @click="modalAjusteProjecaoAberta = false" class="text-white/70 hover:text-white">
-                        <i class="fa-solid fa-xmark text-lg"></i>
-                    </button>
-                </div>
-                <div class="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-                    <p class="text-xs text-slate-500">Revise os valores sugeridos para o novo ciclo antes de criar as metas no sistema:</p>
-
-                    <template x-for="(p, idx) in metasProjetadas" :key="p.padrao">
-                        <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                            <div class="flex items-center justify-between">
-                                <b class="text-sm text-slate-800" x-text="p.titulo"></b>
-                                <span class="text-xs text-indigo-600 font-bold" x-text="p.benchmark?.ciclo_anterior_real ? 'Anterior: ' + p.benchmark.ciclo_anterior_real : ''"></span>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 pt-2">
-                                <div x-show="p.padrao === 'D1'">
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase">Base Atual (Seguidores)</label>
-                                    <input type="number" x-model="p.valores.taxa_atual" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-white">
-                                </div>
-                                <div :class="p.padrao === 'D1' ? '' : 'col-span-2'">
-                                    <label class="block text-[10px] font-bold text-slate-400 uppercase">Meta Final Objetivo</label>
-                                    <input type="number" x-model="p.valores.meta_final" class="w-full p-2.5 border rounded-xl text-sm font-bold bg-white text-emerald-600">
-                                </div>
-                            </div>
-                        </div>
+        <!-- Grade de Metas Ativas para Entrada Rápida -->
+        <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="text-[10px] uppercase font-black tracking-wider text-slate-400 border-b border-slate-100">
+                        <th class="py-2.5 px-3">Meta Ativa</th>
+                        <th class="py-2.5 px-3">Modelo / Tipo</th>
+                        <th class="py-2.5 px-3 text-right">Meta Final</th>
+                        <th class="py-2.5 px-3 text-right">Progresso Atual</th>
+                        <th class="py-2.5 px-3 w-48 text-right">Valor Alcançado no Dia</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+                    <template x-for="meta in metasAtivas" :key="meta.id">
+                        <tr class="hover:bg-slate-50/80 transition-colors">
+                            <td class="py-3 px-3">
+                                <span class="font-extrabold text-slate-800 block" x-text="meta.titulo"></span>
+                                <span class="text-[10px] text-slate-400 line-clamp-1" x-text="meta.descricao || 'Sem descrição'"></span>
+                            </td>
+                            <td class="py-3 px-3">
+                                <span class="px-2 py-0.5 rounded-md text-[10px] font-black uppercase bg-purple-50 text-purple-700 border border-purple-200" x-text="meta.tipo_nome || 'Meta Geral'"></span>
+                            </td>
+                            <td class="py-3 px-3 text-right font-black text-slate-700" x-text="formatarValor(meta.meta_final, 'meta')"></td>
+                            <td class="py-3 px-3 text-right font-black text-emerald-600" x-text="formatarValor(meta.valor_acumulado, 'valor')"></td>
+                            <td class="py-3 px-3 text-right">
+                                <input type="number" step="any" x-model="valoresEntradaRapida[meta.id]" 
+                                       placeholder="0.00"
+                                       @keydown.enter="salvarEntradaRapida()"
+                                       class="w-32 py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-right text-slate-800 focus:bg-white focus:border-emerald-500">
+                            </td>
+                        </tr>
                     </template>
-                </div>
-                <div class="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-2">
-                    <button @click="modalAjusteProjecaoAberta = false" class="px-4 py-2.5 rounded-xl bg-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-300 transition">Cancelar</button>
-                    <button @click="confirmarAplicacaoAjustada()" :disabled="salvandoProjecao" class="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black transition flex items-center gap-1.5 shadow-md">
-                        <i class="fa-solid fa-check"></i>
-                        <span x-text="salvandoProjecao ? 'Gravando...' : 'Confirmar e Criar Metas'"></span>
-                    </button>
-                </div>
-            </div>
+                    <template x-if="metasAtivas.length === 0">
+                        <tr>
+                            <td colspan="5" class="py-6 text-center text-slate-400 text-xs">
+                                Nenhuma meta ativa em andamento no momento.
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <span class="text-xs text-slate-400">
+                <i class="fa-solid fa-circle-info text-emerald-600 mr-1"></i> Preencha o valor do dia nas metas e clique em salvar. Valores em branco serão ignorados.
+            </span>
+            <button type="button" @click="salvarEntradaRapida()" :disabled="salvandoLote || metasAtivas.length === 0"
+                    class="w-full sm:w-auto px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 shadow-md disabled:opacity-50">
+                <i class="fa-solid fa-floppy-disk" :class="salvandoLote ? 'fa-spin' : ''"></i>
+                <span x-text="salvandoLote ? 'Gravando...' : 'Salvar Todos os Lançamentos'"></span>
+            </button>
         </div>
     </div>
 
@@ -525,12 +487,13 @@ require_once __DIR__ . '/../../estrutura/header.php';
 <!-- Empty State -->
 <div x-show="metasFiltradas.length === 0" class="bg-white rounded-2xl p-12 text-center">
     <i class="fa-solid fa-bullseye text-5xl text-slate-300 mb-4 block"></i>
-    <h3 class="text-lg font-bold text-slate-700 mb-2">Nenhuma meta encontrada</h3>
-    <p class="text-slate-400 text-sm mb-4">Comece criando uma nova meta para acompanhar seus resultados</p>
-    <button x-show="podeCriarMeta" @click="abrirModalNovaMeta()" 
-    class="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all inline-flex items-center gap-2">
-    <i class="fa-solid fa-plus"></i> Criar Nova Meta
-</button>
+    <h3 class="text-lg font-bold text-slate-700 mb-2">Nenhuma meta ativa encontrada</h3>
+    <p class="text-slate-400 text-sm mb-4">No momento não há metas ativas em andamento para alimentação.</p>
+    <template x-if="isAdminOrSupervisor()">
+        <a href="/portal/modules/admin/metas-marketing.php" class="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all inline-flex items-center gap-2 no-underline">
+            <i class="fa-solid fa-gear"></i> Gerenciar Metas no Admin
+        </a>
+    </template>
 </div>
 </div>
 
@@ -614,60 +577,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 </div>
-
-<!-- MODAL DE NOVA META -->
-<div id="modalNovaMeta" class="fixed inset-0 z-50 hidden overflow-y-auto" x-show="modalNovaMetaAberta" x-cloak>
-    <div class="flex items-center justify-center min-h-screen p-4">
-        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" @click="fecharModalNovaMeta"></div>
-        <div class="relative bg-white rounded-3xl max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div class="bg-emerald-600 px-6 py-4 flex items-center justify-between rounded-t-3xl sticky top-0 z-10">
-                <h3 class="text-xl font-bold text-white">
-                    <i class="fa-solid fa-plus-circle mr-2"></i> Nova Meta
-                </h3>
-                <button @click="fecharModalNovaMeta" class="text-white/70 hover:text-white transition-colors">
-                    <i class="fa-solid fa-times text-xl"></i>
-                </button>
-            </div>
-            <div class="p-6 space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Tipo de Meta *</label>
-                    <select x-model="novaMetaTipoId" class="w-full p-3 border rounded-xl text-sm focus:ring-2 focus:ring-emerald-400">
-                        <option value="">Selecione um tipo...</option>
-                        <template x-for="tipo in tiposMeta" :key="tipo.id">
-                            <option :value="tipo.id" x-text="tipo.nome"></option>
-                        </template>
-                    </select>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Título *</label>
-                    <input type="text" x-model="novaMetaTitulo" class="w-full p-3 border rounded-xl text-sm" placeholder="Ex: Black Friday 2024">
-                </div>
-                <div class="grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Data Início</label>
-                        <input type="date" x-model="novaMetaInicio" class="w-full p-3 border rounded-xl text-sm">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Data Fim</label>
-                        <input type="date" x-model="novaMetaFim" class="w-full p-3 border rounded-xl text-sm">
-                    </div>
-                </div>
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase mb-1">Valores</label>
-                    <div id="novaMetaCampos" class="space-y-3"></div>
-                </div>
-                <div class="pt-4 flex gap-3">
-                    <button @click="salvarNovaMeta" class="flex-1 px-4 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all">
-                        <i class="fa-solid fa-save mr-1"></i> Criar Meta
-                    </button>
-                    <button @click="fecharModalNovaMeta" class="px-4 py-3 bg-slate-200 text-slate-600 rounded-xl font-bold hover:bg-slate-300 transition-all">
-                        Cancelar
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -697,13 +606,80 @@ require_once __DIR__ . '/../../estrutura/header.php';
             metas: [],
             tiposMeta: [],
             metasFiltradas: [],
-            filtroStatus: 'todas',
+            filtroStatus: 'ativa',
             filtroBusca: '',
             totais: { ativas: 0, concluidas: 0, total: 0, progressoMedio: 0 },
             podeEditar: false,
             podeCriarMeta: false,
 
-        // Modal Alimentação
+        // Entrada Rápida de Alimentação Diária
+            dataEntradaRapida: MarketingUtils.getDataHojeLocal(),
+            valoresEntradaRapida: {},
+            salvandoLote: false,
+
+            get metasAtivas() {
+                return this.metas.filter(m => (m.status || 'ativa').toLowerCase() === 'ativa');
+            },
+
+            definirDataRapida(quando) {
+                if (quando === 'hoje') {
+                    this.dataEntradaRapida = MarketingUtils.getDataHojeLocal();
+                } else if (quando === 'ontem') {
+                    const d = new Date();
+                    d.setDate(d.getDate() - 1);
+                    this.dataEntradaRapida = d.toISOString().split('T')[0];
+                }
+            },
+
+            async salvarEntradaRapida() {
+                const metasComValor = Object.entries(this.valoresEntradaRapida)
+                    .filter(([id, val]) => val !== '' && val !== null && !isNaN(val) && parseFloat(val) > 0);
+
+                if (metasComValor.length === 0) {
+                    Swal.fire({
+                        icon: 'info',
+                        title: 'Nenhum valor informado',
+                        text: 'Preencha o valor alcançado no dia para pelo menos uma meta ativa.'
+                    });
+                    return;
+                }
+
+                this.salvandoLote = true;
+                let sucessos = 0;
+                let erros = 0;
+
+                for (const [metaId, valor] of metasComValor) {
+                    try {
+                        const resp = await this.fetchWithAuth('/v1/meta-builder/alimentar', {
+                            method: 'POST',
+                            body: JSON.stringify({
+                                id_meta_instancia: parseInt(metaId, 10),
+                                data_registro: this.dataEntradaRapida,
+                                valores: { valor_alcancado: parseFloat(valor) }
+                            })
+                        });
+                        if (resp.ok) sucessos++;
+                        else erros++;
+                    } catch (e) {
+                        erros++;
+                    }
+                }
+
+                this.salvandoLote = false;
+                this.valoresEntradaRapida = {};
+
+                Swal.fire({
+                    icon: erros === 0 ? 'success' : 'warning',
+                    title: erros === 0 ? 'Lançamentos Salvos!' : 'Atenção',
+                    text: `${sucessos} meta(s) alimentada(s) com sucesso para o dia ${this.dataEntradaRapida.split('-').reverse().join('/')}.${erros > 0 ? ` (${erros} erro(s))` : ''}`,
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+
+                await this.carregarMetas();
+            },
+
+        // Modal Alimentação Individual
             modalAlimentacaoAberta: false,
             metaSelecionada: null,
             alimentacaoData: MarketingUtils.getDataHojeLocal(),
@@ -712,21 +688,6 @@ require_once __DIR__ . '/../../estrutura/header.php';
             metaTaxaInicial: 0,
             metaMetaFinal: 0,
             metaValorAcumulado: 0,
-
-        // Modal Nova Meta
-            modalNovaMetaAberta: false,
-            novaMetaTipoId: '',
-            novaMetaTitulo: '',
-            novaMetaInicio: MarketingUtils.getDataHojeLocal(),
-            novaMetaFim: MarketingUtils.getDataFuturaLocal(30),
-            novaMetaCampos: [],
-
-        // Projeção Inteligente de Ciclo
-            projecao: null,
-            projecaoAberta: true,
-            modalAjusteProjecaoAberta: false,
-            metasProjetadas: [],
-            salvandoProjecao: false,
 
         // ====================================================================
         // FUNÇÕES DE AUTENTICAÇÃO (usando MarketingUtils)
@@ -760,90 +721,13 @@ require_once __DIR__ . '/../../estrutura/header.php';
             formatarValor: MarketingUtils.formatarValor,
             formatarData: MarketingUtils.formatarData,
 
-            async carregarProjecaoCiclo() {
-                try {
-                    const resp = await this.fetchWithAuth('/v1/meta-builder/projecao-novo-ciclo');
-                    const data = await resp.json();
-                    if (data.success && data.projecoes) {
-                        this.projecao = data;
-                        this.metasProjetadas = JSON.parse(JSON.stringify(data.projecoes));
-                    }
-                } catch(e) {
-                    console.error('Erro ao buscar projeção inteligente:', e);
-                }
-            },
-
-            abrirAjusteProjecao() {
-                if (this.projecao?.projecoes) {
-                    this.metasProjetadas = JSON.parse(JSON.stringify(this.projecao.projecoes));
-                    this.modalAjusteProjecaoAberta = true;
-                }
-            },
-
-            async aplicarProjecaoDireta() {
-                if (!this.projecao?.projecoes?.length) return;
-                const result = await Swal.fire({
-                    title: 'Criar Ciclo com 1 Clique?',
-                    html: `Deseja criar as <b>3 novas metas de ${this.projecao?.periodo_sugerido?.nome_ciclo}</b> calibradas por histórico?<br><br><span class="text-xs text-slate-500">As metas anteriores vencidas serão marcadas como concluídas automaticamente.</span>`,
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Sim, criar ciclo agora!',
-                    cancelButtonText: 'Cancelar',
-                    confirmButtonColor: '#10b981'
-                });
-                if (result.isConfirmed) {
-                    await this.enviarAplicacaoProjecao(this.projecao.projecoes);
-                }
-            },
-
-            async confirmarAplicacaoAjustada() {
-                this.modalAjusteProjecaoAberta = false;
-                await this.enviarAplicacaoProjecao(this.metasProjetadas);
-            },
-
-            async enviarAplicacaoProjecao(metasParaCriar) {
-                this.salvandoProjecao = true;
-                Swal.fire({ title: 'Criando novas metas...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-
-                try {
-                    const resp = await this.fetchWithAuth('/v1/meta-builder/aplicar-projecao-ciclo', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            concluir_anteriores: true,
-                            metas: metasParaCriar
-                        })
-                    });
-                    const res = await resp.json();
-                    Swal.close();
-                    this.salvandoProjecao = false;
-
-                    if (res.success) {
-                        Swal.fire({
-                            icon: 'success',
-                            title: 'Novo Ciclo Ativado!',
-                            text: res.message || 'Metas criadas com sucesso!',
-                            confirmButtonColor: '#10b981'
-                        });
-                        this.projecaoAberta = false;
-                        await this.carregarMetas();
-                    } else {
-                        Swal.fire('Erro', res.error || 'Falha ao criar ciclo', 'error');
-                    }
-                } catch(e) {
-                    Swal.close();
-                    this.salvandoProjecao = false;
-                    Swal.fire('Erro', e.message, 'error');
-                }
-            },
-
         // ====================================================================
         // INICIALIZAÇÃO
         // ====================================================================
             async init() {
                 await Promise.all([
                     this.carregarTiposMeta(),
-                    this.carregarMetas(),
-                    this.carregarProjecaoCiclo()
+                    this.carregarMetas()
                 ]);
                 await this.verificarPermissoes();
                 
@@ -1265,86 +1149,6 @@ async carregarMetas() {
                         document.getElementById('novaMetaCampos').innerHTML = '';
                     }
                 });
-            },
-
-            async carregarCamposTipoMeta(tipoId) {
-                try {
-                    const resp = await this.fetchWithAuth(`/v1/meta-builder/tipos/${tipoId}/campos`);
-                    const data = await resp.json();
-
-                    if (data.success && data.data) {
-                        const container = document.getElementById('novaMetaCampos');
-                        container.innerHTML = data.data.map(campo => `
-                        <div>
-                            <label class="block text-xs font-bold text-slate-500 uppercase mb-2">
-                                ${campo.rotulo || campo.nome_campo}
-                            ${campo.unidade ? `<span class="text-slate-400 ml-1">(${campo.unidade})</span>` : ''}
-                            </label>
-                            <input type="number" 
-                                   step="${campo.unidade === 'R$' ? '0.01' : '1'}"
-                                   data-nome="${campo.nome_campo}"
-                                   placeholder="${campo.rotulo || campo.nome_campo}"
-                                   class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm">
-                        </div>
-                        `).join('');
-                    }
-                } catch(e) {
-                    console.error('Erro carregar campos:', e);
-                }
-            },
-
-            fecharModalNovaMeta() {
-                this.modalNovaMetaAberta = false;
-                document.getElementById('modalNovaMeta').classList.add('hidden');
-            },
-
-            async salvarNovaMeta() {
-                if (!this.novaMetaTipoId || !this.novaMetaTitulo) {
-                    Swal.fire('Atenção', 'Preencha tipo e título da meta', 'warning');
-                    return;
-                }
-
-                Swal.fire({ title: 'Criando meta...', didOpen: () => Swal.showLoading(), allowOutsideClick: false });
-
-                try {
-                    const campos = [];
-                    const inputs = document.querySelectorAll('#novaMetaCampos input');
-                    inputs.forEach(input => {
-                        const nome = input.getAttribute('data-nome');
-                        const valor = parseFloat(input.value) || 0;
-                        if (nome) campos.push({ nome: nome, valor: valor });
-                    });
-
-                    const resp = await this.fetchWithAuth('/v1/meta-builder/instancias', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            id_tipo_meta: parseInt(this.novaMetaTipoId),
-                            titulo: this.novaMetaTitulo,
-                            data_inicio: this.novaMetaInicio,
-                            data_fim: this.novaMetaFim,
-                            status: 'ativa',
-                            campos: campos
-                        })
-                    });
-
-                    const data = await resp.json();
-                    Swal.close();
-
-                    if (data.success) {
-                        Swal.fire({ icon: 'success', title: 'Meta criada!', timer: 1500, showConfirmButton: false });
-                        this.fecharModalNovaMeta();
-                        await this.carregarMetas();
-                    } else {
-                        Swal.fire('Erro', data.error || 'Falha ao criar', 'error');
-                    }
-                } catch(e) {
-                    Swal.close();
-                    Swal.fire('Erro', e.message, 'error');
-                }
-            },
-
-            editarMeta(meta) {
-                window.open(`/portal/modules/marketing/admin/instancias.php?id=${meta.id}`, '_blank');
             },
 
             editarRegistro(meta, registro) {

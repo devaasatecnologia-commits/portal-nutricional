@@ -567,7 +567,7 @@ public function alimentarMeta(Request $request, Response $response): Response
     $input = json_decode($request->getBody()->getContents(), true) ?? [];
     
     try {
-        $idMeta = (int)($input['id_meta_instancia'] ?? 0);
+        $idMeta = (int)($input['id_meta_instancia'] ?? $input['id_meta'] ?? 0);
         $dataRegistro = $input['data_registro'] ?? date('Y-m-d');
         $valores = $input['valores'] ?? [];
         $usuarioId = (int)($input['usuario_id'] ?? 0);

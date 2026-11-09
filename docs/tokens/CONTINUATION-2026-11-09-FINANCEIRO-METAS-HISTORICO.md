@@ -49,14 +49,36 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
   - Implementados `verificarPermissaoAdmin()`, `loadMetasProgresso()`, `setPeriodoHistorico()`, `togglePeriodoPersonalizado()`, `aplicarDatasPersonalizadas()`.
   - Chart.js atualizado para desenhar a linha pontilhada da meta corporativa como guia visual direto.
 
+### D. Separação de Metas Marketing (Portal vs Admin) e Alimentação Rápida
+- **Portal Comum (`portal/modules/marketing/metas.php`):**
+  - Transformado em cockpit exclusivo para **ALIMENTAÇÃO DIÁRIA DE METAS**.
+  - Exibe na cara **apenas as metas ativas vigentes** (`filtroStatus: 'ativa'`).
+  - Painel de **Entrada Rápida / Alimentação Diária**:
+    - Seleção de data (`Hoje`, `Ontem`, input nativo).
+    - Tabela direta com metas ativas, valores acumulados e inputs para cada meta.
+    - Botão único `[ Salvar Todos os Lançamentos ]` com gravação em lote.
+  - Removidos modais e banners pesados de calibração/criação do portal comum.
+  - Link de atalho `⚙️ ADMINISTRAR METAS` exclusivo para administradores no header.
+- **Admin de Metas Marketing (`portal/modules/admin/metas-marketing.php`):**
+  - Centraliza todo o gerenciamento: CRUD de metas, modelos/tipos, vigência, status e projeção inteligente.
+  - Exibição inicial focada em **Metas Ativas**.
+  - **Banner de Projeção Inteligente de Novo Ciclo (`#banner-projecao-ciclo`):**
+    - Só aparece aberto na cara automaticamente quando as metas do ciclo atual **já venceram** (`data_fim < hoje` ou sem ativas).
+    - Se houver metas ativas vigentes em andamento, o banner fica recolhido e um botão elegante `[ ✨ Projeção de Ciclo ]` fica disponível no topo para acionamento sob demanda.
+    - Criação de novo ciclo em 1 clique ou via modal de calibração manual (`#modalAjusteProjecaoAdmin`).
+- **Backend (`v1/src/Controllers/MetaBuilderController.php`):**
+  - Método `alimentarMeta` atualizado para receber tanto `id_meta_instancia` quanto `id_meta`, garantindo compatibilidade total com os lançamentos em lote do portal e admin.
+
 ---
 
 ## 3. Validação Executada
 - `php -l portal/modules/financeiro.php` -> Sintaxe OK.
 - `php -l portal/modules/admin/metas-financeiro.php` -> Sintaxe OK.
 - `php -l portal/modules/admin/metas-marketing.php` -> Sintaxe OK.
+- `php -l portal/modules/marketing/metas.php` -> Sintaxe OK.
 - `php -l portal/modules/admin/components/sidebar.php` -> Sintaxe OK.
 - `php -l v1/src/Controllers/FinanceiroController.php` -> Sintaxe OK.
+- `php -l v1/src/Controllers/MetaBuilderController.php` -> Sintaxe OK.
 - `php -l v1/routes/api.php` -> Sintaxe OK.
 - `node -c portal/assets/js/financeiro.js` -> Sintaxe OK.
 - Banco de Dados: `sistema_manuais` (ID 19) atualizado para Versão 3.1.
@@ -67,12 +89,14 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 ## 4. Arquivos para Deploy FTP
 1. `v1/routes/api.php`
 2. `v1/src/Controllers/FinanceiroController.php`
-3. `portal/modules/financeiro.php`
-4. `portal/assets/js/financeiro.js`
-5. `portal/modules/admin/metas-financeiro.php`
-6. `portal/modules/admin/metas-marketing.php`
-7. `portal/modules/admin/components/sidebar.php`
-8. `docs/migrations/20261109_create_fin_metas.sql`
-9. `docs/manual-financeiro-metas.md`
-10. Tabela `fin_metas` no PostgreSQL
-11. Tabela `sistema_manuais` (registro ID 19 atualizado)
+3. `v1/src/Controllers/MetaBuilderController.php`
+4. `portal/modules/financeiro.php`
+5. `portal/assets/js/financeiro.js`
+6. `portal/modules/marketing/metas.php`
+7. `portal/modules/admin/metas-financeiro.php`
+8. `portal/modules/admin/metas-marketing.php`
+9. `portal/modules/admin/components/sidebar.php`
+10. `docs/migrations/20261109_create_fin_metas.sql`
+11. `docs/manual-financeiro-metas.md`
+12. Tabela `fin_metas` no PostgreSQL
+13. Tabela `sistema_manuais` (registro ID 19 atualizado)
