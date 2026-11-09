@@ -711,7 +711,7 @@ class FinanceiroController
                            END AS filial_nome
                       FROM fin_metas m
                       LEFT JOIN usuario u ON u.idusuario = m.created_by
-                      LEFT JOIN filial f ON f.idfilial = m.idfilial
+                      LEFT JOIN (SELECT idfilial, MIN(nome) as nome FROM filial WHERE nome IS NOT NULL AND nome <> '.' GROUP BY idfilial) f ON f.idfilial = m.idfilial
                      WHERE " . implode(' AND ', $where) . "
                      ORDER BY (m.status = 'ativa') DESC, m.data_fim DESC, m.id DESC";
 
@@ -870,7 +870,7 @@ class FinanceiroController
                                      ELSE COALESCE(f.nome, 'Filial #' || m.idfilial)
                                 END AS filial_nome
                            FROM fin_metas m
-                           LEFT JOIN filial f ON f.idfilial = m.idfilial
+                           LEFT JOIN (SELECT idfilial, MIN(nome) as nome FROM filial WHERE nome IS NOT NULL AND nome <> '.' GROUP BY idfilial) f ON f.idfilial = m.idfilial
                           WHERE " . implode(' AND ', $whereMetas) . "
                           ORDER BY m.idfilial DESC, m.id ASC";
             $stMetas = $this->pdo->prepare($sqlMetas);

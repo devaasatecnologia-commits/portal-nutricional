@@ -774,8 +774,8 @@ function renderRankingCompleto() {
         corBarra = 'from-purple-600 to-violet-700';
         labelQtd = 'transferência(s) enviadas';
         labelDestaque = 'Maior Envio:';
-        badgeTxt = 'do volume enviado';
-    } else if (visao === 'transferencias_cedidas') {
+        badgeTxt = 'do volume cedido';
+    } else if (visao === 'transferencias_recebidas') {
         fonte = estado.rankingTransferenciasRecebidas || [];
         corBarra = 'from-emerald-500 to-teal-600';
         labelQtd = 'transferência(s) recebidas';
@@ -794,7 +794,7 @@ function renderRankingCompleto() {
 
     if (!lista.length) {
         const nomeVisao = visao === 'transferencias_cedidas'
-            ? 'transferência enviada'
+            ? 'transferência enviada (cedida)'
             : visao === 'transferencias_recebidas'
             ? 'transferência recebida (creditada)'
             : 'bonificação faturada';
@@ -1210,14 +1210,14 @@ function vincularEventosUI() {
         if (visao === 'balanco') {
             const dados = estado.balancoEquipe || [];
             if (!dados.length) return aviso('warning', 'Sem Dados', 'Nenhum dado do balanço para exportar.');
-            const cols = ['ID', 'Colaborador', 'Bonificações (R$)', 'Qtd Bonificações', 'Transferido Enviado (R$)', 'Qtd Enviado', 'Transferido Recebido (R$)', 'Qtd Recebido', 'Total Saídas (R$)', 'Saldo Líquido (R$)'];
+            const cols = ['ID', 'Colaborador', 'Bonificações (R$)', 'Qtd Bonificações', 'Transferido Cedido (R$)', 'Qtd Cedido', 'Transferido Recebido (R$)', 'Qtd Recebido', 'Total Saídas (R$)', 'Saldo Líquido (R$)'];
             const rows = dados.map((d) => [
                 d.id,
                 d.nome,
                 Number(d.bonificacoes || 0).toFixed(2).replace('.', ','),
                 d.qtd_bonificacoes || 0,
-                Number(d.transferido_enviado || d.transferido_cedido || 0).toFixed(2).replace('.', ','),
-                d.qtd_enviado || d.qtd_cedido || 0,
+                Number(d.transferido_cedido || 0).toFixed(2).replace('.', ','),
+                d.qtd_cedido || 0,
                 Number(d.transferido_recebido || 0).toFixed(2).replace('.', ','),
                 d.qtd_recebido || 0,
                 Number(d.total_saidas || 0).toFixed(2).replace('.', ','),
@@ -1238,7 +1238,7 @@ function vincularEventosUI() {
             colDestaque = 'Maior Retirada (R$)';
         } else if (visao === 'transferencias_cedidas') {
             fonte = estado.rankingTransferenciasCedidas || [];
-            nomeArquivo = 'ranking_transferencias_enviadas';
+            nomeArquivo = 'ranking_transferencias_cedidas';
             colOperacao = 'Qtd Envios';
             colDestaque = 'Maior Envio (R$)';
         } else if (visao === 'transferencias_recebidas') {

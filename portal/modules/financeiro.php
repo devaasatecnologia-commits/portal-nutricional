@@ -28,7 +28,9 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="text-center">
             <span class="text-sm font-bold modulo-nome">FINANCEIRO</span>
         </div>
-        <div class="clock font-mono text-sm font-bold" id="relogioMobile">00:00</div>
+        <a href="/portal/modules/treinamentos.php?modulo=financeiro" class="text-amber-400 text-lg no-underline" title="Treinamento e Manual">
+            <i class="fa-solid fa-graduation-cap"></i>
+        </a>
     </div>
 </div>
 <div class="mobile-spacer block lg:hidden h-14"></div>
@@ -55,11 +57,16 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="flex items-center gap-3">
+            <a href="/portal/modules/treinamentos.php?modulo=financeiro" 
+               class="px-4 py-2 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl font-extrabold text-xs flex items-center gap-2 transition-all shadow-sm no-underline"
+               title="Treinamento e Manual Operacional da Controladoria Financeira">
+                <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+            </a>
             <a href="/portal/modules/admin/metas-financeiro.php" id="btn-gerenciar-metas" style="display: none;" class="hidden px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition items-center gap-1.5 no-underline shadow-xs" title="Administrar Metas do Financeiro (Restrito a Administradores)">
                 <i class="fa-solid fa-bullseye text-amber-600"></i>
                 <span>GERENCIAR METAS</span>
             </a>
-            <div class="text-right hidden sm:block">
+            <div class="text-right hidden sm:block pl-2 border-l border-slate-200">
                 <div class="clock font-mono text-base lg:text-xl font-black" id="relogio">00:00:00</div>
                 <div class="data-topo text-[10px] lg:text-xs" id="data-topo">--/--/----</div>
             </div>

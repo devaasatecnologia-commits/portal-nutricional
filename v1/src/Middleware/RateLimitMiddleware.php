@@ -17,11 +17,11 @@ class RateLimitMiddleware
      * A chave é o path exato. O default é aplicado a qualquer rota não listada.
      */
     private $limitesPorRota = [
-        '/v1/auth/login'            => 5,
-        '/v1/auth/alterar-senha'    => 3,
-        '/v1/marketing/clientes'    => 100,
-        '/v1/financeiro/dashboard'  => 50,
-        'default'                   => 300,   // 300 req/min por padrão (antes era 60)
+        '/v1/auth/login'            => 10,
+        '/v1/auth/alterar-senha'    => 5,
+        '/v1/marketing/clientes'    => 150,
+        '/v1/financeiro/dashboard'  => 200,
+        'default'                   => 300,   // 300 req/min por padrão
     ];
 
     public function __construct(int $maxRequests = 300, int $timeWindow = 60)
@@ -44,15 +44,16 @@ class RateLimitMiddleware
         $userId = (int)($user['uid'] ?? $user['idusuario'] ?? 0);
 
         // ================================================================
-        // Chave do rate limit:
-        //   - Usuário autenticado → por user_id ou token
-        //   - Anônimo             → por IP e rota
+        // Chave do rate limit por rota:
+        //   - Usuário autenticado → por user_id + path
+        //   - Token               → por token + path
+        //   - Anônimo             → por IP + path
         // ================================================================
         $authorization = $request->getHeaderLine('Authorization');
         if ($userId > 0) {
-            $chaveBase = "user:{$userId}";
+            $chaveBase = "user:{$userId}:path:{$path}";
         } elseif (preg_match('/^Bearer\s+(.+)$/i', $authorization, $matches)) {
-            $chaveBase = 'token:' . hash('sha256', $matches[1]);
+            $chaveBase = 'token:' . hash('sha256', $matches[1]) . ":path:{$path}";
         } else {
             $chaveBase = "ip:{$ip}:path:{$path}";
         }
