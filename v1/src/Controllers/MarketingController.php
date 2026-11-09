@@ -2143,6 +2143,33 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
     $p_tipo_periodo = isset($params['tipo_periodo']) && trim($params['tipo_periodo']) !== '' ? trim($params['tipo_periodo']) : 'compra';
     $p_data_inicio = isset($params['data_inicio']) && trim($params['data_inicio']) !== '' ? trim($params['data_inicio']) : null;
     $p_data_fim = isset($params['data_fim']) && trim($params['data_fim']) !== '' ? trim($params['data_fim']) : null;
+
+    // Normalização de Períodos Rápidos para aceleração imediata
+    if ($p_periodo === 'este_mes' || $p_periodo === 'mes_atual') {
+        $p_data_inicio = date('Y-m-01');
+        $p_data_fim = date('Y-m-d');
+        $p_periodo = 'personalizado';
+    } elseif ($p_periodo === 'mes_passado') {
+        $p_data_inicio = date('Y-m-01', strtotime('first day of last month'));
+        $p_data_fim = date('Y-m-t', strtotime('last month'));
+        $p_periodo = 'personalizado';
+    } elseif ($p_periodo === 'este_ano') {
+        $p_data_inicio = date('Y-01-01');
+        $p_data_fim = date('Y-m-d');
+        $p_periodo = 'personalizado';
+    } elseif ($p_periodo === '30dias') {
+        $p_data_inicio = date('Y-m-d', strtotime('-30 days'));
+        $p_data_fim = date('Y-m-d');
+        $p_periodo = 'personalizado';
+    } elseif ($p_periodo === 'hoje') {
+        $p_data_inicio = date('Y-m-d');
+        $p_data_fim = date('Y-m-d');
+        $p_periodo = 'personalizado';
+    } elseif ($p_periodo === 'todos') {
+        $p_periodo = null;
+        $p_data_inicio = null;
+        $p_data_fim = null;
+    }
     
     // 🔥 NOVO: Origem do cliente (Site, WhatsApp, Instagram, etc)
     $p_origem_cliente = isset($params['origem_cliente']) && trim($params['origem_cliente']) !== '' ? trim($params['origem_cliente']) : null;
@@ -5312,7 +5339,7 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             'gestores' => $gestores,
             'is_admin' => $scope->isAdmin,
             'gestor_restrito' => $scope->gestorRestrito(),
-            'todos_permitido' => !$scope->gestorRestrito()
+            'todos_permitido' => !$scope->gestorRestrito() || count($gestores) > 1
         ]);
     }
 

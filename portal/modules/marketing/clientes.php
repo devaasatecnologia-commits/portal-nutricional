@@ -344,6 +344,10 @@ require_once __DIR__ . '/../../estrutura/header.php';
             </div>
 
             
+            <a href="/portal/modules/treinamentos.php?modulo=marketing-clientes" 
+               class="px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-xl font-extrabold text-xs transition-all shadow-md flex items-center gap-2 no-underline">
+                <i class="fa-solid fa-graduation-cap"></i> Treinamento &amp; Manual
+            </a>
             <button onclick="abrirModalCliente()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-lg flex items-center gap-2">
                 <i class="fa-solid fa-plus-circle"></i> Novo Cliente
             </button>
@@ -353,27 +357,41 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 
-    <!-- Stats Row -->
-    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mt-8">
-        <div class="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+    <!-- Stats Row (Visão Executiva & Especialista em CRM) -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-8">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Total de clientes mapeados na carteira do escopo selecionado">
             <div class="text-2xl font-black text-white" x-text="stats.total">0</div>
-            <div class="text-xs text-slate-300 uppercase tracking-wide">Total Clientes</div>
+            <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5">Total Carteira</div>
         </div>
-        <div class="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Clientes com status Fechado ou com faturamento concluído">
             <div class="text-2xl font-black text-emerald-400" x-text="stats.fechados">0</div>
-            <div class="text-xs text-slate-300 uppercase tracking-wide">Fechados</div>
+            <div class="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5">Fechados</div>
         </div>
-        <div class="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Oportunidades em aberto e negociação ativa com os representantes">
             <div class="text-2xl font-black text-amber-400" x-text="stats.emNegociacao">0</div>
-            <div class="text-xs text-slate-300 uppercase tracking-wide">Em Negociação</div>
+            <div class="text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5">Em Negociação</div>
         </div>
-        <div class="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Valor financeiro estimado de pedidos e propostas no funil comercial">
             <div class="text-2xl font-black text-blue-400" x-text="stats.pipelineValue">R$ 0</div>
-            <div class="text-xs text-slate-300 uppercase tracking-wide">Pipeline</div>
+            <div class="text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5">Pipeline (R$)</div>
         </div>
-        <div class="bg-white/10 backdrop-blur rounded-xl p-3 text-center">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Taxa de conversão de propostas e oportunidades em vendas efetivadas">
             <div class="text-2xl font-black text-purple-400" x-text="stats.conversao + '%'">0%</div>
-            <div class="text-xs text-slate-300 uppercase tracking-wide">Conversão</div>
+            <div class="text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5">Conversão</div>
+        </div>
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
+             title="Atendimentos e compromissos de agenda executados no mês corrente">
+            <div class="text-2xl font-black text-teal-300 flex items-center justify-center gap-1">
+                <span x-text="stats.concluidosMes || 0">0</span>
+                <span class="text-sm font-semibold text-slate-400">/</span>
+                <span class="text-base font-bold text-slate-300" x-text="stats.totalCompromissosMes || 0">0</span>
+            </div>
+            <div class="text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5">Agenda no Mês</div>
         </div>
     </div>
 </div>
@@ -399,7 +417,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
             <div class="relative">
                 <select x-model="filtros.filial" @change="onFilialChange()"
                     class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-emerald-500 focus:bg-white focus:ring-2 focus:ring-emerald-200 transition-all cursor-pointer">
-                    <template x-if="todasFiliaisPermitido">
+                    <template x-if="todasFiliaisPermitido || filiaisDisponiveis.length > 1">
                         <option value="">🏢 Todas as Filiais</option>
                     </template>
                     <template x-for="f in filiaisDisponiveis" :key="f.id">
@@ -421,7 +439,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
             <div class="relative">
                 <select x-model="filtros.gestor" @change="onGestorChange()"
                     class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-blue-500 focus:bg-white focus:ring-2 focus:ring-blue-200 transition-all cursor-pointer">
-                    <template x-if="todosGestoresPermitido">
+                    <template x-if="todosGestoresPermitido || gestoresDisponiveis.length > 1">
                         <option value="">👔 Todos os Gestores</option>
                     </template>
                     <template x-for="g in gestoresDisponiveis" :key="g.id">
@@ -501,73 +519,95 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
 <div class="flex flex-wrap items-end gap-3">
 
     <!-- ============================================================
-    1. TIPO DE PERÍODO (COMPRA / CADASTRO)
+    1. TIPO DE PERÍODO & PERÍODOS RÁPIDOS
     ============================================================ -->
     <div>
         <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            📌 Tipo de Período
+            📌 Base do Filtro
         </label>
-        <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl px-2 py-1">
-            <button @click="filtros.tipo_periodo = 'compra'; carregarClientes()" 
-            class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-            :class="filtros.tipo_periodo === 'compra' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
-            <i class="fa-solid fa-shopping-cart mr-1"></i> Compra
-        </button>
-        <button @click="filtros.tipo_periodo = 'cadastro'; carregarClientes()" 
-        class="px-3 py-1.5 rounded-lg text-xs font-bold transition-all"
-        :class="filtros.tipo_periodo === 'cadastro' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'">
-        <i class="fa-solid fa-user-plus mr-1"></i> Cadastro
-    </button>
-</div>
-</div>
-
-    <!-- ============================================================
-    2. PERÍODO
-    ============================================================ -->
-    <div>
-        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
-            📅 Período
-        </label>
-        <div class="relative">
-            <select x-model="filtros.periodo" @change="carregarClientes()" 
-            class="appearance-none px-4 py-2 pr-10 bg-white border-2 border-slate-200 rounded-xl text-sm font-medium focus:border-indigo-400 focus:ring-2 focus:ring-indigo-200 transition-all cursor-pointer min-w-[150px]">
-            <option value="">📋 Todos os períodos</option>
-            <option value="hoje">📅 Hoje</option>
-            <option value="7dias">📅 Últimos 7 dias</option>
-            <option value="15dias">📅 Últimos 15 dias</option>
-            <option value="30dias">📅 Últimos 30 dias</option>
-            <option value="60dias">📅 Últimos 60 dias</option>
-            <option value="90dias">📅 Últimos 90 dias</option>
-            <option value="personalizado">📆 Personalizado</option>
-        </select>
-        <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
-            <i class="fa-solid fa-chevron-down text-slate-400 text-xs"></i>
+        <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl p-1 shadow-sm">
+            <button type="button" @click="filtros.tipo_periodo = 'compra'; carregarClientes()" 
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.tipo_periodo === 'compra' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-solid fa-shopping-cart mr-1"></i> Compra
+            </button>
+            <button type="button" @click="filtros.tipo_periodo = 'cadastro'; carregarClientes()" 
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.tipo_periodo === 'cadastro' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-solid fa-user-plus mr-1"></i> Cadastro
+            </button>
         </div>
     </div>
-</div>
+
+    <!-- ============================================================
+    2. PERÍODOS RÁPIDOS
+    ============================================================ -->
+    <div>
+        <label class="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+            ⚡ Período Rápido
+        </label>
+        <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl p-1 shadow-sm">
+            <button type="button" @click="aplicarPeriodoRapido('hoje')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'hoje' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                Hoje
+            </button>
+            <button type="button" @click="aplicarPeriodoRapido('este_mes')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'este_mes' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                Este Mês
+            </button>
+            <button type="button" @click="aplicarPeriodoRapido('mes_passado')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                Mês Passado
+            </button>
+            <button type="button" @click="aplicarPeriodoRapido('30dias')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === '30dias' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                30 dias
+            </button>
+            <button type="button" @click="aplicarPeriodoRapido('este_ano')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'este_ano' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                Este Ano
+            </button>
+            <button type="button" @click="aplicarPeriodoRapido('todos')"
+                class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'todos' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                Todos
+            </button>
+            <button type="button" @click="filtros.periodo = 'personalizado'"
+                class="px-2 py-1 rounded-lg text-xs font-bold transition-all"
+                :class="filtros.periodo === 'personalizado' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                title="Datas Personalizadas">
+                <i class="fa-regular fa-calendar-days"></i>
+            </button>
+        </div>
+    </div>
 
     <!-- ============================================================
     DATAS PERSONALIZADAS
     ============================================================ -->
     <div x-show="filtros.periodo === 'personalizado'" 
-    x-transition.duration.200ms 
-    class="flex items-center gap-2 bg-white border-2 border-indigo-200 rounded-xl px-3 py-1.5 shadow-sm">
-    <span class="text-xs text-slate-400 font-medium">📅 De:</span>
-    <input type="date" x-model="filtros.data_inicio" 
-    class="px-2 py-1 border border-indigo-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-200 transition-all w-32">
-    <span class="text-xs text-slate-400 font-medium">📅 Até:</span>
-    <input type="date" x-model="filtros.data_fim" 
-    class="px-2 py-1 border border-indigo-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-200 transition-all w-32">
-    <button @click="aplicarDatasPersonalizadas()" 
-    class="px-3 py-1 bg-indigo-500 text-white rounded-lg text-xs font-bold hover:bg-indigo-600 transition-all">
-    ✅ Aplicar
-</button>
-<button @click="limparDatasPersonalizadas()" 
-class="px-2 py-1 text-xs text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all" 
-title="Limpar datas">
-<i class="fa-solid fa-times"></i>
-</button>
-</div>
+        x-transition.duration.200ms 
+        class="flex items-center gap-2 bg-white border-2 border-indigo-200 rounded-xl px-3 py-1 shadow-sm">
+        <span class="text-xs text-slate-400 font-medium">De:</span>
+        <input type="date" x-model="filtros.data_inicio" 
+            class="px-2 py-1 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-200 transition-all w-32">
+        <span class="text-xs text-slate-400 font-medium">Até:</span>
+        <input type="date" x-model="filtros.data_fim" 
+            class="px-2 py-1 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-200 transition-all w-32">
+        <button type="button" @click="aplicarDatasPersonalizadas()" 
+            class="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all">
+            Filtrar
+        </button>
+        <button type="button" @click="limparDatasPersonalizadas()" 
+            class="px-2 py-1 text-xs text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-all" 
+            title="Limpar datas">
+            <i class="fa-solid fa-times"></i>
+        </button>
+    </div>
 
     <!-- ============================================================
     3. ORIGEM (CRM/ERP/AMBOS) - MÚLTIPLA SELEÇÃO
@@ -1155,11 +1195,11 @@ title="Limpar datas">
                 origem_cliente_list: [],  
                 termometro_list: [],       
                 compra_list: [],         
-                periodo: '',
+                periodo: 'este_mes',
                 ja_comprou: '',
                 tipo_periodo: 'compra',
-                data_inicio: '',
-                data_fim: ''
+                data_inicio: new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01',
+                data_fim: new Date().toISOString().split('T')[0]
             },
             dropdownOrigemAberto: false, 
             dropdownStatusAberto: false,          
@@ -1183,13 +1223,52 @@ title="Limpar datas">
             _clienteEncontrado: false,
             _clienteDestacado: false,
 
+            // ====================================================================
+            // APLICAR PERÍODO RÁPIDO (MÊS CORRENTE / RÁPIDOS / PERFORMANCE)
+            // ====================================================================
+            aplicarPeriodoRapido(tipo) {
+                this.filtros.periodo = tipo;
+                const hoje = new Date();
+                const ano = hoje.getFullYear();
+                const mes = hoje.getMonth();
+                const pad = (n) => String(n).padStart(2, '0');
+                const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+                if (tipo === 'hoje') {
+                    this.filtros.data_inicio = fmt(hoje);
+                    this.filtros.data_fim = fmt(hoje);
+                } else if (tipo === 'este_mes') {
+                    this.filtros.data_inicio = `${ano}-${pad(mes + 1)}-01`;
+                    this.filtros.data_fim = fmt(hoje);
+                } else if (tipo === 'mes_passado') {
+                    const primeiroDiaMesPassado = new Date(ano, mes - 1, 1);
+                    const ultimoDiaMesPassado = new Date(ano, mes, 0);
+                    this.filtros.data_inicio = fmt(primeiroDiaMesPassado);
+                    this.filtros.data_fim = fmt(ultimoDiaMesPassado);
+                } else if (tipo === '30dias') {
+                    const d30 = new Date();
+                    d30.setDate(d30.getDate() - 30);
+                    this.filtros.data_inicio = fmt(d30);
+                    this.filtros.data_fim = fmt(hoje);
+                } else if (tipo === 'este_ano') {
+                    this.filtros.data_inicio = `${ano}-01-01`;
+                    this.filtros.data_fim = fmt(hoje);
+                } else if (tipo === 'todos') {
+                    this.filtros.data_inicio = '';
+                    this.filtros.data_fim = '';
+                }
+                this.pagination.atual = 1;
+                this.carregarClientes();
+            },
+
     // ====================================================================
 // LIMPAR DATAS PERSONALIZADAS
 // ====================================================================
             limparDatasPersonalizadas() {
-                this.filtros.data_inicio = '';
-                this.filtros.data_fim = '';
-                this.filtros.periodo = '';
+                this.filtros.periodo = 'este_mes';
+                this.filtros.data_inicio = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01';
+                this.filtros.data_fim = new Date().toISOString().split('T')[0];
+                this.pagination.atual = 1;
                 this.carregarClientes();
             },
             // ====================================================================
@@ -1804,16 +1883,17 @@ title="Limpar datas">
                 this.filtros.origem_cliente_list = [];
                 this.filtros.termometro_list = [];
                 this.filtros.compra_list = [];
-                this.filtros.periodo = '';
+                this.filtros.periodo = 'este_mes';
                 this.filtros.ja_comprou = '';
                 this.filtros.tipo_periodo = 'compra';
-                this.filtros.data_inicio = '';
-                this.filtros.data_fim = '';
+                this.filtros.data_inicio = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01';
+                this.filtros.data_fim = new Date().toISOString().split('T')[0];
                 this.dropdownOrigemAberto = false;
                 this.dropdownStatusAberto = false;
                 this.dropdownOrigemClienteAberto = false;
                 this.dropdownTermometroAberto = false;
                 this.dropdownCompraAberto = false;
+                this.pagination.atual = 1;
                 this.carregarClientes();
             },
         // ====================================================================
@@ -2864,9 +2944,12 @@ abrirAgendamentoRapido(start, end) {
                 if (dataG.success) {
                     this.gestoresDisponiveis = dataG.gestores || [];
                     this.gestorRestrito = !!dataG.gestor_restrito;
-                    this.todosGestoresPermitido = !!dataG.todos_permitido;
-                    if (this.gestorRestrito && this.gestoresDisponiveis.length > 0) {
+                    this.todosGestoresPermitido = !!dataG.todos_permitido || (this.gestoresDisponiveis.length > 1);
+                    if (this.gestorRestrito && this.gestoresDisponiveis.length === 1) {
                         this.filtros.gestor = String(this.gestoresDisponiveis[0].id);
+                    } else if (this.gestoresDisponiveis.length > 1 && !this.filtros.gestor) {
+                        // Mantém opção "Todos os Gestores" selecionada
+                        this.filtros.gestor = '';
                     }
                 }
             } catch (e) {
@@ -2883,6 +2966,11 @@ abrirAgendamentoRapido(start, end) {
                 const data = await resp.json();
                 if (data.success) {
                     this.representantesDisponiveis = data.representantes || [];
+                    if (this.representantesDisponiveis.length === 1) {
+                        this.filtros.representante = String(this.representantesDisponiveis[0].id);
+                    } else if (!this.representantesDisponiveis.some(r => String(r.id) === String(this.filtros.representante))) {
+                        this.filtros.representante = '';
+                    }
                 }
             } catch (e) {
                 console.error('Erro ao carregar representantes CRM:', e);
