@@ -54,16 +54,24 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <!-- TAB CONTROLS -->
-            <div class="flex items-center gap-2 bg-emerald-950/40 p-1.5 rounded-2xl border border-emerald-400/20">
-                <button type="button" id="tabBtnSolicitar" class="pa-tab-btn active" onclick="trocarAba('solicitar')">
-                    <i class="fa-solid fa-cart-plus"></i>
-                    <span>Nova Solicitação</span>
-                </button>
-                <button type="button" id="tabBtnHistorico" class="pa-tab-btn" onclick="trocarAba('historico')">
-                    <i class="fa-solid fa-clock-rotate-left"></i>
-                    <span>Histórico & Rastreamento</span>
-                </button>
+            <!-- TAB CONTROLS & TREINAMENTO -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=pedido-amostra" 
+                   class="px-3.5 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm no-underline"
+                   title="Treinamento e Manual Operacional do Módulo">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                    <span>Treinamento & Manual</span>
+                </a>
+                <div class="flex items-center gap-1.5 bg-emerald-950/40 p-1.5 rounded-2xl border border-emerald-400/20">
+                    <button type="button" id="tabBtnSolicitar" class="pa-tab-btn active" onclick="trocarAba('solicitar')">
+                        <i class="fa-solid fa-cart-plus"></i>
+                        <span>Nova Solicitação</span>
+                    </button>
+                    <button type="button" id="tabBtnHistorico" class="pa-tab-btn" onclick="trocarAba('historico')">
+                        <i class="fa-solid fa-clock-rotate-left"></i>
+                        <span>Histórico & Rastreamento</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>

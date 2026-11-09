@@ -30,7 +30,9 @@ require_once __DIR__ . '/../estrutura/header.php';
             <div class="text-center">
                 <span class="text-sm font-bold modulo-nome">CUBO VENDAS</span>
             </div>
-            <div class="clock font-mono text-sm font-bold" id="relogioMobile">00:00</div>
+            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" class="text-amber-400 text-lg no-underline" title="Treinamento e Manual">
+                <i class="fa-solid fa-graduation-cap"></i>
+            </a>
         </div>
     </div>
     <div class="mobile-spacer block lg:hidden h-14"></div>
@@ -49,9 +51,16 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <span class="text-xs text-slate-400 font-medium">Análise multidimensional de vendas</span>
             </div>
         </div>
-        <div class="text-right hidden sm:block">
-            <div class="clock font-mono text-base lg:text-xl font-black" id="relogio">00:00:00</div>
-            <div class="data-topo text-[10px] lg:text-xs" id="data-topo">--/--/----</div>
+        <div class="flex items-center gap-3">
+            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" 
+               class="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-2xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-sm no-underline"
+               title="Treinamento e Manual Operacional do Cubo OLAP">
+                <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+            </a>
+            <div class="text-right hidden sm:block pl-2 border-l border-slate-200">
+                <div class="clock font-mono text-base lg:text-xl font-black" id="relogio">00:00:00</div>
+                <div class="data-topo text-[10px] lg:text-xs" id="data-topo">--/--/----</div>
+            </div>
         </div>
     </div>
 

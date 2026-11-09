@@ -44,6 +44,25 @@ function getImageUrl(foto) {
 const swalBase = { confirmButtonColor: '#059669', cancelButtonColor: '#64748b', customClass: { popup: 'rounded-3xl' } };
 const aviso = (icon, title, text) => Swal.fire({ ...swalBase, icon, title, text, confirmButtonText: 'OK' });
 
+window.visualizarFoto = function(url, titulo = 'Foto do Produto') {
+    if (!url || url.includes('placehold.co')) {
+        return aviso('info', 'Sem Foto Cadastrada', 'Este item não possui imagem em alta resolução cadastrada no ERP.');
+    }
+    Swal.fire({
+        title: `<div class="text-sm font-extrabold text-slate-800 leading-snug px-2">${esc(titulo)}</div>`,
+        imageUrl: url,
+        imageAlt: titulo,
+        imageWidth: 440,
+        imageHeight: 440,
+        showCloseButton: true,
+        showConfirmButton: false,
+        customClass: {
+            popup: 'rounded-3xl p-5 bg-white shadow-2xl border border-slate-100',
+            image: 'rounded-2xl object-contain max-h-[70vh] bg-slate-50 p-2 border border-slate-100 shadow-inner'
+        }
+    });
+};
+
 const estado = {
     abaAtiva: 'solicitar',
     cliente: null,
@@ -203,10 +222,15 @@ async function carregarItens() {
             return `
             <div class="pa-item-card p-3.5 flex flex-col justify-between" data-id="${i.iditem}" data-max="${saldoLiberado}">
                 <div class="flex items-start gap-3 mb-2.5">
-                    <img src="${esc(fotoUrl)}" 
-                         class="w-16 h-16 object-contain rounded-xl bg-slate-50 border border-slate-100 flex-none"
-                         loading="lazy"
-                         onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                    <div class="relative group/foto flex-none cursor-pointer" onclick="visualizarFoto('${esc(fotoUrl)}', '${esc(i.descricao).replace(/'/g, "\\'")}')" title="Clique para ampliar a foto do produto">
+                        <img src="${esc(fotoUrl)}" 
+                             class="w-16 h-16 object-contain rounded-xl bg-slate-50 border border-slate-100 group-hover/foto:opacity-90 group-hover/foto:scale-105 transition-all shadow-xs"
+                             loading="lazy"
+                             onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                        <div class="absolute inset-0 bg-slate-900/25 rounded-xl opacity-0 group-hover/foto:opacity-100 flex items-center justify-center transition text-white text-xs">
+                            <i class="fa-solid fa-magnifying-glass-plus"></i>
+                        </div>
+                    </div>
                     <div class="flex-1 min-w-0">
                         <div class="flex items-center gap-1.5 mb-0.5">
                             <span class="px-2 py-0.5 rounded-md text-[10px] font-black bg-slate-100 text-slate-700">#${esc(i.iditem)}</span>
@@ -578,9 +602,14 @@ async function verDetalhesPedido(id) {
                 const fotoUrl = it.foto_url || getImageUrl(it.path_foto_master);
                 return `
                     <div class="flex items-center gap-3 p-2.5 rounded-2xl border border-slate-100 bg-white hover:bg-slate-50 transition">
-                        <img src="${esc(fotoUrl)}" 
-                             class="w-12 h-12 object-contain rounded-xl bg-slate-50 border border-slate-100 flex-none"
-                             onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                        <div class="relative group/foto flex-none cursor-pointer" onclick="visualizarFoto('${esc(fotoUrl)}', '${esc(it.descricao).replace(/'/g, "\\'")}')" title="Clique para ampliar a foto do produto">
+                            <img src="${esc(fotoUrl)}" 
+                                 class="w-12 h-12 object-contain rounded-xl bg-slate-50 border border-slate-100 group-hover/foto:opacity-90 group-hover/foto:scale-105 transition-all shadow-xs"
+                                 onerror="this.src='https://placehold.co/100x100?text=S/F'">
+                            <div class="absolute inset-0 bg-slate-900/25 rounded-xl opacity-0 group-hover/foto:opacity-100 flex items-center justify-center transition text-white text-[10px]">
+                                <i class="fa-solid fa-magnifying-glass-plus"></i>
+                            </div>
+                        </div>
                         <div class="flex-1 min-w-0">
                             <div class="font-extrabold text-xs text-slate-800 truncate">${esc(it.descricao)}</div>
                             <div class="text-[10px] text-slate-400 mt-0.5">

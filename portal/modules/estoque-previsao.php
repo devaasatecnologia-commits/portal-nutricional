@@ -50,6 +50,11 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- ATALHOS & EXPORTAR -->
             <div class="flex flex-wrap items-center gap-2.5">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=estoque-previsao" 
+                   class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm no-underline"
+                   title="Treinamento e Manual Operacional do Módulo">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+                </a>
                 <button id="btn-exportar" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm" onclick="estoquePrevisaoApp.exportarCsv()">
                     <i class="fa-solid fa-file-excel"></i> Exportar CSV
                 </button>
@@ -86,6 +91,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 mb-5 select-none">
         <!-- KPI 1: Estoque Físico -->
         <div id="kpi-card-fisico" class="ep-kpi bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="ESTOQUE FÍSICO TOTAL&#10;• Conceito: Saldo físico real estocado nos armazéns da Matriz SC (Filial 1) e Filial PR (Filial 6).&#10;• Clique para filtrar apenas os produtos com estoque físico em armazém."
              data-tooltip="Estoque Físico Total|Soma do saldo físico atual em armazém (Matriz SC + Filial PR). Clique para filtrar produtos com saldo físico."
              onclick="estoquePrevisaoApp.clicarCardKpi('fisico')">
             <div class="flex items-center justify-between text-slate-500 mb-1">
@@ -98,6 +104,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 2: Carteira Reservada -->
         <div id="kpi-card-reservado" class="ep-kpi bg-gradient-to-br from-amber-50 to-yellow-50/70 border border-amber-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="CARTEIRA RESERVADA (PEDIDOS)&#10;• Conceito: Total de mercadorias empenhadas em pedidos de venda em aberto ou em faturamento parcial (Status 1 e 4).&#10;• Impacto: Quantidade bloqueada e não disponível para novas vendas.&#10;• Clique para filtrar produtos com reserva em pedidos."
              data-tooltip="Carteira Reservada|Quantidade empenhada em pedidos de venda abertos ou aprovados (Status 1 e 4). Clique para filtrar itens reservados."
              onclick="estoquePrevisaoApp.clicarCardKpi('reservado')">
             <div class="flex items-center justify-between text-amber-600 mb-1">
@@ -110,6 +117,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 3: Estoque Livre -->
         <div id="kpi-card-livre" class="ep-kpi bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="LIVRE DISPONÍVEL (IMEDIATO)&#10;• Fórmula: [Estoque Físico] - [Carteira Reservada].&#10;• Conceito: Saldo líquido 100% liberado para venda imediata sem risco de ruptura.&#10;• Clique para filtrar itens com estoque livre positivo."
              data-tooltip="Livre Disponível|Estoque real imediatamente liberado para novas vendas (Físico menos Reservado). Clique para filtrar itens disponíveis."
              onclick="estoquePrevisaoApp.clicarCardKpi('livre')">
             <div class="flex items-center justify-between text-emerald-600 mb-1">
@@ -122,6 +130,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 4: Previsão Chegada (OCs) -->
         <div id="kpi-card-previsao" class="ep-kpi bg-gradient-to-br from-blue-50 to-sky-50/70 border border-blue-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="PREVISÃO DE COMPRAS (OCS EM TRÂNSITO)&#10;• Conceito: Volume de mercadorias com Ordens de Compra autorizadas e a caminho dos fornecedores.&#10;• Detalhe: Clique para ver os itens com entregas previstas no período."
              data-tooltip="Previsão de Compras (OCs)|Cargas compradas com fornecedores em trânsito com ordens de compra abertas. Clique para filtrar itens a caminho."
              onclick="estoquePrevisaoApp.clicarCardKpi('previsao')">
             <div class="flex items-center justify-between text-blue-600 mb-1">
@@ -134,6 +143,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 5: Estoque Futuro -->
         <div id="kpi-card-futuro" class="ep-kpi bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="ESTOQUE FUTURO PROJETADO&#10;• Fórmula: [Livre Disponível] + [Previsão de Compras (OCs)].&#10;• Conceito: Visão de disponibilidade a curto prazo considerando o suprimento que está para desembarcar."
              data-tooltip="Estoque Futuro Projetado|Disponibilidade total no curto prazo (Estoque Livre + Compras a Chegar). Clique para ordenar pelos maiores volumes."
              onclick="estoquePrevisaoApp.clicarCardKpi('futuro')">
             <div class="flex items-center justify-between text-purple-600 mb-1">
@@ -146,6 +156,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 6: Zerados / Críticos -->
         <div id="kpi-card-critico" class="ep-kpi bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm relative group cursor-pointer hover:shadow-md transition-all active:scale-[0.98]" 
+             title="PRODUTOS ZERADOS OU CRÍTICOS&#10;• Conceito: Itens com Saldo Livre zerado ou abaixo do estoque mínimo de segurança (≤ 10 un).&#10;• Ação Recomendada: Alerta imediato para equipe de compras e PCP. Clique para isolar a lista de itens críticos."
              data-tooltip="Críticos / Zerados|Produtos com saldo livre zerado ou abaixo de 10 unidades para reposição imediata. Clique para filtrar."
              onclick="estoquePrevisaoApp.clicarCardKpi('critico')">
             <div class="flex items-center justify-between text-rose-600 mb-1">
