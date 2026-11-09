@@ -191,6 +191,31 @@ require_once __DIR__ . '/components/sidebar.php';
                 <option value="">Todos os Tipos</option>
             </select>
         </div>
+
+        <!-- Filtro de Período da Meta de Marketing -->
+        <div class="w-full sm:w-48">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Ciclo / Período</label>
+            <select id="filtro-mkt-periodo-tipo" onchange="mudarPeriodoMetasMkt(this.value)" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
+                <option value="todas">Todos os Ciclos</option>
+                <option value="mes_atual" selected>Ciclo Vigente (Este Mês)</option>
+                <option value="mes_passado">Mês Passado</option>
+                <option value="trimestre">Este Trimestre</option>
+                <option value="ano_atual">Este Ano</option>
+                <option value="personalizado">Personalizado...</option>
+            </select>
+        </div>
+
+        <div id="box-datas-mkt-personalizadas" class="hidden flex items-center gap-2">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">De</label>
+                <input type="date" id="filtro-mkt-dini" onchange="carregarMetasMktAdmin()" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Até</label>
+                <input type="date" id="filtro-mkt-dfim" onchange="carregarMetasMktAdmin()" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+            </div>
+        </div>
+
         <div class="flex-1 min-w-[200px]">
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Buscar por Título / Descrição</label>
             <div class="relative">
@@ -458,6 +483,49 @@ async function carregarTiposMkt() {
     }
 }
 
+function mudarPeriodoMetasMkt(tipo) {
+    const boxPers = document.getElementById('box-datas-mkt-personalizadas');
+    const inputDini = document.getElementById('filtro-mkt-dini');
+    const inputDfim = document.getElementById('filtro-mkt-dfim');
+    const hoje = new Date();
+    const y = hoje.getFullYear();
+    const m = hoje.getMonth();
+
+    if (tipo === 'personalizado') {
+        if (boxPers) boxPers.classList.remove('hidden');
+        return;
+    } else {
+        if (boxPers) boxPers.classList.add('hidden');
+    }
+
+    if (tipo === 'mes_atual') {
+        const d1 = new Date(y, m, 1);
+        const d2 = new Date(y, m + 1, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'mes_passado') {
+        const d1 = new Date(y, m - 1, 1);
+        const d2 = new Date(y, m, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'trimestre') {
+        const trimMes = Math.floor(m / 3) * 3;
+        const d1 = new Date(y, trimMes, 1);
+        const d2 = new Date(y, trimMes + 3, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'ano_atual') {
+        inputDini.value = `${y}-01-01`;
+        inputDfim.value = `${y}-12-31`;
+    } else {
+        // todas
+        inputDini.value = '';
+        inputDfim.value = '';
+    }
+
+    carregarMetasMktAdmin();
+}
+
 async function carregarMetasMktAdmin() {
     const container = document.getElementById('metas-mkt-container');
     container.innerHTML = `
@@ -468,9 +536,17 @@ async function carregarMetasMktAdmin() {
 
     const statusFiltro = document.getElementById('filtro-mkt-status').value;
     const tipoFiltro = document.getElementById('filtro-mkt-tipo').value;
+    const dini = document.getElementById('filtro-mkt-dini')?.value || '';
+    const dfim = document.getElementById('filtro-mkt-dfim')?.value || '';
 
     try {
-        const res = await apiMktFetch('/v1/meta-builder/instancias', 'GET');
+        let qs = [];
+        if (statusFiltro && statusFiltro !== 'todas') qs.push(`status=${encodeURIComponent(statusFiltro)}`);
+        if (dini) qs.push(`data_inicio=${encodeURIComponent(dini)}`);
+        if (dfim) qs.push(`data_fim=${encodeURIComponent(dfim)}`);
+        const urlReq = '/v1/meta-builder/instancias' + (qs.length ? '?' + qs.join('&') : '');
+
+        const res = await apiMktFetch(urlReq, 'GET');
         const todas = (res && res.data) ? res.data : (Array.isArray(res) ? res : []);
 
         // Atualiza contadores globais
@@ -496,9 +572,6 @@ async function carregarMetasMktAdmin() {
 
         // Filtra para visualização
         let filtradas = todas;
-        if (statusFiltro !== 'todas') {
-            filtradas = filtradas.filter(m => (m.status || 'ativa').toLowerCase() === statusFiltro.toLowerCase());
-        }
         if (tipoFiltro) {
             filtradas = filtradas.filter(m => String(m.id_tipo || m.idtipo) === String(tipoFiltro));
         }
@@ -513,6 +586,9 @@ async function carregarMetasMktAdmin() {
             <div class="col-span-full text-center py-8 text-rose-500 bg-rose-50 border border-rose-200 rounded-2xl">
                 <i class="fa-solid fa-triangle-exclamation text-xl mb-1"></i>
                 <p class="text-xs font-bold">Erro ao carregar metas de marketing: ${e.message}</p>
+            </div>`;
+    }
+}
             </div>`;
     }
 }
@@ -1017,7 +1093,7 @@ async function enviarAplicacaoProjecaoAdmin(metasParaCriar) {
 
 document.addEventListener('DOMContentLoaded', async () => {
     await carregarTiposMkt();
-    await carregarMetasMktAdmin();
+    mudarPeriodoMetasMkt('mes_atual');
 });
 </script>
 

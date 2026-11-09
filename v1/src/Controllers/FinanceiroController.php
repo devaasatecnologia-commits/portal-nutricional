@@ -689,6 +689,20 @@ class FinanceiroController
                 $params['filial'] = $idfilial;
             }
 
+            $dataInicio = trim($input['data_inicio'] ?? '');
+            $dataFim = trim($input['data_fim'] ?? '');
+            if (!empty($dataInicio) && !empty($dataFim)) {
+                $where[] = "(m.data_inicio IS NULL OR m.data_inicio <= :data_fim) AND (m.data_fim IS NULL OR m.data_fim >= :data_inicio)";
+                $params['data_inicio'] = $dataInicio;
+                $params['data_fim'] = $dataFim;
+            } elseif (!empty($dataInicio)) {
+                $where[] = "(m.data_fim IS NULL OR m.data_fim >= :data_inicio)";
+                $params['data_inicio'] = $dataInicio;
+            } elseif (!empty($dataFim)) {
+                $where[] = "(m.data_inicio IS NULL OR m.data_inicio <= :data_fim)";
+                $params['data_fim'] = $dataFim;
+            }
+
             $sql = "SELECT m.*,
                            COALESCE(u.username, 'Sistema') AS criador_nome,
                            CASE
@@ -828,8 +842,28 @@ class FinanceiroController
         try {
             $input = $this->input($request);
             $idfilial = (int)($input['idfilial'] ?? 0);
+            $dataInicio = trim($input['data_inicio'] ?? '');
+            $dataFim = trim($input['data_fim'] ?? '');
 
-            // Carrega metas ativas e vigentes na data corrente
+            $whereMetas = ["m.status = 'ativa'", "(:filial = 0 OR m.idfilial = :filial OR m.idfilial = 0)"];
+            $paramsMetas = ['filial' => $idfilial];
+
+            if (!empty($dataInicio) && !empty($dataFim)) {
+                $whereMetas[] = "(m.data_inicio IS NULL OR m.data_inicio <= :data_fim) AND (m.data_fim IS NULL OR m.data_fim >= :data_inicio)";
+                $paramsMetas['data_inicio'] = $dataInicio;
+                $paramsMetas['data_fim'] = $dataFim;
+            } elseif (!empty($dataInicio)) {
+                $whereMetas[] = "(m.data_fim IS NULL OR m.data_fim >= :data_inicio)";
+                $paramsMetas['data_inicio'] = $dataInicio;
+            } elseif (!empty($dataFim)) {
+                $whereMetas[] = "(m.data_inicio IS NULL OR m.data_inicio <= :data_fim)";
+                $paramsMetas['data_fim'] = $dataFim;
+            } else {
+                // Carrega metas ativas e vigentes na data corrente
+                $whereMetas[] = "(m.data_inicio IS NULL OR CURRENT_DATE >= m.data_inicio)";
+                $whereMetas[] = "(m.data_fim IS NULL OR CURRENT_DATE <= m.data_fim)";
+            }
+
             $sqlMetas = "SELECT m.*,
                                 CASE
                                      WHEN m.idfilial = 0 THEN 'Todas as Filiais'
@@ -837,13 +871,10 @@ class FinanceiroController
                                 END AS filial_nome
                            FROM fin_metas m
                            LEFT JOIN filial f ON f.idfilial = m.idfilial
-                          WHERE m.status = 'ativa'
-                            AND (m.data_inicio IS NULL OR CURRENT_DATE >= m.data_inicio)
-                            AND (m.data_fim IS NULL OR CURRENT_DATE <= m.data_fim)
-                            AND (:filial = 0 OR m.idfilial = :filial OR m.idfilial = 0)
+                          WHERE " . implode(' AND ', $whereMetas) . "
                           ORDER BY m.idfilial DESC, m.id ASC";
             $stMetas = $this->pdo->prepare($sqlMetas);
-            $stMetas->execute(['filial' => $idfilial]);
+            $stMetas->execute($paramsMetas);
             $metas = $stMetas->fetchAll(\PDO::FETCH_ASSOC);
 
             // Buscar dados mais recentes do snapshot

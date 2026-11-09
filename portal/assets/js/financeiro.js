@@ -540,12 +540,46 @@ onHistoryParamChange() {
     this.loadHistory();
 },
 
-async loadMetasProgresso() {
-    const grid = document.getElementById('grid-metas-progresso');
-    if (!grid) return;
-    try {
-        const filialId = this.filialSelecionada() || 0;
-        const res = await this.api('metas/progresso', { idfilial: filialId });
+    periodoMetas: 'mes_atual',
+
+    setPeriodoMetas(p) {
+        this.periodoMetas = p;
+        document.querySelectorAll('.btn-periodo-meta').forEach(el => {
+            if (el.dataset.periodo === p) {
+                el.className = 'btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-black transition bg-amber-500 text-white shadow-xs';
+            } else {
+                el.className = 'btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-slate-100 hover:bg-slate-200 text-slate-600';
+            }
+        });
+        this.loadMetasProgresso();
+    },
+
+    async loadMetasProgresso() {
+        const grid = document.getElementById('grid-metas-progresso');
+        if (!grid) return;
+        try {
+            const filialId = this.filialSelecionada() || 0;
+            const payload = { idfilial: filialId };
+
+            const hoje = new Date();
+            const y = hoje.getFullYear();
+            const m = hoje.getMonth();
+            if (this.periodoMetas === 'mes_atual') {
+                payload.data_inicio = new Date(y, m, 1).toISOString().split('T')[0];
+                payload.data_fim = new Date(y, m + 1, 0).toISOString().split('T')[0];
+            } else if (this.periodoMetas === 'mes_passado') {
+                payload.data_inicio = new Date(y, m - 1, 1).toISOString().split('T')[0];
+                payload.data_fim = new Date(y, m, 0).toISOString().split('T')[0];
+            } else if (this.periodoMetas === 'trimestre') {
+                const trimMes = Math.floor(m / 3) * 3;
+                payload.data_inicio = new Date(y, trimMes, 1).toISOString().split('T')[0];
+                payload.data_fim = new Date(y, trimMes + 3, 0).toISOString().split('T')[0];
+            } else if (this.periodoMetas === 'ano_atual') {
+                payload.data_inicio = `${y}-01-01`;
+                payload.data_fim = `${y}-12-31`;
+            }
+
+            const res = await this.api('metas/progresso', payload);
         const metas = (res && res.metas) ? res.metas : [];
         if (!metas.length) {
             const userData = JSON.parse(localStorage.getItem('userData') || '{}');

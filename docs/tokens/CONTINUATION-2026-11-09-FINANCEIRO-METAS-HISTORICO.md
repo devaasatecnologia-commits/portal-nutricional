@@ -69,6 +69,16 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 - **Backend (`v1/src/Controllers/MetaBuilderController.php`):**
   - Método `alimentarMeta` atualizado para receber tanto `id_meta_instancia` quanto `id_meta`, garantindo compatibilidade total com os lançamentos em lote do portal e admin.
 
+### E. Filtros de Período / Ciclo nas Metas (Financeiro e Marketing)
+- **Financeiro:**
+  - `FinanceiroController.php`: `getMetas()` e `getMetasComProgresso()` agora aceitam `data_inicio` e `data_fim` por intersecção temporal.
+  - `portal/modules/financeiro.php` & `portal/assets/js/financeiro.js`: Seletor de ciclos rápidos (`Este Mês`, `Mês Passado`, `Trimestre`, `Este Ano`, `Todas`) integrado ao quadro de metas executivas.
+  - `portal/modules/admin/metas-financeiro.php`: Filtro de ciclo rápido e personalizado integrado à barra de busca do Admin.
+- **Marketing:**
+  - `MetaBuilderController.php`: `getMetas()` e `getMetasAtivas()` agora aceitam query params `data_inicio` e `data_fim`.
+  - `portal/modules/marketing/metas.php`: Seletor de ciclos rápidos integrado aos filtros modernos da tela de alimentação.
+  - `portal/modules/admin/metas-marketing.php`: Seletor de ciclo rápido e personalizado integrado à barra de filtros do Admin.
+
 ---
 
 ## 3. Validação Executada
@@ -81,8 +91,11 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 - `php -l v1/src/Controllers/MetaBuilderController.php` -> Sintaxe OK.
 - `php -l v1/routes/api.php` -> Sintaxe OK.
 - `node -c portal/assets/js/financeiro.js` -> Sintaxe OK.
-- Banco de Dados: `sistema_manuais` (ID 19) atualizado para Versão 3.1.
-- Documento de Treinamento gerado em `docs/manual-financeiro-metas.md`.
+- Banco de Dados: `sistema_manuais` atualizado:
+  - ID 19 (Financeiro): Versão 3.2
+  - ID 86 (Marketing Metas): Versão 3.0
+  - ID 88 (Marketing Admin): Versão 3.0
+- Documentos de Treinamento gerados em `docs/manual-financeiro-metas.md` e `docs/manual-metas-governanca.md`.
 
 ---
 
@@ -98,5 +111,6 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 9. `portal/modules/admin/components/sidebar.php`
 10. `docs/migrations/20261109_create_fin_metas.sql`
 11. `docs/manual-financeiro-metas.md`
-12. Tabela `fin_metas` no PostgreSQL
-13. Tabela `sistema_manuais` (registro ID 19 atualizado)
+12. `docs/manual-metas-governanca.md`
+13. Tabela `fin_metas` no PostgreSQL
+14. Tabela `sistema_manuais` (registros ID 19, 86 e 88 atualizados)

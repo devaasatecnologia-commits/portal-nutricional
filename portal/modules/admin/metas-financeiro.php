@@ -149,6 +149,31 @@ require_once __DIR__ . '/components/sidebar.php';
                 <option value="vencidos_total">Carteira Vencida Máxima (R$)</option>
             </select>
         </div>
+
+        <!-- Filtro de Período da Meta -->
+        <div class="w-full sm:w-48">
+            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Ciclo / Período</label>
+            <select id="filtro-periodo-tipo" onchange="mudarPeriodoMetasFin(this.value)" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
+                <option value="todas">Todos os Períodos</option>
+                <option value="mes_atual" selected>Ciclo Vigente (Este Mês)</option>
+                <option value="mes_passado">Mês Passado</option>
+                <option value="trimestre">Este Trimestre</option>
+                <option value="ano_atual">Este Ano</option>
+                <option value="personalizado">Personalizado...</option>
+            </select>
+        </div>
+
+        <div id="box-datas-personalizadas" class="hidden flex items-center gap-2">
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">De</label>
+                <input type="date" id="filtro-dini" onchange="carregarMetasAdmin()" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Até</label>
+                <input type="date" id="filtro-dfim" onchange="carregarMetasAdmin()" class="p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700">
+            </div>
+        </div>
+
         <div class="flex-1 min-w-[200px]">
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Buscar por Título / Descrição</label>
             <div class="relative">
@@ -399,6 +424,49 @@ function filtrarPorIndicador(tipo) {
     }
 }
 
+function mudarPeriodoMetasFin(tipo) {
+    const boxPers = document.getElementById('box-datas-personalizadas');
+    const inputDini = document.getElementById('filtro-dini');
+    const inputDfim = document.getElementById('filtro-dfim');
+    const hoje = new Date();
+    const y = hoje.getFullYear();
+    const m = hoje.getMonth();
+
+    if (tipo === 'personalizado') {
+        if (boxPers) boxPers.classList.remove('hidden');
+        return;
+    } else {
+        if (boxPers) boxPers.classList.add('hidden');
+    }
+
+    if (tipo === 'mes_atual') {
+        const d1 = new Date(y, m, 1);
+        const d2 = new Date(y, m + 1, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'mes_passado') {
+        const d1 = new Date(y, m - 1, 1);
+        const d2 = new Date(y, m, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'trimestre') {
+        const trimMes = Math.floor(m / 3) * 3;
+        const d1 = new Date(y, trimMes, 1);
+        const d2 = new Date(y, trimMes + 3, 0);
+        inputDini.value = d1.toISOString().split('T')[0];
+        inputDfim.value = d2.toISOString().split('T')[0];
+    } else if (tipo === 'ano_atual') {
+        inputDini.value = `${y}-01-01`;
+        inputDfim.value = `${y}-12-31`;
+    } else {
+        // todas
+        inputDini.value = '';
+        inputDfim.value = '';
+    }
+
+    carregarMetasAdmin();
+}
+
 async function carregarMetasAdmin() {
     const container = document.getElementById('metas-container');
     container.innerHTML = `
@@ -409,10 +477,16 @@ async function carregarMetasAdmin() {
 
     const status = document.getElementById('filtro-status').value;
     const tipo = document.getElementById('filtro-tipo').value;
+    const dini = document.getElementById('filtro-dini')?.value || '';
+    const dfim = document.getElementById('filtro-dfim')?.value || '';
 
     try {
         // Carrega metas com o filtro atual
-        const json = await apiFinFetch('/v1/financeiro/metas', 'POST', { status, tipo_indicador: tipo });
+        const payload = { status, tipo_indicador: tipo };
+        if (dini) payload.data_inicio = dini;
+        if (dfim) payload.data_fim = dfim;
+
+        const json = await apiFinFetch('/v1/financeiro/metas', 'POST', payload);
         if (json && json.success === false && json.error) {
             throw new Error(json.error);
         }
@@ -753,7 +827,7 @@ async function excluirMetaAdmin(id) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    carregarMetasAdmin();
+    mudarPeriodoMetasFin('mes_atual');
 });
 </script>
 

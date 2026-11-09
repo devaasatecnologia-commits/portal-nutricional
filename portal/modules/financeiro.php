@@ -148,15 +148,23 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- METAS FINANCEIRAS ATIVAS (ACOMPANHAMENTO EXECUTIVO) -->
     <!-- ====================================================================== -->
     <div id="secao-metas-ativas" class="mb-6">
-        <div class="flex items-center justify-between mb-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2.5">
             <div class="flex items-center gap-2">
                 <i class="fa-solid fa-bullseye text-amber-600"></i>
-                <h4 class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">METAS FINANCEIRAS DO MÊS / VIGENTES</h4>
-                <span class="text-[10px] text-slate-400 font-medium hidden sm:inline">• Atingimento frente aos limites corporativos</span>
+                <h4 class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">METAS FINANCEIRAS & VIGÊNCIA</h4>
+                <span class="text-[10px] text-slate-400 font-medium hidden sm:inline">• Atingimento corporativo</span>
             </div>
-            <a href="/portal/modules/admin/metas-financeiro.php" class="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 no-underline">
-                <span>Configurar Metas</span> <i class="fa-solid fa-chevron-right text-[9px]"></i>
-            </a>
+            <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Ciclo:</span>
+                <button type="button" onclick="app.setPeriodoMetas('mes_atual')" data-periodo="mes_atual" class="btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-black transition bg-amber-500 text-white shadow-xs">Este Mês</button>
+                <button type="button" onclick="app.setPeriodoMetas('mes_passado')" data-periodo="mes_passado" class="btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-slate-100 hover:bg-slate-200 text-slate-600">Mês Passado</button>
+                <button type="button" onclick="app.setPeriodoMetas('trimestre')" data-periodo="trimestre" class="btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-slate-100 hover:bg-slate-200 text-slate-600">Trimestre</button>
+                <button type="button" onclick="app.setPeriodoMetas('ano_atual')" data-periodo="ano_atual" class="btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-slate-100 hover:bg-slate-200 text-slate-600">Este Ano</button>
+                <button type="button" onclick="app.setPeriodoMetas('todas')" data-periodo="todas" class="btn-periodo-meta px-2.5 py-1 rounded-lg text-[10px] font-bold transition bg-slate-100 hover:bg-slate-200 text-slate-600">Todas</button>
+                <a href="/portal/modules/admin/metas-financeiro.php" class="ml-2 text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 no-underline">
+                    <span>Configurar</span> <i class="fa-solid fa-chevron-right text-[9px]"></i>
+                </a>
+            </div>
         </div>
         <div id="grid-metas-progresso" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
             <div class="col-span-full py-4 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">

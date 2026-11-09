@@ -418,17 +418,35 @@ public function atualizarTipoMeta(Request $request, Response $response, array $a
     public function getMetasAtivas(Request $request, Response $response): Response
     {
         try {
-            // Verificar se a tabela existe
-            $stmt = $this->pdo->query("
+            $params = array_merge($request->getQueryParams() ?? [], (array)($request->getParsedBody() ?? []));
+            $dataInicio = trim($params['data_inicio'] ?? '');
+            $dataFim = trim($params['data_fim'] ?? '');
+
+            $where = ["mi.status = 'ativa'"];
+            $sqlParams = [];
+            if (!empty($dataInicio) && !empty($dataFim)) {
+                $where[] = "(mi.data_inicio IS NULL OR mi.data_inicio <= :dfim) AND (mi.data_fim IS NULL OR mi.data_fim >= :dini)";
+                $sqlParams['dfim'] = $dataFim;
+                $sqlParams['dini'] = $dataInicio;
+            } elseif (!empty($dataInicio)) {
+                $where[] = "(mi.data_fim IS NULL OR mi.data_fim >= :dini)";
+                $sqlParams['dini'] = $dataInicio;
+            } elseif (!empty($dataFim)) {
+                $where[] = "(mi.data_inicio IS NULL OR mi.data_inicio <= :dfim)";
+                $sqlParams['dfim'] = $dataFim;
+            }
+
+            $stmt = $this->pdo->prepare("
                 SELECT mi.*, 
                 COALESCE(tm.nome, 'Meta Padrão') as tipo_nome, 
                 COALESCE(tm.icone, 'fa-bullseye') as icone,
                 COALESCE(tm.cor, 'emerald') as cor
                 FROM mkt_metas_instancias mi
                 LEFT JOIN mkt_tipos_meta tm ON tm.id = mi.id_tipo_meta
-                WHERE mi.status = 'ativa'
+                WHERE " . implode(' AND ', $where) . "
                 ORDER BY mi.data_fim ASC NULLS LAST
-                ");
+            ");
+            $stmt->execute($sqlParams);
             $metas = $stmt->fetchAll(PDO::FETCH_ASSOC);
             
             // Para cada meta, buscar seus campos
@@ -472,15 +490,40 @@ public function atualizarTipoMeta(Request $request, Response $response, array $a
     public function getMetas(Request $request, Response $response): Response
     {
         try {
-            $stmt = $this->pdo->query("
+            $params = array_merge($request->getQueryParams() ?? [], (array)($request->getParsedBody() ?? []));
+            $status = trim($params['status'] ?? '');
+            $dataInicio = trim($params['data_inicio'] ?? '');
+            $dataFim = trim($params['data_fim'] ?? '');
+
+            $where = ['1=1'];
+            $sqlParams = [];
+            if (!empty($status) && $status !== 'todas') {
+                $where[] = "mi.status = :status";
+                $sqlParams['status'] = $status;
+            }
+            if (!empty($dataInicio) && !empty($dataFim)) {
+                $where[] = "(mi.data_inicio IS NULL OR mi.data_inicio <= :dfim) AND (mi.data_fim IS NULL OR mi.data_fim >= :dini)";
+                $sqlParams['dfim'] = $dataFim;
+                $sqlParams['dini'] = $dataInicio;
+            } elseif (!empty($dataInicio)) {
+                $where[] = "(mi.data_fim IS NULL OR mi.data_fim >= :dini)";
+                $sqlParams['dini'] = $dataInicio;
+            } elseif (!empty($dataFim)) {
+                $where[] = "(mi.data_inicio IS NULL OR mi.data_inicio <= :dfim)";
+                $sqlParams['dfim'] = $dataFim;
+            }
+
+            $stmt = $this->pdo->prepare("
                 SELECT mi.*,
                 COALESCE(tm.nome, 'Meta Padrão') as tipo_nome,
                 COALESCE(tm.icone, 'fa-bullseye') as icone,
                 COALESCE(tm.cor, 'emerald') as cor
                 FROM mkt_metas_instancias mi
                 LEFT JOIN mkt_tipos_meta tm ON tm.id = mi.id_tipo_meta
-                ORDER BY mi.data_fim ASC NULLS LAST
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY (mi.status = 'ativa') DESC, mi.data_fim DESC NULLS LAST, mi.id DESC
             ");
+            $stmt->execute($sqlParams);
             $metas = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $stmtCampos = $this->pdo->prepare("

@@ -239,35 +239,66 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 
-    <!-- Filtros Modernos -->
-    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6">
-        <div class="flex flex-wrap gap-3 items-center">
-            <div class="flex gap-2">
+    <!-- Filtros Modernos com Período / Ciclo -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6 space-y-3">
+        <div class="flex flex-wrap gap-3 items-center justify-between">
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Status:</span>
+                <button @click="filtroStatus = 'ativa'; filtrar()" 
+                        class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                        :class="filtroStatus === 'ativa' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
+                    Ativas
+                </button>
+                <button @click="filtroStatus = 'concluida'; filtrar()" 
+                        class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                        :class="filtroStatus === 'concluida' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
+                    Concluídas
+                </button>
                 <button @click="filtroStatus = 'todas'; filtrar()" 
-                class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-                :class="filtroStatus === 'todas' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
-                Todas
-            </button>
-            <button @click="filtroStatus = 'ativa'; filtrar()" 
-            class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-            :class="filtroStatus === 'ativa' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
-            Ativas
-        </button>
-        <button @click="filtroStatus = 'concluida'; filtrar()" 
-        class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
-        :class="filtroStatus === 'concluida' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
-        Concluídas
-    </button>
-</div>
-<div class="flex-1 relative">
-    <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
-    <input type="text" x-model="filtroBusca" @input="filtrar()" 
-    placeholder="Buscar meta..." 
-    class="w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-emerald-400 outline-none">
-</div>
-<span class="text-xs text-slate-400" x-text="`${metasFiltradas.length} meta(s)`"></span>
-</div>
-</div>
+                        class="filter-chip px-3 py-1.5 rounded-full text-xs font-bold transition-all"
+                        :class="filtroStatus === 'todas' ? 'active bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'">
+                    Todas
+                </button>
+            </div>
+
+            <div class="flex items-center gap-1.5 flex-wrap">
+                <span class="text-[10px] font-bold text-slate-400 uppercase mr-1">Ciclo:</span>
+                <button type="button" @click="setPeriodo('mes_atual')" 
+                        :class="filtroPeriodo === 'mes_atual' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Este Mês</button>
+                <button type="button" @click="setPeriodo('mes_passado')" 
+                        :class="filtroPeriodo === 'mes_passado' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Mês Passado</button>
+                <button type="button" @click="setPeriodo('trimestre')" 
+                        :class="filtroPeriodo === 'trimestre' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Trimestre</button>
+                <button type="button" @click="setPeriodo('ano_atual')" 
+                        :class="filtroPeriodo === 'ano_atual' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Este Ano</button>
+                <button type="button" @click="setPeriodo('todas')" 
+                        :class="filtroPeriodo === 'todas' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Todos</button>
+                <button type="button" @click="setPeriodo('personalizado')" 
+                        :class="filtroPeriodo === 'personalizado' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition">Personalizado...</button>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-3 pt-2 border-t border-slate-100">
+            <div x-show="filtroPeriodo === 'personalizado'" class="flex items-center gap-2">
+                <input type="date" x-model="filtroDini" @change="carregarMetas()" class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+                <span class="text-xs text-slate-400">até</span>
+                <input type="date" x-model="filtroDfim" @change="carregarMetas()" class="p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-700">
+            </div>
+            <div class="flex-1 relative">
+                <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                <input type="text" x-model="filtroBusca" @input="filtrar()" 
+                       placeholder="Buscar meta por título ou modelo..." 
+                       class="w-full pl-9 pr-3 py-1.5 border border-slate-200 rounded-xl text-xs focus:ring-2 focus:ring-emerald-400 outline-none">
+            </div>
+            <span class="text-xs text-slate-400" x-text="`${metasFiltradas.length} meta(s)`"></span>
+        </div>
+    </div>
 
 <!-- Lista de Metas - Cards Expandíveis -->
 <div class="space-y-4" id="metasList">
@@ -608,9 +639,40 @@ require_once __DIR__ . '/../../estrutura/header.php';
             metasFiltradas: [],
             filtroStatus: 'ativa',
             filtroBusca: '',
+            filtroPeriodo: 'mes_atual',
+            filtroDini: '',
+            filtroDfim: '',
             totais: { ativas: 0, concluidas: 0, total: 0, progressoMedio: 0 },
             podeEditar: false,
             podeCriarMeta: false,
+
+            setPeriodo(tipo) {
+                this.filtroPeriodo = tipo;
+                const hoje = new Date();
+                const y = hoje.getFullYear();
+                const m = hoje.getMonth();
+
+                if (tipo === 'mes_atual') {
+                    this.filtroDini = new Date(y, m, 1).toISOString().split('T')[0];
+                    this.filtroDfim = new Date(y, m + 1, 0).toISOString().split('T')[0];
+                } else if (tipo === 'mes_passado') {
+                    this.filtroDini = new Date(y, m - 1, 1).toISOString().split('T')[0];
+                    this.filtroDfim = new Date(y, m, 0).toISOString().split('T')[0];
+                } else if (tipo === 'trimestre') {
+                    const trimMes = Math.floor(m / 3) * 3;
+                    this.filtroDini = new Date(y, trimMes, 1).toISOString().split('T')[0];
+                    this.filtroDfim = new Date(y, trimMes + 3, 0).toISOString().split('T')[0];
+                } else if (tipo === 'ano_atual') {
+                    this.filtroDini = `${y}-01-01`;
+                    this.filtroDfim = `${y}-12-31`;
+                } else if (tipo === 'todas') {
+                    this.filtroDini = '';
+                    this.filtroDfim = '';
+                }
+                if (tipo !== 'personalizado') {
+                    this.carregarMetas();
+                }
+            },
 
         // Entrada Rápida de Alimentação Diária
             dataEntradaRapida: MarketingUtils.getDataHojeLocal(),
@@ -725,6 +787,13 @@ require_once __DIR__ . '/../../estrutura/header.php';
         // INICIALIZAÇÃO
         // ====================================================================
             async init() {
+                // Inicia definindo período atual
+                const hoje = new Date();
+                const y = hoje.getFullYear();
+                const m = hoje.getMonth();
+                this.filtroDini = new Date(y, m, 1).toISOString().split('T')[0];
+                this.filtroDfim = new Date(y, m + 1, 0).toISOString().split('T')[0];
+
                 await Promise.all([
                     this.carregarTiposMeta(),
                     this.carregarMetas()
@@ -780,7 +849,12 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
 async carregarMetas() {
     try {
-        const resp = await this.fetchWithAuth('/v1/meta-builder/instancias');
+        let qs = [];
+        if (this.filtroDini) qs.push(`data_inicio=${encodeURIComponent(this.filtroDini)}`);
+        if (this.filtroDfim) qs.push(`data_fim=${encodeURIComponent(this.filtroDfim)}`);
+        const urlReq = '/v1/meta-builder/instancias' + (qs.length ? '?' + qs.join('&') : '');
+
+        const resp = await this.fetchWithAuth(urlReq);
         const data = await resp.json();
 
         if (data.success && data.data) {
