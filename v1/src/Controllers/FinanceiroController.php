@@ -460,6 +460,7 @@ class FinanceiroController
     /**
      * POST /v1/financeiro/historico-kpi
      * Série do snapshot kpi_financeiro_historico (consolidado por filial).
+     * Suporta períodos rápidos, intervalo personalizado, agrupamento, somas e médias.
      */
     public function getHistoricoKpi(Request $request, Response $response): Response
     {
@@ -467,12 +468,58 @@ class FinanceiroController
             $input = $this->input($request);
             $tipo = $input['tipo'] ?? 'iag_calculado';
             $fid = (int)($input['filtro_id'] ?? 0);
-            $dia = (int)($input['dia_semana'] ?? date('w'));
-            if ($dia < 0 || $dia > 6) {
-                $dia = (int)date('w');
-            }
+            $dia = $input['dia_semana'] ?? 'todos';
+            $periodo = $input['periodo'] ?? '30dias';
+            $dataInicio = $input['data_inicio'] ?? null;
+            $dataFim = $input['data_fim'] ?? null;
+
             if (!in_array($tipo, ['iag_calculado', 'iap_calculado', 'taxa_recuperacao'], true)) {
                 $tipo = 'iag_calculado';
+            }
+
+            // Resolução de período de datas
+            $hoje = date('Y-m-d');
+            switch ($periodo) {
+                case 'hoje':
+                    $dataInicio = $hoje;
+                    $dataFim = $hoje;
+                    break;
+                case '7dias':
+                    $dataInicio = date('Y-m-d', strtotime('-7 days'));
+                    $dataFim = $hoje;
+                    break;
+                case '15dias':
+                    $dataInicio = date('Y-m-d', strtotime('-15 days'));
+                    $dataFim = $hoje;
+                    break;
+                case 'este_mes':
+                    $dataInicio = date('Y-m-01');
+                    $dataFim = $hoje;
+                    break;
+                case 'mes_passado':
+                    $dataInicio = date('Y-m-01', strtotime('first day of last month'));
+                    $dataFim = date('Y-m-t', strtotime('last day of last month'));
+                    break;
+                case '30dias':
+                    $dataInicio = date('Y-m-d', strtotime('-30 days'));
+                    $dataFim = $hoje;
+                    break;
+                case 'este_ano':
+                    $dataInicio = date('Y-01-01');
+                    $dataFim = $hoje;
+                    break;
+                case 'todos':
+                    $dataInicio = '2026-01-01';
+                    $dataFim = $hoje;
+                    break;
+                case 'personalizado':
+                    if (empty($dataInicio)) $dataInicio = date('Y-m-d', strtotime('-30 days'));
+                    if (empty($dataFim)) $dataFim = $hoje;
+                    break;
+                default:
+                    if (empty($dataInicio)) $dataInicio = date('Y-m-d', strtotime('-30 days'));
+                    if (empty($dataFim)) $dataFim = $hoje;
+                    break;
             }
 
             $alvo = $this->resolverAlvo($request, $input);
@@ -492,6 +539,18 @@ class FinanceiroController
                 $whereFilial = ' AND idfilial IN (' . $this->ints($permitidas) . ')';
             }
 
+            $params = [
+                'uid' => $alvo['uid'],
+                'dini' => $dataInicio,
+                'dfim' => $dataFim,
+            ];
+
+            $whereDia = '';
+            if ($dia !== 'todos' && is_numeric($dia) && (int)$dia >= 0 && (int)$dia <= 6) {
+                $whereDia = ' AND EXTRACT(DOW FROM data_registro) = :dia';
+                $params['dia'] = (int)$dia;
+            }
+
             $calculoValor = match ($tipo) {
                 'iap_calculado' => 'ROUND(SUM(COALESCE(valor_iap, 0)) * 100.0 / NULLIF(SUM(COALESCE(total_receber, 0)), 0), 2)',
                 'taxa_recuperacao' => 'ROUND(SUM(COALESCE(qtd_recuperados, 0)) * 100.0 / NULLIF(SUM(COALESCE(qtd_trabalhados, 0)), 0), 2)',
@@ -500,32 +559,380 @@ class FinanceiroController
 
             $sql = "SELECT * FROM (
                         SELECT data_registro,
-                               to_char(data_registro, 'DD/MM') AS data,
-                               COALESCE($calculoValor, 0)::float AS valor,
-                               SUM(COALESCE(vencidos, 0))::float AS abs_iag,
-                               SUM(COALESCE(valor_iap, 0))::float AS abs_iap,
-                               SUM(COALESCE(total_receber, 0))::float AS abs_total,
-                               SUM(COALESCE(qtd_trabalhados, 0))::int AS abs_recup_total,
-                               SUM(COALESCE(qtd_recuperados, 0))::int AS abs_recup_pagos,
-                               STRING_AGG(DISTINCT idfilial::text, ', ') AS filiais,
-                               COUNT(*)::int AS registros_origem
+                                to_char(data_registro, 'DD/MM') AS data,
+                                COALESCE($calculoValor, 0)::float AS valor,
+                                SUM(COALESCE(vencidos, 0))::float AS abs_iag,
+                                SUM(COALESCE(valor_iap, 0))::float AS abs_iap,
+                                SUM(COALESCE(total_receber, 0))::float AS abs_total,
+                                SUM(COALESCE(qtd_trabalhados, 0))::int AS abs_recup_total,
+                                SUM(COALESCE(qtd_recuperados, 0))::int AS abs_recup_pagos,
+                                STRING_AGG(DISTINCT idfilial::text, ', ') AS filiais,
+                                COUNT(*)::int AS registros_origem
                           FROM kpi_financeiro_historico
                          WHERE idusuario = :uid AND nivel_visao = 'filial'$whereFilial
-                           AND EXTRACT(DOW FROM data_registro) = :dia
+                           AND data_registro BETWEEN :dini AND :dfim
+                           $whereDia
                          GROUP BY data_registro
-                         ORDER BY data_registro DESC
-                         LIMIT 10
+                         ORDER BY data_registro ASC
                     ) historico
                     ORDER BY data_registro ASC";
-            $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['uid' => $alvo['uid'], 'dia' => $dia]);
 
-            return $this->json($response, $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($params);
+            $serie = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Cálculo das auto somas e médias pelo período apurado
+            $totalDias = count($serie);
+            $somaValores = 0;
+            $somaVencidos = 0;
+            $somaIap = 0;
+            $somaCarteira = 0;
+            $somaTrabalhados = 0;
+            $somaRecuperados = 0;
+            $menorValor = $totalDias > 0 ? 9999999 : 0;
+            $maiorValor = 0;
+
+            foreach ($serie as $row) {
+                $val = (float)$row['valor'];
+                $somaValores += $val;
+                $somaVencidos += (float)$row['abs_iag'];
+                $somaIap += (float)$row['abs_iap'];
+                $somaCarteira += (float)$row['abs_total'];
+                $somaTrabalhados += (int)$row['abs_recup_total'];
+                $somaRecuperados += (int)$row['abs_recup_pagos'];
+                if ($val < $menorValor) $menorValor = $val;
+                if ($val > $maiorValor) $maiorValor = $val;
+            }
+
+            if ($totalDias === 0) {
+                $menorValor = 0;
+            }
+
+            $mediaApurada = $totalDias > 0 ? round($somaValores / $totalDias, 2) : 0;
+            $mediaVencidos = $totalDias > 0 ? round($somaVencidos / $totalDias, 2) : 0;
+            $mediaIap = $totalDias > 0 ? round($somaIap / $totalDias, 2) : 0;
+            $mediaCarteira = $totalDias > 0 ? round($somaCarteira / $totalDias, 2) : 0;
+
+            $mediaPonderada = match ($tipo) {
+                'iap_calculado' => $somaCarteira > 0 ? round(($somaIap / $somaCarteira) * 100, 2) : 0,
+                'taxa_recuperacao' => $somaTrabalhados > 0 ? round(($somaRecuperados / $somaTrabalhados) * 100, 2) : 0,
+                default => $somaCarteira > 0 ? round(($somaVencidos / $somaCarteira) * 100, 2) : 0,
+            };
+
+            // Busca meta ativa de referência para este indicador
+            $metaTipo = match ($tipo) {
+                'iap_calculado' => 'iap',
+                'taxa_recuperacao' => 'recuperacao',
+                default => 'iag'
+            };
+            $stmtMeta = $this->pdo->prepare("SELECT * FROM fin_metas WHERE tipo_indicador = :tipo AND status = 'ativa' AND (idfilial = :filial OR idfilial = 0) ORDER BY idfilial DESC, id DESC LIMIT 1");
+            $stmtMeta->execute(['tipo' => $metaTipo, 'filial' => $fid]);
+            $metaRef = $stmtMeta->fetch(\PDO::FETCH_ASSOC) ?: null;
+
+            $resumo = [
+                'total_dias' => $totalDias,
+                'media_apurada' => $mediaApurada,
+                'media_ponderada' => $mediaPonderada,
+                'soma_vencidos' => $somaVencidos,
+                'media_vencidos' => $mediaVencidos,
+                'soma_iap' => $somaIap,
+                'media_iap' => $mediaIap,
+                'soma_carteira' => $somaCarteira,
+                'media_carteira' => $mediaCarteira,
+                'soma_trabalhados' => $somaTrabalhados,
+                'soma_recuperados' => $somaRecuperados,
+                'menor_valor' => round($menorValor, 2),
+                'maior_valor' => round($maiorValor, 2),
+            ];
+
+            return $this->json($response, [
+                'serie' => $serie,
+                'resumo' => $resumo,
+                'meta' => $metaRef,
+                'periodo' => [
+                    'data_inicio' => $dataInicio,
+                    'data_fim' => $dataFim,
+                    'tipo' => $periodo,
+                    'dia_semana' => $dia
+                ]
+            ]);
         } catch (\Throwable $e) {
             return $this->fail($response, $e, 'getHistoricoKpi');
         }
     }
 
+    /**
+     * GET / POST /v1/financeiro/metas
+     * Lista metas financeiras com filtros
+     */
+    public function getMetas(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $status = $input['status'] ?? 'todas';
+            $tipo = $input['tipo_indicador'] ?? '';
+            $idfilial = isset($input['idfilial']) ? (int)$input['idfilial'] : -1;
+
+            $where = ['1=1'];
+            $params = [];
+
+            if ($status !== 'todas' && !empty($status)) {
+                $where[] = "m.status = :status";
+                $params['status'] = $status;
+            }
+            if (!empty($tipo)) {
+                $where[] = "m.tipo_indicador = :tipo";
+                $params['tipo'] = $tipo;
+            }
+            if ($idfilial >= 0) {
+                $where[] = "m.idfilial = :filial";
+                $params['filial'] = $idfilial;
+            }
+
+            $sql = "SELECT m.*,
+                           COALESCE(u.username, 'Sistema') AS criador_nome,
+                           CASE
+                                WHEN m.idfilial = 0 THEN 'Todas as Filiais'
+                                ELSE COALESCE(f.nome, 'Filial #' || m.idfilial)
+                           END AS filial_nome
+                      FROM fin_metas m
+                      LEFT JOIN usuario u ON u.idusuario = m.created_by
+                      LEFT JOIN filial f ON f.idfilial = m.idfilial
+                     WHERE " . implode(' AND ', $where) . "
+                     ORDER BY (m.status = 'ativa') DESC, m.data_fim DESC, m.id DESC";
+
+            $st = $this->pdo->prepare($sql);
+            $st->execute($params);
+            $metas = $st->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $this->json($response, ['success' => true, 'data' => $metas]);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getMetas');
+        }
+    }
+
+    /**
+     * POST /v1/financeiro/metas/salvar
+     * Cria ou atualiza uma meta financeira personalizada
+     */
+    public function salvarMeta(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $id = (int)($input['id'] ?? 0);
+            $titulo = trim((string)($input['titulo'] ?? ''));
+            $tipo = trim((string)($input['tipo_indicador'] ?? ''));
+            $descricao = trim((string)($input['descricao'] ?? ''));
+            $idfilial = (int)($input['idfilial'] ?? 0);
+            $valorMeta = (float)str_replace(',', '.', (string)($input['valor_meta'] ?? 0));
+            $tolerancia = (float)str_replace(',', '.', (string)($input['tolerancia_alerta'] ?? 0));
+            $direcao = in_array($input['direcao'] ?? '', ['menor_melhor', 'maior_melhor']) ? $input['direcao'] : 'menor_melhor';
+            $dataInicio = trim((string)($input['data_inicio'] ?? ''));
+            $dataFim = trim((string)($input['data_fim'] ?? ''));
+            $status = in_array($input['status'] ?? '', ['ativa', 'pausada', 'concluida', 'cancelada']) ? $input['status'] : 'ativa';
+
+            if (empty($titulo)) {
+                throw new \InvalidArgumentException('O título da meta é obrigatório.');
+            }
+            if (empty($tipo)) {
+                throw new \InvalidArgumentException('O tipo de indicador é obrigatório.');
+            }
+            if (empty($dataInicio) || empty($dataFim)) {
+                throw new \InvalidArgumentException('As datas de início e fim são obrigatórias.');
+            }
+
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $userId = $scope->uid > 0 ? $scope->uid : 1;
+
+            if ($id > 0) {
+                $sql = "UPDATE fin_metas
+                           SET tipo_indicador = :tipo,
+                               titulo = :titulo,
+                               descricao = :descricao,
+                               idfilial = :idfilial,
+                               valor_meta = :valor_meta,
+                               direcao = :direcao,
+                               tolerancia_alerta = :tolerancia,
+                               data_inicio = :data_inicio,
+                               data_fim = :data_fim,
+                               status = :status,
+                               updated_at = CURRENT_TIMESTAMP
+                         WHERE id = :id";
+                $st = $this->pdo->prepare($sql);
+                $st->execute([
+                    'id' => $id,
+                    'tipo' => $tipo,
+                    'titulo' => $titulo,
+                    'descricao' => $descricao,
+                    'idfilial' => $idfilial,
+                    'valor_meta' => $valorMeta,
+                    'direcao' => $direcao,
+                    'tolerancia' => $tolerancia,
+                    'data_inicio' => $dataInicio,
+                    'data_fim' => $dataFim,
+                    'status' => $status
+                ]);
+                $msg = 'Meta financeira atualizada com sucesso!';
+            } else {
+                $sql = "INSERT INTO fin_metas (tipo_indicador, titulo, descricao, idfilial, valor_meta, direcao, tolerancia_alerta, data_inicio, data_fim, status, created_by)
+                        VALUES (:tipo, :titulo, :descricao, :idfilial, :valor_meta, :direcao, :tolerancia, :data_inicio, :data_fim, :status, :created_by) RETURNING id";
+                $st = $this->pdo->prepare($sql);
+                $st->execute([
+                    'tipo' => $tipo,
+                    'titulo' => $titulo,
+                    'descricao' => $descricao,
+                    'idfilial' => $idfilial,
+                    'valor_meta' => $valorMeta,
+                    'direcao' => $direcao,
+                    'tolerancia' => $tolerancia,
+                    'data_inicio' => $dataInicio,
+                    'data_fim' => $dataFim,
+                    'status' => $status,
+                    'created_by' => $userId
+                ]);
+                $id = (int)$st->fetchColumn();
+                $msg = 'Meta financeira cadastrada com sucesso!';
+            }
+
+            return $this->json($response, ['success' => true, 'id' => $id, 'message' => $msg]);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'salvarMeta');
+        }
+    }
+
+    /**
+     * POST /v1/financeiro/metas/excluir
+     */
+    public function excluirMeta(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $id = (int)($input['id'] ?? 0);
+            if ($id <= 0) {
+                throw new \InvalidArgumentException('ID da meta inválido.');
+            }
+            $st = $this->pdo->prepare("DELETE FROM fin_metas WHERE id = :id");
+            $st->execute(['id' => $id]);
+            return $this->json($response, ['success' => true, 'message' => 'Meta excluída com sucesso.']);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'excluirMeta');
+        }
+    }
+
+    /**
+     * GET / POST /v1/financeiro/metas/progresso
+     * Retorna as metas ativas enriquecidas com o valor realizado apurado e % de atingimento
+     */
+    public function getMetasComProgresso(Request $request, Response $response): Response
+    {
+        try {
+            $input = $this->input($request);
+            $idfilial = (int)($input['idfilial'] ?? 0);
+
+            // Carrega metas ativas
+            $sqlMetas = "SELECT m.*,
+                                CASE
+                                     WHEN m.idfilial = 0 THEN 'Todas as Filiais'
+                                     ELSE COALESCE(f.nome, 'Filial #' || m.idfilial)
+                                END AS filial_nome
+                           FROM fin_metas m
+                           LEFT JOIN filial f ON f.idfilial = m.idfilial
+                          WHERE m.status = 'ativa'
+                            AND (:filial = 0 OR m.idfilial = :filial OR m.idfilial = 0)
+                          ORDER BY m.idfilial DESC, m.id ASC";
+            $stMetas = $this->pdo->prepare($sqlMetas);
+            $stMetas->execute(['filial' => $idfilial]);
+            $metas = $stMetas->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Buscar dados mais recentes do snapshot
+            $sqlSnap = "SELECT SUM(COALESCE(vencidos, 0))::float AS total_vencidos,
+                               SUM(COALESCE(valor_iap, 0))::float AS total_iap,
+                               SUM(COALESCE(total_receber, 0))::float AS total_receber,
+                               SUM(COALESCE(qtd_trabalhados, 0))::int AS total_trabalhados,
+                               SUM(COALESCE(qtd_recuperados, 0))::int AS total_recuperados
+                          FROM kpi_financeiro_historico
+                         WHERE data_registro = (SELECT MAX(data_registro) FROM kpi_financeiro_historico)
+                           AND (:filial = 0 OR idfilial = :filial)";
+            $stSnap = $this->pdo->prepare($sqlSnap);
+            $stSnap->execute(['filial' => $idfilial]);
+            $snap = $stSnap->fetch(\PDO::FETCH_ASSOC) ?: [];
+
+            $totVencidos = (float)($snap['total_vencidos'] ?? 0);
+            $totIap = (float)($snap['total_iap'] ?? 0);
+            $totCarteira = (float)($snap['total_receber'] ?? 0);
+            $totTrab = (int)($snap['total_trabalhados'] ?? 0);
+            $totRecup = (int)($snap['total_recuperados'] ?? 0);
+
+            $iagAtual = $totCarteira > 0 ? round(($totVencidos / $totCarteira) * 100, 2) : 0;
+            $iapAtual = $totCarteira > 0 ? round(($totIap / $totCarteira) * 100, 2) : 0;
+            $recupAtual = $totTrab > 0 ? round(($totRecup / $totTrab) * 100, 2) : 0;
+
+            foreach ($metas as &$m) {
+                $tipo = $m['tipo_indicador'];
+                $valorMeta = (float)$m['valor_meta'];
+                $tolerancia = (float)$m['tolerancia_alerta'] ?: $valorMeta;
+                $direcao = $m['direcao'] ?: 'menor_melhor';
+
+                $realizado = match ($tipo) {
+                    'iag' => $iagAtual,
+                    'iap' => $iapAtual,
+                    'recuperacao' => $recupAtual,
+                    'vencidos_total' => $totVencidos,
+                    'vencido_60d' => round($iapAtual * 0.6, 2),
+                    default => $iagAtual
+                };
+
+                if ($direcao === 'menor_melhor') {
+                    if ($realizado <= $valorMeta) {
+                        $statusAtingimento = 'atingida';
+                        $corSemaforo = 'emerald';
+                        $progresso = 100;
+                    } elseif ($realizado <= $tolerancia) {
+                        $statusAtingimento = 'atencao';
+                        $corSemaforo = 'amber';
+                        $progresso = round(($valorMeta / max(0.01, $realizado)) * 100, 1);
+                    } else {
+                        $statusAtingimento = 'critica';
+                        $corSemaforo = 'rose';
+                        $progresso = round(($valorMeta / max(0.01, $realizado)) * 100, 1);
+                    }
+                } else {
+                    if ($realizado >= $valorMeta) {
+                        $statusAtingimento = 'atingida';
+                        $corSemaforo = 'emerald';
+                        $progresso = 100;
+                    } elseif ($realizado >= $tolerancia) {
+                        $statusAtingimento = 'atencao';
+                        $corSemaforo = 'amber';
+                        $progresso = round(($realizado / max(0.01, $valorMeta)) * 100, 1);
+                    } else {
+                        $statusAtingimento = 'critica';
+                        $corSemaforo = 'rose';
+                        $progresso = round(($realizado / max(0.01, $valorMeta)) * 100, 1);
+                    }
+                }
+
+                $m['valor_realizado'] = $realizado;
+                $m['progresso_percentual'] = min(100, max(0, $progresso));
+                $m['status_atingimento'] = $statusAtingimento;
+                $m['cor_semaforo'] = $corSemaforo;
+            }
+
+            return $this->json($response, [
+                'success' => true,
+                'metas' => $metas,
+                'indicadores_atuais' => [
+                    'iag' => $iagAtual,
+                    'iap' => $iapAtual,
+                    'recuperacao' => $recupAtual,
+                    'vencidos' => $totVencidos,
+                    'carteira' => $totCarteira
+                ]
+            ]);
+        } catch (\Throwable $e) {
+            return $this->fail($response, $e, 'getMetasComProgresso');
+        }
+    }
     /**
      * POST /v1/financeiro/lista-usuarios
      * Usuários que o solicitante (JWT) pode usar como visão.

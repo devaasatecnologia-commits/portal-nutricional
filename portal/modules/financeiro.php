@@ -34,7 +34,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 <div class="mobile-spacer block lg:hidden h-14"></div>
 
 <div class="modulo-container max-w-full mx-auto px-4 lg:px-6 py-4">
-    
+
     <!-- Shimmer Loading -->
     <div id="shimmer" class="fixed top-0 left-0 w-full h-1 bg-gradient-to-r from-amber-400 via-emerald-700 to-amber-400 bg-[length:200%_100%] animate-shimmer z-50 hidden"></div>
 
@@ -54,10 +54,15 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <span id="user-display" class="text-xs text-slate-400 font-medium">CARREGANDO...</span>
             </div>
         </div>
-        <div class="text-right hidden sm:block">
-            <!--span class="block text-xl font-black text-emerald-700 tracking-tighter" id="kpi-iag-quick">0.00%</span-->
-            <div class="clock font-mono text-base lg:text-xl font-black" id="relogio">00:00:00</div>
-            <div class="data-topo text-[10px] lg:text-xs" id="data-topo">--/--/----</div>
+        <div class="flex items-center gap-3">
+            <a href="/portal/modules/admin/metas-financeiro.php" class="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 no-underline shadow-xs" title="Administrar Metas do Financeiro">
+                <i class="fa-solid fa-bullseye text-amber-600"></i>
+                <span>GERENCIAR METAS</span>
+            </a>
+            <div class="text-right hidden sm:block">
+                <div class="clock font-mono text-base lg:text-xl font-black" id="relogio">00:00:00</div>
+                <div class="data-topo text-[10px] lg:text-xs" id="data-topo">--/--/----</div>
+            </div>
         </div>
     </div>
 
@@ -79,11 +84,11 @@ require_once __DIR__ . '/../estrutura/header.php';
     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
         <i class="fa-solid fa-building mr-1"></i> Filial
     </label>
-    <select id="select-filial" onchange="app.changeFilial(this.value)" 
+    <select id="select-filial" onchange="app.changeFilial(this.value)"
             class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-semibold bg-white cursor-pointer hover:border-emerald-300 transition-all">
     </select>
 </div>
-            
+
             <div class="w-40" title="Janela de recuperação: considera apenas títulos vencidos nos últimos N dias (1 a 365). Vale para a Taxa de Recuperação e para os 3 cenários.">
                 <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
                     <i class="fa-solid fa-calendar mr-1"></i> Janela (dias)
@@ -99,13 +104,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <input type="number" id="filtro-corte-atraso" value="8" min="1" max="365" onchange="app.onParamChange()"
                        class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm font-bold text-amber-600">
             </div>
-            
-            <button onclick="app.reset()" 
+
+            <button onclick="app.reset()"
                     class="px-6 py-3 bg-slate-700 text-white rounded-xl font-bold hover:bg-slate-800 transition-all flex items-center gap-2">
                 <i class="fa-solid fa-rotate-left"></i> REINICIAR
             </button>
-			
-	
+
+
         </div>
     </div>
 
@@ -139,6 +144,27 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- ====================================================================== -->
+    <!-- METAS FINANCEIRAS ATIVAS (ACOMPANHAMENTO EXECUTIVO) -->
+    <!-- ====================================================================== -->
+    <div id="secao-metas-ativas" class="mb-6">
+        <div class="flex items-center justify-between mb-2.5">
+            <div class="flex items-center gap-2">
+                <i class="fa-solid fa-bullseye text-amber-600"></i>
+                <h4 class="text-xs font-extrabold text-slate-700 uppercase tracking-wider">METAS FINANCEIRAS DO MÊS / VIGENTES</h4>
+                <span class="text-[10px] text-slate-400 font-medium hidden sm:inline">• Atingimento frente aos limites corporativos</span>
+            </div>
+            <a href="/portal/modules/admin/metas-financeiro.php" class="text-[11px] font-bold text-amber-700 hover:text-amber-800 flex items-center gap-1 no-underline">
+                <span>Configurar Metas</span> <i class="fa-solid fa-chevron-right text-[9px]"></i>
+            </a>
+        </div>
+        <div id="grid-metas-progresso" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3.5">
+            <div class="col-span-full py-4 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm">
+                <i class="fa-solid fa-spinner fa-spin mr-1.5 text-amber-500"></i> Carregando metas ativas...
+            </div>
+        </div>
+    </div>
+
     <!-- KPIs Cards -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
         <div class="bg-white p-5 rounded-2xl border-l-8 border-rose-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('iag')">
@@ -150,7 +176,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 VER AUDITORIA <i class="fa-solid fa-chevron-right text-[10px]"></i>
             </div>
         </div>
-        
+
         <div class="bg-white p-5 rounded-2xl border-l-8 border-amber-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('iap')">
             <label class="text-xs font-bold text-slate-400 uppercase block mb-1">Atraso Crítico (IAP)</label>
             <span class="text-[10px] text-slate-400 block mb-2">IAP = Saldo vencido há mais de 30 dias ÷ Carteira total<br>(faixas 31–60d + &gt;60d)</span>
@@ -160,7 +186,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 VER AUDITORIA <i class="fa-solid fa-chevron-right text-[10px]"></i>
             </div>
         </div>
-        
+
         <div class="bg-white p-5 rounded-2xl border-l-8 border-emerald-500 shadow-sm cursor-pointer hover:shadow-lg transition-all" onclick="app.showAudit('recup')">
             <label class="text-xs font-bold text-slate-400 uppercase block mb-1">Taxa de Recuperação</label>
             <span class="text-[10px] text-slate-400 block mb-2" title="Base = títulos vencidos na janela, com apontamento de cobrança, excluindo status 5 (renegociado/cancelado). Pago = saldo zerado. O apontamento só conta se foi feito até a data do pagamento (aproximada por vencimento + dias de atraso). Cenário 1 (sem apontamento) não entra na base.">Recuperação = Títulos pagos ÷ Títulos trabalhados<br>Trabalhados = com apontamento (cen. 2 + 3) · status 5 excluído · apontamento até a data do pagamento</span>
@@ -172,37 +198,112 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- Histórico -->
-    <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-6">
-        <div class="flex justify-between items-center mb-4 flex-wrap gap-3">
-            <h4 class="text-sm font-bold text-slate-700 uppercase">
-                <i class="fa-solid fa-chart-column mr-2"></i> HISTÓRICO DE PERFORMANCE
-            </h4>
-            <div class="flex gap-2">
-                <select id="hist-type" onchange="app.loadHistory()" 
-                        class="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">
-                    <option value="iag_calculado" selected>IAG (%)</option>
-                    <option value="iap_calculado">IAP (%)</option>
-                    <option value="taxa_recuperacao">RECUPERAÇÃO (%)</option>
+    <!-- ====================================================================== -->
+    <!-- HISTÓRICO DE PERFORMANCE & ANÁLISE TEMPORAL (IAP / IAG / RECUPERAÇÃO) -->
+    <!-- ====================================================================== -->
+    <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 mb-6">
+        <div class="flex justify-between items-start lg:items-center mb-4 flex-wrap gap-3 pb-3 border-b border-slate-100">
+            <div>
+                <h4 class="text-sm font-black text-slate-800 uppercase flex items-center gap-2">
+                    <i class="fa-solid fa-chart-column text-emerald-700"></i>
+                    <span>HISTÓRICO & AUDITORIA TEMPORAL (IAG / IAP / RECUPERAÇÃO)</span>
+                </h4>
+                <p class="text-[11px] text-slate-400 mt-0.5">Resultados diários gravados em snapshot com auto soma e médias pelo período apurado.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <!-- Seletor do Indicador -->
+                <select id="hist-type" onchange="app.onHistoryParamChange()"
+                        class="px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-xs font-bold text-slate-800">
+                    <option value="iag_calculado" selected>Inadimplência Geral (IAG %)</option>
+                    <option value="iap_calculado">Atraso Crítico +30d (IAP %)</option>
+                    <option value="taxa_recuperacao">Taxa de Recuperação (%)</option>
                 </select>
-                <select id="hist-day" onchange="app.loadHistory()"
-                        class="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">
-                    <option value="0">DOMINGO</option>
-                    <option value="1">SEGUNDA</option>
-                    <option value="2">TERÇA</option>
-                    <option value="3">QUARTA</option>
-                    <option value="4">QUINTA</option>
-                    <option value="5">SEXTA</option>
-                    <option value="6">SÁBADO</option>
+
+                <!-- Seletor de Dia da Semana -->
+                <select id="hist-day" onchange="app.onHistoryParamChange()"
+                        class="px-3 py-2 border-2 border-slate-200 bg-slate-50 rounded-xl text-xs font-bold text-slate-700">
+                    <option value="todos" selected>Todos os Dias da Semana</option>
+                    <option value="1">Apenas Segundas</option>
+                    <option value="2">Apenas Terças</option>
+                    <option value="3">Apenas Quartas</option>
+                    <option value="4">Apenas Quintas</option>
+                    <option value="5">Apenas Sextas</option>
+                    <option value="6">Apenas Sábados</option>
+                    <option value="0">Apenas Domingos</option>
                 </select>
             </div>
         </div>
-        <div class="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3" id="hist-aviso">
-            <i class="fa-solid fa-circle-info mr-1"></i>
-            <b>Histórico consolidado por filial – não considera filtro de gestor/representante.</b>
-            Os pontos vêm de um snapshot semanal com janela fixa de 120 dias e atraso mínimo de 8 dias, portanto não reagem aos campos “Janela” e “Atraso mín.”.
+
+        <!-- Filtros Rápidos de Período -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 p-3 bg-slate-50/80 rounded-2xl border border-slate-200/80">
+            <div class="flex flex-wrap items-center gap-1.5" id="botoes-periodo-hist">
+                <span class="text-[10px] font-bold uppercase text-slate-400 mr-1.5 flex items-center gap-1">
+                    <i class="fa-solid fa-clock-rotate-left"></i> Período:
+                </span>
+                <button type="button" onclick="app.setPeriodoHistorico('hoje')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="hoje">Hoje</button>
+                <button type="button" onclick="app.setPeriodoHistorico('7dias')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="7dias">7 dias</button>
+                <button type="button" onclick="app.setPeriodoHistorico('este_mes')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-emerald-600 text-white shadow-xs" data-p="este_mes">Este Mês</button>
+                <button type="button" onclick="app.setPeriodoHistorico('mes_passado')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="mes_passado">Mês Passado</button>
+                <button type="button" onclick="app.setPeriodoHistorico('30dias')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="30dias">30 dias</button>
+                <button type="button" onclick="app.setPeriodoHistorico('este_ano')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="este_ano">Este Ano</button>
+                <button type="button" onclick="app.setPeriodoHistorico('todos')" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="todos">Todos</button>
+                <button type="button" onclick="app.togglePeriodoPersonalizado()" class="btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200" data-p="personalizado" title="Datas Personalizadas">
+                    <i class="fa-regular fa-calendar-days"></i>
+                </button>
+            </div>
+
+            <!-- Inputs Personalizados (aparece ao clicar) -->
+            <div id="box-datas-personalizadas" class="hidden flex items-center gap-2">
+                <input type="date" id="hist-data-inicio" class="p-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 bg-white">
+                <span class="text-xs text-slate-400 font-bold">até</span>
+                <input type="date" id="hist-data-fim" class="p-1.5 border border-slate-300 rounded-lg text-xs font-bold text-slate-700 bg-white">
+                <button type="button" onclick="app.aplicarDatasPersonalizadas()" class="px-3 py-1.5 bg-slate-800 text-white rounded-lg text-xs font-bold hover:bg-slate-900 transition">
+                    Filtrar
+                </button>
+            </div>
         </div>
-        <div style="height: 250px; width: 100%; position: relative;">
+
+        <!-- ====================================================================== -->
+        <!-- CARDS DE AUTO SOMA E MÉDIA PELO PERÍODO APURADO -->
+        <!-- ====================================================================== -->
+        <div id="resumo-apurado-container" class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+            <div class="bg-gradient-to-br from-slate-50 to-slate-100/70 p-3.5 rounded-2xl border border-slate-200/80">
+                <span class="text-[10px] font-bold uppercase text-slate-400 block mb-0.5">Dias Apurados</span>
+                <span class="text-lg font-black text-slate-800" id="hist-resumo-dias">0</span>
+                <span class="text-[10px] text-slate-500 block mt-0.5" id="hist-resumo-faixa">Intervalo</span>
+            </div>
+            <div class="bg-gradient-to-br from-emerald-50 to-emerald-100/40 p-3.5 rounded-2xl border border-emerald-200/80">
+                <span class="text-[10px] font-bold uppercase text-emerald-700 block mb-0.5">Média Apurada</span>
+                <span class="text-lg font-black text-emerald-800" id="hist-resumo-media">0,00%</span>
+                <span class="text-[10px] text-emerald-600 block mt-0.5">Média simples</span>
+            </div>
+            <div class="bg-gradient-to-br from-indigo-50 to-indigo-100/40 p-3.5 rounded-2xl border border-indigo-200/80">
+                <span class="text-[10px] font-bold uppercase text-indigo-700 block mb-0.5">Média Ponderada</span>
+                <span class="text-lg font-black text-indigo-800" id="hist-resumo-ponderada">0,00%</span>
+                <span class="text-[10px] text-indigo-600 block mt-0.5">Pelo volume total</span>
+            </div>
+            <div class="bg-gradient-to-br from-amber-50 to-amber-100/40 p-3.5 rounded-2xl border border-amber-200/80">
+                <span class="text-[10px] font-bold uppercase text-amber-700 block mb-0.5">Auto Soma Vencidos</span>
+                <span class="text-lg font-black text-amber-800" id="hist-resumo-soma-venc">R$ 0,00</span>
+                <span class="text-[10px] text-amber-600 block mt-0.5">Soma no período</span>
+            </div>
+            <div class="bg-gradient-to-br from-sky-50 to-sky-100/40 p-3.5 rounded-2xl border border-sky-200/80">
+                <span class="text-[10px] font-bold uppercase text-sky-700 block mb-0.5">Média Vencidos/Dia</span>
+                <span class="text-lg font-black text-sky-800" id="hist-resumo-media-venc">R$ 0,00</span>
+                <span class="text-[10px] text-sky-600 block mt-0.5">Exposição média</span>
+            </div>
+            <div class="bg-gradient-to-br from-purple-50 to-purple-100/40 p-3.5 rounded-2xl border border-purple-200/80">
+                <span class="text-[10px] font-bold uppercase text-purple-700 block mb-0.5">Meta Corporativa</span>
+                <span class="text-lg font-black text-purple-800" id="hist-resumo-meta">Sem meta</span>
+                <span class="text-[10px] text-purple-600 block mt-0.5" id="hist-resumo-meta-status">—</span>
+            </div>
+        </div>
+
+        <div class="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3" id="hist-aviso">
+            <i class="fa-solid fa-circle-info mr-1 text-amber-600"></i>
+            <b>Histórico consolidado de fechamento:</b> clique sobre qualquer barra do gráfico para auditar os detalhes e saldos do fechamento registrado naquele dia.
+        </div>
+        <div style="height: 290px; width: 100%; position: relative;">
             <canvas id="chartHistory"></canvas>
             <div id="chart-estado" class="fin-estado"></div>
         </div>
@@ -211,14 +312,14 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- Breadcrumb -->
     <div id="b-path" class="inline-block px-4 py-2 bg-slate-100 rounded-xl text-xs font-bold uppercase text-slate-600 mb-4">
         PAINEL GLOBAL
-				
+
     </div>
 
     <!-- Tabela -->
     <div class="bg-white rounded-2xl border border-slate-100 overflow-hidden shadow-sm">
-       <button onclick="app.gerarRelatorio()" 
+       <button onclick="app.gerarRelatorio()"
         class="px-6 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2 shadow-md">
-    <i class="fa-solid fa-file-pdf text-lg"></i> 
+    <i class="fa-solid fa-file-pdf text-lg"></i>
     <span>GERAR RELATÓRIO DETALHADO</span>
 </button>
 	   <div class="overflow-x-auto">

@@ -54,10 +54,15 @@ const app = {
     },
 
     async init() {
-        document.getElementById('hist-day').value = new Date().getDay();
+        this.periodoHistorico = 'este_mes';
+        this.histDataInicio = '';
+        this.histDataFim = '';
+        const dayEl = document.getElementById('hist-day');
+        if (dayEl) dayEl.value = 'todos';
         this.updateBreadcrumb();
         await this.loadUsersList();
         await this.load();
+        this.loadMetasProgresso();
         this.loadHistory();
     },
 
@@ -207,6 +212,7 @@ const app = {
         this.path = [{ nivel: 'filial', f_id: null, nome: this.rotuloBase() }];
         this.updateBreadcrumb();
         this.load();
+        this.loadMetasProgresso();
         this.loadHistory();
     },
 
@@ -444,103 +450,313 @@ const app = {
         el.innerText = msg || '';
     },
 
-    async loadHistory() {
-        try {
-            const type = document.getElementById('hist-type')?.value || 'iag_calculado';
-            const day = document.getElementById('hist-day')?.value || new Date().getDay();
-            const res = await this.api('historico-kpi', {
-                idusuario: this.alvoUsuario(),
-                tipo: type,
-                filtro_id: this.filialSelecionada(),
-                dia_semana: day
-            });
-            if (!res || res.length === 0) {
-                this.estadoGrafico('Sem registros no histórico para este filtro e dia da semana.');
-                return;
+    setPeriodoHistorico(periodo) {
+    this.periodoHistorico = periodo;
+    document.querySelectorAll('.btn-periodo-hist').forEach(b => {
+        if (b.dataset.p === periodo) {
+            b.className = 'btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-emerald-600 text-white shadow-xs';
+        } else {
+            b.className = 'btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200';
+        }
+    });
+    const boxCustom = document.getElementById('box-datas-personalizadas');
+    if (boxCustom) {
+        boxCustom.classList.add('hidden');
+    }
+    this.histDataInicio = '';
+    this.histDataFim = '';
+    this.loadHistory();
+},
+
+togglePeriodoPersonalizado() {
+    const box = document.getElementById('box-datas-personalizadas');
+    if (!box) return;
+    const estaOculto = box.classList.contains('hidden');
+    if (estaOculto) {
+        box.classList.remove('hidden');
+        const hj = new Date();
+        const y = hj.getFullYear();
+        const m = String(hj.getMonth() + 1).padStart(2, '0');
+        const d = String(hj.getDate()).padStart(2, '0');
+        const fimEl = document.getElementById('hist-data-fim');
+        if (fimEl) fimEl.value = `${y}-${m}-${d}`;
+        const pas = new Date(hj);
+        pas.setDate(hj.getDate() - 30);
+        const py = pas.getFullYear();
+        const pm = String(pas.getMonth() + 1).padStart(2, '0');
+        const pd = String(pas.getDate()).padStart(2, '0');
+        const iniEl = document.getElementById('hist-data-inicio');
+        if (iniEl) iniEl.value = `${py}-${pm}-${pd}`;
+    } else {
+        box.classList.add('hidden');
+    }
+},
+
+aplicarDatasPersonalizadas() {
+    const dini = document.getElementById('hist-data-inicio')?.value;
+    const dfim = document.getElementById('hist-data-fim')?.value;
+    if (!dini || !dfim) {
+        alert('Por favor, informe a data inicial e final.');
+        return;
+    }
+    this.periodoHistorico = 'personalizado';
+    this.histDataInicio = dini;
+    this.histDataFim = dfim;
+
+    document.querySelectorAll('.btn-periodo-hist').forEach(b => {
+        if (b.dataset.p === 'personalizado') {
+            b.className = 'btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all bg-emerald-600 text-white shadow-xs';
+        } else {
+            b.className = 'btn-periodo-hist px-2.5 py-1 rounded-lg text-xs font-bold transition-all text-slate-600 hover:bg-slate-200';
+        }
+    });
+
+    this.loadHistory();
+},
+
+onHistoryParamChange() {
+    this.loadHistory();
+},
+
+async loadMetasProgresso() {
+    const grid = document.getElementById('grid-metas-progresso');
+    if (!grid) return;
+    try {
+        const filialId = this.filialSelecionada() || 0;
+        const res = await this.api('metas/progresso', { idfilial: filialId });
+        const metas = (res && res.metas) ? res.metas : [];
+        if (!metas.length) {
+            grid.innerHTML = `
+                <div class="col-span-full py-4 px-4 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                    <span>Nenhuma meta financeira ativa configurada para esta filial.</span>
+                    <a href="/portal/modules/admin/metas-financeiro.php" class="px-3 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg font-bold text-xs no-underline transition">
+                        + Criar Meta
+                    </a>
+                </div>`;
+            return;
+        }
+
+        const mapaTipo = {
+            'iag': { nome: 'IAG Geral', icone: 'fa-chart-pie', un: '%' },
+            'iap': { nome: 'IAP Crítico +30d', icone: 'fa-triangle-exclamation', un: '%' },
+            'recuperacao': { nome: 'Taxa Recuperação', icone: 'fa-hand-holding-dollar', un: '%' },
+            'vencido_60d': { nome: 'Perda >60d', icone: 'fa-shield-halved', un: '%' },
+            'vencidos_total': { nome: 'Carteira Vencida', icone: 'fa-wallet', un: 'R$' }
+        };
+
+        const mapaSemaforo = {
+            'emerald': { bg: 'bg-emerald-500', text: 'text-emerald-700', badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', label: 'Atingida' },
+            'amber': { bg: 'bg-amber-500', text: 'text-amber-700', badge: 'bg-amber-50 text-amber-700 border-amber-200', label: 'Atenção' },
+            'rose': { bg: 'bg-rose-500', text: 'text-rose-700', badge: 'bg-rose-50 text-rose-700 border-rose-200', label: 'Crítica' }
+        };
+
+        grid.innerHTML = metas.map(m => {
+            const tInfo = mapaTipo[m.tipo_indicador] || { nome: m.tipo_indicador, icone: 'fa-bullseye', un: '%' };
+            const sem = mapaSemaforo[m.cor_semaforo] || mapaSemaforo['emerald'];
+            const metaFmt = tInfo.un === 'R$' ? fmtBRL(m.valor_meta) : fmtPct(m.valor_meta);
+            const realFmt = tInfo.un === 'R$' ? fmtBRL(m.valor_realizado) : fmtPct(m.valor_realizado);
+            const prog = Math.min(100, Math.max(0, m.progresso_percentual || 0));
+
+            return `
+                <div class="bg-white p-3.5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-between hover:shadow-md transition-all">
+                    <div>
+                        <div class="flex items-center justify-between mb-1.5">
+                            <span class="text-[10px] font-black uppercase text-slate-500 flex items-center gap-1">
+                                <i class="fa-solid ${tInfo.icone} text-amber-600"></i> ${tInfo.nome}
+                            </span>
+                            <span class="text-[9px] font-black px-1.5 py-0.5 rounded border uppercase ${sem.badge}">
+                                ${sem.label}
+                            </span>
+                        </div>
+                        <div class="text-xs font-bold text-slate-800 truncate mb-2" title="${m.titulo}">${m.titulo}</div>
+                        <div class="flex items-baseline justify-between mb-1">
+                            <span class="text-[11px] text-slate-400 font-semibold">Realizado: <strong class="${sem.text} text-sm font-black">${realFmt}</strong></span>
+                            <span class="text-[10px] text-slate-500 font-bold">Meta: <b>${metaFmt}</b></span>
+                        </div>
+                        <!-- Barra de Progresso -->
+                        <div class="w-full bg-slate-100 rounded-full h-1.5 mb-1 overflow-hidden">
+                            <div class="${sem.bg} h-1.5 rounded-full transition-all duration-500" style="width: ${prog}%"></div>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-[9px] text-slate-400 mt-1 pt-1.5 border-t border-slate-100">
+                        <span>Atingimento: <b>${prog}%</b></span>
+                        <span>${m.filial_nome || 'Todas'}</span>
+                    </div>
+                </div>`;
+        }).join('');
+    } catch (e) {
+        console.error('Erro ao carregar metas com progresso:', e);
+    }
+},
+
+async loadHistory() {
+    try {
+        const type = document.getElementById('hist-type')?.value || 'iag_calculado';
+        const day = document.getElementById('hist-day')?.value || 'todos';
+        const res = await this.api('historico-kpi', {
+            idusuario: this.alvoUsuario(),
+            tipo: type,
+            filtro_id: this.filialSelecionada(),
+            dia_semana: day,
+            periodo: this.periodoHistorico || 'este_mes',
+            data_inicio: this.histDataInicio || '',
+            data_fim: this.histDataFim || ''
+        });
+
+        const serie = Array.isArray(res) ? res : (res.serie || []);
+        const resumo = Array.isArray(res) ? null : (res.resumo || null);
+        const meta = Array.isArray(res) ? null : (res.meta || null);
+
+        // Atualiza Cards de Resumo Apurado (Auto Soma & Médias)
+        if (resumo) {
+            const elDias = document.getElementById('hist-resumo-dias');
+            const elFaixa = document.getElementById('hist-resumo-faixa');
+            const elMedia = document.getElementById('hist-resumo-media');
+            const elPond = document.getElementById('hist-resumo-ponderada');
+            const elSomaVenc = document.getElementById('hist-resumo-soma-venc');
+            const elMediaVenc = document.getElementById('hist-resumo-media-venc');
+            const elMeta = document.getElementById('hist-resumo-meta');
+            const elMetaStatus = document.getElementById('hist-resumo-meta-status');
+
+            if (elDias) elDias.textContent = resumo.total_dias;
+            if (elFaixa && res.periodo) {
+                const di = res.periodo.data_inicio ? res.periodo.data_inicio.split('-').reverse().slice(0, 2).join('/') : '';
+                const df = res.periodo.data_fim ? res.periodo.data_fim.split('-').reverse().slice(0, 2).join('/') : '';
+                elFaixa.textContent = di ? `${di} a ${df}` : 'Período';
             }
-            this.estadoGrafico('');
-            const canvas = document.getElementById('chartHistory');
-            if (!canvas) return;
-            const labels = res.map(h => h.data);
-            const values = res.map(h => parseFloat(h.valor) || 0);
-            const labelMap = { iag_calculado: 'IAG %', iap_calculado: 'IAP %', taxa_recuperacao: 'Recuperação %' };
-            const self = this;
-            this.chart = new Chart(canvas.getContext('2d'), {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{
-                        label: labelMap[type] || type,
-                        data: values,
-                        backgroundColor: (c) => {
-                            const area = c.chart.chartArea;
-                            if (!area) return '#274036';
-                            const g = c.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
-                            g.addColorStop(0, '#274036');
-                            g.addColorStop(1, '#4a7a67');
-                            return g;
-                        },
-                        borderRadius: 8,
-                        hoverBackgroundColor: '#f7be2f'
-                    }]
-                },
-                plugins: [{
-                    id: 'numerosNoTopo',
-                    afterDatasetsDraw(chart) {
-                        const ctx = chart.ctx;
-                        chart.data.datasets.forEach((dataset, i) => {
-                            chart.getDatasetMeta(i).data.forEach((ponto, idx) => {
-                                ctx.save();
-                                ctx.font = 'bold 11px "Plus Jakarta Sans"';
-                                ctx.fillStyle = '#274036';
-                                ctx.textAlign = 'center';
-                                ctx.textBaseline = 'bottom';
-                                ctx.fillText(fmtPct(dataset.data[idx]), ponto.x, ponto.y - 8);
-                                ctx.restore();
-                            });
-                        });
+            if (elMedia) elMedia.textContent = fmtPct(resumo.media_apurada);
+            if (elPond) elPond.textContent = fmtPct(resumo.media_ponderada);
+            if (elSomaVenc) elSomaVenc.textContent = fmtBRL(resumo.soma_vencidos);
+            if (elMediaVenc) elMediaVenc.textContent = fmtBRL(resumo.media_vencidos);
+
+            if (elMeta) {
+                if (meta) {
+                    const metaVal = parseFloat(meta.valor_meta) || 0;
+                    elMeta.textContent = fmtPct(metaVal);
+                    if (elMetaStatus) {
+                        const atingiu = meta.direcao === 'maior_melhor'
+                            ? (resumo.media_ponderada >= metaVal)
+                            : (resumo.media_ponderada <= metaVal);
+                        elMetaStatus.innerHTML = atingiu
+                            ? '<span class="text-emerald-700 font-bold">✅ Dentro da Meta</span>'
+                            : '<span class="text-rose-600 font-bold">⚠️ Acima da Meta</span>';
                     }
-                }],
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    layout: { padding: { top: 25 } },
-                    onClick: (_, els) => {
-                        if (els.length > 0) self.showHistoryDetails(res[els[0].index], type);
-                    },
-                    onHover: (event, els) => {
-                        event.native.target.style.cursor = els.length > 0 ? 'pointer' : 'default';
-                    },
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(30,41,59,0.95)',
-                            callbacks: {
-                                label: (c) => `Percentual: ${fmtPct(c.raw)}`,
-                                afterLabel: (c) => {
-                                    const item = res[c.dataIndex];
-                                    if (type === 'taxa_recuperacao') {
-                                        return `Recuperados: ${item.abs_recup_pagos} de ${item.abs_recup_total}`;
-                                    }
-                                    const v = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
-                                    return `Valor-base: ${fmtBRL(v)}`;
+                } else {
+                    elMeta.textContent = 'Sem meta';
+                    if (elMetaStatus) elMetaStatus.textContent = '—';
+                }
+            }
+        }
+
+        if (!serie || serie.length === 0) {
+            this.estadoGrafico('Sem registros no histórico para este filtro e período apurado.');
+            return;
+        }
+        this.estadoGrafico('');
+        const canvas = document.getElementById('chartHistory');
+        if (!canvas) return;
+        const labels = serie.map(h => h.data);
+        const values = serie.map(h => parseFloat(h.valor) || 0);
+        const labelMap = { iag_calculado: 'IAG %', iap_calculado: 'IAP %', taxa_recuperacao: 'Recuperação %' };
+        const self = this;
+
+        if (this.chart) {
+            this.chart.destroy();
+        }
+
+        const metaVal = (meta && meta.valor_meta) ? parseFloat(meta.valor_meta) : null;
+        const datasets = [{
+            label: labelMap[type] || type,
+            data: values,
+            backgroundColor: (c) => {
+                const area = c.chart.chartArea;
+                if (!area) return '#274036';
+                const g = c.chart.ctx.createLinearGradient(0, area.top, 0, area.bottom);
+                g.addColorStop(0, '#274036');
+                g.addColorStop(1, '#4a7a67');
+                return g;
+            },
+            borderRadius: 8,
+            hoverBackgroundColor: '#f7be2f'
+        }];
+
+        // Linha de Meta Horizontal
+        if (metaVal !== null) {
+            datasets.push({
+                type: 'line',
+                label: `Meta (${fmtPct(metaVal)})`,
+                data: values.map(() => metaVal),
+                borderColor: '#dc2626',
+                borderWidth: 2,
+                borderDash: [6, 4],
+                pointRadius: 0,
+                fill: false
+            });
+        }
+
+        this.chart = new Chart(canvas.getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels,
+                datasets
+            },
+            plugins: [{
+                id: 'numerosNoTopo',
+                afterDatasetsDraw(chart) {
+                    const ctx = chart.ctx;
+                    const barDataset = chart.data.datasets[0];
+                    if (!barDataset) return;
+                    chart.getDatasetMeta(0).data.forEach((ponto, idx) => {
+                        ctx.save();
+                        ctx.font = 'bold 10px "Plus Jakarta Sans"';
+                        ctx.fillStyle = '#274036';
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'bottom';
+                        ctx.fillText(fmtPct(barDataset.data[idx]), ponto.x, ponto.y - 6);
+                        ctx.restore();
+                    });
+                }
+            }],
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                layout: { padding: { top: 25 } },
+                onClick: (_, els) => {
+                    if (els.length > 0 && els[0].datasetIndex === 0) self.showHistoryDetails(serie[els[0].index], type);
+                },
+                onHover: (event, els) => {
+                    event.native.target.style.cursor = els.length > 0 ? 'pointer' : 'default';
+                },
+                plugins: {
+                    legend: { display: metaVal !== null, position: 'top', align: 'end' },
+                    tooltip: {
+                        backgroundColor: 'rgba(30,41,59,0.95)',
+                        callbacks: {
+                            label: (c) => `${c.dataset.label}: ${fmtPct(c.raw)}`,
+                            afterLabel: (c) => {
+                                if (c.datasetIndex !== 0) return '';
+                                const item = serie[c.dataIndex];
+                                if (type === 'taxa_recuperacao') {
+                                    return `Recuperados: ${item.abs_recup_pagos} de ${item.abs_recup_total}`;
                                 }
+                                const v = type === 'iap_calculado' ? item.abs_iap : item.abs_iag;
+                                return `Valor-base: ${fmtBRL(v)}`;
                             }
                         }
-                    },
-                    scales: {
-                        y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: (v) => v + '%' } },
-                        x: { grid: { display: false } }
                     }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#f1f5f9' }, ticks: { callback: (v) => v + '%' } },
+                    x: { grid: { display: false } }
                 }
-            });
-        } catch (e) {
-            console.error('Erro no gráfico:', e);
-            this.estadoGrafico(`Erro ao carregar o histórico: ${e.message}`, true);
-        }
-    },
-
-    showHistoryDetails(item, type) {
+            }
+        });
+    } catch (e) {
+        console.error('Erro no gráfico:', e);
+        this.estadoGrafico(`Erro ao carregar o histórico: ${e.message}`, true);
+    }
+},
+showHistoryDetails(item, type) {
         const nomes = {
             iag_calculado: 'Inadimplência Geral (IAG)',
             iap_calculado: 'Atraso Crítico (IAP)',

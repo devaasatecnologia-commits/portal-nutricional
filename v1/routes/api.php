@@ -708,6 +708,11 @@ $protected->group('/financeiro', function ($group) {
     $group->post('/lista-usuarios', [$controller, 'getListaUsuariosHistorico']);
     $group->post('/detalhes-kpi', [$controller, 'getDetalhesAnaliseKpi']);
     $group->post('/relatorio-detalhado', [$controller, 'getRelatorioDetalhado']);
+    // Metas Financeiras Personalizadas
+    $group->map(['GET', 'POST'], '/metas', [$controller, 'getMetas']);
+    $group->post('/metas/salvar', [$controller, 'salvarMeta']);
+    $group->post('/metas/excluir', [$controller, 'excluirMeta']);
+    $group->map(['GET', 'POST'], '/metas/progresso', [$controller, 'getMetasComProgresso']);
 })->add(new ModulePermissionMiddleware('financeiro'));
 
         // ======================================================================
