@@ -1,6 +1,6 @@
 # Token de Continuidade Ativo
 
-Token atual: [CONTINUATION-CRM-CLIENTES-V3.md](file:///c:/xampp/htdocs/API/docs/tokens/CONTINUATION-CRM-CLIENTES-V3.md)
+Token atual: [CONTINUATION-ANALISE-CARTEIRA.md](file:///c:/xampp/htdocs/API/docs/tokens/CONTINUATION-ANALISE-CARTEIRA.md)
 Data de Atualização: 2026-11-09
-Módulo: CRM de Clientes & Relacionamento (Marketing & Comercial)
+Módulo: Análise de Carteira & Inadimplência
 Status: Concluído e Validado

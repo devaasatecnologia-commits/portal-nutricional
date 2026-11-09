@@ -4,10 +4,15 @@
 // ==========================================================================
 
 const analiseCarteiraApp = {
-    gestorSelecionado: null,
+    gestorSelecionado: '',
     representanteSelecionado: null,
     nomeRepresentante: '',
-    nomeGestor: '',
+    nomeGestor: 'Todos os Gestores',
+    periodo: 'este_mes',
+    tipoPeriodo: 'vencimento',
+    dataInicio: '',
+    dataFim: '',
+    todosGestoresPermitido: false,
     dadosRepresentantes: [],
     dadosTitulos: [],
     chartPizza: null,
@@ -21,6 +26,16 @@ const analiseCarteiraApp = {
 
     async init() {
         if (!this.getToken()) { window.location.href = '/portal/login.php'; return; }
+        
+        // Padrão: Mês Corrente
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = hoje.getMonth();
+        const pad = (n) => String(n).padStart(2, '0');
+        const ultDia = new Date(ano, mes + 1, 0);
+        this.dataInicio = `${ano}-${pad(mes + 1)}-01`;
+        this.dataFim = `${ano}-${pad(mes + 1)}-${pad(ultDia.getDate())}`;
+
         this.bindEvents();
         await this.carregarGestores();
     },
@@ -117,15 +132,14 @@ const analiseCarteiraApp = {
 
         selGestor.addEventListener('change', async (e) => {
             const v = e.target.value;
-            this.gestorSelecionado = v !== '' ? parseInt(v, 10) : null;
+            this.gestorSelecionado = v !== '' ? parseInt(v, 10) : '';
             this.representanteSelecionado = null;
             this.nomeRepresentante = '';
-            this.nomeGestor = e.target.selectedOptions[0]?.text || '';
+            this.nomeGestor = e.target.selectedOptions[0]?.text || 'Todos os Gestores';
             selRep.value = '';
             document.getElementById('secao-titulos').style.display = 'none';
             if (this.abortTitulos) this.abortTitulos.abort();
-            if (this.gestorSelecionado !== null) await this.carregarDadosRepresentantes();
-            else { if (this.abortDados) this.abortDados.abort(); this.limparTudo(); }
+            await this.carregarDadosRepresentantes();
         });
 
         selRep.addEventListener('change', async (e) => {
@@ -144,6 +158,118 @@ const analiseCarteiraApp = {
         });
     },
 
+    // ----- controle de períodos rápidos -----
+    aplicarPeriodoRapido(tipo) {
+        this.periodo = tipo;
+        const painelData = document.getElementById('painel-datas-personalizadas');
+        if (painelData) painelData.style.display = 'none';
+
+        document.querySelectorAll('.btn-periodo').forEach(b => {
+            if (b.dataset.periodo === tipo) {
+                b.className = 'btn-periodo px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs transition';
+            } else {
+                b.className = 'btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition';
+            }
+        });
+
+        const hoje = new Date();
+        const ano = hoje.getFullYear();
+        const mes = hoje.getMonth();
+        const pad = (n) => String(n).padStart(2, '0');
+        const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+        if (tipo === 'hoje') {
+            this.dataInicio = fmt(hoje);
+            this.dataFim = fmt(hoje);
+        } else if (tipo === 'este_mes') {
+            const ultDia = new Date(ano, mes + 1, 0);
+            this.dataInicio = `${ano}-${pad(mes + 1)}-01`;
+            this.dataFim = fmt(ultDia);
+        } else if (tipo === 'mes_passado') {
+            const pDia = new Date(ano, mes - 1, 1);
+            const uDia = new Date(ano, mes, 0);
+            this.dataInicio = fmt(pDia);
+            this.dataFim = fmt(uDia);
+        } else if (tipo === '30dias') {
+            const d30 = new Date();
+            d30.setDate(d30.getDate() - 30);
+            this.dataInicio = fmt(d30);
+            this.dataFim = fmt(hoje);
+        } else if (tipo === 'este_ano') {
+            this.dataInicio = `${ano}-01-01`;
+            this.dataFim = fmt(hoje);
+        } else if (tipo === 'todos') {
+            this.dataInicio = '';
+            this.dataFim = '';
+        }
+
+        this.carregarDadosRepresentantes();
+        if (this.representanteSelecionado !== null) {
+            this.carregarTitulos();
+        }
+    },
+
+    togglePersonalizado() {
+        const p = document.getElementById('painel-datas-personalizadas');
+        if (!p) return;
+        const aberto = p.style.display !== 'none';
+        p.style.display = aberto ? 'none' : 'flex';
+        if (!aberto) {
+            const hoje = new Date();
+            const ano = hoje.getFullYear();
+            const mes = hoje.getMonth();
+            const pad = (n) => String(n).padStart(2, '0');
+            const ultDia = new Date(ano, mes + 1, 0);
+            const inIni = document.getElementById('input-data-inicio');
+            const inFim = document.getElementById('input-data-fim');
+            if (inIni) inIni.value = this.dataInicio || `${ano}-${pad(mes + 1)}-01`;
+            if (inFim) inFim.value = this.dataFim || `${ano}-${pad(mes + 1)}-${pad(ultDia.getDate())}`;
+        }
+    },
+
+    aplicarDatasPersonalizadas() {
+        const di = document.getElementById('input-data-inicio')?.value;
+        const df = document.getElementById('input-data-fim')?.value;
+        if (!di || !df) {
+            Swal.fire('Atenção', 'Selecione a data inicial e final para filtrar.', 'warning');
+            return;
+        }
+        this.periodo = 'personalizado';
+        this.dataInicio = di;
+        this.dataFim = df;
+
+        document.querySelectorAll('.btn-periodo').forEach(b => {
+            if (b.dataset.periodo === 'personalizado') {
+                b.className = 'btn-periodo px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-600 text-white shadow-xs transition';
+            } else {
+                b.className = 'btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition';
+            }
+        });
+
+        this.carregarDadosRepresentantes();
+        if (this.representanteSelecionado !== null) {
+            this.carregarTitulos();
+        }
+    },
+
+    setTipoPeriodo(tipo) {
+        if (this.tipoPeriodo === tipo) return;
+        this.tipoPeriodo = tipo;
+        const btnV = document.getElementById('btn-base-vencimento');
+        const btnE = document.getElementById('btn-base-emissao');
+        if (tipo === 'vencimento') {
+            if (btnV) btnV.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-xs transition';
+            if (btnE) btnE.className = 'px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition';
+        } else {
+            if (btnE) btnE.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-xs transition';
+            if (btnV) btnV.className = 'px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition';
+        }
+        this.carregarDadosRepresentantes();
+        if (this.representanteSelecionado !== null) {
+            this.carregarTitulos();
+        }
+    },
+
     async selecionarRepresentante(id, nome) {
         this.representanteSelecionado = id;
         this.nomeRepresentante = nome;
@@ -160,19 +286,38 @@ const analiseCarteiraApp = {
     // ----- carregamento -----
     async carregarGestores() {
         const select = document.getElementById('select-gestor');
+        const badgeGestor = document.getElementById('badge-gestor-escopo');
         try {
             const resp = await this.fetchWithAuth('/v1/analise-carteira/gestores', { method: 'POST', body: '{}' });
-            const gestores = await resp.json();
-            const lista = Array.isArray(gestores) ? gestores : [];
-            if (!lista.length) { select.innerHTML = '<option value="">Nenhum gestor disponível</option>'; return; }
-            select.innerHTML = '<option value="">Selecione um gestor...</option>' +
-                lista.map(g => `<option value="${this.esc(g.id)}">${this.esc(g.id === 0 ? 'Sem gestor' : g.nome)}</option>`).join('');
-            if (lista.length === 1) {
+            const data = await resp.json();
+            const lista = Array.isArray(data) ? data : (data.gestores || []);
+            this.todosGestoresPermitido = Array.isArray(data) ? (lista.length > 1) : (!!data.todos_permitido || lista.length > 1);
+
+            if (!lista.length) {
+                select.innerHTML = '<option value="">Nenhum gestor disponível</option>';
+                return;
+            }
+
+            let optionsHtml = '';
+            if (this.todosGestoresPermitido || lista.length > 1) {
+                optionsHtml += '<option value="">👔 Todos os Gestores</option>';
+            }
+            optionsHtml += lista.map(g => `<option value="${this.esc(g.id)}">${this.esc(g.id === 0 ? 'Sem gestor' : g.nome)}</option>`).join('');
+            select.innerHTML = optionsHtml;
+
+            if (lista.length === 1 && !this.todosGestoresPermitido) {
                 select.value = String(lista[0].id);
                 this.gestorSelecionado = parseInt(lista[0].id, 10);
-                this.nomeGestor = select.selectedOptions[0]?.text || '';
-                await this.carregarDadosRepresentantes();
+                this.nomeGestor = lista[0].nome;
+                if (badgeGestor) badgeGestor.innerText = 'escopo exclusivo';
+            } else {
+                select.value = '';
+                this.gestorSelecionado = '';
+                this.nomeGestor = 'Todos os Gestores';
+                if (badgeGestor) badgeGestor.innerText = `${lista.length} gestores no escopo`;
             }
+
+            await this.carregarDadosRepresentantes();
         } catch (e) {
             console.error('Erro gestores:', e);
             select.innerHTML = '<option value="">Erro ao carregar gestores</option>';
@@ -181,11 +326,16 @@ const analiseCarteiraApp = {
     },
 
     async carregarDadosRepresentantes() {
-        if (this.gestorSelecionado === null) return;
         if (this.abortDados) this.abortDados.abort();
         const ctrl = this.abortDados = new AbortController();
         const seq = ++this.seqDados;
-        const corpo = { id_gestor: this.gestorSelecionado };
+        const corpo = {
+            id_gestor: this.gestorSelecionado !== null && this.gestorSelecionado !== '' ? this.gestorSelecionado : null,
+            periodo: this.periodo,
+            tipo_periodo: this.tipoPeriodo,
+            data_inicio: this.dataInicio,
+            data_fim: this.dataFim
+        };
         this.showShimmer();
         try {
             const [tabela, resumo] = await Promise.all([
@@ -212,12 +362,15 @@ const analiseCarteiraApp = {
 
     popularSelectRepresentantes() {
         const select = document.getElementById('select-representante');
+        const badgeRep = document.getElementById('badge-rep-escopo');
         const reps = this.dadosRepresentantes
             .map(r => ({ id: r.id_representante, nome: r.nome_representante || 'Sem representante' }))
             .sort((a, b) => a.nome.localeCompare(b.nome));
-        select.innerHTML = '<option value="">Todos os representantes</option>' +
+
+        select.innerHTML = '<option value="">🤝 Todos os Representantes</option>' +
             reps.map(r => `<option value="${this.esc(r.id)}">${this.esc(r.nome)}</option>`).join('');
         select.value = this.representanteSelecionado !== null ? String(this.representanteSelecionado) : '';
+        if (badgeRep) badgeRep.innerText = `${reps.length} ativos`;
     },
 
     async carregarTitulos() {
@@ -228,8 +381,12 @@ const analiseCarteiraApp = {
         this.showShimmer();
         try {
             const dados = await this.postJson('/v1/analise-carteira/titulos-representante', {
-                id_gestor: this.gestorSelecionado,
-                id_representante: this.representanteSelecionado
+                id_gestor: this.gestorSelecionado !== null && this.gestorSelecionado !== '' ? this.gestorSelecionado : null,
+                id_representante: this.representanteSelecionado,
+                periodo: this.periodo,
+                tipo_periodo: this.tipoPeriodo,
+                data_inicio: this.dataInicio,
+                data_fim: this.dataFim
             }, ctrl.signal);
             if (seq !== this.seqTitulos) return false;
             this.dadosTitulos = Array.isArray(dados) ? dados : [];

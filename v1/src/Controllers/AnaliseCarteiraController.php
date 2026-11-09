@@ -52,10 +52,16 @@ class AnaliseCarteiraController
     {
         return $this->executar($response, function () use ($request) {
             $scope = UserScope::fromRequest($request, $this->pdo);
-            return $this->listarGestores(
-                $scope->resolverGestores(null),
-                $scope->resolverFiliais(null)
-            );
+            $gestoresPermitidos = $scope->resolverGestores(null);
+            $filiaisPermitidas = $scope->resolverFiliais(null);
+            $lista = $this->listarGestores($gestoresPermitidos, $filiaisPermitidas);
+            return [
+                'success' => true,
+                'gestores' => $lista,
+                'is_admin' => $scope->isAdmin,
+                'gestor_restrito' => $scope->gestorRestrito(),
+                'todos_permitido' => !$scope->gestorRestrito() || count($lista) > 1
+            ];
         }, 'getGestores');
     }
 
@@ -360,46 +366,41 @@ class AnaliseCarteiraController
         return $rows;
     }
 
-    /** Linhas por representante: valores da view + contagens reais (DISTINCT) da base. */
+    /** Linhas por representante: valores da view ou base direta com filtro de período. */
     private function montarTabela(array $esc): array
     {
         $params = [];
-        $where = $this->filtroEscopo($esc, 'varg.idsupervisor', 'varg.idfilial', $params);
-        $sql = "SELECT
-                    varg.idvendrepre AS id_representante,
-                    MAX(varg.nomerepresentante) AS nome_representante,
-                    COALESCE(SUM(varg.vencidos), 0)::float AS vencidos,
-                    COALESCE(SUM(varg.total_receber), 0)::float AS total_receber,
-                    COALESCE(SUM(varg.a_vencer), 0)::float AS a_vencer,
-                    COALESCE(SUM(varg.prox_30_dias), 0)::float AS prox_30_dias,
-                    COALESCE(SUM(varg.dias_30), 0)::float AS dias_30,
-                    COALESCE(SUM(varg.dias_60), 0)::float AS dias_60,
-                    COALESCE(SUM(varg.mais_60_dias), 0)::float AS mais_60
-                FROM vw_analise_receber_geral varg
-                WHERE 1=1 $where
-                GROUP BY varg.idvendrepre
-                ORDER BY vencidos DESC, nome_representante";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-        $params = [];
         $where = $this->filtroEscopo($esc, 'r.idsupervisor', 'r.idfilial', $params);
+        $colData = ($esc['tipo_periodo'] ?? 'vencimento') === 'emissao' ? 'r.emissao' : 'r.vencimento';
+        if (!empty($esc['data_inicio']) && !empty($esc['data_fim'])) {
+            $where .= " AND $colData BETWEEN :p_di AND :p_df";
+            $params['p_di'] = $esc['data_inicio'];
+            $params['p_df'] = $esc['data_fim'];
+        }
+
         $sql = "SELECT
                     r.idvendrepre AS id_representante,
+                    COALESCE(MAX(rep.fantasia), 'Sem representante') AS nome_representante,
+                    COALESCE(SUM(CASE WHEN r.vencimento < " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS vencidos,
+                    COALESCE(SUM(r.valorsaldo), 0)::float AS total_receber,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS a_vencer,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= " . self::SQL_LIMITE_VENCIDO . " AND r.vencimento <= (CURRENT_DATE + INTERVAL '27 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS prox_30_dias,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= (CURRENT_DATE - INTERVAL '33 days') AND r.vencimento < " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS dias_30,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= (CURRENT_DATE - INTERVAL '63 days') AND r.vencimento < (CURRENT_DATE - INTERVAL '33 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS dias_60,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= DATE '2000-01-01' AND r.vencimento < (CURRENT_DATE - INTERVAL '63 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS mais_60,
                     COUNT(*) AS titulos_total,
                     COUNT(*) FILTER (WHERE r.vencimento < " . self::SQL_LIMITE_VENCIDO . ") AS titulos_vencidos,
                     COUNT(DISTINCT r.idcliforemp) AS clientes_total,
                     COUNT(DISTINCT r.idcliforemp) FILTER (WHERE r.vencimento < " . self::SQL_LIMITE_VENCIDO . ") AS clientes_vencidos
                 FROM receber r
+                LEFT JOIN cliforemp rep ON rep.idcliforemp = r.idvendrepre
                 WHERE " . self::SQL_BASE_RECEBER . " $where
-                GROUP BY r.idvendrepre";
+                GROUP BY r.idvendrepre
+                ORDER BY vencidos DESC, nome_representante";
+
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        $contagens = [];
-        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $c) {
-            $contagens[(string)$c['id_representante']] = $c;
-        }
+        $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $totalVencidos = 0.0;
         foreach ($rows as $r) {
@@ -408,7 +409,6 @@ class AnaliseCarteiraController
 
         $saida = [];
         foreach ($rows as $r) {
-            $c = $contagens[(string)$r['id_representante']] ?? [];
             $venc = (float)$r['vencidos'];
             $total = (float)$r['total_receber'];
             $iag = $this->pct($venc, $total);
@@ -428,10 +428,10 @@ class AnaliseCarteiraController
                 'iag' => $iag,
                 'performance' => $this->performance($iag),
                 'percentual' => $this->pct($venc, $totalVencidos),
-                'titulos_total' => (int)($c['titulos_total'] ?? 0),
-                'titulos_vencidos' => (int)($c['titulos_vencidos'] ?? 0),
-                'clientes_total' => (int)($c['clientes_total'] ?? 0),
-                'clientes_vencidos' => (int)($c['clientes_vencidos'] ?? 0),
+                'titulos_total' => (int)($r['titulos_total'] ?? 0),
+                'titulos_vencidos' => (int)($r['titulos_vencidos'] ?? 0),
+                'clientes_total' => (int)($r['clientes_total'] ?? 0),
+                'clientes_vencidos' => (int)($r['clientes_vencidos'] ?? 0),
             ];
         }
         return $saida;
@@ -440,34 +440,32 @@ class AnaliseCarteiraController
     private function montarResumo(array $esc): array
     {
         $params = [];
-        $where = $this->filtroEscopo($esc, 'varg.idsupervisor', 'varg.idfilial', $params);
-        $sql = "SELECT
-                    COALESCE(SUM(varg.vencidos), 0)::float AS vencidos,
-                    COALESCE(SUM(varg.total_receber), 0)::float AS total_receber,
-                    COALESCE(SUM(varg.dias_30), 0)::float AS dias_30,
-                    COALESCE(SUM(varg.dias_60), 0)::float AS dias_60,
-                    COALESCE(SUM(varg.mais_60_dias), 0)::float AS mais_60,
-                    COALESCE(SUM(varg.a_vencer), 0)::float AS a_vencer,
-                    COALESCE(SUM(varg.prox_30_dias), 0)::float AS prox_30_dias
-                FROM vw_analise_receber_geral varg
-                WHERE 1=1 $where";
-        $stmt = $this->pdo->prepare($sql);
-        $stmt->execute($params);
-        $k = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
-
-        // Contagens reais da base (clientes distintos no total, não soma por linha)
-        $params = [];
         $where = $this->filtroEscopo($esc, 'r.idsupervisor', 'r.idfilial', $params);
+        $colData = ($esc['tipo_periodo'] ?? 'vencimento') === 'emissao' ? 'r.emissao' : 'r.vencimento';
+        if (!empty($esc['data_inicio']) && !empty($esc['data_fim'])) {
+            $where .= " AND $colData BETWEEN :p_di AND :p_df";
+            $params['p_di'] = $esc['data_inicio'];
+            $params['p_df'] = $esc['data_fim'];
+        }
+
         $sql = "SELECT
+                    COALESCE(SUM(CASE WHEN r.vencimento < " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS vencidos,
+                    COALESCE(SUM(r.valorsaldo), 0)::float AS total_receber,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= (CURRENT_DATE - INTERVAL '33 days') AND r.vencimento < " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS dias_30,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= (CURRENT_DATE - INTERVAL '63 days') AND r.vencimento < (CURRENT_DATE - INTERVAL '33 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS dias_60,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= DATE '2000-01-01' AND r.vencimento < (CURRENT_DATE - INTERVAL '63 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS mais_60,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= " . self::SQL_LIMITE_VENCIDO . " THEN r.valorsaldo ELSE 0 END), 0)::float AS a_vencer,
+                    COALESCE(SUM(CASE WHEN r.vencimento >= " . self::SQL_LIMITE_VENCIDO . " AND r.vencimento <= (CURRENT_DATE + INTERVAL '27 days') THEN r.valorsaldo ELSE 0 END), 0)::float AS prox_30_dias,
                     COUNT(*) AS titulos_total,
                     COUNT(*) FILTER (WHERE r.vencimento < " . self::SQL_LIMITE_VENCIDO . ") AS titulos_vencidos,
                     COUNT(DISTINCT r.idcliforemp) AS clientes_total,
                     COUNT(DISTINCT r.idcliforemp) FILTER (WHERE r.vencimento < " . self::SQL_LIMITE_VENCIDO . ") AS clientes_vencidos
                 FROM receber r
                 WHERE " . self::SQL_BASE_RECEBER . " $where";
+
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        $c = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+        $k = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
         $venc = (float)($k['vencidos'] ?? 0);
         $total = (float)($k['total_receber'] ?? 0);
@@ -484,10 +482,10 @@ class AnaliseCarteiraController
                 'mais_60' => (float)($k['mais_60'] ?? 0),
                 'iag' => $iag,
                 'performance' => $this->performance($iag),
-                'titulos_total' => (int)($c['titulos_total'] ?? 0),
-                'titulos_vencidos' => (int)($c['titulos_vencidos'] ?? 0),
-                'clientes_total' => (int)($c['clientes_total'] ?? 0),
-                'clientes_vencidos' => (int)($c['clientes_vencidos'] ?? 0),
+                'titulos_total' => (int)($k['titulos_total'] ?? 0),
+                'titulos_vencidos' => (int)($k['titulos_vencidos'] ?? 0),
+                'clientes_total' => (int)($k['clientes_total'] ?? 0),
+                'clientes_vencidos' => (int)($k['clientes_vencidos'] ?? 0),
             ],
             'dados_pizza' => [
                 ['faixa' => '30 Dias', 'valor' => (float)($k['dias_30'] ?? 0)],
@@ -500,7 +498,7 @@ class AnaliseCarteiraController
 
     /**
      * Títulos vencidos (mesma regra da tabela: vencimento < hoje - 3 dias) do representante,
-     * dentro do gestor selecionado/permitido.
+     * dentro do gestor selecionado/permitido e período opcional.
      */
     private function montarTitulos(array $esc, array $input): array
     {
@@ -511,6 +509,13 @@ class AnaliseCarteiraController
 
         $params = ['id_rep' => (int)$idRep];
         $where = $this->filtroEscopo($esc, 'vfe.idgestor', 'vfe.idfilial', $params);
+        $colData = ($esc['tipo_periodo'] ?? 'vencimento') === 'emissao' ? 'vfe.dataemissao' : 'vfe.vencimento';
+        if (!empty($esc['data_inicio']) && !empty($esc['data_fim'])) {
+            $where .= " AND $colData BETWEEN :p_di AND :p_df";
+            $params['p_di'] = $esc['data_inicio'];
+            $params['p_df'] = $esc['data_fim'];
+        }
+
         $sql = "SELECT
                     vfe.idfilial,
                     vfe.idcliforemp AS id_cliente,
@@ -547,7 +552,7 @@ class AnaliseCarteiraController
 
     /**
      * Escopo efetivo da requisição. Identidade/admin vêm do JWT (UserScope), nunca do corpo.
-     * id_gestor ausente/vazio = todos os permitidos; 0 = "Sem gestor" (só sem restrição de gestores).
+     * id_gestor ausente/vazio/todos = todos os permitidos; 0 = "Sem gestor" (só sem restrição de gestores).
      *
      * @throws \DomainException gestor fora do escopo (403)
      * @throws \InvalidArgumentException parâmetro inválido (400)
@@ -560,7 +565,7 @@ class AnaliseCarteiraController
         $semGestor = false;
         $gestores = [];
 
-        if ($raw === null || $raw === '') {
+        if ($raw === null || $raw === '' || $raw === 'todos') {
             $gestores = $scope->resolverGestores(null);
         } else {
             if (!is_scalar($raw) || !ctype_digit(trim((string)$raw))) {
@@ -576,10 +581,44 @@ class AnaliseCarteiraController
             }
         }
 
+        $periodo = trim((string)($input['periodo'] ?? 'este_mes'));
+        $tipoPeriodo = trim((string)($input['tipo_periodo'] ?? 'vencimento'));
+        $dataInicio = trim((string)($input['data_inicio'] ?? ''));
+        $dataFim = trim((string)($input['data_fim'] ?? ''));
+
+        if ($periodo === 'este_mes' || $periodo === 'mes_atual') {
+            $dataInicio = date('Y-m-01');
+            $dataFim = date('Y-m-t');
+        } elseif ($periodo === 'hoje') {
+            $dataInicio = date('Y-m-d');
+            $dataFim = date('Y-m-d');
+        } elseif ($periodo === 'mes_passado') {
+            $dataInicio = date('Y-m-01', strtotime('first day of last month'));
+            $dataFim = date('Y-m-t', strtotime('last month'));
+        } elseif ($periodo === '30dias') {
+            $dataInicio = date('Y-m-d', strtotime('-30 days'));
+            $dataFim = date('Y-m-d');
+        } elseif ($periodo === 'este_ano') {
+            $dataInicio = date('Y-01-01');
+            $dataFim = date('Y-m-d');
+        } elseif ($periodo === 'todos') {
+            $dataInicio = null;
+            $dataFim = null;
+        }
+
+        if ($dataInicio === '' && $dataFim === '' && $periodo !== 'todos') {
+            $dataInicio = date('Y-m-01');
+            $dataFim = date('Y-m-t');
+        }
+
         return [
             'gestores' => $gestores,
             'sem_gestor' => $semGestor,
             'filiais' => $scope->resolverFiliais(null),
+            'data_inicio' => $dataInicio ?: null,
+            'data_fim' => $dataFim ?: null,
+            'tipo_periodo' => $tipoPeriodo === 'emissao' ? 'emissao' : 'vencimento',
+            'periodo' => $periodo
         ];
     }
 

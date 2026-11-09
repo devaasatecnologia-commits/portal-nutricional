@@ -94,6 +94,10 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="flex items-center gap-2.5">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=analise-carteira" 
+                   class="px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-2xl font-extrabold text-xs sm:text-sm transition-all shadow-md flex items-center gap-2 no-underline">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento &amp; Manual
+                </a>
                 <button onclick="exportarExcelCompleto()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm border border-emerald-500/30">
                     <i class="fa-solid fa-file-excel"></i> Baixar Excel Completo
                 </button>
@@ -101,12 +105,64 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- FILTROS (GESTOR & REPRESENTANTE) -->
-    <div class="ac-card p-4 sm:p-5 mb-5">
+    <!-- BARRA DE PERÍODOS RÁPIDOS & FILTROS (GESTOR & REPRESENTANTE) -->
+    <div class="ac-card p-4 sm:p-5 mb-5 space-y-4">
+        <!-- Linha 1: Períodos Rápidos -->
+        <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div class="flex flex-wrap items-center gap-2">
+                <span class="ac-label text-slate-400 flex items-center gap-1">
+                    <i class="fa-solid fa-bolt text-amber-500"></i> Período Rápido:
+                </span>
+                <div class="flex flex-wrap items-center gap-1 bg-slate-100/80 p-1 rounded-xl" id="botoes-periodo">
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('hoje')" data-periodo="hoje"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Hoje</button>
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('este_mes')" data-periodo="este_mes"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs transition">Este Mês</button>
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('mes_passado')" data-periodo="mes_passado"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Mês Passado</button>
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('30dias')" data-periodo="30dias"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">30 dias</button>
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('este_ano')" data-periodo="este_ano"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Este Ano</button>
+                    <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('todos')" data-periodo="todos"
+                        class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Todos</button>
+                    <button type="button" onclick="analiseCarteiraApp.togglePersonalizado()" data-periodo="personalizado"
+                        class="btn-periodo px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition" title="Datas Personalizadas">
+                        <i class="fa-regular fa-calendar-days"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Base do Período (Vencimento vs Emissão) -->
+            <div class="flex items-center gap-1.5">
+                <span class="ac-label text-slate-400">Base:</span>
+                <div class="inline-flex rounded-xl bg-slate-100 p-0.5" id="botoes-base">
+                    <button type="button" onclick="analiseCarteiraApp.setTipoPeriodo('vencimento')" id="btn-base-vencimento"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-xs transition" title="Filtrar por data de vencimento dos boletos">Vencimento</button>
+                    <button type="button" onclick="analiseCarteiraApp.setTipoPeriodo('emissao')" id="btn-base-emissao"
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition" title="Filtrar por data de emissão das notas">Emissão</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Linha Personalizada (De / Até) -->
+        <div id="painel-datas-personalizadas" style="display: none;" class="flex flex-wrap items-center gap-2 p-2.5 bg-blue-50/50 border border-blue-200/60 rounded-xl">
+            <span class="text-xs font-bold text-slate-600">Período De:</span>
+            <input type="date" id="input-data-inicio" class="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-semibold">
+            <span class="text-xs font-bold text-slate-600">Até:</span>
+            <input type="date" id="input-data-fim" class="px-2 py-1 text-xs border border-slate-300 rounded-lg bg-white font-semibold">
+            <button type="button" onclick="analiseCarteiraApp.aplicarDatasPersonalizadas()"
+                class="px-3 py-1 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 transition">Filtrar</button>
+        </div>
+
+        <!-- Linha 2: Filtros de Gestor e Representante -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
                 <label class="block">
-                    <span class="ac-label flex items-center gap-1.5"><i class="fa-solid fa-user-tie text-blue-600"></i> Gestor Responsável</span>
+                    <span class="ac-label flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-user-tie text-blue-600"></i> Gestor Responsável</span>
+                        <span id="badge-gestor-escopo" class="text-[10px] text-slate-500 font-semibold"></span>
+                    </span>
                     <select id="select-gestor" class="ac-input mt-1.5 cursor-pointer">
                         <option value="">Carregando gestores...</option>
                     </select>
@@ -114,7 +170,10 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <div>
                 <label class="block">
-                    <span class="ac-label flex items-center gap-1.5"><i class="fa-solid fa-user text-blue-500"></i> Representante Comercial</span>
+                    <span class="ac-label flex items-center justify-between">
+                        <span class="flex items-center gap-1.5"><i class="fa-solid fa-user text-blue-500"></i> Representante Comercial</span>
+                        <span id="badge-rep-escopo" class="text-[10px] text-slate-500 font-semibold"></span>
+                    </span>
                     <select id="select-representante" class="ac-input mt-1.5 cursor-pointer">
                         <option value="">Todos os representantes</option>
                     </select>
@@ -126,7 +185,9 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- 5 KPIS REORGANIZADOS COM HIERARQUIA VISUAL CLARA -->
     <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-5" id="kpi-cards">
         <!-- KPI 1: Vencidos (Inadimplência) -->
-        <div class="kpi-card bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm" onclick="scrollToTable('tabela-representantes')">
+        <div class="kpi-card bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer" 
+             onclick="scrollToTable('tabela-representantes')"
+             title="Total Vencido: Soma dos títulos com atraso superior a 3 dias corridos (tolerância operacional da empresa). Clique para rolar até a tabela de representantes.">
             <div class="flex items-center justify-between text-rose-600 mb-1">
                 <span class="ac-label text-rose-700">Total Vencido</span>
                 <i class="fa-solid fa-triangle-exclamation text-xs"></i>
@@ -136,7 +197,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 2: IAG (Índice de Atraso Geral) -->
-        <div class="kpi-card bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 shadow-sm">
+        <div class="kpi-card bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
+             title="IAG (Índice de Atraso Geral): Percentual de inadimplência da carteira = (Total Vencido / Carteira Total) * 100. Classificação: Saudável (<5%), Atenção (5% a 15%) e Crítico (>15%).">
             <div class="flex items-center justify-between text-amber-600 mb-1">
                 <span class="ac-label text-amber-700">IAG (Inadimplência)</span>
                 <i class="fa-solid fa-percent text-xs"></i>
@@ -146,7 +208,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 3: Títulos Vencidos & Clientes -->
-        <div class="kpi-card bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm">
+        <div class="kpi-card bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
+             title="Títulos Vencidos & Clientes Afetados: Quantidade física de boletos/duplicatas vencidos e contagem real de clientes únicos inadimplentes no escopo.">
             <div class="flex items-center justify-between text-purple-600 mb-1">
                 <span class="ac-label text-purple-700">Títulos Vencidos</span>
                 <i class="fa-solid fa-file-circle-xmark text-xs"></i>
@@ -156,7 +219,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 4: À Vencer (Saudável) -->
-        <div class="kpi-card bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm">
+        <div class="kpi-card bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
+             title="Carteira À Vencer: Saldo de títulos dentro da data de vencimento regular e títulos com até 3 dias de atraso (dentro do prazo de tolerância).">
             <div class="flex items-center justify-between text-emerald-600 mb-1">
                 <span class="ac-label text-emerald-700">Carteira À Vencer</span>
                 <i class="fa-solid fa-calendar-check text-xs"></i>
@@ -166,7 +230,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- KPI 5: Carteira Total -->
-        <div class="kpi-card bg-gradient-to-br from-blue-50 to-slate-100 border border-blue-200 shadow-sm">
+        <div class="kpi-card bg-gradient-to-br from-blue-50 to-slate-100 border border-blue-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
+             title="Carteira Total: Volume total de crédito em aberto (Vencidos + À Vencer) de todos os clientes do escopo selecionado.">
             <div class="flex items-center justify-between text-blue-600 mb-1">
                 <span class="ac-label text-blue-700">Carteira Total</span>
                 <i class="fa-solid fa-wallet text-xs"></i>
@@ -188,17 +253,20 @@ require_once __DIR__ . '/../estrutura/header.php';
             <p class="text-[0.7rem] text-slate-400 font-semibold mb-3">Clique em uma fatia para ver representantes</p>
             <div id="chart-pizza" style="height: 260px;"></div>
             <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
-                <div class="bg-blue-50 border border-blue-100 rounded-xl p-2">
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-2 hover:bg-blue-100/70 transition cursor-help"
+                     title="Faixa de 30 Dias: Títulos vencidos entre 4 e 33 dias atrás (atraso inicial recente)">
                     <span class="text-slate-500 block text-[0.65rem] font-bold">30 Dias</span>
                     <span class="font-black text-blue-700" id="pizza-30d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-30d-perc">0%</span>
                 </div>
-                <div class="bg-amber-50 border border-amber-100 rounded-xl p-2">
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-2 hover:bg-amber-100/70 transition cursor-help"
+                     title="Faixa de 60 Dias: Títulos vencidos entre 34 e 63 dias atrás (faixa de atenção / cobrança ativa)">
                     <span class="text-slate-500 block text-[0.65rem] font-bold">60 Dias</span>
                     <span class="font-black text-amber-700" id="pizza-60d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-60d-perc">0%</span>
                 </div>
-                <div class="bg-rose-50 border border-rose-100 rounded-xl p-2">
+                <div class="bg-rose-50 border border-rose-100 rounded-xl p-2 hover:bg-rose-100/70 transition cursor-help"
+                     title="Faixa de +60 Dias: Títulos vencidos há mais de 63 dias atrás (risco elevado / cobrança jurídica)">
                     <span class="text-slate-500 block text-[0.65rem] font-bold">+60 Dias</span>
                     <span class="font-black text-rose-700" id="pizza-90d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-90d-perc">0%</span>
