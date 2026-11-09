@@ -16,6 +16,7 @@ final class UserScope
     public int $uid;
     public int $idusuario;
     public bool $isAdmin;
+    public bool $permiteVerUsuarios = false;
     /** @var int[] */
     public array $filiais = [];
     /** @var int[] */
@@ -37,6 +38,7 @@ final class UserScope
             $stmt = $pdo->prepare('SELECT idcliforemp, idusuario, dash_filiais, dash_gestores, permite_ver_usuarios FROM usuario WHERE idcliforemp = :uid OR idusuario = :idusuario LIMIT 1');
             $stmt->execute(['uid' => $s->uid, 'idusuario' => $s->idusuario]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            $s->permiteVerUsuarios = $s->isAdmin || (($row['permite_ver_usuarios'] ?? '') === 'S');
             $s->filiais = self::lista($row['dash_filiais'] ?? '');
             $s->gestores = self::lista($row['dash_gestores'] ?? '');
 
@@ -55,7 +57,7 @@ final class UserScope
                 // 2. Gestores/Supervisores: se não configurado no dash_gestores
                 if (empty($s->gestores) && $s->uid > 0) {
                     // Verifica se o usuário é gestor ou representante no ERP
-                    $stG = $pdo->prepare("SELECT 1 FROM vw_gestor_repre WHERE idgestor = :uid OR idrepre = :uid LIMIT 1");
+                    $stG = $pdo->prepare("SELECT 1 FROM vw_gestor_repre WHERE idgestor = :uid OR idrepresentante = :uid LIMIT 1");
                     $stG->execute(['uid' => $s->uid]);
                     if ($stG->fetchColumn()) {
                         $s->gestores = [$s->uid]; // Escopo restrito a ele mesmo
@@ -100,6 +102,24 @@ final class UserScope
     public function gestorRestrito(): bool
     {
         return !$this->isAdmin;
+    }
+
+    /**
+     * Retorna se o usuário tem acesso irrestrito / master (todas as filiais operacionais e todos os gestores/usuários).
+     * Ex.: Admin ou diretoria/gerência com permite_ver_usuarios = 'S' e filiais 1 e 6 liberadas.
+     */
+    public function temAcessoTotal(): bool
+    {
+        if ($this->isAdmin) {
+            return true;
+        }
+        if ($this->permiteVerUsuarios) {
+            $f = $this->filiais;
+            if (in_array(1, $f, true) && in_array(6, $f, true)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

@@ -29,6 +29,7 @@ function dashboardVendasHandler() {
         modalCardTitulo: '',
         modalCardTipo: '',
         cardVisao: '',
+        cardSubregioes: '',
         cardAba: 'resumo',
         cardBusca: '',
         cardDetalhes: [],
@@ -924,7 +925,7 @@ function dashboardVendasHandler() {
             this.abrirDetalhesCard(
                 'Regiao',
                 `Macro-Região ${regiaoObj.regiao} — ${regiaoObj.nome || ''}`,
-                { regiao: regiaoObj.regiao }
+                { regiao: regiaoObj.regiao, subregioes: regiaoObj.subregioes || '' }
             );
         },
 
@@ -947,6 +948,7 @@ function dashboardVendasHandler() {
             this.cardLoading = true;
             this.cardErro = '';
             this.cardBusca = '';
+            this.cardSubregioes = (extraPayload && extraPayload.subregioes) || '';
             this.cardAba = 'resumo';
             this.cardDetalhes = [];
             this.cardPorDia = [];
@@ -962,6 +964,9 @@ function dashboardVendasHandler() {
                 this.cardAba = dados.aba_padrao || 'resumo';
                 this.cardTotal = dados.total || null;
                 this.cardRotulo = dados.rotulo_documentos || 'Docs';
+                if (dados.extra && dados.extra.subregioes) {
+                    this.cardSubregioes = dados.extra.subregioes;
+                }
                 this.cardExtra = { por_dia_semana: dados.por_dia_semana || [], positivacao: dados.positivacao || null };
             } catch (e) {
                 console.error('Erro card:', e);

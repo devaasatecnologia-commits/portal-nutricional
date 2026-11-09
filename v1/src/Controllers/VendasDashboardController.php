@@ -45,14 +45,64 @@ class VendasDashboardController
         'Cancelados' => 3,
     ];
 
-    /** Catálogo das 6 Macro-Regiões Unificadas */
+    /** Catálogo das 7 Macro-Regiões Oficiais (incluindo Região RED separada para acesso irrestrito) */
     private const REGIOES_MACRO = [
-        'SUL' => ['sigla' => 'SUL', 'nome' => 'Sul Catarinense', 'cor' => '#059669'],
-        'GRF' => ['sigla' => 'GRF', 'nome' => 'Grande Florianópolis', 'cor' => '#3b82f6'],
-        'AVI' => ['sigla' => 'AVI', 'nome' => 'Vale do Itajaí & Litoral', 'cor' => '#f59e0b'],
-        'NOR' => ['sigla' => 'NOR', 'nome' => 'Norte & Planalto Norte', 'cor' => '#8b5cf6'],
-        'PLN' => ['sigla' => 'PLN', 'nome' => 'Planalto Serrano & Alto Vale', 'cor' => '#ec4899'],
-        'RMC' => ['sigla' => 'RMC', 'nome' => 'Curitiba & Litoral PR', 'cor' => '#06b6d4'],
+        'SUL' => [
+            'sigla' => 'SUL',
+            'nome' => 'Sul Catarinense',
+            'cor' => '#059669',
+            'subregioes' => 'Encantos de Imbituba, Região Carbonífera, Braço do Norte, Caminho dos Canyons',
+            'ids' => [14, 15, 16, 17],
+            'restrita_redes' => false
+        ],
+        'AVI' => [
+            'sigla' => 'AVI',
+            'nome' => 'Vale do Itajaí & Litoral',
+            'cor' => '#f59e0b',
+            'subregioes' => 'Foz do Itajaí, Médio Vale, Vale Europeu, Vales do Tijucas',
+            'ids' => [2, 3, 4, 5],
+            'restrita_redes' => false
+        ],
+        'GRF' => [
+            'sigla' => 'GRF',
+            'nome' => 'Grande Florianópolis',
+            'cor' => '#3b82f6',
+            'subregioes' => 'Ilha/Estreito, Norte/Centro, Sul/Interior, Nascentes',
+            'ids' => [6, 7, 8, 9],
+            'restrita_redes' => false
+        ],
+        'NOR' => [
+            'sigla' => 'NOR',
+            'nome' => 'Norte & Vale do Itapocu',
+            'cor' => '#8b5cf6',
+            'subregioes' => 'Costa Verde e Mar, Caminho dos Príncipes, Joinville, Vale do Itapocu, Mesorregião Norte',
+            'ids' => [1, 10, 11, 12, 13],
+            'restrita_redes' => false
+        ],
+        'PLN' => [
+            'sigla' => 'PLN',
+            'nome' => 'Planalto Serrano & Oeste',
+            'cor' => '#ec4899',
+            'subregioes' => 'Caminhos da Neve, Alto Vale, Vale dos Imigrantes, Oeste Catarinense',
+            'ids' => [19, 20, 21, 22],
+            'restrita_redes' => false
+        ],
+        'RMC' => [
+            'sigla' => 'RMC',
+            'nome' => 'Curitiba & Litoral PR',
+            'cor' => '#06b6d4',
+            'subregioes' => 'Litoral Paranaense, Curitiba Leste, Oeste, Norte, Sul, Divisa SC',
+            'ids' => [24, 25, 26, 27, 28, 29],
+            'restrita_redes' => false
+        ],
+        'RED' => [
+            'sigla' => 'RED',
+            'nome' => 'Todas as Redes',
+            'cor' => '#dc2626',
+            'subregioes' => 'Todas as Redes (Grandes Contas)',
+            'ids' => [18],
+            'restrita_redes' => true
+        ],
     ];
 
     private $pdo;
@@ -63,17 +113,19 @@ class VendasDashboardController
     }
 
     /**
-     * Expressão SQL que unifica todas as sub-regiões do ERP nas 6 Macro-Regiões Oficiais:
-     * SUL, PLN, GRF, AVI, NOR e RMC.
+     * Expressão SQL que unifica as sub-regiões do ERP nas Macro-Regiões Oficiais:
+     * SUL, AVI, GRF, NOR, PLN, RMC e RED (Região 18).
      */
-    private function regiaoMacroSql(string $rgAlias = 'rg', string $cidAlias = 'cid'): string
+    private function regiaoMacroSql(string $rgAlias = 'rg', string $cidAlias = 'cid', string $cliAlias = 'cli'): string
     {
         return "CASE
-            WHEN {$rgAlias}.descricao ILIKE '%RMC%' OR {$rgAlias}.descricao ILIKE '%LIT%' OR {$cidAlias}.uf = 'PR' THEN 'RMC'
-            WHEN {$rgAlias}.descricao ILIKE '%GRF%' OR UPPER({$cidAlias}.descricao) IN ('PALHOCA', 'SAO JOSE', 'FLORIANOPOLIS', 'BIGUACU', 'SANTO AMARO DA IMPERATRIZ', 'GOVERNADOR CELSO RAMOS', 'AGUAS MORNAS', 'ANTONIO CARLOS', 'ANTÔNIO CARLOS', 'SAO PEDRO DE ALCANTARA') THEN 'GRF'
-            WHEN {$rgAlias}.descricao ILIKE '%AVI%' OR UPPER({$cidAlias}.descricao) IN ('BLUMENAU', 'INDAIAL', 'TIMBO', 'POMERODE', 'GASPAR', 'BRUSQUE', 'ITAJAI', 'BALNEARIO CAMBORIU', 'CAMBORIU', 'ITAPEMA', 'PORTO BELO', 'BOMBINHAS', 'TIJUCAS', 'SAO JOAO BATISTA', 'NOVA TRENTO', 'CANELINHA', 'NAVEGANTES', 'PENHA', 'PICARRAS', 'BALNEARIO PICARRAS', 'ILHOTA', 'LUIZ ALVES') THEN 'AVI'
-            WHEN {$rgAlias}.descricao ILIKE '%NOR%' OR {$rgAlias}.descricao ILIKE '%MRG%' OR UPPER({$cidAlias}.descricao) IN ('JOINVILLE', 'JARAGUA DO SUL', 'SAO FRANCISCO DO SUL', 'ARAQUARI', 'BARRA VELHA', 'GUARAMIRIM', 'SCHROEDER', 'CORUPA', 'MASSARANDUBA', 'SAO BENTO DO SUL', 'RIO NEGRINHO', 'CAMPO ALEGRE', 'MAFRA', 'ITAIOPOLIS', 'PAPANDUVA', 'CANOINHAS', 'TRES BARRAS', 'PORTO UNIAO', 'GARUVA', 'ITAPOA') THEN 'NOR'
-            WHEN {$rgAlias}.descricao ILIKE '%PLN%' OR {$rgAlias}.descricao ILIKE '%OES%' OR UPPER({$cidAlias}.descricao) IN ('LAGES', 'CURITIBANOS', 'SAO JOAQUIM', 'URUBICI', 'BOM RETIRO', 'OTACILIO COSTA', 'CORREIA PINTO', 'CAMPOS NOVOS', 'JOACABA', 'CACADOR', 'VIDEIRA', 'FRAIBURGO', 'CHAPECO', 'XANXERE', 'CONCORDIA', 'RIO DO SUL', 'IBIRAMA', 'ITUPORANGA', 'TAIO', 'PRESIDENTE GETULIO') THEN 'PLN'
+            WHEN {$cliAlias}.idregiao = 18 OR {$rgAlias}.descricao ILIKE '%*RED%' THEN 'RED'
+            WHEN {$cliAlias}.idregiao IN (24, 25, 26, 27, 28, 29) OR {$rgAlias}.descricao ILIKE '%[PR]%' OR {$cidAlias}.uf = 'PR' THEN 'RMC'
+            WHEN {$cliAlias}.idregiao IN (2, 3, 4, 5) OR {$rgAlias}.descricao ILIKE '%AVI%' THEN 'AVI'
+            WHEN {$cliAlias}.idregiao IN (6, 7, 8, 9) OR {$rgAlias}.descricao ILIKE '%GRF%' THEN 'GRF'
+            WHEN {$cliAlias}.idregiao IN (1, 10, 11, 12, 13) OR {$rgAlias}.descricao ILIKE '%NOR%' OR {$rgAlias}.descricao ILIKE '%MRG%' THEN 'NOR'
+            WHEN {$cliAlias}.idregiao IN (19, 20, 21, 22) OR {$rgAlias}.descricao ILIKE '%PLN%' OR {$rgAlias}.descricao ILIKE '%OES%' THEN 'PLN'
+            WHEN {$cliAlias}.idregiao IN (14, 15, 16, 17) OR {$rgAlias}.descricao ILIKE '%SUL%' THEN 'SUL'
             ELSE 'SUL'
         END";
     }
@@ -162,6 +214,7 @@ class VendasDashboardController
                 'top_produtos' => $this->topProdutos($e, $ini, $fim, $atual['valor']),
                 'top_clientes' => $this->topClientes($e, $ini, $fim, $atual['valor']),
                 'distribuicao_regiao' => $this->distribuicaoRegiao($e, $ini, $fim),
+                'pode_ver_redes' => !empty($e['pode_ver_redes']),
                 'evolucao' => $this->evolucao($e, $ini, $fim),
             ];
         });
@@ -283,7 +336,7 @@ class VendasDashboardController
             $peso = (float)($r['peso'] ?? 0);
             $qtd = (float)($r['quantidade'] ?? 0);
 
-            $macroExpr = $this->regiaoMacroSql('rg', 'cid');
+            $macroExpr = $this->regiaoMacroSql('rg', 'cid', 'cli');
             $info = $this->one("SELECT c.idcliforemp, c.fantasia AS cliente, c.cnpj, cid.descricao AS cidade, cid.uf AS estado,
                     ($macroExpr) AS regiao,
                     COALESCE(rg.descricao, 'SEM REGIAO') AS subregiao,
@@ -294,6 +347,10 @@ class VendasDashboardController
                 LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao
                 LEFT JOIN cliforemp v ON v.idcliforemp = cli.idvendedor
                 WHERE c.idcliforemp = :cl", ['cl' => $idcliente]);
+
+            if (($info['regiao'] ?? '') === 'RED' && empty($e['pode_ver_redes'])) {
+                throw new \DomainException('Você não tem permissão para visualizar clientes da rede corporativa (RED).');
+            }
 
             // Última compra geral no ERP
             $ultGeral = $this->one("SELECT MAX(n.dataemissao) AS ultima_compra, COUNT(DISTINCT n.idnfs) AS total_nfs_vida
@@ -412,10 +469,14 @@ class VendasDashboardController
                     $joinRegiao = '';
                     $whereRegiao = '';
                     if ($tipo === 'Regiao' && isset(self::REGIOES_MACRO[$regiaoFiltro])) {
-                        $macroSql = $this->regiaoMacroSql('rg', 'cid');
+                        if ($regiaoFiltro === 'RED' && empty($e['pode_ver_redes'])) {
+                            throw new \DomainException('Acesso negado: região restrita.');
+                        }
+                        $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cli');
                         $joinRegiao = " LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao LEFT JOIN cidade cid ON cid.idcidade = c.idcidade ";
                         $whereRegiao = " AND ($macroSql) = :regiao_macro ";
                         $p['regiao_macro'] = $regiaoFiltro;
+                        $extra['subregioes'] = self::REGIOES_MACRO[$regiaoFiltro]['subregioes'] ?? '';
                     }
                     $nfFromCustom = $joinRegiao !== ''
                         ? str_replace('WHERE n.status', $joinRegiao . 'WHERE n.status', $this->nfFrom())
@@ -967,7 +1028,16 @@ class VendasDashboardController
             }
         }
 
-        return ['filiais' => $filiais, 'gestores' => $gestores, 'rep' => $rep];
+        // Regra RED (Região 18): Apenas usuário com acesso a todas as filiais e a todos os usuários
+        $podeVerRedes = $s->temAcessoTotal();
+
+        return [
+            'filiais' => $filiais,
+            'gestores' => $gestores,
+            'rep' => $rep,
+            'pode_ver_redes' => $podeVerRedes,
+            'scope' => $s,
+        ];
     }
 
     private function w(array $e, string $a): string
@@ -1284,7 +1354,8 @@ class VendasDashboardController
     /** Top 10 Clientes com Valor, Peso, Quantidade e Região Unificada */
     private function topClientes(array $e, \DateTimeImmutable $ini, \DateTimeImmutable $fim, float $faturamentoTotal = 0): array
     {
-        $macroSql = $this->regiaoMacroSql('rg', 'cid');
+        $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cli');
+        $filtroRedes = empty($e['pode_ver_redes']) ? " AND ($macroSql) <> 'RED' " : "";
         $rows = $this->all("SELECT c.idcliforemp, c.fantasia AS cliente,
                 ($macroSql) AS regiao,
                 COALESCE(cid.descricao || '/' || cid.uf, '') AS cidade_uf,
@@ -1293,7 +1364,7 @@ class VendasDashboardController
                 SUM(ni.qt) AS quantidade,
                 SUM(" . self::PESO . ") AS peso,
                 SUM(" . self::VAL . ") AS valor
-            " . str_replace('WHERE n.status', 'LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao LEFT JOIN cidade cid ON cid.idcidade = c.idcidade WHERE n.status', $this->nfFrom()) . $this->w($e, 'n') . "
+            " . str_replace('WHERE n.status', 'LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao LEFT JOIN cidade cid ON cid.idcidade = c.idcidade WHERE n.status', $this->nfFrom()) . $this->w($e, 'n') . " {$filtroRedes}
             GROUP BY c.idcliforemp, c.fantasia, ($macroSql), cid.descricao, cid.uf, v.fantasia
             ORDER BY valor DESC LIMIT 10", $this->pp($ini, $fim), 'quantidade', 'peso', 'valor');
         foreach ($rows as &$r) {
@@ -1308,19 +1379,22 @@ class VendasDashboardController
     }
 
     /**
-     * Distribuição Unificada nas 6 Macro-Regiões Oficiais: SUL, PLN, GRF, AVI, NOR e RMC.
-     * Sempre retorna as 6 regiões com Valor (R$), Peso (Kg), Quantidade (Un), NFs e Clientes.
+     * Distribuição Unificada nas Macro-Regiões Oficiais: SUL, AVI, GRF, NOR, PLN, RMC e RED.
+     * Retorna Valor (R$), Peso (Kg), Quantidade (Un), NFs, Clientes e Sub-regiões agrupadas.
+     * A região RED (18) é restrita a usuários com acesso total (todas as filiais e todos os usuários).
      */
     private function distribuicaoRegiao(array $e, \DateTimeImmutable $ini, \DateTimeImmutable $fim): array
     {
-        $macroSql = $this->regiaoMacroSql('rg', 'cid');
+        $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cli');
+        $filtroRedes = empty($e['pode_ver_redes']) ? " AND ($macroSql) <> 'RED' " : "";
+
         $rows = $this->all("SELECT ($macroSql) AS regiao,
                 SUM(" . self::VAL . ") AS valor,
                 SUM(" . self::PESO . ") AS peso,
                 SUM(ni.qt) AS quantidade,
                 COUNT(DISTINCT n.idnfs) AS notas,
                 COUNT(DISTINCT c.idcliforemp) AS clientes
-            " . str_replace('WHERE n.status', 'LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao LEFT JOIN cidade cid ON cid.idcidade = c.idcidade WHERE n.status', $this->nfFrom()) . $this->w($e, 'n') . "
+            " . str_replace('WHERE n.status', 'LEFT JOIN cliente cli ON cli.idcliforemp = c.idcliforemp LEFT JOIN regiao rg ON rg.idregiao = cli.idregiao LEFT JOIN cidade cid ON cid.idcidade = c.idcidade WHERE n.status', $this->nfFrom()) . $this->w($e, 'n') . $filtroRedes . "
             GROUP BY 1 ORDER BY valor DESC", $this->pp($ini, $fim), 'valor', 'peso', 'quantidade', 'notas', 'clientes');
 
         $porSigla = [];
@@ -1335,6 +1409,9 @@ class VendasDashboardController
 
         $out = [];
         foreach (self::REGIOES_MACRO as $sigla => $meta) {
+            if ($sigla === 'RED' && empty($e['pode_ver_redes'])) {
+                continue;
+            }
             $d = $porSigla[$sigla] ?? null;
             if (!$d) {
                 continue;
@@ -1354,6 +1431,9 @@ class VendasDashboardController
                 'nome' => $meta['nome'],
                 'label' => $sigla . ' — ' . $meta['nome'],
                 'cor' => $meta['cor'],
+                'subregioes' => $meta['subregioes'] ?? '',
+                'ids' => $meta['ids'] ?? [],
+                'is_redes' => ($sigla === 'RED'),
                 'valor' => $val,
                 'peso' => $peso,
                 'quantidade' => $qtd,
@@ -1982,7 +2062,10 @@ class VendasDashboardController
             $params['rep_escopo'] = (int)$e['rep'];
         }
 
-        $macroSql = $this->regiaoMacroSql('rg', 'cid');
+        $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cl');
+        if (empty($e['pode_ver_redes'])) {
+            $repFiltroSql .= " AND ($macroSql) <> 'RED' ";
+        }
 
         $rows = $this->all("WITH compras AS (
                 SELECT n.idcliforemp,

@@ -49,7 +49,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <h2 class="text-lg font-extrabold text-slate-800 leading-none">DASHBOARD EXECUTIVO DE VENDAS</h2>
                     <span class="px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-extrabold uppercase tracking-wider">Especialista v3.0</span>
                 </div>
-                <span class="text-xs text-slate-400 font-medium">Visão 360° de Valor (R$), Peso Líquido (Kg/Ton), Quantidade (Un), 6 Regiões Unificadas e Projeções</span>
+                <span class="text-xs text-slate-400 font-medium">Visão 360° de Valor (R$), Peso Líquido (Kg/Ton), Quantidade (Un), Macro-Regiões Oficiais e Projeções</span>
             </div>
         </div>
         <div class="flex items-center gap-3">
@@ -658,11 +658,11 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- ================================================================== -->
-        <!-- DISTRIBUIÇÃO PELAS 6 REGIÕES UNIFICADAS (SUL, GRF, AVI, NOR, PLN, RMC) -->
+        <!-- DISTRIBUIÇÃO POR MACRO-REGIÕES (RMC, AVI, GRF, NOR, PLN, SUL, RED) -->
         <!-- ================================================================== -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <!-- Painel das 6 Regiões Unificadas (2 colunas) -->
-            <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <!-- Painel das Macro-Regiões (2 colunas) -->
+            <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col justify-between">
                 <div class="flex flex-wrap items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
                     <div>
                         <h3 class="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2">
@@ -683,32 +683,43 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <div id="chartRegiao" style="height: 290px; width: 100%;"></div>
                     </div>
 
-                    <!-- Grade de Cards Rastreáveis das 6 Regiões -->
+                    <!-- Grade de Cards Rastreáveis das Regiões -->
                     <div class="md:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <template x-for="(reg, rIdx) in distribuicaoRegiao" :key="reg.regiao">
                             <div @click="abrirDetalhesRegiao(reg)"
-                                 class="p-3 rounded-xl border border-slate-200/80 hover:border-indigo-300 bg-slate-50/60 hover:bg-indigo-50/30 transition-all cursor-pointer group">
-                                <div class="flex items-center justify-between mb-1">
-                                    <div class="flex items-center gap-2 min-w-0">
-                                        <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background-color:' + (reg.cor || '#059669')"></span>
-                                        <span class="text-xs font-black text-slate-800" x-text="reg.regiao"></span>
-                                        <span class="text-[10px] text-slate-500 truncate" x-text="reg.nome"></span>
+                                 class="p-3 rounded-xl border border-slate-200/80 hover:border-indigo-300 bg-slate-50/60 hover:bg-indigo-50/30 transition-all cursor-pointer group flex flex-col justify-between">
+                                <div>
+                                    <div class="flex items-center justify-between mb-1 gap-1">
+                                        <div class="flex items-center gap-1.5 min-w-0">
+                                            <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background-color:' + (reg.cor || '#059669')"></span>
+                                            <span class="text-xs font-black text-slate-800" x-text="reg.regiao"></span>
+                                            <span class="text-[10px] text-slate-500 truncate" x-text="reg.nome"></span>
+                                            <span x-show="reg.is_redes" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[8.5px] font-black uppercase tracking-wider shrink-0">Redes</span>
+                                        </div>
+                                        <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700 shrink-0"
+                                              x-text="(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao) + '%'"></span>
                                     </div>
-                                    <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700"
-                                          x-text="(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao) + '%'"></span>
+                                    <div class="flex items-baseline justify-between mt-1">
+                                        <span class="text-sm font-black text-emerald-700" x-text="formatMoney(reg.valor)"></span>
+                                        <span class="text-[11px] font-bold text-amber-700" x-text="formatPeso(reg.peso)"></span>
+                                    </div>
+                                    <div class="w-full bg-slate-200 rounded-full h-1.5 my-1.5">
+                                        <div class="h-1.5 rounded-full transition-all"
+                                             :style="'background-color:' + (reg.cor || '#059669') + '; width:' + Math.min(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao, 100) + '%'"></div>
+                                    </div>
+                                    <div class="flex items-center justify-between text-[10px] text-slate-500">
+                                        <span x-text="formatNumber(reg.quantidade) + ' un • ' + reg.notas + ' NFs'"></span>
+                                        <span class="group-hover:text-indigo-600 font-semibold"><span x-text="reg.clientes + ' cli'"></span> <i class="fa-solid fa-magnifying-glass-chart ml-0.5"></i></span>
+                                    </div>
                                 </div>
-                                <div class="flex items-baseline justify-between mt-1">
-                                    <span class="text-sm font-black text-emerald-700" x-text="formatMoney(reg.valor)"></span>
-                                    <span class="text-[11px] font-bold text-amber-700" x-text="formatPeso(reg.peso)"></span>
-                                </div>
-                                <div class="w-full bg-slate-200 rounded-full h-1.5 my-1.5">
-                                    <div class="h-1.5 rounded-full transition-all"
-                                         :style="'background-color:' + (reg.cor || '#059669') + '; width:' + Math.min(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao, 100) + '%'"></div>
-                                </div>
-                                <div class="flex items-center justify-between text-[10px] text-slate-500">
-                                    <span x-text="formatNumber(reg.quantidade) + ' un • ' + reg.notas + ' NFs'"></span>
-                                    <span class="group-hover:text-indigo-600 font-semibold"><span x-text="reg.clientes + ' cli'"></span> <i class="fa-solid fa-magnifying-glass-chart ml-0.5"></i></span>
-                                </div>
+
+                                <!-- Identificação das Regiões Oficiais que compõem o grupo -->
+                                <template x-if="reg.subregioes">
+                                    <div class="mt-2 pt-1.5 border-t border-slate-200/60 text-[9px] text-slate-500 leading-tight flex items-start gap-1">
+                                        <i class="fa-solid fa-map-pin text-[8px] text-slate-400 mt-0.5 shrink-0"></i>
+                                        <span class="font-normal text-slate-600 line-clamp-2 group-hover:line-clamp-none transition-all" :title="reg.subregioes" x-text="reg.subregioes"></span>
+                                    </div>
+                                </template>
                             </div>
                         </template>
                     </div>
@@ -1441,7 +1452,15 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-magnifying-glass-chart"></i>
                         <span x-text="modalCardTitulo"></span>
                     </h3>
-                    <p class="text-[11px] text-emerald-100 mt-0.5" x-text="cardVisao || 'Auditoria executiva de Valor (R$), Peso Líquido (Kg), Quantidade e Rastreio de Documentos'"></p>
+                    <template x-if="cardSubregioes">
+                        <p class="text-[11px] text-emerald-100 mt-0.5 flex items-center gap-1.5">
+                            <i class="fa-solid fa-layer-group text-[10px] text-emerald-200 shrink-0"></i>
+                            <span class="font-medium" x-text="'Sub-regiões: ' + cardSubregioes"></span>
+                        </p>
+                    </template>
+                    <template x-if="!cardSubregioes">
+                        <p class="text-[11px] text-emerald-100 mt-0.5" x-text="cardVisao || 'Auditoria executiva de Valor (R$), Peso Líquido (Kg), Quantidade e Rastreio de Documentos'"></p>
+                    </template>
                 </div>
                 <div class="flex items-center gap-2">
                     <button type="button" @click="exportarCardExcel()"
@@ -1801,14 +1820,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região</label>
-                        <select x-model="filtroRiscoRegiao" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs font-medium text-slate-700">
-                            <option value="">Todas as 6 Regiões</option>
-                            <option value="SUL">SUL — Sul Catarinense</option>
-                            <option value="GRF">GRF — Grande Florianópolis</option>
-                            <option value="AVI">AVI — Vale do Itajaí &amp; Litoral</option>
-                            <option value="NOR">NOR — Norte &amp; Planalto Norte</option>
-                            <option value="PLN">PLN — Planalto Serrano &amp; Alto Vale</option>
-                            <option value="RMC">RMC — Curitiba &amp; Litoral PR</option>
+                        <select x-model="filtroRiscoRegiao" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs font-semibold text-slate-700">
+                            <option value="">Todas as Regiões do Escopo</option>
+                            <template x-for="reg in distribuicaoRegiao" :key="reg.regiao">
+                                <option :value="reg.regiao" x-text="reg.regiao + ' — ' + reg.nome"></option>
+                            </template>
                         </select>
                     </div>
                     <div>
