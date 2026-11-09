@@ -687,12 +687,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div class="md:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <template x-for="(reg, rIdx) in distribuicaoRegiao" :key="reg.regiao">
                             <div @click="abrirDetalhesRegiao(reg)"
-                                 class="p-3 rounded-xl border border-slate-200/80 hover:border-indigo-300 bg-slate-50/60 hover:bg-indigo-50/30 transition-all cursor-pointer group flex flex-col justify-between">
+                                 :title="reg.regiao + ' — ' + reg.nome + '\n\nSub-regiões integradas:\n• ' + (reg.subregioes || '').split(', ').join('\n• ')"
+                                 class="p-3 rounded-xl border border-slate-200/80 hover:border-indigo-400 bg-slate-50/60 hover:bg-indigo-50/40 transition-all cursor-pointer group flex flex-col justify-between shadow-none hover:shadow-sm">
                                 <div>
                                     <div class="flex items-center justify-between mb-1 gap-1">
                                         <div class="flex items-center gap-1.5 min-w-0">
                                             <span class="w-2.5 h-2.5 rounded-full shrink-0" :style="'background-color:' + (reg.cor || '#059669')"></span>
-                                            <span class="text-xs font-black text-slate-800" x-text="reg.regiao"></span>
+                                            <span class="text-xs font-black text-slate-800 group-hover:text-indigo-900" x-text="reg.regiao"></span>
                                             <span class="text-[10px] text-slate-500 truncate" x-text="reg.nome"></span>
                                             <span x-show="reg.is_redes" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[8.5px] font-black uppercase tracking-wider shrink-0">Redes</span>
                                         </div>
@@ -713,11 +714,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </div>
                                 </div>
 
-                                <!-- Identificação das Regiões Oficiais que compõem o grupo -->
+                                <!-- Identificação das Regiões Oficiais que compõem o grupo (destaque ao passar o mouse) -->
                                 <template x-if="reg.subregioes">
-                                    <div class="mt-2 pt-1.5 border-t border-slate-200/60 text-[9px] text-slate-500 leading-tight flex items-start gap-1">
-                                        <i class="fa-solid fa-map-pin text-[8px] text-slate-400 mt-0.5 shrink-0"></i>
-                                        <span class="font-normal text-slate-600 line-clamp-2 group-hover:line-clamp-none transition-all" :title="reg.subregioes" x-text="reg.subregioes"></span>
+                                    <div class="mt-2 pt-1.5 border-t border-slate-200/60 text-[9px] text-slate-500 leading-tight flex items-start gap-1"
+                                         :title="'Sub-regiões integradas: ' + reg.subregioes">
+                                        <i class="fa-solid fa-map-pin text-[8px] text-slate-400 group-hover:text-indigo-600 mt-0.5 shrink-0 transition-colors"></i>
+                                        <span class="font-normal text-slate-600 group-hover:text-indigo-900 group-hover:font-semibold line-clamp-2 group-hover:line-clamp-none transition-all"
+                                              x-text="reg.subregioes"></span>
                                     </div>
                                 </template>
                             </div>

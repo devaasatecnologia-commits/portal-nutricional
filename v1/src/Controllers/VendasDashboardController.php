@@ -51,7 +51,7 @@ class VendasDashboardController
             'sigla' => 'SUL',
             'nome' => 'Sul Catarinense',
             'cor' => '#059669',
-            'subregioes' => 'Encantos de Imbituba, Região Carbonífera, Braço do Norte, Caminho dos Canyons',
+            'subregioes' => 'Encantos de Imbituba, Região Carbonífera, Monte de Braço do Norte, Caminho dos Canyons',
             'ids' => [14, 15, 16, 17],
             'restrita_redes' => false
         ],
@@ -121,11 +121,11 @@ class VendasDashboardController
         return "CASE
             WHEN {$cliAlias}.idregiao = 18 OR {$rgAlias}.descricao ILIKE '%*RED%' THEN 'RED'
             WHEN {$cliAlias}.idregiao IN (24, 25, 26, 27, 28, 29) OR {$rgAlias}.descricao ILIKE '%[PR]%' OR {$cidAlias}.uf = 'PR' THEN 'RMC'
-            WHEN {$cliAlias}.idregiao IN (2, 3, 4, 5) OR {$rgAlias}.descricao ILIKE '%AVI%' THEN 'AVI'
-            WHEN {$cliAlias}.idregiao IN (6, 7, 8, 9) OR {$rgAlias}.descricao ILIKE '%GRF%' THEN 'GRF'
-            WHEN {$cliAlias}.idregiao IN (1, 10, 11, 12, 13) OR {$rgAlias}.descricao ILIKE '%NOR%' OR {$rgAlias}.descricao ILIKE '%MRG%' THEN 'NOR'
-            WHEN {$cliAlias}.idregiao IN (19, 20, 21, 22) OR {$rgAlias}.descricao ILIKE '%PLN%' OR {$rgAlias}.descricao ILIKE '%OES%' THEN 'PLN'
-            WHEN {$cliAlias}.idregiao IN (14, 15, 16, 17) OR {$rgAlias}.descricao ILIKE '%SUL%' THEN 'SUL'
+            WHEN {$cliAlias}.idregiao IN (14, 15, 16, 17) OR {$rgAlias}.descricao ILIKE '%[SC] SUL%' THEN 'SUL'
+            WHEN {$cliAlias}.idregiao IN (2, 3, 4, 5) OR {$rgAlias}.descricao ILIKE '%[SC] AVI%' THEN 'AVI'
+            WHEN {$cliAlias}.idregiao IN (6, 7, 8, 9) OR {$rgAlias}.descricao ILIKE '%[SC] GRF%' THEN 'GRF'
+            WHEN {$cliAlias}.idregiao IN (1, 10, 11, 12, 13) OR {$rgAlias}.descricao ILIKE '%[SC] NOR%' OR {$rgAlias}.descricao ILIKE '%[SC] MRG%' THEN 'NOR'
+            WHEN {$cliAlias}.idregiao IN (19, 20, 21, 22) OR {$rgAlias}.descricao ILIKE '%[SC] PLN%' OR {$rgAlias}.descricao ILIKE '%[SC] OES%' THEN 'PLN'
             ELSE 'SUL'
         END";
     }
