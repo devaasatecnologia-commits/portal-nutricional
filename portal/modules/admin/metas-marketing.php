@@ -402,6 +402,14 @@ let tiposMetasMkt = [];
 let projecaoDadosGlobal = null;
 let metasProjetadasAjuste = [];
 
+function formatLocalDate(d) {
+    if (!d || !(d instanceof Date)) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 // Helper robusto de requisições compatível com a estrutura de Admin (apiFetch / token)
 async function apiMktFetch(endpoint, method = 'GET', body = null) {
     if (typeof apiFetch === 'function') {
@@ -412,8 +420,13 @@ async function apiMktFetch(endpoint, method = 'GET', body = null) {
         window.location.href = '/portal/login.php';
         throw new Error('Sessão expirada. Faça login novamente.');
     }
-    const cleanEndpoint = endpoint.startsWith('/v1/') ? endpoint.substring(4) : endpoint;
-    const url = `${window.location.origin}/index.php?api_route=${cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint}`;
+    let [pathPart, queryPart] = endpoint.split('?');
+    const cleanEndpoint = pathPart.startsWith('/v1/') ? pathPart.substring(4) : pathPart;
+    const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
+    let url = `${window.location.origin}/index.php?api_route=${cleanPath}`;
+    if (queryPart) {
+        url += '&' + queryPart;
+    }
     const csrf = (typeof getCsrfToken === 'function') ? getCsrfToken(token) : '';
     const options = {
         method,
@@ -431,6 +444,9 @@ async function apiMktFetch(endpoint, method = 'GET', body = null) {
     } catch (e) {
         throw new Error(text || 'Erro na requisição');
     }
+}
+if (typeof window.fetchWithAuth === 'undefined') {
+    window.fetchWithAuth = apiMktFetch;
 }
 
 function selecionarAbaStatusMkt(status) {
@@ -501,19 +517,19 @@ function mudarPeriodoMetasMkt(tipo) {
     if (tipo === 'mes_atual') {
         const d1 = new Date(y, m, 1);
         const d2 = new Date(y, m + 1, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'mes_passado') {
         const d1 = new Date(y, m - 1, 1);
         const d2 = new Date(y, m, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'trimestre') {
         const trimMes = Math.floor(m / 3) * 3;
         const d1 = new Date(y, trimMes, 1);
         const d2 = new Date(y, trimMes + 3, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'ano_atual') {
         inputDini.value = `${y}-01-01`;
         inputDfim.value = `${y}-12-31`;
@@ -565,7 +581,7 @@ async function carregarMetasMktAdmin() {
 
         // Média de progresso
         if (todas.length > 0) {
-            const somaProg = todas.reduce((acc, m) => acc + (parseFloat(m.progresso || m.percentual || 0)), 0);
+            const somaProg = todas.reduce((acc, m) => acc + extrairProgressoMeta(m), 0);
             const media = Math.round(somaProg / todas.length);
             document.getElementById('card-progresso-mkt').textContent = `${media}%`;
         }
@@ -588,6 +604,30 @@ async function carregarMetasMktAdmin() {
                 <p class="text-xs font-bold">Erro ao carregar metas de marketing: ${e.message}</p>
             </div>`;
     }
+}
+
+function extrairProgressoMeta(m) {
+    if (m.progresso !== undefined && m.progresso !== null && m.progresso !== '') {
+        return Math.min(100, Math.max(0, parseFloat(m.progresso)));
+    }
+    if (m.percentual !== undefined && m.percentual !== null && m.percentual !== '') {
+        return Math.min(100, Math.max(0, parseFloat(m.percentual)));
+    }
+    if (m.valores) {
+        try {
+            const val = typeof m.valores === 'string' ? JSON.parse(m.valores) : m.valores;
+            const alcancado = parseFloat(val.valor_alcancado || 0);
+            const final = parseFloat(val.meta_final || 0);
+            const atual = parseFloat(val.taxa_atual || 0);
+            const nec = final - atual;
+            if (nec > 0) {
+                return Math.min(100, Math.max(0, ((alcancado - atual) / nec) * 100));
+            } else if (final > 0) {
+                return Math.min(100, Math.max(0, (alcancado / final) * 100));
+            }
+        } catch (e) {}
+    }
+    return 0;
 }
 
 function filtrarCardsMktLocalmente() {
@@ -622,7 +662,7 @@ function renderizarCardsMetasMkt(metas) {
     }
 
     container.innerHTML = metas.map(m => {
-        const prog = Math.min(100, Math.max(0, parseFloat(m.progresso || m.percentual || 0)));
+        const prog = extrairProgressoMeta(m);
         const corProg = prog >= 100 ? 'bg-emerald-500' : (prog >= 70 ? 'bg-indigo-500' : (prog >= 40 ? 'bg-amber-500' : 'bg-rose-500'));
         const dIni = m.data_inicio ? m.data_inicio.split('-').reverse().join('/') : '--/--/----';
         const dFim = m.data_fim ? m.data_fim.split('-').reverse().join('/') : '--/--/----';
@@ -1088,8 +1128,8 @@ async function enviarAplicacaoProjecaoAdmin(metasParaCriar) {
     }
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
-    await carregarTiposMkt();
+document.addEventListener('DOMContentLoaded', () => {
+    carregarTiposMkt().catch(console.warn);
     mudarPeriodoMetasMkt('mes_atual');
 });
 </script>

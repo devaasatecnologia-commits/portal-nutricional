@@ -25,6 +25,72 @@ if (!defined('ADMIN_AREA')) {
     
     <!-- SweetAlert2 -->
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <!-- Global Auth & API Bridge para todos os módulos Admin -->
+    <script>
+    window.API_BASE = `${window.location.origin}/index.php?api_route=`;
+    window.getAuthToken = function() {
+        return localStorage.getItem('authToken') || sessionStorage.getItem('authToken');
+    };
+    window.getCsrfToken = function(token = window.getAuthToken()) {
+        try {
+            if (!token) return '';
+            const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+            const uid = Number(payload.uid || 0);
+            const today = new Date();
+            const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+            const value = uid ? `${uid}${date}` : '';
+            return value && window.CryptoJS ? CryptoJS.MD5(value).toString() : (value ? btoa(value).substring(0, 32) : '');
+        } catch (e) {
+            return '';
+        }
+    };
+    window.apiFetch = async function(endpoint, method = 'GET', body = null) {
+        const token = window.getAuthToken();
+        if (!token) {
+            window.location.href = '/portal/login.php';
+            throw new Error('Não autenticado');
+        }
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + token,
+                'X-CSRF-Token': window.getCsrfToken(token)
+            }
+        };
+        if (body) {
+            if (window.__waCodigo && method !== 'GET' && typeof body === 'object' && !body.codigo_whatsapp) {
+                body.codigo_whatsapp = window.__waCodigo;
+                window.__waCodigo = null;
+            }
+            options.body = JSON.stringify(body);
+        }
+        let [pathPart, queryPart] = endpoint.split('?');
+        const cleanEndpoint = pathPart.startsWith('/v1/') ? pathPart.substring(4) : pathPart;
+        const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
+        let url = `${window.API_BASE}${cleanPath}`;
+        if (queryPart) {
+            url += '&' + queryPart;
+        }
+        const response = await fetch(url, options);
+        const text = await response.text();
+        try {
+            return JSON.parse(text);
+        } catch (e) {
+            throw new Error(text || 'Erro na requisição');
+        }
+    };
+    // Shim universal de compatibilidade com componentes que chamam fetchWithAuth
+    window.fetchWithAuth = async function(endpoint, options = {}) {
+        const method = options.method || 'GET';
+        let body = options.body || null;
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body); } catch(e) {}
+        }
+        return await window.apiFetch(endpoint, method, body);
+    };
+    </script>
     
     <style>
         :root {

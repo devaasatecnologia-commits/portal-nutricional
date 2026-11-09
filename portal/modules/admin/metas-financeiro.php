@@ -351,6 +351,14 @@ require_once __DIR__ . '/components/sidebar.php';
 let listaMetasGlobal = [];
 let contagemStatus = { todas: 0, ativa: 0, pausada: 0, concluida: 0 };
 
+function formatLocalDate(d) {
+    if (!d || !(d instanceof Date)) return '';
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 // Helper robusto de requisições compatível com a estrutura de Admin (apiFetch / token)
 async function apiFinFetch(endpoint, method = 'GET', body = null) {
     if (typeof apiFetch === 'function') {
@@ -361,8 +369,13 @@ async function apiFinFetch(endpoint, method = 'GET', body = null) {
         window.location.href = '/portal/login.php';
         throw new Error('Sessão expirada. Faça login novamente.');
     }
-    const cleanEndpoint = endpoint.startsWith('/v1/') ? endpoint.substring(4) : endpoint;
-    const url = `${window.location.origin}/index.php?api_route=${cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint}`;
+    let [pathPart, queryPart] = endpoint.split('?');
+    const cleanEndpoint = pathPart.startsWith('/v1/') ? pathPart.substring(4) : pathPart;
+    const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
+    let url = `${window.location.origin}/index.php?api_route=${cleanPath}`;
+    if (queryPart) {
+        url += '&' + queryPart;
+    }
     const csrf = (typeof getCsrfToken === 'function') ? getCsrfToken(token) : '';
     const options = {
         method,
@@ -380,6 +393,9 @@ async function apiFinFetch(endpoint, method = 'GET', body = null) {
     } catch (e) {
         throw new Error(text || 'Erro na requisição');
     }
+}
+if (typeof window.fetchWithAuth === 'undefined') {
+    window.fetchWithAuth = apiFinFetch;
 }
 
 function selecionarAbaStatus(status) {
@@ -442,19 +458,19 @@ function mudarPeriodoMetasFin(tipo) {
     if (tipo === 'mes_atual') {
         const d1 = new Date(y, m, 1);
         const d2 = new Date(y, m + 1, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'mes_passado') {
         const d1 = new Date(y, m - 1, 1);
         const d2 = new Date(y, m, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'trimestre') {
         const trimMes = Math.floor(m / 3) * 3;
         const d1 = new Date(y, trimMes, 1);
         const d2 = new Date(y, trimMes + 3, 0);
-        inputDini.value = d1.toISOString().split('T')[0];
-        inputDfim.value = d2.toISOString().split('T')[0];
+        inputDini.value = formatLocalDate(d1);
+        inputDfim.value = formatLocalDate(d2);
     } else if (tipo === 'ano_atual') {
         inputDini.value = `${y}-01-01`;
         inputDfim.value = `${y}-12-31`;

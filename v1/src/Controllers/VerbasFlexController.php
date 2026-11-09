@@ -64,8 +64,11 @@ class VerbasFlexController
     {
         $q = $request->getQueryParams();
         $filial = (int)($q['filial'] ?? 0);
-        if (!in_array($filial, $usuario['filiais'], true)) {
+        if ($filial !== 0 && !in_array($filial, $usuario['filiais'], true)) {
             throw new \DomainException('Filial nao liberada para o seu usuario.');
+        }
+        if ($filial === 0 && empty($usuario['filiais'])) {
+            throw new \DomainException('Nenhuma filial liberada para o seu usuario.');
         }
         $data = static fn ($d, string $padrao): string => preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$d) ? (string)$d : $padrao;
         $inicio = $data($q['inicio'] ?? '', date('Y-m-01'));
@@ -86,15 +89,24 @@ class VerbasFlexController
     /** FROM/WHERE comum dos debitos. @return array{0:string,1:array} */
     private function baseDebitos(array $f, array $usuario, bool $comRepresentante = true): array
     {
+        $filiaisLiberadas = $usuario['filiais'] ?? [];
+        $filialFiltro = (int)($f['filial'] ?? 0);
+
         $sql = " FROM log_flex_bonificacao lfb
                  JOIN nfs ON lfb.numero_nota ~ '^[0-9]+\$' AND CAST(lfb.numero_nota AS INT) = nfs.idnfs
                  JOIN cliforemp cli ON cli.idcliforemp = nfs.idcliforemp
                  JOIN cliforemp vend ON vend.idcliforemp = lfb.idvendrepre
                  LEFT JOIN cliforemp gestor ON gestor.idcliforemp = nfs.idsupervisor
                  WHERE lfb.valor_tirado <> 0
-                   AND lfb.idfilial = :filial
                    AND nfs.datahora >= :inicio::date AND nfs.datahora < (:fim::date + 1)";
-        $p = ['filial' => $f['filial'], 'inicio' => $f['inicio'], 'fim' => $f['fim']];
+        $p = ['inicio' => $f['inicio'], 'fim' => $f['fim']];
+
+        if ($filialFiltro > 0) {
+            $sql .= ' AND lfb.idfilial = :filial';
+            $p['filial'] = $filialFiltro;
+        } elseif (!empty($filiaisLiberadas)) {
+            $sql .= ' AND lfb.idfilial IN (' . implode(',', array_map('intval', $filiaisLiberadas)) . ')';
+        }
 
         if ($usuario['gestores'] !== []) {
             $sql .= ' AND nfs.idsupervisor IN (' . implode(',', $usuario['gestores']) . ')';
@@ -106,12 +118,22 @@ class VerbasFlexController
         return [$sql, $p];
     }
 
-    private function baseCreditos(array $f): array
+    private function baseCreditos(array $f, array $usuario = []): array
     {
-        return [
-            ' FROM log_debito_flex_gestor ldfg WHERE ldfg.idfilial = :filial AND ldfg.data >= :inicio::date AND ldfg.data <= :fim::date',
-            ['filial' => $f['filial'], 'inicio' => $f['inicio'], 'fim' => $f['fim']],
-        ];
+        $filiaisLiberadas = $usuario['filiais'] ?? [];
+        $filialFiltro = (int)($f['filial'] ?? 0);
+
+        $sql = ' FROM log_debito_flex_gestor ldfg WHERE ldfg.data >= :inicio::date AND ldfg.data <= :fim::date';
+        $p = ['inicio' => $f['inicio'], 'fim' => $f['fim']];
+
+        if ($filialFiltro > 0) {
+            $sql .= ' AND ldfg.idfilial = :filial';
+            $p['filial'] = $filialFiltro;
+        } elseif (!empty($filiaisLiberadas)) {
+            $sql .= ' AND ldfg.idfilial IN (' . implode(',', array_map('intval', $filiaisLiberadas)) . ')';
+        }
+
+        return [$sql, $p];
     }
 
     private function consultar(string $sql, array $params): array
@@ -131,6 +153,9 @@ class VerbasFlexController
                 $in = implode(',', $usuario['filiais']);
                 $filiais = $this->pdo->query("SELECT idfilial, razao FROM filial WHERE idfilial IN ($in) ORDER BY idfilial")
                     ->fetchAll(PDO::FETCH_ASSOC);
+                if (count($filiais) > 1) {
+                    array_unshift($filiais, ['idfilial' => 0, 'razao' => 'Todas as Filiais Liberadas']);
+                }
             }
             return $this->json($response, ['success' => true, 'filiais' => $filiais]);
         } catch (\Throwable $e) {
@@ -388,30 +413,37 @@ class VerbasFlexController
             }
 
             // Rankings de Transferências de Verba (Mercos Log)
-            $rankingTransferenciasCedidas = [];
+            $rankingTransferenciasEnviadas = [];
             $rankingTransferenciasRecebidas = [];
             $balancoEquipe = [];
             try {
+                $filialFiltro = (int)($f['filial'] ?? 0);
+                $filiaisLiberadas = $usuario['filiais'] ?? [];
+                $whereFilialTransf = $filialFiltro > 0 ? "filial = :filial" : ("filial IN (" . implode(',', array_map('intval', $filiaisLiberadas)) . ")");
+
                 $pTransf = [
-                    'filial' => $f['filial'],
                     'inicio' => $f['inicio'],
                     'fim' => $f['fim'],
                 ];
-                $rankingTransferenciasCedidas = $this->consultar(
+                if ($filialFiltro > 0) {
+                    $pTransf['filial'] = $filialFiltro;
+                }
+
+                $rankingTransferenciasEnviadas = $this->consultar(
                     "SELECT colaborador_de AS id,
                             COALESCE(NULLIF(TRIM(nome_de), ''), 'ID ' || colaborador_de) AS nome,
                             COUNT(*) AS qtd,
                             COALESCE(SUM(valor), 0) AS total,
                             COALESCE(MAX(valor), 0) AS maior_operacao
                      FROM transferencias_flex_mercos_log
-                     WHERE filial = :filial AND sucesso = true
+                     WHERE $whereFilialTransf AND sucesso = true
                        AND data_transferencia >= :inicio::date AND data_transferencia < (:fim::date + 1)
                      GROUP BY colaborador_de, nome_de
                      ORDER BY total DESC
                      LIMIT 50",
                     $pTransf
                 );
-                foreach ($rankingTransferenciasCedidas as &$rtc) {
+                foreach ($rankingTransferenciasEnviadas as &$rtc) {
                     $rtc['qtd'] = (int)$rtc['qtd'];
                     $rtc['total'] = (float)$rtc['total'];
                     $rtc['maior_operacao'] = (float)$rtc['maior_operacao'];
@@ -425,7 +457,7 @@ class VerbasFlexController
                             COALESCE(SUM(valor), 0) AS total,
                             COALESCE(MAX(valor), 0) AS maior_operacao
                      FROM transferencias_flex_mercos_log
-                     WHERE filial = :filial AND sucesso = true
+                     WHERE $whereFilialTransf AND sucesso = true
                        AND data_transferencia >= :inicio::date AND data_transferencia < (:fim::date + 1)
                      GROUP BY colaborador_para, nome_para
                      ORDER BY total DESC
@@ -448,13 +480,15 @@ class VerbasFlexController
                         'nome' => $rk['nome'],
                         'bonificacoes' => (float)$rk['total'],
                         'qtd_bonificacoes' => (int)$rk['qtd'],
+                        'transferido_enviado' => 0.0,
+                        'qtd_enviado' => 0,
                         'transferido_cedido' => 0.0,
                         'qtd_cedido' => 0,
                         'transferido_recebido' => 0.0,
                         'qtd_recebido' => 0,
                     ];
                 }
-                foreach ($rankingTransferenciasCedidas as $tc) {
+                foreach ($rankingTransferenciasEnviadas as $tc) {
                     $k = 'k_' . $tc['id'];
                     if (!isset($mapEquipe[$k])) {
                         $mapEquipe[$k] = [
@@ -462,12 +496,16 @@ class VerbasFlexController
                             'nome' => $tc['nome'],
                             'bonificacoes' => 0.0,
                             'qtd_bonificacoes' => 0,
+                            'transferido_enviado' => 0.0,
+                            'qtd_enviado' => 0,
                             'transferido_cedido' => 0.0,
                             'qtd_cedido' => 0,
                             'transferido_recebido' => 0.0,
                             'qtd_recebido' => 0,
                         ];
                     }
+                    $mapEquipe[$k]['transferido_enviado'] = (float)$tc['total'];
+                    $mapEquipe[$k]['qtd_enviado'] = (int)$tc['qtd'];
                     $mapEquipe[$k]['transferido_cedido'] = (float)$tc['total'];
                     $mapEquipe[$k]['qtd_cedido'] = (int)$tc['qtd'];
                 }
@@ -479,6 +517,8 @@ class VerbasFlexController
                             'nome' => $tr['nome'],
                             'bonificacoes' => 0.0,
                             'qtd_bonificacoes' => 0,
+                            'transferido_enviado' => 0.0,
+                            'qtd_enviado' => 0,
                             'transferido_cedido' => 0.0,
                             'qtd_cedido' => 0,
                             'transferido_recebido' => 0.0,
@@ -490,7 +530,7 @@ class VerbasFlexController
                 }
 
                 foreach ($mapEquipe as $item) {
-                    $saidas = $item['bonificacoes'] + $item['transferido_cedido'];
+                    $saidas = $item['bonificacoes'] + $item['transferido_enviado'];
                     $entradas = $item['transferido_recebido'];
                     $item['total_saidas'] = $saidas;
                     $item['total_entradas'] = $entradas;
@@ -521,7 +561,8 @@ class VerbasFlexController
                 'serie' => $serie,
                 'serie_diaria' => $serieDiaria,
                 'ranking' => $ranking,
-                'ranking_transferencias_cedidas' => $rankingTransferenciasCedidas,
+                'ranking_transferencias_enviadas' => $rankingTransferenciasEnviadas,
+                'ranking_transferencias_cedidas' => $rankingTransferenciasEnviadas,
                 'ranking_transferencias_recebidas' => $rankingTransferenciasRecebidas,
                 'balanco_equipe' => $balancoEquipe,
                 'detalhe_maior_debito' => $detalheMaiorDebito,

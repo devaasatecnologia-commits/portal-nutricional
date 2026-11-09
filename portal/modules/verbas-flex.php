@@ -182,7 +182,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-trophy text-amber-500"></i>
                         <span>Painel Completo de Consumo & Transferências de Flex</span>
                     </h3>
-                    <p class="text-xs text-slate-400" id="rankingSubtitulo">Acompanhe retiradas em notas fiscais, volume transferido (cedido/recebido) e o balanço líquido da equipe</p>
+                    <p class="text-xs text-slate-400" id="rankingSubtitulo">Acompanhe retiradas em notas fiscais, volume transferido (enviado/recebido) e o balanço líquido da equipe</p>
                 </div>
                 <button id="xlsRanking" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
                     <i class="fa-solid fa-file-excel text-emerald-600"></i>
@@ -198,7 +198,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </button>
                 <button type="button" data-visao="transferencias_cedidas" onclick="trocarVisaoRanking('transferencias_cedidas')" class="vf-chip cursor-pointer flex items-center gap-2">
                     <i class="fa-solid fa-arrow-up-from-bracket text-purple-600 pointer-events-none"></i>
-                    <span class="pointer-events-none">Quem Mais Cedeu (Transferiu)</span>
+                    <span class="pointer-events-none">Quem Mais Enviou (Transferiu)</span>
                 </button>
                 <button type="button" data-visao="transferencias_recebidas" onclick="trocarVisaoRanking('transferencias_recebidas')" class="vf-chip cursor-pointer flex items-center gap-2">
                     <i class="fa-solid fa-arrow-down-to-bracket text-emerald-600 pointer-events-none"></i>

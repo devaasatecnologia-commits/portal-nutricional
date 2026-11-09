@@ -265,10 +265,10 @@ async function carregarPainel() {
             ? `Maior Retirada Única:\n• Representante: ${detalheDeb.representante || 'N/D'} (#${detalheDeb.idrepresentante || ''})\n• Nota Fiscal: #${detalheDeb.nota || 'N/D'}\n• Cliente: ${detalheDeb.cliente || 'N/D'}\n• Data: ${detalheDeb.data ? dataBR(detalheDeb.data) : 'N/D'}\n• Valor: ${brl(detalheDeb.valor || 0)}`
             : 'Pico máximo individual debitado em uma única nota fiscal no período.';
 
-        // 6 KPIs com Tooltips Flutuantes Modernos + Title de Fallback
+        // 6 KPIs com Tooltips Flutuantes Modernos + Title Formatado ao passar o mouse
         boxKpi.innerHTML = `
             <div class="vf-kpi bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
-                 title="Empréstimos Concedidos:\nTotal de saldo de flex liberado e aportado pelo gestor ou diretoria para a equipe no período selecionado."
+                 title="EMPRÉSTIMOS CONCEDIDOS (APORTE GESTOR)&#10;• Conceito: Total de verba flex liberada e aportada pelo gestor ou diretoria para a equipe no período selecionado.&#10;• Impacto: Aumenta o saldo flex disponível dos representantes para aplicação em bonificações."
                  data-tip-badge="Aporte Gestor"
                  data-tip-title="Empréstimos Concedidos"
                  data-tip-desc="Total de saldo de flex liberado e aportado pelo gestor ou diretoria para a equipe comercial no período selecionado.">
@@ -284,7 +284,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-gradient-to-br from-rose-600 to-red-700 text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
-                 title="Consumo em Bonificações:\nTotal de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período selecionado."
+                 title="CONSUMO EM BONIFICAÇÕES (RETIRADAS)&#10;• Conceito: Total de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período.&#10;• Impacto: Reduz o saldo flex dos representantes e reflete a concessão de produtos bonificados."
                  data-tip-badge="Saída Comercial"
                  data-tip-title="Consumo em Bonificações"
                  data-tip-desc="Total de verba flex debitada através de notas fiscais de bonificação faturadas para clientes no período selecionado.">
@@ -300,7 +300,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-gradient-to-br ${resultado >= 0 ? 'from-violet-700 to-purple-800' : 'from-amber-600 to-orange-700'} text-white shadow-md cursor-pointer hover:shadow-lg transition-all"
-                 title="Saldo Líquido / Resultado:\nDiferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-)."
+                 title="SALDO LÍQUIDO / RESULTADO DO PERÍODO&#10;• Fórmula: [Empréstimos Concedidos (+)] - [Bonificações Consumidas (-)].&#10;• Semáforo: Positivo = aporte superior ao consumo da filial; Negativo = consumo superou os aportes no período."
                  data-tip-badge="Resultado Líquido"
                  data-tip-title="Saldo Líquido / Resultado"
                  data-tip-desc="Diferença entre Empréstimos Concedidos (+) e Bonificações Consumidas (-). Saldo positivo indica aporte superior ao consumo da filial.">
@@ -315,7 +315,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
-                 title="Média por Retirada:\nTicket médio de verba flex abatido por nota fiscal faturada no período."
+                 title="MÉDIA POR RETIRADA (TICKET MÉDIO)&#10;• Fórmula: [Valor Total Consumido] ÷ [Qtd de Notas Fiscais com Bonificação].&#10;• Indicador: Representa o gasto médio de verba flex por operação comercial faturada."
                  data-tip-badge="Ticket Médio"
                  data-tip-title="Média por Retirada"
                  data-tip-desc="Média aritmética de saldo flex consumido por nota fiscal de bonificação emitida no período.">
@@ -328,7 +328,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer group hover:border-purple-300 hover:shadow-md transition-all"
-                 title="${esc(tipMaiorDebTxt)}"
+                 title="MAIOR RETIRADA ÚNICA (PICO MÁXIMO)&#10;${esc(tipMaiorDebTxt)}"
                  data-tip-badge="Pico Máximo"
                  data-tip-title="Maior Retirada Única"
                  data-tip-desc="${esc(tipMaiorDebHtml)}"
@@ -346,7 +346,7 @@ async function carregarPainel() {
             </div>
 
             <div class="vf-kpi bg-slate-50 border border-slate-200 text-slate-800 shadow-xs cursor-pointer hover:shadow-md transition-all"
-                 title="Representantes com Consumo:\nContagem de representantes com bonificações no período."
+                 title="EQUIPE COM CONSUMO ATIVO&#10;• Indicador: Quantidade de representantes com pelo menos uma bonificação faturada no período selecionado.&#10;• Análise: Mede a amplitude do uso da verba flex entre os vendedores da filial."
                  data-tip-badge="Equipe Ativa"
                  data-tip-title="Representantes com Consumo"
                  data-tip-desc="Contagem de representantes comerciais com pelo menos uma bonificação faturada no período.">
@@ -569,7 +569,7 @@ async function abrirHistoricoColaborador(id, nome) {
                     <div class="min-w-0 flex-1">
                         <div class="flex items-center gap-2 mb-1">
                             <span class="px-2 py-0.5 rounded-md text-[10px] font-black border ${badgeCor}">
-                                ${enviou ? 'CEDEU' : 'RECEBEU'}
+                                ${enviou ? 'ENVIOU' : 'RECEBEU'}
                             </span>
                             <span class="text-xs font-bold text-slate-700 truncate">${sinal} <b>${esc(parceiro)}</b></span>
                         </div>
@@ -629,8 +629,8 @@ function renderRankingCompleto() {
             s: 'Representantes com maior volume debitado em notas fiscais faturadas no período.'
         },
         transferencias_cedidas: {
-            t: '<i class="fa-solid fa-arrow-up-from-bracket text-purple-600 mr-2"></i>Consumo de Transferência (Quem Mais Cedeu/Transferiu)',
-            s: 'Colaboradores e gestores que mais transferiram saldo flex para outros colegas da filial via Mercos.'
+            t: '<i class="fa-solid fa-arrow-up-from-bracket text-purple-600 mr-2"></i>Consumo de Transferência (Quem Mais Enviou/Transferiu)',
+            s: 'Colaboradores e gestores que mais enviaram saldo flex para outros colegas da filial via Mercos.'
         },
         transferencias_recebidas: {
             t: '<i class="fa-solid fa-arrow-down-to-bracket text-emerald-600 mr-2"></i>Quem Mais Creditou (Recebeu Transferência)',
@@ -638,7 +638,7 @@ function renderRankingCompleto() {
         },
         balanco: {
             t: '<i class="fa-solid fa-scale-balanced text-indigo-600 mr-2"></i>Balanço Geral Consolidado da Equipe',
-            s: 'Comparativo 360° entre saídas (bonificações + transferências cedidas) e entradas (transferências recebidas).'
+            s: 'Comparativo 360° entre saídas (bonificações + transferências enviadas) e entradas (transferências recebidas).'
         }
     };
 
@@ -686,7 +686,7 @@ function renderRankingCompleto() {
                         <tr class="bg-slate-100 text-slate-700 font-black border-b border-slate-200">
                             <th class="py-3 px-4">Colaborador / Vendedor</th>
                             <th class="py-3 px-3 text-right text-rose-700">Bonificações (-)</th>
-                            <th class="py-3 px-3 text-right text-purple-700">Transferiu / Cedeu (-)</th>
+                            <th class="py-3 px-3 text-right text-purple-700">Transferiu / Enviou (-)</th>
                             <th class="py-3 px-3 text-right text-emerald-700">Recebeu Transferência (+)</th>
                             <th class="py-3 px-3 text-right font-black">Total Saídas</th>
                             <th class="py-3 px-3 text-right font-black">Saldo Líquido</th>
@@ -708,8 +708,8 @@ function renderRankingCompleto() {
                                         <div class="text-[10px] text-slate-400 font-medium">${x.qtd_bonificacoes} nota(s)</div>
                                     </td>
                                     <td class="py-3 px-3 text-right font-extrabold text-purple-700">
-                                        ${brl(x.transferido_cedido)}
-                                        <div class="text-[10px] text-slate-400 font-medium">${x.qtd_cedido} envio(s)</div>
+                                        ${brl(x.transferido_enviado || x.transferido_cedido)}
+                                        <div class="text-[10px] text-slate-400 font-medium">${x.qtd_enviado || x.qtd_cedido} envio(s)</div>
                                     </td>
                                     <td class="py-3 px-3 text-right font-extrabold text-emerald-700">
                                         ${brl(x.transferido_recebido)}
@@ -774,8 +774,8 @@ function renderRankingCompleto() {
         corBarra = 'from-purple-600 to-violet-700';
         labelQtd = 'transferência(s) enviadas';
         labelDestaque = 'Maior Envio:';
-        badgeTxt = 'do volume cedido';
-    } else if (visao === 'transferencias_recebidas') {
+        badgeTxt = 'do volume enviado';
+    } else if (visao === 'transferencias_cedidas') {
         fonte = estado.rankingTransferenciasRecebidas || [];
         corBarra = 'from-emerald-500 to-teal-600';
         labelQtd = 'transferência(s) recebidas';
@@ -794,7 +794,7 @@ function renderRankingCompleto() {
 
     if (!lista.length) {
         const nomeVisao = visao === 'transferencias_cedidas'
-            ? 'transferência enviada (cedida)'
+            ? 'transferência enviada'
             : visao === 'transferencias_recebidas'
             ? 'transferência recebida (creditada)'
             : 'bonificação faturada';
@@ -1210,14 +1210,14 @@ function vincularEventosUI() {
         if (visao === 'balanco') {
             const dados = estado.balancoEquipe || [];
             if (!dados.length) return aviso('warning', 'Sem Dados', 'Nenhum dado do balanço para exportar.');
-            const cols = ['ID', 'Colaborador', 'Bonificações (R$)', 'Qtd Bonificações', 'Transferido Cedido (R$)', 'Qtd Cedido', 'Transferido Recebido (R$)', 'Qtd Recebido', 'Total Saídas (R$)', 'Saldo Líquido (R$)'];
+            const cols = ['ID', 'Colaborador', 'Bonificações (R$)', 'Qtd Bonificações', 'Transferido Enviado (R$)', 'Qtd Enviado', 'Transferido Recebido (R$)', 'Qtd Recebido', 'Total Saídas (R$)', 'Saldo Líquido (R$)'];
             const rows = dados.map((d) => [
                 d.id,
                 d.nome,
                 Number(d.bonificacoes || 0).toFixed(2).replace('.', ','),
                 d.qtd_bonificacoes || 0,
-                Number(d.transferido_cedido || 0).toFixed(2).replace('.', ','),
-                d.qtd_cedido || 0,
+                Number(d.transferido_enviado || d.transferido_cedido || 0).toFixed(2).replace('.', ','),
+                d.qtd_enviado || d.qtd_cedido || 0,
                 Number(d.transferido_recebido || 0).toFixed(2).replace('.', ','),
                 d.qtd_recebido || 0,
                 Number(d.total_saidas || 0).toFixed(2).replace('.', ','),
@@ -1238,7 +1238,7 @@ function vincularEventosUI() {
             colDestaque = 'Maior Retirada (R$)';
         } else if (visao === 'transferencias_cedidas') {
             fonte = estado.rankingTransferenciasCedidas || [];
-            nomeArquivo = 'ranking_transferencias_cedidas';
+            nomeArquivo = 'ranking_transferencias_enviadas';
             colOperacao = 'Qtd Envios';
             colDestaque = 'Maior Envio (R$)';
         } else if (visao === 'transferencias_recebidas') {

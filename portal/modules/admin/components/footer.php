@@ -48,8 +48,15 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
     
-    const cleanEndpoint = endpoint.startsWith('/v1/') ? endpoint.substring(4) : endpoint;
-    const response = await fetch(`${API_BASE}${cleanEndpoint}`, options);
+    let [pathPart, queryPart] = endpoint.split('?');
+    const cleanEndpoint = pathPart.startsWith('/v1/') ? pathPart.substring(4) : pathPart;
+    const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
+    let url = `${API_BASE}${cleanPath}`;
+    if (queryPart) {
+        url += '&' + queryPart;
+    }
+
+    const response = await fetch(url, options);
     const text = await response.text();
     
     try {
@@ -57,6 +64,18 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     } catch (e) {
         throw new Error(text || 'Erro na requisição');
     }
+}
+
+// Compatibilidade: alias fetchWithAuth para componentes compartilhados
+if (typeof window.fetchWithAuth === 'undefined') {
+    window.fetchWithAuth = async function(url, options = {}) {
+        const method = options.method || 'GET';
+        let body = options.body || null;
+        if (typeof body === 'string') {
+            try { body = JSON.parse(body); } catch(e) {}
+        }
+        return await apiFetch(url, method, body);
+    };
 }
 
 // Formatar data

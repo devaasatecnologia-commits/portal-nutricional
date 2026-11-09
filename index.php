@@ -126,10 +126,16 @@ if (strpos($routePath, '/v2') === 0) {
 // Considera api_route do $_GET OU da QUERY_STRING
 $temApiRoute = isset($_GET['api_route']) || $apiRouteFromQueryString !== null;
 
-if ($temApiRoute && strpos($routePath, '/v1') !== 0) {
-    $routePath = '/v1' . (strpos($routePath, '/') === 0 ? '' : '/') . $routePath;
-}
 if ($temApiRoute) {
+    if (strpos($routePath, '?') !== false) {
+        list($rPath, $rQuery) = explode('?', $routePath, 2);
+        $routePath = $rPath;
+        parse_str($rQuery, $extraParams);
+        $_GET = array_merge($_GET, $extraParams);
+    }
+    if (strpos($routePath, '/v1') !== 0) {
+        $routePath = '/v1' . (strpos($routePath, '/') === 0 ? '' : '/') . $routePath;
+    }
     $_SERVER['REQUEST_URI'] = $routePath;
 }
 
