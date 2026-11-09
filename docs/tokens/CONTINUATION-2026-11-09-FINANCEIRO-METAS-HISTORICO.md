@@ -53,6 +53,7 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 - `php -l v1/src/Controllers/FinanceiroController.php` -> Sintaxe OK.
 - `php -l v1/routes/api.php` -> Sintaxe OK.
 - `node -c portal/assets/js/financeiro.js` -> Sintaxe OK.
+- **Correção de Erro:** Eliminado o erro `fetchWithAuth is not defined` em `portal/modules/admin/metas-financeiro.php`, integrando ao ecossistema nativo do Admin (`apiFetch`/`apiFinFetch`) com token JWT e CSRF compatíveis.
 - Teste integrado de mock com PSR-7: status 200 para todos os novos endpoints e cálculo consistente de auto soma e médias.
 
 ---

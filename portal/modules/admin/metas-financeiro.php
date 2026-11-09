@@ -24,12 +24,12 @@ require_once __DIR__ . '/components/sidebar.php';
 <div class="modulo-container max-w-full mx-auto px-4 lg:px-6 py-4" id="appMetasFin">
 
     <!-- Header Desktop -->
-    <div class="glass rounded-3xl p-5 mb-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm bg-white">
+    <div class="glass rounded-3xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm bg-white">
         <div class="flex items-center gap-3">
             <a href="/portal/modules/financeiro.php" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200" title="Voltar ao Módulo Financeiro">
                 <i class="fa-solid fa-arrow-left text-slate-700"></i>
             </a>
-            <div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center shadow-sm">
+            <div class="w-12 h-12 bg-amber-100 text-amber-700 rounded-2xl flex items-center justify-center shadow-sm flex-shrink-0">
                 <i class="fa-solid fa-bullseye text-xl"></i>
             </div>
             <div>
@@ -37,11 +37,11 @@ require_once __DIR__ . '/components/sidebar.php';
                 <span class="text-xs text-slate-400 font-medium">Parâmetros executivos de IAG, IAP, Recuperação e Tetos de Inadimplência</span>
             </div>
         </div>
-        <div class="flex items-center gap-2 w-full sm:w-auto">
-            <a href="/portal/modules/financeiro.php" class="px-4 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-sm font-bold transition flex items-center gap-2">
+        <div class="flex items-center gap-2 flex-wrap w-full md:w-auto justify-end">
+            <a href="/portal/modules/financeiro.php" class="px-4 py-2.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-xl text-sm font-bold transition flex items-center gap-2 no-underline whitespace-nowrap">
                 <i class="fa-solid fa-chart-line"></i> Dashboard Financeiro
             </a>
-            <button onclick="abrirModalNovaMeta()" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 rounded-xl text-sm font-bold shadow-md transition flex items-center gap-2">
+            <button onclick="abrirModalNovaMeta()" class="px-5 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-700 hover:to-teal-700 rounded-xl text-sm font-bold shadow-md transition flex items-center gap-2 whitespace-nowrap">
                 <i class="fa-solid fa-plus"></i> Nova Meta Financeira
             </button>
         </div>
@@ -271,6 +271,37 @@ require_once __DIR__ . '/components/sidebar.php';
 <script>
 let listaMetasGlobal = [];
 
+// Helper robusto de requisições compatível com a estrutura de Admin (apiFetch / token)
+async function apiFinFetch(endpoint, method = 'GET', body = null) {
+    if (typeof apiFetch === 'function') {
+        return await apiFetch(endpoint, method, body);
+    }
+    const token = (typeof getAuthToken === 'function') ? getAuthToken() : (localStorage.getItem('authToken') || sessionStorage.getItem('authToken'));
+    if (!token) {
+        window.location.href = '/portal/login.php';
+        throw new Error('Sessão expirada. Faça login novamente.');
+    }
+    const cleanEndpoint = endpoint.startsWith('/v1/') ? endpoint.substring(4) : endpoint;
+    const url = `${window.location.origin}/index.php?api_route=${cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint}`;
+    const csrf = (typeof getCsrfToken === 'function') ? getCsrfToken(token) : '';
+    const options = {
+        method,
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + token,
+            'X-CSRF-Token': csrf
+        }
+    };
+    if (body) options.body = JSON.stringify(body);
+    const res = await fetch(url, options);
+    const text = await res.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        throw new Error(text || 'Erro na requisição');
+    }
+}
+
 async function carregarMetasAdmin() {
     const container = document.getElementById('metas-container');
     container.innerHTML = `
@@ -283,11 +314,10 @@ async function carregarMetasAdmin() {
     const tipo = document.getElementById('filtro-tipo').value;
 
     try {
-        const resp = await fetchWithAuth('/v1/financeiro/metas', {
-            method: 'POST',
-            body: JSON.stringify({ status, tipo_indicador: tipo })
-        });
-        const json = await resp.json();
+        const json = await apiFinFetch('/v1/financeiro/metas', 'POST', { status, tipo_indicador: tipo });
+        if (json && json.success === false && json.error) {
+            throw new Error(json.error);
+        }
         listaMetasGlobal = (json && json.data) ? json.data : [];
         renderizarCardsMetas(listaMetasGlobal);
         atualizarCardsResumo(listaMetasGlobal);
@@ -520,12 +550,8 @@ async function salvarMetaAdmin(e) {
     };
 
     try {
-        const resp = await fetchWithAuth('/v1/financeiro/metas/salvar', {
-            method: 'POST',
-            body: JSON.stringify(payload)
-        });
-        const res = await resp.json();
-        if (resp.ok && res.success) {
+        const res = await apiFinFetch('/v1/financeiro/metas/salvar', 'POST', payload);
+        if (res && (res.success === true || res.success === 'true')) {
             fecharModalMeta();
             Swal.fire({
                 icon: 'success',
@@ -536,7 +562,7 @@ async function salvarMetaAdmin(e) {
             });
             await carregarMetasAdmin();
         } else {
-            throw new Error(res.error || 'Erro ao salvar meta.');
+            throw new Error(res?.error || 'Erro ao salvar meta.');
         }
     } catch (err) {
         Swal.fire({
@@ -556,14 +582,11 @@ async function alternarStatusMeta(id, statusAtual) {
         const meta = listaMetasGlobal.find(m => m.id === id);
         if (!meta) return;
 
-        const resp = await fetchWithAuth('/v1/financeiro/metas/salvar', {
-            method: 'POST',
-            body: JSON.stringify({
-                ...meta,
-                status: novoStatus
-            })
+        const res = await apiFinFetch('/v1/financeiro/metas/salvar', 'POST', {
+            ...meta,
+            status: novoStatus
         });
-        if (resp.ok) {
+        if (res && (res.success === true || res.success === 'true')) {
             await carregarMetasAdmin();
         }
     } catch (e) {
@@ -585,12 +608,8 @@ async function excluirMetaAdmin(id) {
 
     if (confirm.isConfirmed) {
         try {
-            const resp = await fetchWithAuth('/v1/financeiro/metas/excluir', {
-                method: 'POST',
-                body: JSON.stringify({ id })
-            });
-            const res = await resp.json();
-            if (resp.ok && res.success) {
+            const res = await apiFinFetch('/v1/financeiro/metas/excluir', 'POST', { id });
+            if (res && (res.success === true || res.success === 'true')) {
                 Swal.fire({
                     icon: 'success',
                     title: 'Excluída!',
@@ -600,7 +619,7 @@ async function excluirMetaAdmin(id) {
                 });
                 await carregarMetasAdmin();
             } else {
-                throw new Error(res.error || 'Erro ao excluir');
+                throw new Error(res?.error || 'Erro ao excluir meta.');
             }
         } catch (e) {
             Swal.fire({ icon: 'error', title: 'Erro!', text: e.message });
