@@ -687,7 +687,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div class="md:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                         <template x-for="(reg, rIdx) in distribuicaoRegiao" :key="reg.regiao">
                             <div @click="abrirDetalhesRegiao(reg)"
-                                 :title="reg.regiao + ' — ' + reg.nome + '\n\nSub-regiões integradas:\n• ' + (reg.subregioes || '').split(', ').join('\n• ')"
+                                 :data-tooltip="reg.regiao + ' — ' + reg.nome + '|Sub-regiões integradas no ERP:\n• ' + (reg.subregioes || '').split(', ').join('\n• ')"
                                  class="p-3 rounded-xl border border-slate-200/80 hover:border-indigo-400 bg-slate-50/60 hover:bg-indigo-50/40 transition-all cursor-pointer group flex flex-col justify-between shadow-none hover:shadow-sm">
                                 <div>
                                     <div class="flex items-center justify-between mb-1 gap-1">
@@ -697,8 +697,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                                             <span class="text-[10px] text-slate-500 truncate" x-text="reg.nome"></span>
                                             <span x-show="reg.is_redes" class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-800 text-[8.5px] font-black uppercase tracking-wider shrink-0">Redes</span>
                                         </div>
-                                        <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700 shrink-0"
-                                              x-text="(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao) + '%'"></span>
+                                        <span class="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-white border border-slate-200 text-slate-700 shrink-0 flex items-center gap-1">
+                                            <span x-text="(metricaRegiao === 'peso' ? reg.participacao_peso : reg.participacao) + '%'"></span>
+                                            <i class="fa-solid fa-circle-question text-[9px] text-slate-400 group-hover:text-indigo-600 transition-colors"></i>
+                                        </span>
                                     </div>
                                     <div class="flex items-baseline justify-between mt-1">
                                         <span class="text-sm font-black text-emerald-700" x-text="formatMoney(reg.valor)"></span>
@@ -2124,7 +2126,7 @@ setInterval(() => {
         <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
     </div>
     <div id="tooltipDashTitle" class="font-black text-white text-xs mb-1">Título do Indicador</div>
-    <div id="tooltipDashDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Explicação do item ao passar o mouse.</div>
+    <div id="tooltipDashDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed whitespace-pre-line">Explicação do item ao passar o mouse.</div>
 </div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

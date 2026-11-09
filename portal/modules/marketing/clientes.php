@@ -359,39 +359,57 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
     <!-- Stats Row (Visão Executiva & Especialista em CRM) -->
     <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-8">
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Total de clientes mapeados na carteira do escopo selecionado">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Total Carteira CRM|Total de clientes e parceiros mapeados na carteira sob alçada da filial e gestores selecionados.">
             <div class="text-2xl font-black text-white" x-text="stats.total">0</div>
-            <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5">Total Carteira</div>
+            <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Total Carteira</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-slate-400 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Clientes com status Fechado ou com faturamento concluído">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Clientes Fechados|Contas que converteram pedidos faturados no período de análise ou propostas ganhas no funil.">
             <div class="text-2xl font-black text-emerald-400" x-text="stats.fechados">0</div>
-            <div class="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5">Fechados</div>
+            <div class="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Fechados</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-emerald-300 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Oportunidades em aberto e negociação ativa com os representantes">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Em Negociação|Contas ativas com cotações abertas, pedidos pendentes ou em fase de prospecção comercial.">
             <div class="text-2xl font-black text-amber-400" x-text="stats.emNegociacao">0</div>
-            <div class="text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5">Em Negociação</div>
+            <div class="text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Em Negociação</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-amber-300 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Valor financeiro estimado de pedidos e propostas no funil comercial">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Pipeline Financeiro|Valor financeiro estimado de propostas e oportunidades em aberto no funil comercial.">
             <div class="text-2xl font-black text-blue-400" x-text="stats.pipelineValue">R$ 0</div>
-            <div class="text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5">Pipeline (R$)</div>
+            <div class="text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Pipeline (R$)</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-blue-300 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Taxa de conversão de propostas e oportunidades em vendas efetivadas">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Taxa de Conversão|Percentual de conversão de oportunidades e propostas em vendas faturadas no período.">
             <div class="text-2xl font-black text-purple-400" x-text="stats.conversao + '%'">0%</div>
-            <div class="text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5">Conversão</div>
+            <div class="text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Conversão</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-purple-300 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm"
-             title="Atendimentos e compromissos de agenda executados no mês corrente">
+        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             data-tooltip="Agenda & Disciplina Comercial|Acompanhamento de metas: contatos e visitas concluídos versus total agendado no mês corrente.">
             <div class="text-2xl font-black text-teal-300 flex items-center justify-center gap-1">
                 <span x-text="stats.concluidosMes || 0">0</span>
                 <span class="text-sm font-semibold text-slate-400">/</span>
                 <span class="text-base font-bold text-slate-300" x-text="stats.totalCompromissosMes || 0">0</span>
             </div>
-            <div class="text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5">Agenda no Mês</div>
+            <div class="text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span>Agenda no Mês</span>
+                <i class="fa-solid fa-circle-question text-[10px] text-teal-300 group-hover:text-white transition-colors"></i>
+            </div>
         </div>
     </div>
 </div>
@@ -528,12 +546,14 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
         <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl p-1 shadow-sm">
             <button type="button" @click="filtros.tipo_periodo = 'compra'; carregarClientes()" 
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.tipo_periodo === 'compra' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.tipo_periodo === 'compra' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Filtro por Compra|Filtra os clientes pela data da última compra ou pedidos faturados no período.">
                 <i class="fa-solid fa-shopping-cart mr-1"></i> Compra
             </button>
             <button type="button" @click="filtros.tipo_periodo = 'cadastro'; carregarClientes()" 
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.tipo_periodo === 'cadastro' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.tipo_periodo === 'cadastro' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Filtro por Cadastro|Filtra os clientes pela data em que foram cadastrados no sistema ERP.">
                 <i class="fa-solid fa-user-plus mr-1"></i> Cadastro
             </button>
         </div>
@@ -549,38 +569,44 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
         <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl p-1 shadow-sm">
             <button type="button" @click="aplicarPeriodoRapido('hoje')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === 'hoje' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === 'hoje' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Período Hoje|Carrega as movimentações, novos cadastros ou compras do dia atual.">
                 Hoje
             </button>
             <button type="button" @click="aplicarPeriodoRapido('este_mes')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === 'este_mes' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === 'este_mes' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Período Mês Corrente|Carrega do dia 1º até o último dia do mês atual (padrão executivo).">
                 Este Mês
             </button>
             <button type="button" @click="aplicarPeriodoRapido('mes_passado')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Período Mês Passado|Carrega o intervalo completo do mês imediatamente anterior para comparativo.">
                 Mês Passado
             </button>
             <button type="button" @click="aplicarPeriodoRapido('30dias')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === '30dias' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === '30dias' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Últimos 30 Dias|Filtra os últimos 30 dias corridos retroativos a partir de hoje.">
                 30 dias
             </button>
             <button type="button" @click="aplicarPeriodoRapido('este_ano')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === 'este_ano' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === 'este_ano' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Período Este Ano (YTD)|Ano acumulado desde 01 de janeiro do corrente ano até hoje.">
                 Este Ano
             </button>
             <button type="button" @click="aplicarPeriodoRapido('todos')"
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
-                :class="filtros.periodo === 'todos' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'">
+                :class="filtros.periodo === 'todos' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
+                data-tooltip="Todo o Histórico|Limpa a restrição de datas e exibe todos os clientes do escopo.">
                 Todos
             </button>
             <button type="button" @click="filtros.periodo = 'personalizado'"
                 class="px-2 py-1 rounded-lg text-xs font-bold transition-all"
                 :class="filtros.periodo === 'personalizado' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
-                title="Datas Personalizadas">
+                data-tooltip="Datas Personalizadas|Defina manualmente uma data inicial e final sob medida.">
                 <i class="fa-regular fa-calendar-days"></i>
             </button>
         </div>
@@ -6464,7 +6490,121 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.crmClientesApp = crmProfissional();
     window.crmClientesApp.init();
+    initModernTooltipsDash();
 });
+
+/**
+ * Sistema Universal de Tooltip Moderno Flutuante do CRM
+ */
+function initModernTooltipsDash() {
+    const tooltipEl = document.getElementById('modernTooltipDash');
+    const badgeEl = document.getElementById('tooltipDashBadge');
+    const titleEl = document.getElementById('tooltipDashTitle');
+    const descEl = document.getElementById('tooltipDashDesc');
+
+    if (!tooltipEl || !titleEl || !descEl) return;
+    if (window.__tooltipsCRMInitialized) return;
+    window.__tooltipsCRMInitialized = true;
+
+    let targetAtivo = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tooltip], [title]');
+        if (!el) return;
+
+        targetAtivo = el;
+        const rawContent = el.getAttribute('data-tooltip') || el.getAttribute('title');
+        if (!rawContent) return;
+
+        if (el.hasAttribute('title')) {
+            el.setAttribute('data-tooltip-backup', el.getAttribute('title'));
+            el.removeAttribute('title');
+        }
+
+        let titulo = 'Informação';
+        let descricao = rawContent;
+        let badge = 'CRM';
+
+        if (rawContent.includes('|')) {
+            const partes = rawContent.split('|');
+            titulo = partes[0].trim();
+            descricao = partes.slice(1).join('|').trim();
+        } else {
+            titulo = el.innerText ? el.innerText.trim().slice(0, 30) : 'Indicador';
+        }
+
+        const descLower = (titulo + ' ' + descricao).toLowerCase();
+        if (descLower.includes('fechad') || descLower.includes('ganh') || descLower.includes('fatur')) {
+            badge = 'FECHAMENTO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        } else if (descLower.includes('negocia') || descLower.includes('prosp') || descLower.includes('cotaç')) {
+            badge = 'OPORTUNIDADE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded-md border border-amber-700/50';
+        } else if (descLower.includes('pipeline') || descLower.includes('ticket') || descLower.includes('financeir')) {
+            badge = 'PIPELINE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-blue-400 bg-blue-950/90 px-2 py-0.5 rounded-md border border-blue-700/50';
+        } else if (descLower.includes('convers') || descLower.includes('taxa')) {
+            badge = 'CONVERSÃO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-purple-400 bg-purple-950/90 px-2 py-0.5 rounded-md border border-purple-700/50';
+        } else if (descLower.includes('agenda') || descLower.includes('visita') || descLower.includes('compromisso') || descLower.includes('disciplina')) {
+            badge = 'AGENDA & METAS';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-teal-400 bg-teal-950/90 px-2 py-0.5 rounded-md border border-teal-700/50';
+        } else if (descLower.includes('carteira') || descLower.includes('cliente') || descLower.includes('cadastro')) {
+            badge = 'CARTEIRA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-950/90 px-2 py-0.5 rounded-md border border-indigo-700/50';
+        } else if (descLower.includes('filtro') || descLower.includes('período') || descLower.includes('hoje') || descLower.includes('mês')) {
+            badge = 'FILTRO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700';
+        } else {
+            badge = 'DETALHE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700';
+        }
+
+        if (badgeEl) badgeEl.textContent = badge;
+        titleEl.textContent = titulo;
+        descEl.textContent = descricao;
+
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.opacity = '1';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!targetAtivo || tooltipEl.classList.contains('hidden')) return;
+
+        const pad = 14;
+        let x = e.clientX + pad;
+        let y = e.clientY + pad;
+
+        const rect = tooltipEl.getBoundingClientRect();
+        if (x + rect.width > window.innerWidth - 10) {
+            x = e.clientX - rect.width - pad;
+        }
+        if (y + rect.height > window.innerHeight - 10) {
+            y = e.clientY - rect.height - pad;
+        }
+
+        tooltipEl.style.left = `${Math.max(10, x)}px`;
+        tooltipEl.style.top = `${Math.max(10, y)}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (!targetAtivo) return;
+        if (e.target === targetAtivo || targetAtivo.contains(e.target)) {
+            const related = e.relatedTarget;
+            if (!related || !targetAtivo.contains(related)) {
+                if (targetAtivo.hasAttribute('data-tooltip-backup')) {
+                    targetAtivo.setAttribute('title', targetAtivo.getAttribute('data-tooltip-backup'));
+                    targetAtivo.removeAttribute('data-tooltip-backup');
+                }
+                targetAtivo = null;
+                tooltipEl.style.opacity = '0';
+                setTimeout(() => {
+                    if (!targetAtivo) tooltipEl.classList.add('hidden');
+                }, 100);
+            }
+        }
+    });
+}
 </script>
 
 <!-- MODAL CLIENTE -->
@@ -6855,6 +6995,18 @@ class="w-full p-3 border rounded-xl focus:ring-2 focus:ring-emerald-400">
         </div>
     </div>
 </div>
+</div>
+
+<!-- =================================================== -->
+<!-- TOOLTIP MODERNO FLUTUANTE (RICH HOVER POPOVER DASH) -->
+<!-- =================================================== -->
+<div id="modernTooltipDash" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+        <span id="tooltipDashBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">INDICADOR</span>
+        <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+    </div>
+    <div id="tooltipDashTitle" class="font-black text-white text-xs mb-1">Título do Indicador</div>
+    <div id="tooltipDashDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed whitespace-pre-line">Explicação do item ao passar o mouse.</div>
 </div>
 
 <?php require_once __DIR__ . '/../../estrutura/footer.php'; ?>

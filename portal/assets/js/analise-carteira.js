@@ -1124,7 +1124,110 @@ async function exportarExcelTitulos() {
     baixarXlsx(linhas, 'Titulos', `titulos-${app.slug(app.nomeRepresentante)}`, [3], []);
 }
 
+/**
+ * Sistema Universal de Tooltip Moderno Flutuante
+ */
+function initModernTooltipsDash() {
+    const tooltipEl = document.getElementById('modernTooltipDash');
+    const badgeEl = document.getElementById('tooltipDashBadge');
+    const titleEl = document.getElementById('tooltipDashTitle');
+    const descEl = document.getElementById('tooltipDashDesc');
+
+    if (!tooltipEl || !titleEl || !descEl) return;
+    if (window.__tooltipsCarteiraInitialized) return;
+    window.__tooltipsCarteiraInitialized = true;
+
+    let targetAtivo = null;
+
+    document.addEventListener('mouseover', (e) => {
+        const el = e.target.closest('[data-tooltip], [title]');
+        if (!el) return;
+
+        targetAtivo = el;
+        const rawContent = el.getAttribute('data-tooltip') || el.getAttribute('title');
+        if (!rawContent) return;
+
+        // Limpa o title nativo para evitar tooltip duplo feio do navegador
+        if (el.hasAttribute('title')) {
+            el.setAttribute('data-tooltip-backup', el.getAttribute('title'));
+            el.removeAttribute('title');
+        }
+
+        let titulo = 'Informação';
+        let descricao = rawContent;
+        let badge = 'CRÉDITO';
+
+        if (rawContent.includes('|')) {
+            const partes = rawContent.split('|');
+            titulo = partes[0].trim();
+            descricao = partes.slice(1).join('|').trim();
+        } else {
+            titulo = el.innerText ? el.innerText.trim().slice(0, 30) : 'Indicador';
+        }
+
+        const descLower = (titulo + ' ' + descricao).toLowerCase();
+        if (descLower.includes('vencid') || descLower.includes('inadimpl') || descLower.includes('+60')) {
+            badge = 'COBRANÇA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-950/90 px-2 py-0.5 rounded-md border border-rose-700/50';
+        } else if (descLower.includes('iag') || descLower.includes('atraso') || descLower.includes('60 dias')) {
+            badge = 'RISCO / IAG';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-amber-400 bg-amber-950/90 px-2 py-0.5 rounded-md border border-amber-700/50';
+        } else if (descLower.includes('vencer') || descLower.includes('saudável') || descLower.includes('30 dias')) {
+            badge = 'CRÉDITO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50';
+        } else if (descLower.includes('carteira') || descLower.includes('título')) {
+            badge = 'CARTEIRA';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-sky-400 bg-sky-950/90 px-2 py-0.5 rounded-md border border-sky-700/50';
+        } else if (descLower.includes('filtro') || descLower.includes('período') || descLower.includes('base')) {
+            badge = 'FILTRO';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-indigo-400 bg-indigo-950/90 px-2 py-0.5 rounded-md border border-indigo-700/50';
+        } else {
+            badge = 'DETALHE';
+            if (badgeEl) badgeEl.className = 'text-[9px] font-black uppercase tracking-wider text-slate-300 bg-slate-800 px-2 py-0.5 rounded-md border border-slate-700';
+        }
+
+        if (badgeEl) badgeEl.textContent = badge;
+        titleEl.textContent = titulo;
+        descEl.textContent = descricao;
+
+        tooltipEl.classList.remove('hidden');
+        tooltipEl.style.opacity = '1';
+    });
+
+    document.addEventListener('mousemove', (e) => {
+        if (!targetAtivo || tooltipEl.classList.contains('hidden')) return;
+
+        const offset = 14;
+        let left = e.clientX + offset;
+        let top = e.clientY + offset;
+
+        const tipWidth = tooltipEl.offsetWidth || 270;
+        const tipHeight = tooltipEl.offsetHeight || 95;
+
+        if (left + tipWidth > window.innerWidth - 12) {
+            left = e.clientX - tipWidth - offset;
+        }
+        if (top + tipHeight > window.innerHeight - 12) {
+            top = e.clientY - tipHeight - offset;
+        }
+
+        tooltipEl.style.left = `${Math.max(10, left)}px`;
+        tooltipEl.style.top = `${Math.max(10, top)}px`;
+    });
+
+    document.addEventListener('mouseout', (e) => {
+        if (targetAtivo && (e.target === targetAtivo || targetAtivo.contains(e.target))) {
+            const related = e.relatedTarget;
+            if (related && targetAtivo.contains(related)) return;
+
+            tooltipEl.classList.add('hidden');
+            targetAtivo = null;
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     window.analiseCarteiraApp = analiseCarteiraApp;
     analiseCarteiraApp.init();
+    initModernTooltipsDash();
 });

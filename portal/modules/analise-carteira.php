@@ -115,19 +115,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </span>
                 <div class="flex flex-wrap items-center gap-1 bg-slate-100/80 p-1 rounded-xl" id="botoes-periodo">
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('hoje')" data-periodo="hoje"
+                        data-tooltip="Filtro Hoje|Filtra apenas os títulos com vencimento ou emissão na data de hoje."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Hoje</button>
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('este_mes')" data-periodo="este_mes"
+                        data-tooltip="Este Mês|Filtra do primeiro até o último dia do mês corrente (padrão de cobrança)."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold bg-emerald-600 text-white shadow-xs transition">Este Mês</button>
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('mes_passado')" data-periodo="mes_passado"
+                        data-tooltip="Mês Passado|Filtra o mês civil imediatamente anterior para conciliação contábil."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Mês Passado</button>
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('30dias')" data-periodo="30dias"
+                        data-tooltip="Últimos 30 Dias|Filtra o intervalo móvel dos últimos 30 dias retroativos a partir de hoje."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">30 dias</button>
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('este_ano')" data-periodo="este_ano"
+                        data-tooltip="Este Ano|Filtra desde 01 de janeiro até a data atual do ano fiscal vigente."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Este Ano</button>
                     <button type="button" onclick="analiseCarteiraApp.aplicarPeriodoRapido('todos')" data-periodo="todos"
+                        data-tooltip="Todos os Períodos|Consulta toda a carteira histórica completa em aberto sem restrição de data."
                         class="btn-periodo px-3 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">Todos</button>
                     <button type="button" onclick="analiseCarteiraApp.togglePersonalizado()" data-periodo="personalizado"
-                        class="btn-periodo px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition" title="Datas Personalizadas">
+                        data-tooltip="Datas Personalizadas|Permite escolher livremente a data inicial e final para filtrar os títulos."
+                        class="btn-periodo px-2.5 py-1 rounded-lg text-xs font-bold text-slate-600 hover:bg-white hover:shadow-xs transition">
                         <i class="fa-regular fa-calendar-days"></i>
                     </button>
                 </div>
@@ -138,9 +145,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <span class="ac-label text-slate-400">Base:</span>
                 <div class="inline-flex rounded-xl bg-slate-100 p-0.5" id="botoes-base">
                     <button type="button" onclick="analiseCarteiraApp.setTipoPeriodo('vencimento')" id="btn-base-vencimento"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-xs transition" title="Filtrar por data de vencimento dos boletos">Vencimento</button>
+                        data-tooltip="Base por Vencimento|Calcula os prazos e inadimplência tomando como base a data de vencimento dos boletos."
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold bg-white text-slate-800 shadow-xs transition">Vencimento</button>
                     <button type="button" onclick="analiseCarteiraApp.setTipoPeriodo('emissao')" id="btn-base-emissao"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition" title="Filtrar por data de emissão das notas">Emissão</button>
+                        data-tooltip="Base por Emissão|Calcula a carteira considerando a data em que os documentos e notas fiscais foram emitidos."
+                        class="px-2.5 py-1 rounded-lg text-xs font-bold text-slate-500 hover:text-slate-800 transition">Emissão</button>
                 </div>
             </div>
         </div>
@@ -187,9 +196,11 @@ require_once __DIR__ . '/../estrutura/header.php';
         <!-- KPI 1: Vencidos (Inadimplência) -->
         <div class="kpi-card bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer" 
              onclick="scrollToTable('tabela-representantes')"
-             title="Total Vencido: Soma dos títulos com atraso superior a 3 dias corridos (tolerância operacional da empresa). Clique para rolar até a tabela de representantes.">
+             data-tooltip="Total Vencido|Soma de duplicatas e boletos em aberto com atraso superior a 3 dias úteis (tolerância operacional da empresa). Clique para rolar até a tabela de representantes.">
             <div class="flex items-center justify-between text-rose-600 mb-1">
-                <span class="ac-label text-rose-700">Total Vencido</span>
+                <span class="ac-label text-rose-700 flex items-center gap-1">
+                    Total Vencido <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
+                </span>
                 <i class="fa-solid fa-triangle-exclamation text-xs"></i>
             </div>
             <div id="kpi-vencidos" class="text-xl sm:text-2xl font-black text-rose-600">R$ 0,00</div>
@@ -198,9 +209,11 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 2: IAG (Índice de Atraso Geral) -->
         <div class="kpi-card bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
-             title="IAG (Índice de Atraso Geral): Percentual de inadimplência da carteira = (Total Vencido / Carteira Total) * 100. Classificação: Saudável (<5%), Atenção (5% a 15%) e Crítico (>15%).">
+             data-tooltip="IAG (Índice de Atraso Geral)|Percentual de inadimplência da carteira: (Total Vencido / Carteira Total) * 100. Classificação: Saudável (<5%), Atenção (5% a 15%) e Crítico (>15%).">
             <div class="flex items-center justify-between text-amber-600 mb-1">
-                <span class="ac-label text-amber-700">IAG (Inadimplência)</span>
+                <span class="ac-label text-amber-700 flex items-center gap-1">
+                    IAG (Inadimplência) <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
+                </span>
                 <i class="fa-solid fa-percent text-xs"></i>
             </div>
             <div id="kpi-iag" class="text-xl sm:text-2xl font-black text-amber-600">0%</div>
@@ -209,9 +222,11 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 3: Títulos Vencidos & Clientes -->
         <div class="kpi-card bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
-             title="Títulos Vencidos & Clientes Afetados: Quantidade física de boletos/duplicatas vencidos e contagem real de clientes únicos inadimplentes no escopo.">
+             data-tooltip="Títulos Vencidos & Clientes Afetados|Quantidade física de boletos vencidos e contagem real de clientes únicos inadimplentes no escopo selecionado.">
             <div class="flex items-center justify-between text-purple-600 mb-1">
-                <span class="ac-label text-purple-700">Títulos Vencidos</span>
+                <span class="ac-label text-purple-700 flex items-center gap-1">
+                    Títulos Vencidos <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
+                </span>
                 <i class="fa-solid fa-file-circle-xmark text-xs"></i>
             </div>
             <div id="kpi-titulos" class="text-xl sm:text-2xl font-black text-purple-700">0</div>
@@ -220,9 +235,11 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 4: À Vencer (Saudável) -->
         <div class="kpi-card bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
-             title="Carteira À Vencer: Saldo de títulos dentro da data de vencimento regular e títulos com até 3 dias de atraso (dentro do prazo de tolerância).">
+             data-tooltip="Carteira À Vencer|Saldo de títulos a vencer no prazo regular somado aos títulos com até 3 dias de atraso (dentro do prazo de tolerância).">
             <div class="flex items-center justify-between text-emerald-600 mb-1">
-                <span class="ac-label text-emerald-700">Carteira À Vencer</span>
+                <span class="ac-label text-emerald-700 flex items-center gap-1">
+                    Carteira À Vencer <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
+                </span>
                 <i class="fa-solid fa-calendar-check text-xs"></i>
             </div>
             <div id="kpi-a-vencer" class="text-xl sm:text-2xl font-black text-emerald-700">R$ 0,00</div>
@@ -231,13 +248,17 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- KPI 5: Carteira Total -->
         <div class="kpi-card bg-gradient-to-br from-blue-50 to-slate-100 border border-blue-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
-             title="Carteira Total: Volume total de crédito em aberto (Vencidos + À Vencer) de todos os clientes do escopo selecionado.">
+             data-tooltip="Carteira Total|Volume total sob custódia de crédito a receber (Vencidos + À Vencer) de todos os clientes do escopo selecionado.">
             <div class="flex items-center justify-between text-blue-600 mb-1">
-                <span class="ac-label text-blue-700">Carteira Total</span>
+                <span class="ac-label text-blue-700 flex items-center gap-1">
+                    Carteira Total <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
+                </span>
                 <i class="fa-solid fa-wallet text-xs"></i>
             </div>
             <div id="kpi-carteira" class="text-xl sm:text-2xl font-black text-slate-800">R$ 0,00</div>
             <div id="kpi-carteira-info" class="text-[0.65rem] text-slate-500 font-bold mt-1 truncate">0 títulos | 0 clientes</div>
+        </div>
+    </div>
         </div>
     </div>
 
@@ -254,20 +275,26 @@ require_once __DIR__ . '/../estrutura/header.php';
             <div id="chart-pizza" style="height: 260px;"></div>
             <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
                 <div class="bg-blue-50 border border-blue-100 rounded-xl p-2 hover:bg-blue-100/70 transition cursor-help"
-                     title="Faixa de 30 Dias: Títulos vencidos entre 4 e 33 dias atrás (atraso inicial recente)">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold">30 Dias</span>
+                     data-tooltip="Faixa 30 Dias|Títulos vencidos entre 4 e 33 dias atrás (atraso inicial recente). Contato amigável e reenvio de boleto.">
+                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
+                        30 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
+                    </span>
                     <span class="font-black text-blue-700" id="pizza-30d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-30d-perc">0%</span>
                 </div>
                 <div class="bg-amber-50 border border-amber-100 rounded-xl p-2 hover:bg-amber-100/70 transition cursor-help"
-                     title="Faixa de 60 Dias: Títulos vencidos entre 34 e 63 dias atrás (faixa de atenção / cobrança ativa)">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold">60 Dias</span>
+                     data-tooltip="Faixa 60 Dias|Títulos vencidos entre 34 e 63 dias atrás (faixa de atenção / cobrança ativa e bloqueio preventivo de novos pedidos).">
+                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
+                        60 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
+                    </span>
                     <span class="font-black text-amber-700" id="pizza-60d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-60d-perc">0%</span>
                 </div>
                 <div class="bg-rose-50 border border-rose-100 rounded-xl p-2 hover:bg-rose-100/70 transition cursor-help"
-                     title="Faixa de +60 Dias: Títulos vencidos há mais de 63 dias atrás (risco elevado / cobrança jurídica)">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold">+60 Dias</span>
+                     data-tooltip="Faixa +60 Dias|Títulos vencidos há mais de 63 dias atrás (risco elevado / encaminhamento para assessoria de cobrança jurídica).">
+                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
+                        +60 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
+                    </span>
                     <span class="font-black text-rose-700" id="pizza-90d">R$ 0</span>
                     <span class="text-[0.65rem] text-slate-400 block" id="pizza-90d-perc">0%</span>
                 </div>
@@ -394,6 +421,18 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+</div>
+
+<!-- =================================================== -->
+<!-- TOOLTIP MODERNO FLUTUANTE (RICH HOVER POPOVER DASH) -->
+<!-- =================================================== -->
+<div id="modernTooltipDash" class="pointer-events-none fixed z-[9999] hidden max-w-xs rounded-2xl bg-slate-900/95 p-3.5 text-xs text-white shadow-2xl backdrop-blur-md border border-slate-700/60 transition-opacity duration-150">
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+        <span id="tooltipDashBadge" class="text-[9px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/90 px-2 py-0.5 rounded-md border border-emerald-700/50">INDICADOR</span>
+        <i class="fa-solid fa-circle-info text-[10px] text-slate-400"></i>
+    </div>
+    <div id="tooltipDashTitle" class="font-black text-white text-xs mb-1">Título do Indicador</div>
+    <div id="tooltipDashDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed whitespace-pre-line">Explicação do item ao passar o mouse.</div>
 </div>
 
 <script src="<?= $appBase ?>/portal/assets/js/analise-carteira.js?v=<?= $jsVersion ?>"></script>
