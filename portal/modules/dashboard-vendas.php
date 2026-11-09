@@ -952,50 +952,110 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="p-5 space-y-4">
-                <!-- 4 Cards de Faixas de Inatividade (Clicáveis para filtrar) -->
+                <!-- 4 Cards de Faixas de Inatividade (Clicáveis para filtrar e dinâmicos ao passar o mouse) -->
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div @click="alternarFaixaRisco('30_45')"
-                         :class="filtroRiscoFaixa === '30_45' ? 'ring-2 ring-amber-500 bg-amber-50' : 'bg-slate-50 hover:bg-amber-50/40'"
-                         class="p-3.5 rounded-xl border border-amber-200/80 cursor-pointer transition-all">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-extrabold text-amber-800 uppercase">⚠️ Alerta Inicial (30 a 45 dias)</span>
-                            <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-black" x-text="(resumoRisco.faixas?.['30_45']?.clientes || 0) + ' cli'"></span>
+                         :title="tooltipFaixaRisco('30_45')"
+                         :class="filtroRiscoFaixa === '30_45' ? 'ring-2 ring-amber-500 bg-amber-50 shadow-sm' : 'bg-slate-50 hover:bg-amber-50/50 hover:shadow-md hover:-translate-y-0.5'"
+                         class="p-3.5 rounded-xl border border-amber-200/80 cursor-pointer transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-amber-800 uppercase flex items-center gap-1">
+                                    <span>⚠️ Alerta Inicial</span>
+                                    <span class="text-[9.5px] font-semibold text-amber-600">(30-45d)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-black"
+                                      x-text="dadosFaixaRisco('30_45').clientes + ' cli'"></span>
+                            </div>
+                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('30_45').valor)"></p>
+                            <p class="text-[11px] font-bold text-amber-700 mt-0.5">
+                                <i class="fa-solid fa-weight-hanging mr-1"></i>
+                                <span x-text="formatPeso(dadosFaixaRisco('30_45').peso) + ' hist.'"></span>
+                            </p>
                         </div>
-                        <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(resumoRisco.faixas?.['30_45']?.valor || 0)"></p>
-                        <p class="text-[11px] font-bold text-amber-700 mt-0.5"><i class="fa-solid fa-weight-hanging mr-1"></i><span x-text="formatPeso(resumoRisco.faixas?.['30_45']?.peso || 0) + ' histórico'"></span></p>
+                        <div class="mt-2 pt-1.5 border-t border-amber-200/60 flex items-center justify-between text-[9.5px]">
+                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('30_45').ticketMedio)"></strong></span>
+                            <span :class="filtroRiscoFaixa === '30_45' ? 'text-amber-700 font-extrabold' : 'text-slate-400 group-hover:text-amber-700 font-semibold'"
+                                  x-text="filtroRiscoFaixa === '30_45' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
+                        </div>
                     </div>
 
                     <div @click="alternarFaixaRisco('46_60')"
-                         :class="filtroRiscoFaixa === '46_60' ? 'ring-2 ring-orange-500 bg-orange-50' : 'bg-slate-50 hover:bg-orange-50/40'"
-                         class="p-3.5 rounded-xl border border-orange-200/80 cursor-pointer transition-all">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-extrabold text-orange-800 uppercase">🔶 Atenção (46 a 60 dias)</span>
-                            <span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-black" x-text="(resumoRisco.faixas?.['46_60']?.clientes || 0) + ' cli'"></span>
+                         :title="tooltipFaixaRisco('46_60')"
+                         :class="filtroRiscoFaixa === '46_60' ? 'ring-2 ring-orange-500 bg-orange-50 shadow-sm' : 'bg-slate-50 hover:bg-orange-50/50 hover:shadow-md hover:-translate-y-0.5'"
+                         class="p-3.5 rounded-xl border border-orange-200/80 cursor-pointer transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-orange-800 uppercase flex items-center gap-1">
+                                    <span>🔶 Atenção</span>
+                                    <span class="text-[9.5px] font-semibold text-orange-600">(46-60d)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-black"
+                                      x-text="dadosFaixaRisco('46_60').clientes + ' cli'"></span>
+                            </div>
+                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('46_60').valor)"></p>
+                            <p class="text-[11px] font-bold text-orange-700 mt-0.5">
+                                <i class="fa-solid fa-weight-hanging mr-1"></i>
+                                <span x-text="formatPeso(dadosFaixaRisco('46_60').peso) + ' hist.'"></span>
+                            </p>
                         </div>
-                        <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(resumoRisco.faixas?.['46_60']?.valor || 0)"></p>
-                        <p class="text-[11px] font-bold text-orange-700 mt-0.5"><i class="fa-solid fa-weight-hanging mr-1"></i><span x-text="formatPeso(resumoRisco.faixas?.['46_60']?.peso || 0) + ' histórico'"></span></p>
+                        <div class="mt-2 pt-1.5 border-t border-orange-200/60 flex items-center justify-between text-[9.5px]">
+                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('46_60').ticketMedio)"></strong></span>
+                            <span :class="filtroRiscoFaixa === '46_60' ? 'text-orange-700 font-extrabold' : 'text-slate-400 group-hover:text-orange-700 font-semibold'"
+                                  x-text="filtroRiscoFaixa === '46_60' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
+                        </div>
                     </div>
 
                     <div @click="alternarFaixaRisco('61_90')"
-                         :class="filtroRiscoFaixa === '61_90' ? 'ring-2 ring-rose-500 bg-rose-50' : 'bg-slate-50 hover:bg-rose-50/40'"
-                         class="p-3.5 rounded-xl border border-rose-200/80 cursor-pointer transition-all">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-extrabold text-rose-800 uppercase">🚨 Risco Elevado (61 a 90 dias)</span>
-                            <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-black" x-text="(resumoRisco.faixas?.['61_90']?.clientes || 0) + ' cli'"></span>
+                         :title="tooltipFaixaRisco('61_90')"
+                         :class="filtroRiscoFaixa === '61_90' ? 'ring-2 ring-rose-500 bg-rose-50 shadow-sm' : 'bg-slate-50 hover:bg-rose-50/50 hover:shadow-md hover:-translate-y-0.5'"
+                         class="p-3.5 rounded-xl border border-rose-200/80 cursor-pointer transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-rose-800 uppercase flex items-center gap-1">
+                                    <span>🚨 Risco Elevado</span>
+                                    <span class="text-[9.5px] font-semibold text-rose-600">(61-90d)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-black"
+                                      x-text="dadosFaixaRisco('61_90').clientes + ' cli'"></span>
+                            </div>
+                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('61_90').valor)"></p>
+                            <p class="text-[11px] font-bold text-rose-700 mt-0.5">
+                                <i class="fa-solid fa-weight-hanging mr-1"></i>
+                                <span x-text="formatPeso(dadosFaixaRisco('61_90').peso) + ' hist.'"></span>
+                            </p>
                         </div>
-                        <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(resumoRisco.faixas?.['61_90']?.valor || 0)"></p>
-                        <p class="text-[11px] font-bold text-rose-700 mt-0.5"><i class="fa-solid fa-weight-hanging mr-1"></i><span x-text="formatPeso(resumoRisco.faixas?.['61_90']?.peso || 0) + ' histórico'"></span></p>
+                        <div class="mt-2 pt-1.5 border-t border-rose-200/60 flex items-center justify-between text-[9.5px]">
+                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('61_90').ticketMedio)"></strong></span>
+                            <span :class="filtroRiscoFaixa === '61_90' ? 'text-rose-700 font-extrabold' : 'text-slate-400 group-hover:text-rose-700 font-semibold'"
+                                  x-text="filtroRiscoFaixa === '61_90' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
+                        </div>
                     </div>
 
                     <div @click="alternarFaixaRisco('90_mais')"
-                         :class="filtroRiscoFaixa === '90_mais' ? 'ring-2 ring-red-700 bg-red-50' : 'bg-slate-50 hover:bg-red-50/40'"
-                         class="p-3.5 rounded-xl border border-red-200/80 cursor-pointer transition-all">
-                        <div class="flex items-center justify-between">
-                            <span class="text-[11px] font-extrabold text-red-900 uppercase">🛑 Inativos Críticos (+90 dias)</span>
-                            <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-900 text-xs font-black" x-text="(resumoRisco.faixas?.['90_mais']?.clientes || 0) + ' cli'"></span>
+                         :title="tooltipFaixaRisco('90_mais')"
+                         :class="filtroRiscoFaixa === '90_mais' ? 'ring-2 ring-red-700 bg-red-50 shadow-sm' : 'bg-slate-50 hover:bg-red-50/50 hover:shadow-md hover:-translate-y-0.5'"
+                         class="p-3.5 rounded-xl border border-red-200/80 cursor-pointer transition-all flex flex-col justify-between group">
+                        <div>
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-extrabold text-red-900 uppercase flex items-center gap-1">
+                                    <span>🛑 Inativos Críticos</span>
+                                    <span class="text-[9.5px] font-semibold text-red-700">(+90d)</span>
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-900 text-xs font-black"
+                                      x-text="dadosFaixaRisco('90_mais').clientes + ' cli'"></span>
+                            </div>
+                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('90_mais').valor)"></p>
+                            <p class="text-[11px] font-bold text-red-700 mt-0.5">
+                                <i class="fa-solid fa-weight-hanging mr-1"></i>
+                                <span x-text="formatPeso(dadosFaixaRisco('90_mais').peso) + ' hist.'"></span>
+                            </p>
                         </div>
-                        <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(resumoRisco.faixas?.['90_mais']?.valor || 0)"></p>
-                        <p class="text-[11px] font-bold text-red-700 mt-0.5"><i class="fa-solid fa-weight-hanging mr-1"></i><span x-text="formatPeso(resumoRisco.faixas?.['90_mais']?.peso || 0) + ' histórico'"></span></p>
+                        <div class="mt-2 pt-1.5 border-t border-red-200/60 flex items-center justify-between text-[9.5px]">
+                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('90_mais').ticketMedio)"></strong></span>
+                            <span :class="filtroRiscoFaixa === '90_mais' ? 'text-red-800 font-extrabold' : 'text-slate-400 group-hover:text-red-700 font-semibold'"
+                                  x-text="filtroRiscoFaixa === '90_mais' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
+                        </div>
                     </div>
                 </div>
 
@@ -1811,6 +1871,53 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
             <div class="p-6 overflow-y-auto max-h-[calc(92vh-80px)] space-y-4">
+                <!-- 4 Cards de Faixas de Inatividade no Modal -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                    <div @click="alternarFaixaRisco('30_45')"
+                         :title="tooltipFaixaRisco('30_45')"
+                         :class="filtroRiscoFaixa === '30_45' ? 'ring-2 ring-amber-500 bg-amber-50' : 'bg-slate-50 hover:bg-amber-50/40'"
+                         class="p-2.5 rounded-xl border border-amber-200 cursor-pointer transition-all flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-bold text-amber-800 uppercase">⚠️ 30 a 45 dias</p>
+                            <p class="text-xs font-black text-slate-800 mt-0.5" x-text="formatMoney(dadosFaixaRisco('30_45').valor)"></p>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-black" x-text="dadosFaixaRisco('30_45').clientes + ' cli'"></span>
+                    </div>
+
+                    <div @click="alternarFaixaRisco('46_60')"
+                         :title="tooltipFaixaRisco('46_60')"
+                         :class="filtroRiscoFaixa === '46_60' ? 'ring-2 ring-orange-500 bg-orange-50' : 'bg-slate-50 hover:bg-orange-50/40'"
+                         class="p-2.5 rounded-xl border border-orange-200 cursor-pointer transition-all flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-bold text-orange-800 uppercase">🔶 46 a 60 dias</p>
+                            <p class="text-xs font-black text-slate-800 mt-0.5" x-text="formatMoney(dadosFaixaRisco('46_60').valor)"></p>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-[10px] font-black" x-text="dadosFaixaRisco('46_60').clientes + ' cli'"></span>
+                    </div>
+
+                    <div @click="alternarFaixaRisco('61_90')"
+                         :title="tooltipFaixaRisco('61_90')"
+                         :class="filtroRiscoFaixa === '61_90' ? 'ring-2 ring-rose-500 bg-rose-50' : 'bg-slate-50 hover:bg-rose-50/40'"
+                         class="p-2.5 rounded-xl border border-rose-200 cursor-pointer transition-all flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-bold text-rose-800 uppercase">🚨 61 a 90 dias</p>
+                            <p class="text-xs font-black text-slate-800 mt-0.5" x-text="formatMoney(dadosFaixaRisco('61_90').valor)"></p>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[10px] font-black" x-text="dadosFaixaRisco('61_90').clientes + ' cli'"></span>
+                    </div>
+
+                    <div @click="alternarFaixaRisco('90_mais')"
+                         :title="tooltipFaixaRisco('90_mais')"
+                         :class="filtroRiscoFaixa === '90_mais' ? 'ring-2 ring-red-700 bg-red-50' : 'bg-slate-50 hover:bg-red-50/40'"
+                         class="p-2.5 rounded-xl border border-red-200 cursor-pointer transition-all flex items-center justify-between">
+                        <div>
+                            <p class="text-[10px] font-bold text-red-900 uppercase">🛑 +90 dias</p>
+                            <p class="text-xs font-black text-slate-800 mt-0.5" x-text="formatMoney(dadosFaixaRisco('90_mais').valor)"></p>
+                        </div>
+                        <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-900 text-[10px] font-black" x-text="dadosFaixaRisco('90_mais').clientes + ' cli'"></span>
+                    </div>
+                </div>
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     <div>
                         <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Representante</label>

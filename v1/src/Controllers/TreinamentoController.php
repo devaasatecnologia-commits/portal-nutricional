@@ -170,14 +170,18 @@ class TreinamentoController
             $auth = $this->resolverPermissoesUsuario($request, $db);
             $slug = trim($args['slug'] ?? '');
 
-            // Trata aliases conhecidos e normaliza underscore para hífen
-            $slugNorm = str_replace('_', '-', $slug);
-            $slugBusca = array_values(array_unique([$slug, $slugNorm]));
-            if (in_array('transferencia-compra', $slugBusca, true)) {
+            // Trata aliases conhecidos e normaliza underscore para hífen e vice-versa
+            $slugHifen = str_replace('_', '-', $slug);
+            $slugUnder = str_replace('-', '_', $slug);
+            $slugBusca = array_values(array_unique([$slug, $slugHifen, $slugUnder]));
+            if (in_array('transferencia-compra', $slugBusca, true) || in_array('transferencia_compra', $slugBusca, true)) {
                 $slugBusca[] = 'transferencia-matriz-filial';
-            } elseif (in_array('transferencia-matriz-filial', $slugBusca, true)) {
+                $slugBusca[] = 'transferencia_matriz_filial';
+            } elseif (in_array('transferencia-matriz-filial', $slugBusca, true) || in_array('transferencia_matriz_filial', $slugBusca, true)) {
                 $slugBusca[] = 'transferencia-compra';
+                $slugBusca[] = 'transferencia_compra';
             }
+            $slugBusca = array_values(array_unique($slugBusca));
 
             // Se NÃO for admin, verifica se o usuário tem permissão para este slug
             if (!$auth['isAdmin']) {

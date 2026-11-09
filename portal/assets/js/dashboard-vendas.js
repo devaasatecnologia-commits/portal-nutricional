@@ -507,7 +507,7 @@ function dashboardVendasHandler() {
         },
 
         // ======================================================================
-        // GRÁFICOS AVANÇADOS (EVOLUÇÃO MULTIMÉTRICA + 6 REGIÕES UNIFICADAS)
+        // GRÁFICOS AVANÇADOS (EVOLUÇÃO MULTIMÉTRICA + MACRO-REGIÕES OFICIAIS)
         // ======================================================================
         destruirGrafico(nome) {
             if (this[nome]) {
@@ -1022,10 +1022,9 @@ function dashboardVendasHandler() {
             return Array.from(mapa.values()).sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
         },
 
-        clientesRiscoFiltrados() {
+        clientesRiscoBase() {
             const repFiltro = String(this.filtroRiscoRep || '').trim();
             const regFiltro = String(this.filtroRiscoRegiao || '').trim().toUpperCase();
-            const faixaFiltro = String(this.filtroRiscoFaixa || '').trim();
             const q = (this.buscaRiscoCliente || '').trim().toLowerCase();
 
             return (this.clientesRisco || []).filter(c => {
@@ -1037,13 +1036,70 @@ function dashboardVendasHandler() {
                 if (regFiltro && String(c.regiao || '').toUpperCase() !== regFiltro) {
                     return false;
                 }
-                if (faixaFiltro && String(c.faixa || '') !== faixaFiltro) {
-                    return false;
-                }
                 if (!q) return true;
                 const texto = `${c.id || ''} ${c.nome || ''} ${c.representante || ''} ${c.cidade_uf || ''} ${c.regiao || ''} ${c.ultima_fmt || ''}`.toLowerCase();
                 return texto.includes(q);
             });
+        },
+
+        clientesRiscoFiltrados() {
+            const base = this.clientesRiscoBase();
+            const faixaFiltro = String(this.filtroRiscoFaixa || '').trim();
+            if (!faixaFiltro) return base;
+            return base.filter(c => c.faixa === faixaFiltro);
+        },
+
+        dadosFaixaRisco(faixaKey) {
+            const base = this.clientesRiscoBase();
+            let qtd = 0, valor = 0, peso = 0, nfs = 0;
+            for (const c of base) {
+                if (c.faixa === faixaKey) {
+                    qtd++;
+                    valor += parseFloat(c.valor_historico || 0);
+                    peso += parseFloat(c.peso_historico || 0);
+                    nfs += parseInt(c.compras_anteriores || 0, 10);
+                }
+            }
+            const totalGeral = this.resumoRisco.faixas?.[faixaKey]?.clientes || 0;
+            const ticketMedio = qtd > 0 ? (valor / qtd) : 0;
+            return {
+                clientes: qtd,
+                totalGeral,
+                valor,
+                peso,
+                nfs,
+                ticketMedio
+            };
+        },
+
+        tooltipFaixaRisco(faixaKey) {
+            const d = this.dadosFaixaRisco(faixaKey);
+            const titulos = {
+                '30_45': '⚠️ ALERTA INICIAL (30 a 45 dias sem compras)',
+                '46_60': '🔶 ATENÇÃO (46 a 60 dias sem compras)',
+                '61_90': '🚨 RISCO ELEVADO (61 a 90 dias sem compras)',
+                '90_mais': '🛑 INATIVOS CRÍTICOS (+90 dias sem compras)'
+            };
+            const acoes = {
+                '30_45': 'Ação Preventiva: Contato de rotina para reposição de estoque antes de esfriar a conta.',
+                '46_60': 'Ação Comercial: Oferta direcionada e verificação de giro/estoque do cliente.',
+                '61_90': 'Ação Crítica: Risco iminente de perda. Visita presencial do representante.',
+                '90_mais': 'Recuperação de Carteira: Diagnóstico de motivo de parada e condição especial de reativação.'
+            };
+
+            const linhas = [
+                titulos[faixaKey] || 'Faixa de Inatividade',
+                '',
+                `• Clientes no Filtro: ${d.clientes} cli${d.totalGeral !== d.clientes ? ` (de ${d.totalGeral} totais no escopo)` : ''}`,
+                `• Faturamento Histórico (12m): ${this.formatMoney(d.valor)}`,
+                `• Volume Físico Histórico: ${this.formatPeso(d.peso)} (${d.nfs} NFs emitidas)`,
+                `• Ticket Médio por Cliente: ${this.formatMoney(d.ticketMedio)}`,
+                '',
+                acoes[faixaKey] || '',
+                '',
+                this.filtroRiscoFaixa === faixaKey ? '👉 [Filtro Ativo] Clique para remover o filtro e ver todas as faixas.' : '👉 Clique para filtrar a tabela apenas por esta faixa.'
+            ];
+            return linhas.join('\n');
         },
 
         resumoRiscoFiltrado() {
@@ -1238,7 +1294,7 @@ function dashboardVendasHandler() {
             return /[";\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
         },
 
-        /** Exporta o Fechamento e Projeção Completa (Global + Por Representante + 6 Regiões + Histórico) */
+        /** Exporta o Fechamento e Projeção Completa (Global + Por Representante + Macro-Regiões + Histórico) */
         exportarProjecaoExcel() {
             const pf = this.projecaoFechamento || {};
             if (!pf.carregado) {
@@ -1290,7 +1346,7 @@ function dashboardVendasHandler() {
             }
             add();
 
-            add('3. DESDOBRAMENTO DE PROJEÇÃO PELAS 6 REGIÕES UNIFICADAS');
+            add('3. DESDOBRAMENTO DE PROJEÇÃO POR MACRO-REGIÃO');
             add('Sigla Região', 'Nome da Região', 'Realizado (R$)', 'Peso Realizado (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes', 'Média/Dia Útil (R$)', 'Projeção Fechamento (R$)', 'Peso Projetado (Kg)', '% Participação');
             for (const rg of (pf.por_regiao || [])) {
                 add(
@@ -1340,7 +1396,7 @@ function dashboardVendasHandler() {
             const add = (...c) => linhas.push(c.map(v => this._escCsv(v)).join(';'));
 
             add('INTELIGÊNCIA DE RECOMPRA — CLIENTES ATIVOS SEM COMPRAS (+30 DIAS)');
-            add('Filtro Representante', this.filtroRiscoRep || 'Todos', 'Filtro Região', this.filtroRiscoRegiao || 'Todas (6 Regiões)', 'Filtro Faixa', this.filtroRiscoFaixa || 'Todas');
+            add('Filtro Representante', this.filtroRiscoRep || 'Todos', 'Filtro Região', this.filtroRiscoRegiao || 'Todas as Regiões', 'Filtro Faixa', this.filtroRiscoFaixa || 'Todas');
             add('Total Clientes Exportados', lista.length);
             add();
             add('Código Cliente', 'Cliente', 'Representante', 'Região Unificada', 'Cidade/UF', 'Última Compra', 'Dias Sem Comprar', 'Faixa Inatividade', 'NFs Históricas (12m)', 'Peso Histórico (Kg)', 'Quantidade Histórica (Un)', 'Faturamento Histórico (R$)', 'Ticket Médio Histórico (R$)');
@@ -1403,7 +1459,7 @@ function dashboardVendasHandler() {
             this._baixarCsv(`rastreio-${slug}_${this.filters.data_inicio}_${this.filters.data_fim}.csv`, linhas);
         },
 
-        /** Exporta o Dashboard Completo (KPIs, Evolução, Top 10, 6 Regiões, Projeção e Clientes Sem Compras) */
+        /** Exporta o Dashboard Completo (KPIs, Evolução, Top 10, Macro-Regiões, Projeção e Clientes Sem Compras) */
         exportarDados() {
             if (this.loading) {
                 this.showToast('Aguarde o carregamento dos dados.', 'info');
@@ -1428,7 +1484,7 @@ function dashboardVendasHandler() {
             add('Positivação da Carteira (%)', k.positivacao.percentual + '%', '', '', `${k.positivacao.positivados} de ${k.positivacao.base} clientes`);
             add();
 
-            add('DISTRIBUIÇÃO PELAS 6 REGIÕES UNIFICADAS', 'Nome', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes', '% Participação');
+            add('DISTRIBUIÇÃO POR MACRO-REGIÕES DO ESCOPO', 'Nome', 'Faturamento (R$)', 'Peso Líquido (Kg)', 'Quantidade (Un)', 'NFs', 'Clientes', '% Participação');
             this.distribuicaoRegiao.forEach(r => add(r.regiao, r.nome, r.valor, r.peso, r.quantidade, r.notas, r.clientes, r.participacao));
             add();
 
