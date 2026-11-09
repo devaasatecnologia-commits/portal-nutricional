@@ -589,9 +589,6 @@ async function carregarMetasMktAdmin() {
             </div>`;
     }
 }
-            </div>`;
-    }
-}
 
 function filtrarCardsMktLocalmente() {
     const q = (document.getElementById('filtro-mkt-busca').value || '').toLowerCase();
