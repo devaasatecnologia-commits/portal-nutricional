@@ -65,8 +65,13 @@ $currentPage = basename($_SERVER['PHP_SELF']);
         </a>
 
         <a href="metas-financeiro.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'metas-financeiro.php' ? 'active' : '' ?>">
-            <i class="fa-solid fa-bullseye w-5 text-center text-amber-400"></i>
+            <i class="fa-solid fa-scale-balanced w-5 text-center text-amber-400"></i>
             <span>Metas do Financeiro</span>
+        </a>
+
+        <a href="metas-marketing.php" class="sidebar-link-admin flex items-center gap-3 px-6 py-3 text-sm font-semibold text-white/70 hover:text-white hover:bg-white/5 transition-all <?= $currentPage == 'metas-marketing.php' ? 'active' : '' ?>">
+            <i class="fa-solid fa-bullseye w-5 text-center text-emerald-400"></i>
+            <span>Metas do Marketing</span>
         </a>
 
         <div class="px-4 mt-6 mb-3">

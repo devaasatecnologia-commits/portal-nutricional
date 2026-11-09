@@ -55,7 +55,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <a href="/portal/modules/admin/metas-financeiro.php" class="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition flex items-center gap-1.5 no-underline shadow-xs" title="Administrar Metas do Financeiro">
+            <a href="/portal/modules/admin/metas-financeiro.php" id="btn-gerenciar-metas" style="display: none;" class="hidden px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-800 border border-amber-300 rounded-xl text-xs font-black transition items-center gap-1.5 no-underline shadow-xs" title="Administrar Metas do Financeiro (Restrito a Administradores)">
                 <i class="fa-solid fa-bullseye text-amber-600"></i>
                 <span>GERENCIAR METAS</span>
             </a>

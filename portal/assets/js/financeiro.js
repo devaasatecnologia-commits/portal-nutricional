@@ -59,11 +59,33 @@ const app = {
         this.histDataFim = '';
         const dayEl = document.getElementById('hist-day');
         if (dayEl) dayEl.value = 'todos';
+        this.verificarPermissaoAdmin();
         this.updateBreadcrumb();
         await this.loadUsersList();
         await this.load();
         this.loadMetasProgresso();
         this.loadHistory();
+    },
+
+    verificarPermissaoAdmin() {
+        try {
+            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            const perms = userData.permissoes || [];
+            const uid = Number(userData.uid || userData.idusuario || 0);
+            const isAdmin = perms.includes('admin') || perms.includes('financeiro-admin') || userData.nivel === 'admin' || userData.is_admin === true || userData.role === 'admin' || uid === 4;
+            const btn = document.getElementById('btn-gerenciar-metas');
+            if (btn) {
+                if (isAdmin) {
+                    btn.classList.remove('hidden');
+                    btn.style.display = 'inline-flex';
+                } else {
+                    btn.classList.add('hidden');
+                    btn.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            console.warn('Erro ao verificar permissao admin:', e);
+        }
     },
 
     async api(endpoint, body) {
@@ -526,12 +548,17 @@ async loadMetasProgresso() {
         const res = await this.api('metas/progresso', { idfilial: filialId });
         const metas = (res && res.metas) ? res.metas : [];
         if (!metas.length) {
+            const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+            const perms = userData.permissoes || [];
+            const uid = Number(userData.uid || userData.idusuario || 0);
+            const isAdmin = perms.includes('admin') || perms.includes('financeiro-admin') || userData.nivel === 'admin' || userData.is_admin === true || userData.role === 'admin' || uid === 4;
             grid.innerHTML = `
                 <div class="col-span-full py-4 px-4 text-center text-xs text-slate-400 bg-white rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                     <span>Nenhuma meta financeira ativa configurada para esta filial.</span>
+                    ${isAdmin ? `
                     <a href="/portal/modules/admin/metas-financeiro.php" class="px-3 py-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 rounded-lg font-bold text-xs no-underline transition">
                         + Criar Meta
-                    </a>
+                    </a>` : ''}
                 </div>`;
             return;
         }

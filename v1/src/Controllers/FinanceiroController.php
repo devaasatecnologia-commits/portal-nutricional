@@ -829,7 +829,7 @@ class FinanceiroController
             $input = $this->input($request);
             $idfilial = (int)($input['idfilial'] ?? 0);
 
-            // Carrega metas ativas
+            // Carrega metas ativas e vigentes na data corrente
             $sqlMetas = "SELECT m.*,
                                 CASE
                                      WHEN m.idfilial = 0 THEN 'Todas as Filiais'
@@ -838,6 +838,8 @@ class FinanceiroController
                            FROM fin_metas m
                            LEFT JOIN filial f ON f.idfilial = m.idfilial
                           WHERE m.status = 'ativa'
+                            AND (m.data_inicio IS NULL OR CURRENT_DATE >= m.data_inicio)
+                            AND (m.data_fim IS NULL OR CURRENT_DATE <= m.data_fim)
                             AND (:filial = 0 OR m.idfilial = :filial OR m.idfilial = 0)
                           ORDER BY m.idfilial DESC, m.id ASC";
             $stMetas = $this->pdo->prepare($sqlMetas);

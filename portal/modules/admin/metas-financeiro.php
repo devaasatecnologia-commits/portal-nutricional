@@ -23,6 +23,16 @@ require_once __DIR__ . '/components/sidebar.php';
 
 <div class="modulo-container max-w-full mx-auto px-4 lg:px-6 py-4" id="appMetasFin">
 
+    <!-- Hub Superior de Governança de Metas -->
+    <div class="flex items-center gap-2 mb-4 bg-slate-200/70 p-1.5 rounded-2xl w-fit text-xs font-black">
+        <a href="metas-financeiro.php" class="px-4 py-2 bg-white text-slate-800 rounded-xl shadow-xs transition flex items-center gap-2 no-underline border border-slate-200">
+            <i class="fa-solid fa-scale-balanced text-amber-500"></i> Metas do Financeiro
+        </a>
+        <a href="metas-marketing.php" class="px-4 py-2 text-slate-600 hover:text-slate-900 rounded-xl transition flex items-center gap-2 no-underline">
+            <i class="fa-solid fa-bullseye text-emerald-500"></i> Metas do Marketing
+        </a>
+    </div>
+
     <!-- Header Desktop -->
     <div class="glass rounded-3xl p-5 mb-6 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shadow-sm bg-white">
         <div class="flex items-center gap-3">
@@ -47,9 +57,9 @@ require_once __DIR__ . '/components/sidebar.php';
         </div>
     </div>
 
-    <!-- Cards de Resumo -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
-        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+    <!-- Cards de Resumo (Clicáveis) -->
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-4">
+        <div onclick="selecionarAbaStatus('todas')" class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-slate-300 transition-all">
             <div>
                 <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Total de Metas</span>
                 <span class="text-2xl font-black text-slate-800" id="card-total-metas">0</span>
@@ -58,16 +68,16 @@ require_once __DIR__ . '/components/sidebar.php';
                 <i class="fa-solid fa-list-check"></i>
             </div>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div onclick="selecionarAbaStatus('ativa')" class="bg-white p-4 rounded-2xl border border-emerald-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-emerald-300 hover:shadow-md transition-all">
             <div>
-                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Metas Ativas</span>
+                <span class="text-[10px] uppercase font-bold text-emerald-600 block mb-0.5">Metas Ativas (Foco)</span>
                 <span class="text-2xl font-black text-emerald-600" id="card-ativas-metas">0</span>
             </div>
             <div class="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
                 <i class="fa-solid fa-circle-check"></i>
             </div>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div onclick="filtrarPorIndicador('iag')" class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-amber-300 transition-all">
             <div>
                 <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">IAG & IAP (Inadimplência)</span>
                 <span class="text-2xl font-black text-amber-600" id="card-inadimp-metas">0</span>
@@ -76,7 +86,7 @@ require_once __DIR__ . '/components/sidebar.php';
                 <i class="fa-solid fa-triangle-exclamation"></i>
             </div>
         </div>
-        <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+        <div onclick="filtrarPorIndicador('recuperacao')" class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between cursor-pointer hover:border-sky-300 transition-all">
             <div>
                 <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Recuperação de Crédito</span>
                 <span class="text-2xl font-black text-sky-600" id="card-recup-metas">0</span>
@@ -87,18 +97,47 @@ require_once __DIR__ . '/components/sidebar.php';
         </div>
     </div>
 
-    <!-- Barra de Filtros -->
-    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6 flex flex-wrap items-center gap-3">
-        <div class="w-full sm:w-44">
-            <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Status</label>
-            <select id="filtro-status" onchange="carregarMetasAdmin()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
-                <option value="todas">Todos os Status</option>
-                <option value="ativa" selected>✅ Ativas</option>
-                <option value="pausada">⏸️ Pausadas</option>
-                <option value="concluida">🏁 Concluídas</option>
-                <option value="cancelada">❌ Canceladas</option>
-            </select>
+    <!-- Pílulas de Status Rápidas (Foco Imediato nas Ativas) -->
+    <div class="bg-white p-3 rounded-2xl border border-slate-100 shadow-sm mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center gap-1.5 flex-wrap">
+            <span class="text-[10px] font-black uppercase text-slate-400 mr-2 tracking-wider">Filtro de Visão:</span>
+            <button type="button" onclick="selecionarAbaStatus('ativa')" id="btn-aba-ativa"
+                    class="aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-emerald-600 text-white shadow-xs flex items-center gap-1.5">
+                <i class="fa-solid fa-circle-check"></i>
+                <span>Metas Ativas</span>
+                <span class="px-1.5 py-0.2 bg-white/20 rounded-md text-[10px]" id="badge-aba-ativas">0</span>
+            </button>
+            <button type="button" onclick="selecionarAbaStatus('pausada')" id="btn-aba-pausada"
+                    class="aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-pause"></i>
+                <span>Pausadas</span>
+                <span class="px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded-md text-[10px]" id="badge-aba-pausadas">0</span>
+            </button>
+            <button type="button" onclick="selecionarAbaStatus('concluida')" id="btn-aba-concluida"
+                    class="aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-flag-checkered"></i>
+                <span>Concluídas</span>
+                <span class="px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded-md text-[10px]" id="badge-aba-concluidas">0</span>
+            </button>
+            <button type="button" onclick="selecionarAbaStatus('todas')" id="btn-aba-todas"
+                    class="aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5">
+                <i class="fa-solid fa-layer-group"></i>
+                <span>Todas</span>
+                <span class="px-1.5 py-0.2 bg-slate-200 text-slate-700 rounded-md text-[10px]" id="badge-aba-todas">0</span>
+            </button>
         </div>
+
+        <div class="flex items-center gap-2">
+            <span class="text-[11px] text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 font-bold flex items-center gap-1.5" id="banner-foco-ativas">
+                <i class="fa-solid fa-bolt text-emerald-600"></i> Exibindo apenas metas ativas em vigência
+            </span>
+        </div>
+    </div>
+
+    <!-- Barra de Filtros Complementares -->
+    <div class="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm mb-6 flex flex-wrap items-center gap-3">
+        <input type="hidden" id="filtro-status" value="ativa">
+
         <div class="w-full sm:w-56">
             <label class="block text-[10px] font-bold text-slate-400 uppercase mb-1">Tipo de Indicador</label>
             <select id="filtro-tipo" onchange="carregarMetasAdmin()" class="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700">
@@ -269,7 +308,23 @@ require_once __DIR__ . '/components/sidebar.php';
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
+// Verificação de permissão administrativa defensiva
+(function() {
+    try {
+        const u = JSON.parse(localStorage.getItem('userData') || '{}');
+        const perms = u.permissoes || [];
+        const uid = Number(u.uid || u.idusuario || 0);
+        const isAdm = perms.includes('admin') || perms.includes('financeiro-admin') || u.nivel === 'admin' || u.is_admin === true || u.role === 'admin' || uid === 4;
+        if (!isAdm) {
+            window.location.replace('/portal/modules/financeiro.php');
+        }
+    } catch (e) {
+        window.location.replace('/portal/modules/financeiro.php');
+    }
+})();
+
 let listaMetasGlobal = [];
+let contagemStatus = { todas: 0, ativa: 0, pausada: 0, concluida: 0 };
 
 // Helper robusto de requisições compatível com a estrutura de Admin (apiFetch / token)
 async function apiFinFetch(endpoint, method = 'GET', body = null) {
@@ -302,6 +357,48 @@ async function apiFinFetch(endpoint, method = 'GET', body = null) {
     }
 }
 
+function selecionarAbaStatus(status) {
+    document.getElementById('filtro-status').value = status;
+
+    const botoes = {
+        'ativa': document.getElementById('btn-aba-ativa'),
+        'pausada': document.getElementById('btn-aba-pausada'),
+        'concluida': document.getElementById('btn-aba-concluida'),
+        'todas': document.getElementById('btn-aba-todas')
+    };
+
+    Object.keys(botoes).forEach(k => {
+        const el = botoes[k];
+        if (!el) return;
+        if (k === status) {
+            el.className = 'aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-emerald-600 text-white shadow-xs flex items-center gap-1.5';
+        } else {
+            el.className = 'aba-status-btn px-3.5 py-1.5 rounded-xl text-xs font-black transition-all bg-slate-100 text-slate-600 hover:bg-slate-200 flex items-center gap-1.5';
+        }
+    });
+
+    const bannerFoco = document.getElementById('banner-foco-ativas');
+    if (bannerFoco) {
+        if (status === 'ativa') {
+            bannerFoco.innerHTML = '<i class="fa-solid fa-bolt text-emerald-600"></i> Exibindo apenas metas ativas em vigência';
+            bannerFoco.className = 'text-[11px] text-emerald-800 bg-emerald-50 px-3 py-1 rounded-xl border border-emerald-200 font-bold flex items-center gap-1.5';
+        } else {
+            bannerFoco.innerHTML = `<i class="fa-solid fa-filter text-slate-500"></i> Filtro: exibindo metas com status '${status}'`;
+            bannerFoco.className = 'text-[11px] text-slate-700 bg-slate-100 px-3 py-1 rounded-xl border border-slate-200 font-bold flex items-center gap-1.5';
+        }
+    }
+
+    carregarMetasAdmin();
+}
+
+function filtrarPorIndicador(tipo) {
+    const elTipo = document.getElementById('filtro-tipo');
+    if (elTipo) {
+        elTipo.value = elTipo.value === tipo ? '' : tipo;
+        carregarMetasAdmin();
+    }
+}
+
 async function carregarMetasAdmin() {
     const container = document.getElementById('metas-container');
     container.innerHTML = `
@@ -314,19 +411,47 @@ async function carregarMetasAdmin() {
     const tipo = document.getElementById('filtro-tipo').value;
 
     try {
+        // Carrega metas com o filtro atual
         const json = await apiFinFetch('/v1/financeiro/metas', 'POST', { status, tipo_indicador: tipo });
         if (json && json.success === false && json.error) {
             throw new Error(json.error);
         }
         listaMetasGlobal = (json && json.data) ? json.data : [];
         renderizarCardsMetas(listaMetasGlobal);
-        atualizarCardsResumo(listaMetasGlobal);
+
+        // Atualiza contadores globais em background
+        atualizarContadoresGlobais();
     } catch (e) {
         container.innerHTML = `
             <div class="col-span-full text-center py-8 text-rose-500 bg-rose-50 border border-rose-200 rounded-2xl">
                 <i class="fa-solid fa-triangle-exclamation text-xl mb-1"></i>
                 <p class="text-xs font-bold">Erro ao carregar metas: ${e.message}</p>
             </div>`;
+    }
+}
+
+async function atualizarContadoresGlobais() {
+    try {
+        const res = await apiFinFetch('/v1/financeiro/metas', 'POST', { status: 'todas', tipo_indicador: '' });
+        const todas = (res && res.data) ? res.data : [];
+
+        const ativas = todas.filter(m => m.status === 'ativa').length;
+        const pausadas = todas.filter(m => m.status === 'pausada').length;
+        const concluidas = todas.filter(m => m.status === 'concluida').length;
+
+        // Atualiza cards de resumo superiores
+        document.getElementById('card-total-metas').textContent = todas.length;
+        document.getElementById('card-ativas-metas').textContent = ativas;
+        document.getElementById('card-inadimp-metas').textContent = todas.filter(m => ['iag', 'iap', 'vencido_60d'].includes(m.tipo_indicador)).length;
+        document.getElementById('card-recup-metas').textContent = todas.filter(m => m.tipo_indicador === 'recuperacao').length;
+
+        // Atualiza badges das abas
+        document.getElementById('badge-aba-ativas').textContent = ativas;
+        document.getElementById('badge-aba-pausadas').textContent = pausadas;
+        document.getElementById('badge-aba-concluidas').textContent = concluidas;
+        document.getElementById('badge-aba-todas').textContent = todas.length;
+    } catch (e) {
+        console.warn('Erro ao atualizar contadores globais:', e);
     }
 }
 

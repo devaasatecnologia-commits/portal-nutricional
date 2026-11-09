@@ -36,13 +36,17 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
   - Retorna `serie` (pontos no tempo), `resumo` (auto soma e médias aritméticas/ponderadas) e `meta` (meta de referência ativa com traço horizontal no Chart.js).
 
 ### C. Telas do Portal & Frontend
-- **Nova Tela Admin:** `portal/modules/admin/metas-financeiro.php` com interface completa para criação, alteração, pausar/ativar e exclusão de metas financeiras. Link adicionado no menu lateral do Admin (`sidebar.php`).
+- **Nova Tela Admin:** `portal/modules/admin/metas-financeiro.php` com interface completa para criação, alteração, pausar/ativar e exclusão de metas financeiras. Foco padrão em **Metas Ativas** com pílulas de status rápidas e cards clicáveis.
+- **Nova Tela Admin Marketing:** `portal/modules/admin/metas-marketing.php` integrando a gestão de metas e alimentação do marketing ao painel administrativo.
+- **Hub Superior de Governança de Metas:** Alternância instantânea entre Metas do Financeiro e Metas do Marketing no topo da área Admin.
+- **Menu Lateral do Admin (`portal/modules/admin/components/sidebar.php`):** Links para `Metas do Financeiro` e `Metas do Marketing`.
+- **Controle de Acesso:** Botão "GERENCIAR METAS" em `portal/modules/financeiro.php` renderizado estritamente para administradores (com guarda defensiva de redirecionamento no Admin).
 - **Dashboard Financeiro (`portal/modules/financeiro.php`):**
-  - Botão de acesso rápido "GERENCIAR METAS" no header.
-  - Seção executiva "METAS FINANCEIRAS DO MÊS / VIGENTES" com barras de progresso e semáforos.
+  - Botão de acesso rápido "GERENCIAR METAS" no header (apenas para Admin).
+  - Seção executiva "METAS CORPORATIVAS ATIVAS & VIGENTES" com barras de progresso e semáforos, filtrando rigorosamente apenas metas ativas no período atual.
   - Nova área "HISTÓRICO & AUDITORIA TEMPORAL (IAG / IAP / RECUPERAÇÃO)" com botões de períodos rápidos, inputs para datas personalizadas e os 6 cards de Auto Soma e Médias Apuradas.
 - **Script Frontend (`portal/assets/js/financeiro.js`):**
-  - Implementados `loadMetasProgresso()`, `setPeriodoHistorico()`, `togglePeriodoPersonalizado()`, `aplicarDatasPersonalizadas()`.
+  - Implementados `verificarPermissaoAdmin()`, `loadMetasProgresso()`, `setPeriodoHistorico()`, `togglePeriodoPersonalizado()`, `aplicarDatasPersonalizadas()`.
   - Chart.js atualizado para desenhar a linha pontilhada da meta corporativa como guia visual direto.
 
 ---
@@ -50,11 +54,13 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 ## 3. Validação Executada
 - `php -l portal/modules/financeiro.php` -> Sintaxe OK.
 - `php -l portal/modules/admin/metas-financeiro.php` -> Sintaxe OK.
+- `php -l portal/modules/admin/metas-marketing.php` -> Sintaxe OK.
+- `php -l portal/modules/admin/components/sidebar.php` -> Sintaxe OK.
 - `php -l v1/src/Controllers/FinanceiroController.php` -> Sintaxe OK.
 - `php -l v1/routes/api.php` -> Sintaxe OK.
 - `node -c portal/assets/js/financeiro.js` -> Sintaxe OK.
-- **Correção de Erro:** Eliminado o erro `fetchWithAuth is not defined` em `portal/modules/admin/metas-financeiro.php`, integrando ao ecossistema nativo do Admin (`apiFetch`/`apiFinFetch`) com token JWT e CSRF compatíveis.
-- Teste integrado de mock com PSR-7: status 200 para todos os novos endpoints e cálculo consistente de auto soma e médias.
+- Banco de Dados: `sistema_manuais` (ID 19) atualizado para Versão 3.1.
+- Documento de Treinamento gerado em `docs/manual-financeiro-metas.md`.
 
 ---
 
@@ -64,7 +70,9 @@ Módulo: Financeiro & Controladoria (`portal/modules/financeiro.php`, `portal/mo
 3. `portal/modules/financeiro.php`
 4. `portal/assets/js/financeiro.js`
 5. `portal/modules/admin/metas-financeiro.php`
-6. `portal/modules/admin/components/sidebar.php`
-7. `docs/migrations/20261109_create_fin_metas.sql`
-8. Tabela `fin_metas` no PostgreSQL (executar migration se necessário em produção)
-9. Tabela `sistema_manuais` (registro ID 19 atualizado)
+6. `portal/modules/admin/metas-marketing.php`
+7. `portal/modules/admin/components/sidebar.php`
+8. `docs/migrations/20261109_create_fin_metas.sql`
+9. `docs/manual-financeiro-metas.md`
+10. Tabela `fin_metas` no PostgreSQL
+11. Tabela `sistema_manuais` (registro ID 19 atualizado)
