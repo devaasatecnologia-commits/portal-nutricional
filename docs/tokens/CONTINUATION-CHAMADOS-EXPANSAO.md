@@ -1,13 +1,22 @@
 # Token de Continuidade — Central de Chamados Multi-Sistemas com IA & Backlog Real (Onda 1)
 
-**Data/Hora:** 10/11/2026 - 13:58
+**Data/Hora:** 10/11/2026 - 14:04
 **Autor:** Antigravity (Tech Lead & Arquiteto Sênior)
-**Status:** Chamados #2 e #29 Concluídos com Sucesso!
+**Status:** Correção de Schema Aplicada! Colunas observacao e motivo alteradas para TEXT.
 
 ---
 
 ## 1. O que foi Concluído nesta Etapa
-1. **Chamado #29 Concluído com Sucesso (`crons` v3.5):**
+1. **Correção de Truncamento de Texto Longo (SQLSTATE[22001]):**
+   - *Causa:* As colunas legadas `observacao` (`varchar(200)`) e `motivo` (`varchar(600)`) na tabela `chamado` estouravam erro quando o usuário digitava relatos detalhados.
+   - *Correção no PostgreSQL:*
+     - `ALTER TABLE chamado ALTER COLUMN observacao TYPE text;`
+     - `ALTER TABLE chamado ALTER COLUMN motivo TYPE text;`
+     - `ALTER TABLE chamado ALTER COLUMN solicitante TYPE varchar(80);`
+     - `ALTER TABLE chamado ALTER COLUMN atendente TYPE varchar(80);`
+   - *Validação:* Testada inserção de chamado com mais de 2.200 caracteres com sucesso absoluto (Status 200).
+
+2. **Chamado #29 Concluído com Sucesso (`crons` v3.5):**
    - **Correção Crítica de Roteamento:** O card do módulo no menu apontava para `modules/crons.php` (inexistente, gerando 404). Criado o arquivo `portal/modules/crons.php` com redirecionamento limpo e atualizada a URL em `sistema_modulos` para `modules/admin/crons.php`.
    - **Permissões Granulares:** Rota protegida em `v1/routes/api.php` atualizada para aceitar `new ModulePermissionMiddleware(['admin', 'crons'])`, permitindo acesso com perfil específico.
    - **Painel & Telemetria:** Painel administrativo validado com 4 KPIs (10 jobs cadastrados, 9 ativos, 71 execuções concluídas hoje com zero falhas).
