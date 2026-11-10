@@ -1,48 +1,71 @@
-# Continuation Token — Auditoria Mercos, Treinamentos & Manuais v3.5
+# Continuation Token — Central de Chamados & Suporte Inteligente com IA v1.0
 
-**Data:** 10/11/2026 10:43  
+**Data:** 10/11/2026 11:21  
 **Branch:** `main`  
-**Status:** 100% Documentado, Treinamento Atualizado no Banco e Pronto para Deploy FTP
+**Status:** Módulo de Chamados 100% Implementado, Testado e Pronto para Deploy FTP
 
 ---
 
-## 1. Treinamentos e Manuais Atualizados
+## 1. Entrega Realizada: Módulo de Chamados & IA
 
-### A. Módulo Verbas Flex (`portal/modules/verbas-flex.php`)
-- **Versão:** 3.5 — Novembro/2026
-- **Base de Conhecimento (`sistema_manuais`, ID 26):** Atualizado com:
-  - Explicação do **Card Hero de Saldo Mercos em Tempo Real** (individual ou equipe ao vivo).
-  - Guia de uso dos **Chips Rápidos de Filtro** e exportação Excel.
-  - Regra de ouro: **Débito Direto (Saldo Próprio)** vs **Cobertura pelo Gestor (Via Gestor)**.
-  - Parâmetros oficiais de Flex Mínimo (Filial 1: R$ 3.000 / Tiago MOV | Filial 6: R$ 1.000 / Tales).
-  - Esclarecimento técnico sobre o flex de pedidos na nuvem Mercos vs bridge local `/saldo_flex`.
-- **Arquivo Físico:** [`docs/manual-verbas-flex.md`](file:///c:/xampp/htdocs/API/docs/manual-verbas-flex.md) atualizado.
-- **Botão Direto:** Ativo no cabeçalho direcionando para `portal/modules/treinamentos.php?modulo=verbas-flex`.
+### A. Integração com Banco de Dados Nativo do ERP
+- Aproveitadas as tabelas existentes no PostgreSQL legado:
+  - `chamado`: Registros principais com histórico herdado do ERP.
+  - `chamado_operacao`: Linha do tempo auditada de cada chamado.
+- Evolução de schema segura aplicada via `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`:
+  - `modulo_slug`, `modulo_nome`, `categoria`, `criticidade`, `titulo`, `diagnostico_ia`, `solucao_tecnica`, `versao_entrega`, `tempo_resolucao_min`, `anexo_url`, `concluido_em`, `atualizado_em`.
+- Tratamento rigoroso de compatibilidade com a codificação **WIN1252** do PostgreSQL legado (sanitização de caracteres de 4 bytes/emojis).
 
-### B. Módulo Financeiro (`portal/modules/financeiro.php`)
-- **Versão:** 3.3 — Novembro/2026
-- **Base de Conhecimento (`sistema_manuais`, ID 19):**
-  - Indicadores executivos (IAG, IAP, Recuperação e Perda >60d).
-  - Painel de Metas com Semáforos e filtros de ciclo.
-  - Governança de Metas no Admin (`metas-financeiro.php` restrito a administradores).
-  - Isolamento de Rate Limit por rota (`user:ID:path:ROTA`) e teto de 200 req/min.
-- **Arquivo Físico:** [`docs/manual-financeiro.md`](file:///c:/xampp/htdocs/API/docs/manual-financeiro.md) e [`docs/manual-financeiro-metas.md`](file:///c:/xampp/htdocs/API/docs/manual-financeiro-metas.md).
-- **Botão Direto:** Ativo no cabeçalho direcionando para `portal/modules/treinamentos.php?modulo=financeiro`.
+### B. Motor de Triagem Inteligente com IA (`ChamadosIaService.php`)
+- Analisa o relato informal do usuário.
+- Gera título formatado no padrão `[Módulo] Descrição`.
+- Detecta automaticamente o módulo do sistema dentre os 40 módulos ativos.
+- Classifica a criticidade (`crítica`, `alta`, `média`, `baixa`) e categoria (`bug`, `melhoria`, `dúvida`, `novo_modulo`).
+- Gera o **Dossiê Técnico de Engenharia** (arquivos prováveis, tabelas do banco e sugestão de ação corretiva).
+
+### C. Backend Slim 3 (`ChamadosController.php`)
+- `GET /v1/chamados/dashboard`: KPIs em tempo real e catálogo de módulos.
+- `GET /v1/chamados/listar`: Listagem com filtros de status, módulo, criticidade e busca textual.
+- `GET /v1/chamados/detalhes/{id}`: Chamado com dossiê técnico e timeline de operações.
+- `POST /v1/chamados/triagem-ia`: Aciona a IA para análise prévia do texto.
+- `POST /v1/chamados/criar`: Grava em `chamado` e primeira operação em `chamado_operacao`.
+- `POST /v1/chamados/atualizar-status`: Movimenta no Kanban com histórico auditado.
+- `POST /v1/chamados/adicionar-interacao`: Adiciona parecer técnico ou registra a solução final e versão de entrega.
+
+### D. Frontend Moderno (`chamados.php` + `chamados.js`)
+- Design institucional em Tailwind CSS com Hero Header indigo/slate.
+- 4 Cards de KPIs com contadores automáticos.
+- Visão dupla: **Quadro Kanban Interativo** (4 colunas) e **Tabela Lista Executiva**.
+- Modal de Abertura com botão `Analisar com IA`.
+- Modal de Detalhes com Dossiê Técnico para desenvolvedores e linha do tempo de resolução.
+
+### E. Treinamento & Governança
+- Registrado em `sistema_modulos` (ID 47, setor TI).
+- Manual completo v1.0 documentado em [`docs/manual-chamados.md`](file:///c:/xampp/htdocs/API/docs/manual-chamados.md) e persistido na tabela `sistema_manuais`.
+- Botão `Treinamento & Manual` ativo no topo da tela.
 
 ---
 
-## 2. Lista Completa de Arquivos para Deploy FTP (cPanel)
+## 2. Lista Consolidada de Arquivos para Deploy FTP (cPanel)
 
-1. `v1/src/Services/MercosFlexService.php`
-2. `v1/src/Controllers/VerbasFlexController.php`
-3. `v1/src/Controllers/CronRotinasController.php`
-4. `v1/src/Controllers/FinanceiroController.php`
-5. `v1/src/Middleware/RateLimitMiddleware.php`
-6. `v1/routes/api.php`
-7. `portal/modules/verbas-flex.php`
-8. `portal/assets/js/verbas-flex.js`
-9. `portal/modules/financeiro.php`
-10. `portal/assets/js/financeiro.js`
-11. `docs/manual-verbas-flex.md`
-12. `docs/manual-financeiro.md`
-13. `docs/manual-financeiro-metas.md`
+```text
+v1/src/Controllers/ChamadosController.php
+v1/src/Services/ChamadosIaService.php
+v1/routes/api.php
+portal/modules/chamados.php
+portal/assets/js/chamados.js
+docs/manual-chamados.md
+v1/src/Services/MercosFlexService.php
+v1/src/Controllers/VerbasFlexController.php
+v1/src/Controllers/CronRotinasController.php
+v1/src/Controllers/FinanceiroController.php
+v1/src/Middleware/RateLimitMiddleware.php
+portal/modules/verbas-flex.php
+portal/assets/js/verbas-flex.js
+portal/modules/financeiro.php
+portal/assets/js/financeiro.js
+docs/manual-verbas-flex.md
+docs/manual-financeiro.md
+docs/manual-financeiro-metas.md
+docs/PLANO_DIRETOR_PORTAL_NUTRICIONAL.md
+```
