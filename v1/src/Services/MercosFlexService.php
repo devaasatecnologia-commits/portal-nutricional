@@ -187,4 +187,75 @@ class MercosFlexService
         }
         throw new MercosIndisponivelException('A API Mercos nao confirmou a movimentacao.');
     }
+
+    /**
+     * Preparado para expansão futura: consulta extrato detalhado de movimentações se implementado no bridge.
+     * Retorna array vazio defensivamente se o endpoint ainda não existir (HTTP 404/500).
+     *
+     * @param int $colaborador ID cliforemp do representante (ou 0 para todos)
+     * @return array
+     */
+    public function buscarExtratoMercos(int $colaborador = 0): array
+    {
+        try {
+            $pathExtrato = str_replace('/saldo_flex', '/extrato_flex', $this->url);
+            $urlReq = $pathExtrato . ($colaborador > 0 ? '?colaborador_id=' . $colaborador : '');
+            
+            $ch = curl_init($urlReq);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $resp = curl_exec($ch);
+            $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($status === 200 && is_string($resp)) {
+                $dados = json_decode($resp, true);
+                if (is_array($dados)) {
+                    return $dados;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[flex] falha sondagem extrato futuro: ' . $e->getMessage());
+        }
+        return [];
+    }
+
+    /**
+     * Preparado para expansão futura: consulta flex gerado/consumido em pedidos se implementado no bridge.
+     *
+     * @param array $filtros Filtros adicionais (periodo, colaborador, pedido)
+     * @return array
+     */
+    public function buscarPedidosFlexMercos(array $filtros = []): array
+    {
+        try {
+            $pathPedidos = str_replace('/saldo_flex', '/pedidos_flex', $this->url);
+            $query = !empty($filtros) ? '?' . http_build_query($filtros) : '';
+            
+            $ch = curl_init($pathPedidos . $query);
+            curl_setopt_array($ch, [
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_CONNECTTIMEOUT => 3,
+                CURLOPT_TIMEOUT => 8,
+                CURLOPT_HTTPHEADER => ['Accept: application/json'],
+            ]);
+            $resp = curl_exec($ch);
+            $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($status === 200 && is_string($resp)) {
+                $dados = json_decode($resp, true);
+                if (is_array($dados)) {
+                    return $dados;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[flex] falha sondagem pedidos flex futuro: ' . $e->getMessage());
+        }
+        return [];
+    }
 }
