@@ -38,3 +38,14 @@
 - **#32 [CRÍTICO]:** `PROJETO: Migracao Integrador Mercos ERP para o Portal Nutricional` -> Status 2 (Em Andamento / Roadmap 10/01/2027).
 - **#33 [CRÍTICO]:** `PROJETO: Migracao e Aposentadoria do Portal DOX (Ema Studio)` -> Status 2 (Em Andamento).
 - **#34 [CRÍTICO]:** `LOGISTICA: Conferencia de Descarregamento OC Modo Rapido` -> Status 3 (Concluído por MARCON, v3.5).
+- **#35 [ALTA / EVOLUÇÃO]:** `[EVOLUCAO] Permissoes Granulares por Usuario no Modulo de Chamados & Visao Restrita` -> Status 1 (Aberto / Em Análise para Execução Amanhã).
+
+---
+
+## 4. Próxima Etapa (Amanhã)
+1. **Regras de Visualização Restrita:**
+   - Em `ChamadosController::listar()`, filtrar para usuários não-administradores apenas os chamados onde `idcliforemp = :uid` ou `solicitante = :username` ou `idusuario = :idusuario`.
+2. **Formulário de Abertura:**
+   - No modal de abertura, restringir o dropdown de módulos web aos módulos que constam nas permissões do usuário logado.
+3. **Painel Administrativo de Permissões:**
+   - No módulo de gerenciamento de usuários/permissões, adicionar configuração granular para o módulo de chamados: permitir escolher se o usuário pode abrir qualquer tipo de chamado (Portal, ERP, Mercos, Equipamento, etc.) ou apenas tipos selecionados.
