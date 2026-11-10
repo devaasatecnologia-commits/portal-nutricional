@@ -1,71 +1,78 @@
-# Token de Continuidade — Central de Chamados Multi-Sistemas com IA & Backlog Real (Onda 1)
+# Token de Continuação: Central de Chamados (Prints/Ctrl+V, Lightbox, Filtros de Período) & Rastreio ERP Ema (Item 1989)
 
-**Data/Hora:** 10/11/2026 - 14:04
-**Autor:** Antigravity (Tech Lead & Arquiteto Sênior)
-**Status:** Correção de Schema Aplicada! Colunas observacao e motivo alteradas para TEXT.
-
----
-
-## 1. O que foi Concluído nesta Etapa
-1. **Correção de Truncamento de Texto Longo (SQLSTATE[22001]):**
-   - *Causa:* As colunas legadas `observacao` (`varchar(200)`) e `motivo` (`varchar(600)`) na tabela `chamado` estouravam erro quando o usuário digitava relatos detalhados.
-   - *Correção no PostgreSQL:*
-     - `ALTER TABLE chamado ALTER COLUMN observacao TYPE text;`
-     - `ALTER TABLE chamado ALTER COLUMN motivo TYPE text;`
-     - `ALTER TABLE chamado ALTER COLUMN solicitante TYPE varchar(80);`
-     - `ALTER TABLE chamado ALTER COLUMN atendente TYPE varchar(80);`
-   - *Validação:* Testada inserção de chamado com mais de 2.200 caracteres com sucesso absoluto (Status 200).
-
-2. **Chamado #29 Concluído com Sucesso (`crons` v3.5):**
-   - **Correção Crítica de Roteamento:** O card do módulo no menu apontava para `modules/crons.php` (inexistente, gerando 404). Criado o arquivo `portal/modules/crons.php` com redirecionamento limpo e atualizada a URL em `sistema_modulos` para `modules/admin/crons.php`.
-   - **Permissões Granulares:** Rota protegida em `v1/routes/api.php` atualizada para aceitar `new ModulePermissionMiddleware(['admin', 'crons'])`, permitindo acesso com perfil específico.
-   - **Painel & Telemetria:** Painel administrativo validado com 4 KPIs (10 jobs cadastrados, 9 ativos, 71 execuções concluídas hoje com zero falhas).
-   - **Manual de Treinamento no BD:** Atualizado `sistema_manuais` (ID 28) para `v3.5` detalhando o dispatcher unificado (`/v1/cron/dispatcher`), testes dry-run e rotinas automáticas.
-   - **Conclusão via CLI:** Registrada entrega técnica pelo conector Antigravity e status atualizado para 3 (Concluído).
-
-2. **Chamado #2 Concluído com Sucesso (`transferencia-flex` v3.5):**
-   - Checklist de 5 passos aplicado (interface, advisory locks, rate limit, manual ID 27 v3.5 e deploy).
-   - **Checklist de 5 passos aplicado e homologado:**
-     - *Passo 1 (Interface):* 4 KPIs com tooltips modernos flutuantes, cockpit de transferência em 3 colunas (DE -> VALOR -> PARA), atalhos rápidos de valores (+50, +100, etc.), cálculo de saldo pós-operação em tempo real e botão direto de "Treinamento & Manual".
-     - *Passo 2 (Backend & Concorrência):* `pg_try_advisory_lock` contra transferências simultâneas concorrentes do mesmo emissor, estorno automático em caso de falha de comunicação entre pontas e auditoria transparente com registro do operador e IDs.
-     - *Passo 3 (Resiliência):* Filtro estrito de representantes ativos no ERP e no Mercos, com respeito a `dash_filiais` e `dash_gestores`.
-     - *Passo 4 (Manual no Banco):* Atualizado `sistema_manuais` (ID 27) para `v3.5` com os 4 KPIs descritos, travas de segurança e FAQs.
-     - *Passo 5 (Encerramento & CLI):* Sintaxe PHP 100% validada (`php -l`) e chamado finalizado via conector Antigravity CLI com registro de resolução na timeline.
-
-2. **Próximo da Fila:**
-   - **Chamado #3:** `[Onda 1] [Movimentação de Flex] Integrar Histórico Auditado com Saldo Mercos Live e Gestores` (`movimentacao-flex`).
-1. **Multi-Sistemas Corporativos Concluído no Backend e Banco de Dados:**
-   - Adicionadas com sucesso as colunas `tipo_sistema` (VARCHAR 50), `subtipo_item` (VARCHAR 120) e `equipamento_detalhe` (VARCHAR 150) na tabela `chamado`.
-   - Controller (`ChamadosController.php`) atualizado nos métodos `dashboard`, `listar`, `triarIa`, `criar` e `detalhes`.
-   - Limpeza total de registros de testes legados.
-
-2. **Motor de IA Triagem Multi-Sistemas (`ChamadosIaService.php`):**
-   - Heurística avançada identificando 10 sistemas (`PORTAL`, `ERP_EMA`, `MERCOS`, `COBLI`, `LOGISOFT`, `EMAIL`, `SITE`, `EQUIPAMENTO`, `PLANILHAS`, `SERVIDOR`, `OUTROS`).
-   - Geração de dossiê técnico especializado por tipo de sistema (ex: checagem de IP/spooler para impressoras, PABX para ramais, SEFAZ/A1 para Logisoft CTe/MDFe, regras fiscais de CFOP para o ERP Ema).
-   - Sanitização estrita para compatibilidade com WIN1252.
-
-3. **Frontend Completo (`portal/modules/chamados.php` & `portal/assets/js/chamados.js`):**
-   - Seletor de sistemas no modal com botões interativos e campos dinâmicos por sistema.
-   - Filtro por Sistema na barra superior.
-   - Cards do Kanban e Tabela de Lista enriquecidos com badges de Sistema, Subtipo e Criticidade.
-   - Respeito à hierarquia de permissões dos usuários ao listar módulos web.
-
-4. **Povoamento Oficial do Backlog Real (As 4 Ondas do Plano Diretor):**
-   - Removidos todos os chamados simulados/exemplos de testes.
-   - Cadastrados exatamente os **29 módulos estratégicos do Plano Diretor**, divididos nas 4 Ondas:
-     - **Onda 1 (Núcleo Financeiro, Verbas & Vendas):** `#1` Verbas Flex (Concluído), `#2` Transferência de Flex (Em Análise), `#3` Movimentação de Flex, `#4` Migração de Carteira, `#5` Controladoria Financeira, `#6` Análise de Carteira 360, `#7` Dashboard de Vendas, `#8` Cubo Vendas.
-     - **Onda 2 (Logística & Operação Física):** `#9` Separação WMS, `#10` Carregamento, `#11` Monitor Logístico, `#12` Auditoria de Estoque, `#13` Estoque com Previsão, `#14` Inventário Geral, `#15` Transferência Matriz-Filial.
-     - **Onda 3 (Frota, Expedição, Motoristas & Fiscal):** `#16` Gestão de Frotas, `#17` Embarques, `#18` Retorno de Carga, `#19` Acerto de Embarque, `#20` App do Motorista PWA, `#21` Conferência XML, `#22` Consulta Saldo.
-     - **Onda 4 (Marketing, RH, Treinamentos & TI):** `#23` CRM Clientes 360, `#24` Metas de Marketing, `#25` Admin Marketing, `#26` Avaliação C.H.A.P.D, `#27` Plano de Ação PDI, `#28` Nutricional Academy, `#29` Motores Cron.
-   - Cada chamado possui seu parecer técnico preliminar (dossiê) focado no Checklist de 5 passos do especialista.
-
-5. **Manual de Usabilidade do Módulo Atualizado:**
-   - Registrado em `sistema_manuais` (ID 93) com o guia dos 10 sistemas corporativos e da triagem de IA.
+**Data/Hora:** 10/11/2026 - 14:35  
+**Autor:** Tech Lead & Arquiteto de Software Antigravity  
+**Status:** ✅ Concluído e Validado  
 
 ---
 
-## 2. Arquivos para Deploy FTP
+## 1. Rastreio Técnico Especialista: Item 1989 (`BIRBO CÃES CARNE 15KG`)
+
+O usuário solicitou rastrear no ERP Ema a origem exata da quantidade que consta como reservada para transferência do produto `iditem = 1989` (`BIRBO CÃES CARNE 15KG`, referência `03145`).
+
+### Diagnóstico no Banco de Dados:
+- **Tabela `item`:** `[1989] 03145 - BIRBO CÃES CARNE 15KG`.
+- **Saldos Físicos e Reservas Registradas em `estoque_filial_reserva`:**
+  - **Filial 1 (Matriz SC):** Saldo Atual = 2.916 un | **Reserva = 241 un**.
+  - **Filial 6 (Paraná PR):** Saldo Atual = 3 un | **Reserva = 18 un**.
+
+### Origem Exata das Reservas de Transferência / Pedidos Internos:
+1. **Filial 6 (PR) — 18 unidades reservadas:**
+   - **Pedido #159298 (Data: 09/10/2026):**
+     - **Tipo:** Pedido Interno / Transferência (`idtransacao = 4`).
+     - **Cliente:** `[14523] NUTRICIONAL DISTRIBUIDORA LTDA`.
+     - **Status:** 1 (Aberto).
+     - **Quantidade Reservada:** **3 unidades** (`quant_reserva = 3.000000`, `reserva_estoque = 'S'`).
+     - Usuário: `ROBSON`, editado por `CAROL`.
+   - **Pedido #160327 (06/11/2026):** 5 unidades (Venda normal).
+   - **Pedido #160328 (06/11/2026):** 10 unidades (Venda normal).
+   - *Total:* 3 + 5 + 10 = **18 unidades exatas**.
+2. **Filial 1 (Matriz SC) — 241 unidades reservadas:**
+   - **Pedido Interno #152057 (05/11/2026):**
+     - **Tipo:** Pedido Interno (`idtransacao = 4`).
+     - **Cliente:** `[16596] NUTRICIONAL REVENDA (AVARIAS)`.
+     - **Status:** 1 (Aberto).
+     - **Quantidade Reservada:** **17 unidades** (`quant_reserva = 17.000000`, `qtsaldo = 17.000000`).
+   - Os outros 12 pedidos em aberto somam 224 unidades, totalizando as **241 unidades**.
+3. **Solicitação de Compra / Transferência Matriz ↔ Filial:**
+   - **SC #207 (30/10/2026):** 235 un (embarque 9364 - cancelada 235).
+   - **SC #205 (23/10/2026):** 3 un da Filial 6 pendente de faturamento.
+   - **SC #29 (26/07/2024):** 20 un com Status 1 (Aberta) pendente.
+
+---
+
+## 2. Central de Chamados: Upgrade Premium, Prints/Ctrl+V e Filtros
+
+### Novas Capacidades Implementadas:
+1. **Upload & Printscreen via Clipboard (Ctrl+V):**
+   - Suporte total para colar imagens diretamente da área de transferência (`Ctrl+V`) na abertura de chamados ou nas interações da timeline.
+   - Detecção inteligente de eventos `paste` e conversão de base64/blob direto para PNG/JPG.
+   - Salvamento seguro em `portal/uploads/chamados/`.
+   - Suporte alternativo a seleção de arquivos (input file clássico) e drag-and-drop.
+2. **Visualizador Lightbox em Tela Cheia:**
+   - Modal com `z-[80]` com efeito backdrop blur para inspecionar prints em alta resolução.
+   - Botão para download do arquivo original e atalho `Esc` para fechar.
+3. **Filtro Completo por Período de Datas:**
+   - Barra com inputs de Data Inicial e Data Final (`type="date"`).
+   - Pílulas de filtro rápido: **Hoje**, **7 Dias**, **Este Mês** e **Todos**.
+   - Integração direta no endpoint `GET /v1/chamados/listar` com filtragem SQL via `c.data`.
+
+---
+
+## 3. Arquivos para Deploy FTP:
+- `v1/routes/api.php`
 - `v1/src/Controllers/ChamadosController.php`
-- `v1/src/Services/ChamadosIaService.php`
 - `portal/modules/chamados.php`
 - `portal/assets/js/chamados.js`
+
+
+---
+
+## 8. Incidente Crítico Registrado: Chamado #30
+- **Título:** `[CRÍTICO] ERP EMA: Saldo fantasma em (+) Qtd transfe na Transação 1003`
+- **Categoria:** Bug / Rotina de Produção
+- **Criticidade:** Crítica
+- **Status:** Concluído / Resolvido (3)
+- **Causa Raiz:** Flag de transferência automática ativada indevidamente na transação 1003 entre 04/09 e 29/10/2026, gerando 114 transferências fantasmas pendentes em `nf_transf_auto` e inflando a coluna `(+) Qtd transfe` de 57 itens.
+- **Validação:** Teste unitário executado na NF #150432 (Transf #379), comprovando recálculo instantâneo no ERP EMA de 19 para 18 un no item 1989.
+- **Entrega Técnica:** Queries DBeaver e comandos UPDATE em lote entregues na timeline de `chamado_operacao`.

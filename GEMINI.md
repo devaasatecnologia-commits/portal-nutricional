@@ -15,9 +15,17 @@
 - **Backend:** PHP 8.x com **Slim 3** (`v1/src/Controllers/`, `v1/routes/api.php`, `v1/bootstrap/app.php`).
 - **Banco de Dados:** **PostgreSQL** com schema legado do ERP.
   - Principais entidades: `cliforemp` (clientes, fornecedores, representantes), `nfs` + `nfs_item`, `pedido` + `pedido_item`, `nfe` + `nfe_item`, `cidade`, `filial`.
+  - Mecanismos de Estoque & Projeções do ERP EMA:
+    - `estoque_filial.saldoatual`: Saldo físico real em estoque.
+    - `(-) Qtd reserva`: Saldo reservado em pedidos abertos (`estoque_filial_reserva`).
+    - `(+) Qtd compra`: Ordens de compra abertas (`oc` + `oc_item`).
+    - `(+) Qtd transfe`: Projeção de transferências em trânsito pendentes de recebimento (`nf_transf_auto` com `status = 2`).
   - Cuidados recorrentes:
     - Métodos base como `nfFrom()` e `pedFrom()` já trazem a cláusula `WHERE`; nunca concatenar `LEFT JOIN` após eles sem CTE ou sem injetar no próprio helper.
     - Sempre validar chaves primárias e estrangeiras (`idcliforemp` = cliente/vendedor, `idnfs` = id interno da nota, `idpedido` = id do pedido).
+- **Gestão de Chamados & Incidentes de Produção:**
+  - Chamados que envolvam processos de rotinas corporativas (estoque, fiscal, faturamento, transferências, integrações) devem ser tratados com **prioridade crítica**.
+  - Todo incidente resolvido ou investigado deve ser documentado na tabela `chamado` e suas etapas cronológicas registradas em `chamado_operacao`.
 - **Frontend:** PHP modular estruturado (`portal/modules/`) integrado com **Alpine.js** e **Tailwind CSS** (`portal/assets/js/`).
   - Cuidados recorrentes:
     - Modais empilhados devem respeitar camadas `z-index` (modal base `z-50`, modais secundários/detalhes `z-[70]`).
