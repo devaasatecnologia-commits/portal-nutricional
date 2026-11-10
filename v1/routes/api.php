@@ -1112,7 +1112,7 @@ $protected->group('/crm', function ($group) {
         // ======================================================================
 $protected->group('/cron', function ($group) {
     $controller = new CronController();
-    $admin = new ModulePermissionMiddleware('admin');
+    $admin = new ModulePermissionMiddleware(['admin', 'crons']);
     $group->get('/auditoria', [$controller, 'getAuditoria'])->add($admin);
     $group->get('/auditoria/{id}', [$controller, 'getAuditoriaDetalhes'])->add($admin);
     $group->post('/executar', [$controller, 'executar'])->add($admin);

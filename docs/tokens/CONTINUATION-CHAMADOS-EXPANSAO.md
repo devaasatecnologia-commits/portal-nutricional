@@ -1,13 +1,21 @@
 # Token de Continuidade — Central de Chamados Multi-Sistemas com IA & Backlog Real (Onda 1)
 
-**Data/Hora:** 10/11/2026 - 13:48
+**Data/Hora:** 10/11/2026 - 13:58
 **Autor:** Antigravity (Tech Lead & Arquiteto Sênior)
-**Status:** Chamado #2 Concluído com Sucesso! Próximo da fila: Chamado #3 (Movimentação de Flex)
+**Status:** Chamados #2 e #29 Concluídos com Sucesso!
 
 ---
 
 ## 1. O que foi Concluído nesta Etapa
-1. **Chamado #2 Concluído com Sucesso (`transferencia-flex` v3.5):**
+1. **Chamado #29 Concluído com Sucesso (`crons` v3.5):**
+   - **Correção Crítica de Roteamento:** O card do módulo no menu apontava para `modules/crons.php` (inexistente, gerando 404). Criado o arquivo `portal/modules/crons.php` com redirecionamento limpo e atualizada a URL em `sistema_modulos` para `modules/admin/crons.php`.
+   - **Permissões Granulares:** Rota protegida em `v1/routes/api.php` atualizada para aceitar `new ModulePermissionMiddleware(['admin', 'crons'])`, permitindo acesso com perfil específico.
+   - **Painel & Telemetria:** Painel administrativo validado com 4 KPIs (10 jobs cadastrados, 9 ativos, 71 execuções concluídas hoje com zero falhas).
+   - **Manual de Treinamento no BD:** Atualizado `sistema_manuais` (ID 28) para `v3.5` detalhando o dispatcher unificado (`/v1/cron/dispatcher`), testes dry-run e rotinas automáticas.
+   - **Conclusão via CLI:** Registrada entrega técnica pelo conector Antigravity e status atualizado para 3 (Concluído).
+
+2. **Chamado #2 Concluído com Sucesso (`transferencia-flex` v3.5):**
+   - Checklist de 5 passos aplicado (interface, advisory locks, rate limit, manual ID 27 v3.5 e deploy).
    - **Checklist de 5 passos aplicado e homologado:**
      - *Passo 1 (Interface):* 4 KPIs com tooltips modernos flutuantes, cockpit de transferência em 3 colunas (DE -> VALOR -> PARA), atalhos rápidos de valores (+50, +100, etc.), cálculo de saldo pós-operação em tempo real e botão direto de "Treinamento & Manual".
      - *Passo 2 (Backend & Concorrência):* `pg_try_advisory_lock` contra transferências simultâneas concorrentes do mesmo emissor, estorno automático em caso de falha de comunicação entre pontas e auditoria transparente com registro do operador e IDs.
