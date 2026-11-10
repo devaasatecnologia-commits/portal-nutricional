@@ -156,7 +156,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <option value="baixa">🟢 Baixa</option>
                 </select>
 
-                <!-- Alternador Kanban / Lista -->
+                <!-- Alternador Kanban / Lista / Dashboard -->
                 <div class="bg-slate-100 p-0.5 rounded-xl border border-slate-200 flex items-center">
                     <button @click="modoExibicao = 'kanban'" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
                             :class="modoExibicao === 'kanban' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
@@ -167,6 +167,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                             :class="modoExibicao === 'lista' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
                         <i class="fa-solid fa-list"></i>
                         <span>Lista</span>
+                    </button>
+                    <button @click="modoExibicao = 'dashboard'" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
+                            :class="modoExibicao === 'dashboard' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
+                        <i class="fa-solid fa-chart-pie"></i>
+                        <span>Painel & KPIs</span>
                     </button>
                 </div>
             </div>
@@ -413,6 +418,254 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- CONTEÚDO PRINCIPAL: MODO DASHBOARD / PAINEL & KPIS EXECUTIVOS -->
+    <div x-show="modoExibicao === 'dashboard'" class="space-y-6">
+        <!-- KPIS EXECUTIVOS DE TOPO -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <!-- Taxa de Resolução -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Taxa de Resolução</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-black text-emerald-600" x-text="`${kpis.taxa_resolucao || 0}%`">0%</span>
+                        <span class="text-[11px] font-bold text-slate-400">do total</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.concluidos_mes || 0} chamados concluídos`">0 concluídos</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-chart-line"></i>
+                </div>
+            </div>
+
+            <!-- Fila Ativa / Backlog -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Fila Ativa de TI</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-black text-indigo-600" x-text="(parseInt(kpis.abertos || 0) + parseInt(kpis.em_correcao || 0))">0</span>
+                        <span class="text-[11px] font-bold text-slate-400">em andamento</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.em_correcao || 0} em análise técnica`">0 em análise</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-bars-progress"></i>
+                </div>
+            </div>
+
+            <!-- Críticos / Atenção Imediata -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between"
+                 :class="kpis.criticos > 0 ? 'ring-2 ring-rose-300 bg-rose-50/20' : ''">
+                <div>
+                    <span class="text-[11px] font-bold uppercase tracking-wider block mb-0.5"
+                          :class="kpis.criticos > 0 ? 'text-rose-600' : 'text-slate-400'">Atenção Imediata</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-black" :class="kpis.criticos > 0 ? 'text-rose-600' : 'text-slate-800'" x-text="kpis.criticos || 0">0</span>
+                        <span class="text-[11px] font-bold text-slate-400">críticos</span>
+                    </div>
+                    <span class="text-[10px] font-semibold block mt-1"
+                          :class="kpis.criticos > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'"
+                          x-text="kpis.criticos > 0 ? 'Processos corporativos em risco' : 'Operação 100% normal'">Nenhum bloqueio</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl flex items-center justify-center text-xl"
+                     :class="kpis.criticos > 0 ? 'bg-rose-100 text-rose-600 animate-pulse' : 'bg-slate-100 text-slate-500'">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                </div>
+            </div>
+
+            <!-- Total Histórico -->
+            <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
+                <div>
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Total de Incidentes</span>
+                    <div class="flex items-baseline gap-2">
+                        <span class="text-3xl font-black text-slate-800" x-text="kpis.total || 0">0</span>
+                        <span class="text-[11px] font-bold text-slate-400">registrados</span>
+                    </div>
+                    <span class="text-[10px] text-slate-500 font-semibold block mt-1">Base de conhecimento ativa</span>
+                </div>
+                <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-layer-group"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEÇÃO 2: GRÁFICOS & DISTRIBUIÇÕES -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Card 1: Distribuição por Sistema Corporativo -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-network-wired"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs font-black uppercase text-slate-800">Demandas por Sistema Corporativo</h3>
+                                <p class="text-[10px] text-slate-400 font-medium">Divisão do volume de chamados por ecossistema</p>
+                            </div>
+                        </div>
+                        <span class="text-xs font-black text-slate-400" x-text="`${(metricas.por_sistema || []).length} sistemas`">0 sistemas</span>
+                    </div>
+
+                    <div class="space-y-3.5">
+                        <template x-for="sis in (metricas.por_sistema || [])" :key="sis.sistema">
+                            <div>
+                                <div class="flex items-center justify-between text-xs mb-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded border inline-block"
+                                              :class="badgeSistema(sis.sistema)" x-text="sis.sistema">PORTAL</span>
+                                        <span class="font-bold text-slate-700" x-text="nomeSistema(sis.sistema)">Nome</span>
+                                    </div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-xs font-black text-slate-800" x-text="sis.total">0</span>
+                                        <span class="text-[10px] font-semibold text-slate-400"
+                                              x-text="`(${Math.round((parseInt(sis.total) / (parseInt(kpis.total) || 1)) * 100)}%)`">(0%)</span>
+                                    </div>
+                                </div>
+                                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                                         :style="`width: ${Math.round((parseInt(sis.total) / (parseInt(kpis.total) || 1)) * 100)}%`"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Card 2: Matriz de Criticidade & Top Módulos -->
+            <div class="space-y-6">
+                <!-- Matriz de Criticidade -->
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-shield-halved"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs font-black uppercase text-slate-800">Matriz de Criticidade & SLA</h3>
+                                <p class="text-[10px] text-slate-400 font-medium">Severidade e priorização de atendimento</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <template x-for="crit in (metricas.por_criticidade || [])" :key="crit.criticidade">
+                            <div class="p-3 rounded-xl border text-center transition"
+                                 :class="badgeCriticidade(crit.criticidade)">
+                                <span class="text-[10px] font-black uppercase tracking-wider block mb-0.5" x-text="crit.criticidade">Média</span>
+                                <span class="text-2xl font-black block" x-text="crit.total">0</span>
+                                <span class="text-[10px] font-semibold opacity-75"
+                                      x-text="`${Math.round((parseInt(crit.total) / (parseInt(kpis.total) || 1)) * 100)}% do volume`">0%</span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- Top Módulos Mais Demandados -->
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-3">
+                        <div class="flex items-center gap-2">
+                            <div class="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center text-sm">
+                                <i class="fa-solid fa-fire"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-xs font-black uppercase text-slate-800">Top Módulos / Áreas Demandadas</h3>
+                                <p class="text-[10px] text-slate-400 font-medium">Áreas com maior incidência de manutenção</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
+                        <template x-for="(mod, idx) in (metricas.top_modulos || [])" :key="idx">
+                            <div class="bg-slate-50 border border-slate-200/80 p-2.5 rounded-xl flex items-center justify-between">
+                                <div class="truncate pr-2">
+                                    <span class="text-[11px] font-bold text-slate-800 block truncate" x-text="mod.modulo">Módulo</span>
+                                    <span class="text-[9px] text-slate-400 font-semibold uppercase">Fila TI</span>
+                                </div>
+                                <span class="text-xs font-black px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700" x-text="mod.total">0</span>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- SEÇÃO 3: TABELA DE ENTREGAS TÉCNICAS RECENTES -->
+        <div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="p-5 border-b border-slate-100 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-sm">
+                        <i class="fa-solid fa-code-commit"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-xs font-black uppercase text-slate-800">Entregas Técnicas & Resoluções Recentes</h3>
+                        <p class="text-[10px] text-slate-400 font-medium">Incidentes resolvidos e liberados em produção pela equipe de Engenharia</p>
+                    </div>
+                </div>
+                <button type="button" @click="modoExibicao = 'lista'; filtros.status = '3'; carregarChamados()"
+                        class="text-xs font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition">
+                    <span>Ver todos concluídos</span>
+                    <i class="fa-solid fa-arrow-right text-[10px]"></i>
+                </button>
+            </div>
+
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                            <th class="py-3 px-4"># ID</th>
+                            <th class="py-3 px-4">Sistema / Origem</th>
+                            <th class="py-3 px-4">Título do Incidente</th>
+                            <th class="py-3 px-4">Módulo / Contexto</th>
+                            <th class="py-3 px-4">Versão</th>
+                            <th class="py-3 px-4">Responsável Técnico</th>
+                            <th class="py-3 px-4">Data Conclusão</th>
+                            <th class="py-3 px-4 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 text-xs font-medium text-slate-600">
+                        <template x-for="r in (metricas.resolvidos_recentes || [])" :key="r.idchamado">
+                            <tr class="hover:bg-slate-50/80 transition cursor-pointer" @click="abrirDetalhes(r.idchamado)">
+                                <td class="py-3 px-4 font-black text-indigo-600" x-text="`#${r.idchamado}`">#0</td>
+                                <td class="py-3 px-4">
+                                    <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded border inline-block"
+                                          :class="badgeSistema(r.tipo_sistema)" x-text="r.tipo_sistema">PORTAL</span>
+                                </td>
+                                <td class="py-3 px-4 font-bold text-slate-800">
+                                    <span class="line-clamp-1" x-text="r.titulo">Título</span>
+                                </td>
+                                <td class="py-3 px-4 text-slate-600 font-semibold" x-text="r.modulo_nome || r.tipo_sistema">Módulo</td>
+                                <td class="py-3 px-4">
+                                    <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                          x-text="r.versao_entrega || 'v3.5'">v3.5</span>
+                                </td>
+                                <td class="py-3 px-4">
+                                    <div class="flex items-center gap-1.5">
+                                        <div class="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-bold">
+                                            <i class="fa-solid fa-user-check"></i>
+                                        </div>
+                                        <span class="font-bold text-slate-800" x-text="r.atendente || 'MARCON'">MARCON</span>
+                                        <span class="text-[9px] font-black uppercase px-1 py-0.2 rounded bg-indigo-50 text-indigo-600 border border-indigo-100">DevOps / TI</span>
+                                    </div>
+                                </td>
+                                <td class="py-3 px-4 text-slate-400 text-[11px]" x-text="r.concluido_fmt">10/11</td>
+                                <td class="py-3 px-4 text-center">
+                                    <button class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs transition">
+                                        Dossiê
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                        <tr x-show="(metricas.resolvidos_recentes || []).length === 0">
+                            <td colspan="8" class="py-8 text-center text-xs text-slate-400">
+                                Nenhuma entrega recente registrada.
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL 1: NOVO CHAMADO COM TRIAGEM DE IA & ANEXO/PRINT -->
     <div x-show="modalNovoAberto" @paste="tratarColagemPrint($event, 'novo')" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs" style="display: none;">
         <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden" @click.outside="modalNovoAberto = false">
@@ -641,7 +894,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <!-- Botão de Triagem com IA -->
                 <div class="flex items-center justify-between bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100">
                     <div class="flex items-center gap-2 text-xs text-indigo-900 font-semibold">
-                        <i class="fa-solid fa-robot text-indigo-600 text-sm"></i>
+                        <i class="fa-solid fa-microchip text-indigo-600 text-sm"></i>
                         <span>Otimizar título, criticidade e diagnóstico de engenharia</span>
                     </div>
                     <button type="button" @click="analisarComIa()" :disabled="analisandoIa || !novoForm.relato"
@@ -669,7 +922,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
 
                     <div>
-                        <label class="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Dossiê Técnico (Para Desenvolvedor & Antigravity)</label>
+                        <label class="text-[10px] font-bold text-slate-400 uppercase block mb-0.5">Dossiê Técnico de Engenharia</label>
                         <pre class="bg-slate-900 text-slate-100 p-3 rounded-xl text-[10px] font-mono leading-relaxed whitespace-pre-wrap overflow-x-auto max-h-40" x-text="novoForm.diagnostico_ia"></pre>
                     </div>
                 </div>
@@ -717,25 +970,25 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                     <!-- Corpo com Scroll -->
                     <div class="py-4 space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
-                        <!-- BARRA DE VÍNCULO DIRETO COM O AGENTE ANTIGRAVITY -->
-                        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 text-white p-3.5 rounded-2xl border border-indigo-700/50 shadow-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                        <!-- BARRA DE ENGENHARIA / TERMINAL DEVOPS TI -->
+                        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3.5 rounded-2xl border border-slate-700/60 shadow-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                             <div class="flex items-center gap-3">
                                 <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-base border border-indigo-500/30">
-                                    <i class="fa-solid fa-robot"></i>
+                                    <i class="fa-solid fa-laptop-code"></i>
                                 </div>
                                 <div>
                                     <div class="flex items-center gap-2">
-                                        <span class="text-[10px] font-black uppercase tracking-wider text-indigo-300">Conector Antigravity IDE</span>
-                                        <span class="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-bold">Online</span>
+                                        <span class="text-[10px] font-black uppercase tracking-wider text-indigo-300">Terminal de Engenharia / DevOps</span>
+                                        <span class="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-bold">Ativo</span>
                                     </div>
-                                    <span class="text-xs font-bold text-white block">Vincular resolução no código com o agente</span>
+                                    <span class="text-xs font-bold text-white block">Dossiê Técnico para IDE / Resolução no Código</span>
                                 </div>
                             </div>
                             <div class="flex items-center gap-2">
-                                <button type="button" @click="copiarBriefingAntigravity()"
-                                        class="w-full sm:w-auto px-4 py-2 rounded-xl bg-white text-indigo-950 hover:bg-indigo-50 active:scale-95 font-black text-xs flex items-center justify-center gap-2 transition shadow-xs">
-                                    <i class="fa-solid fa-copy text-indigo-600"></i>
-                                    <span>Copiar Briefing para o Chat</span>
+                                <button type="button" @click="copiarBriefingDevOps()"
+                                        class="w-full sm:w-auto px-4 py-2 rounded-xl bg-white text-slate-900 hover:bg-slate-100 active:scale-95 font-black text-xs flex items-center justify-center gap-2 transition shadow-xs">
+                                    <i class="fa-solid fa-code text-indigo-600"></i>
+                                    <span>Copiar Dossiê Técnico para IDE</span>
                                 </button>
                             </div>
                         </div>
@@ -775,11 +1028,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                             </div>
                         </div>
 
-                        <!-- Dossiê Técnico da IA (Se existir) -->
+                        <!-- Dossiê Técnico de Engenharia (Se existir) -->
                         <div x-show="chamadoAtual.diagnostico_ia" class="bg-slate-900 text-slate-100 p-4 rounded-2xl border border-slate-800">
                             <div class="flex items-center justify-between mb-2">
                                 <span class="text-[11px] font-black uppercase text-indigo-400 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-robot"></i> Parecer Técnico de Engenharia (IA)
+                                    <i class="fa-solid fa-microchip"></i> Parecer Técnico de Engenharia
                                 </span>
                                 <span class="text-[10px] text-slate-400 font-mono">Dossiê Preliminar</span>
                             </div>
@@ -803,26 +1056,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <div class="space-y-2.5">
                                 <template x-for="op in timeline" :key="op.idoperacao">
                                     <div class="flex items-start gap-2.5 text-xs p-3 rounded-xl border transition"
-                                         :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-50/70 border-purple-200 ring-1 ring-purple-100' : 'bg-slate-50 border-slate-200/60'">
+                                         :class="op.usuario === 'MARCON' ? 'bg-indigo-50/70 border-indigo-200 ring-1 ring-indigo-100' : 'bg-slate-50 border-slate-200/60'">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs mt-0.5"
-                                             :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-600 text-white shadow-xs' : 'bg-indigo-100 text-indigo-600'">
-                                            <i class="fa-solid fa-robot" x-show="op.usuario === 'ANTIGRAVITY'"></i>
-                                            <i class="fa-solid fa-comment" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'comentario'"></i>
-                                            <i class="fa-solid fa-arrows-rotate" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'mudanca_status'"></i>
-                                            <i class="fa-solid fa-check" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'resolucao'"></i>
-                                            <i class="fa-solid fa-plus" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'abertura'"></i>
+                                             :class="op.usuario === 'MARCON' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-200 text-slate-700'">
+                                            <i class="fa-solid fa-laptop-code" x-show="op.usuario === 'MARCON'"></i>
+                                            <i class="fa-solid fa-comment" x-show="op.usuario !== 'MARCON' && op.tipo === 'comentario'"></i>
+                                            <i class="fa-solid fa-arrows-rotate" x-show="op.usuario !== 'MARCON' && op.tipo === 'mudanca_status'"></i>
+                                            <i class="fa-solid fa-check" x-show="op.usuario !== 'MARCON' && op.tipo === 'resolucao'"></i>
+                                            <i class="fa-solid fa-plus" x-show="op.usuario !== 'MARCON' && op.tipo === 'abertura'"></i>
                                         </div>
                                         <div class="flex-1">
                                             <div class="flex items-center justify-between text-[11px] mb-0.5">
                                                 <div class="flex items-center gap-1.5">
-                                                    <strong :class="op.usuario === 'ANTIGRAVITY' ? 'text-purple-900 font-black' : 'text-slate-800'" x-text="op.usuario">User</strong>
-                                                    <span x-show="op.usuario === 'ANTIGRAVITY'" class="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-200 text-purple-800">IA Agente</span>
+                                                    <strong :class="op.usuario === 'MARCON' ? 'text-indigo-950 font-black' : 'text-slate-800'" x-text="op.usuario">User</strong>
+                                                    <span x-show="op.usuario === 'MARCON'" class="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-indigo-200 text-indigo-900 font-bold">DevOps / TI</span>
                                                 </div>
                                                 <span class="text-slate-400 text-[10px]" x-text="op.data_fmt">Data</span>
                                             </div>
-                                            <div class="font-medium" :class="op.usuario === 'ANTIGRAVITY' ? 'text-purple-900 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
+                                            <div class="font-medium" :class="op.usuario === 'MARCON' ? 'text-indigo-950 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
                                             <div x-show="op.detalhes" class="text-[11px] mt-1 whitespace-pre-wrap font-mono leading-relaxed p-2 rounded-lg"
-                                                 :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-900/10 text-purple-950 border border-purple-200/50' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
+                                                 :class="op.usuario === 'MARCON' ? 'bg-indigo-900/5 text-indigo-950 border border-indigo-200/60' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
                                             
                                             <!-- Anexo da Operação (Se houver) -->
                                             <div x-show="op.anexo_url" class="mt-2">

@@ -22,7 +22,13 @@ function chamadosApp() {
         lightboxTitulo: '',
 
         // Dados
-        kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0 },
+        kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0, taxa_resolucao: 0 },
+        metricas: {
+            por_sistema: [],
+            por_criticidade: [],
+            top_modulos: [],
+            resolvidos_recentes: []
+        },
         modulos: [],
         sistemas: [],
         chamados: [],
@@ -109,6 +115,12 @@ function chamadosApp() {
                 const res = await this.api('/chamados/dashboard');
                 if (res.success) {
                     this.kpis = res.kpis || {};
+                    this.metricas = res.metricas || {
+                        por_sistema: [],
+                        por_criticidade: [],
+                        top_modulos: [],
+                        resolvidos_recentes: []
+                    };
                     this.modulos = res.modulos || [];
                     this.sistemas = res.sistemas || [];
                 }
@@ -497,10 +509,10 @@ function chamadosApp() {
             }
         },
 
-        copiarBriefingAntigravity() {
+        copiarBriefingDevOps() {
             if (!this.chamadoAtual) return;
             const c = this.chamadoAtual;
-            const texto = `Antigravity, assumir Chamado #${c.idchamado} [${c.modulo_nome || c.tipo_sistema}].\n` +
+            const texto = `Assumir Chamado #${c.idchamado} [${c.modulo_nome || c.tipo_sistema}].\n` +
                 `Objetivo: ${c.titulo}\n` +
                 `Relato / Necessidade: ${c.motivo || c.observacao}\n` +
                 (c.diagnostico_ia ? `\nDossiê Técnico:\n${c.diagnostico_ia}\n` : '') +
@@ -511,17 +523,21 @@ function chamadosApp() {
                 navigator.clipboard.writeText(texto).then(() => {
                     Swal.fire({
                         icon: 'success',
-                        title: 'Briefing Copiado!',
-                        text: 'Comando copiado para a área de transferência. Basta colar no chat do Antigravity!',
-                        timer: 2500,
+                        title: 'Dossiê Técnico Copiado!',
+                        text: 'Dossiê copiado para a área de transferência.',
+                        timer: 2000,
                         showConfirmButton: false
                     });
                 }).catch(() => {
-                    prompt('Copie o briefing abaixo e cole no chat do Antigravity:', texto);
+                    prompt('Copie o dossiê técnico abaixo:', texto);
                 });
             } else {
-                prompt('Copie o briefing abaixo e cole no chat do Antigravity:', texto);
+                prompt('Copie o dossiê técnico abaixo:', texto);
             }
+        },
+
+        copiarBriefingAntigravity() {
+            return this.copiarBriefingDevOps();
         }
     };
 }

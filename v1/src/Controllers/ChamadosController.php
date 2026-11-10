@@ -86,6 +86,45 @@ class ChamadosController
             $kpiEmCorrecao = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 2")->fetchColumn();
             $kpiCriticos = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND criticidade = 'critica'")->fetchColumn();
             $kpiConcluidosMes = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 3 AND (concluido_em >= DATE_TRUNC('month', CURRENT_DATE) OR data >= DATE_TRUNC('month', CURRENT_DATE))")->fetchColumn();
+            $taxaResolucao = $kpiTotal > 0 ? round(($kpiConcluidosMes / $kpiTotal) * 100, 1) : 0;
+
+            // Distribuição por Sistema
+            $porSistema = $this->pdo->query("
+                SELECT COALESCE(tipo_sistema, 'OUTROS') AS sistema, COUNT(*) AS total
+                FROM chamado
+                GROUP BY COALESCE(tipo_sistema, 'OUTROS')
+                ORDER BY total DESC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            // Distribuição por Criticidade
+            $porCriticidade = $this->pdo->query("
+                SELECT COALESCE(criticidade, 'media') AS criticidade, COUNT(*) AS total
+                FROM chamado
+                GROUP BY COALESCE(criticidade, 'media')
+                ORDER BY CASE criticidade WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            // Top Módulos com mais Demandas
+            $topModulos = $this->pdo->query("
+                SELECT COALESCE(modulo_nome, modulo_slug, 'Geral') AS modulo, COUNT(*) AS total
+                FROM chamado
+                GROUP BY COALESCE(modulo_nome, modulo_slug, 'Geral')
+                ORDER BY total DESC
+                LIMIT 6
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            // Últimos Chamados Resolvidos (Entregas Recentes)
+            $resolvidosRecentes = $this->pdo->query("
+                SELECT idchamado, titulo, tipo_sistema, modulo_nome, atendente, versao_entrega, concluido_em, datahora
+                FROM chamado
+                WHERE status = 3
+                ORDER BY COALESCE(concluido_em, datahora) DESC
+                LIMIT 6
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($resolvidosRecentes as &$r) {
+                $r['concluido_fmt'] = !empty($r['concluido_em']) ? date('d/m H:i', strtotime($r['concluido_em'])) : date('d/m', strtotime($r['datahora']));
+            }
 
             // Módulos para os selects
             $modulos = $this->pdo->query("SELECT slug, nome, setor, icon FROM sistema_modulos WHERE ativo = true ORDER BY setor, nome")->fetchAll(PDO::FETCH_ASSOC);
@@ -123,6 +162,13 @@ class ChamadosController
                     'em_correcao' => $kpiEmCorrecao,
                     'criticos' => $kpiCriticos,
                     'concluidos_mes' => $kpiConcluidosMes,
+                    'taxa_resolucao' => $taxaResolucao
+                ],
+                'metricas' => [
+                    'por_sistema' => $porSistema,
+                    'por_criticidade' => $porCriticidade,
+                    'top_modulos' => $topModulos,
+                    'resolvidos_recentes' => $resolvidosRecentes
                 ],
                 'modulos' => $modulos,
                 'sistemas' => $sistemas,
