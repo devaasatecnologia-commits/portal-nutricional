@@ -342,13 +342,13 @@ async function exibirModalConferencia(item) {
                            style="margin:0; width:100%; height:50px; font-size:1.2rem;">
                 </div>
                 
-                <div style="width:100%; margin-bottom:10px; background:#f0fdf4; padding:10px; border-radius:10px; border:1px solid #bbf7d0;">
-                    <label style="display:block; text-align:left; font-size:0.7rem; font-weight:700; color:#166534; margin-bottom:4px;">
-                        <i class="fa-solid fa-map-pin"></i> ENDEREÇO (Seção)
+                <div style="width:100%; margin-bottom:10px; background:#f8fafc; padding:10px; border-radius:10px; border:1px solid #e2e8f0;">
+                    <label style="display:block; text-align:left; font-size:0.7rem; font-weight:700; color:#475569; margin-bottom:4px;">
+                        <i class="fa-solid fa-map-pin text-slate-400"></i> ENDEREÇO (Opcional - Padrão DOX)
                     </label>
               <div id="swalSugestao" style="text-align:left; font-size:0.75rem; margin-bottom:8px;"></div>
               <select id="swalSecao" class="swal2-input" style="margin:0; width:100%; height:45px; font-size:1rem; background:white;">
-    <option value="">Carregando seções...</option>
+    <option value="">Sem endereço (padrão)</option>
 </select>
 <select id="swalEndereco" class="swal2-input" style="margin-top:8px; width:100%; height:45px; font-size:1rem; background:white;">
     <option value="">Selecione a seção primeiro</option>
@@ -356,7 +356,7 @@ async function exibirModalConferencia(item) {
             </div>
         `,
         showCancelButton: true,
-        confirmButtonText: '📸 Tirar Foto e Confirmar',
+        confirmButtonText: '✅ Confirmar Item',
         cancelButtonText: 'Cancelar',
         confirmButtonColor: '#10b981',
         cancelButtonColor: '#ef4444',
@@ -412,16 +412,14 @@ async function exibirModalConferencia(item) {
     const qtd = parseFloat(document.getElementById('swalQuantidade').value);
     const lote = document.getElementById('swalLote').value.trim();
     const validade = document.getElementById('swalValidade').value;
-    const idsecao = document.getElementById('swalSecao').value;
-    const idendereco = document.getElementById('swalEndereco').value;
+    const idsecao = document.getElementById('swalSecao')?.value || '0';
+    const idendereco = document.getElementById('swalEndereco')?.value || '0';
     const enderecoSelect = document.getElementById('swalEndereco');
-    const siglaEndereco = enderecoSelect.options[enderecoSelect.selectedIndex]?.dataset?.sigla || '';
+    const siglaEndereco = enderecoSelect?.options[enderecoSelect?.selectedIndex]?.dataset?.sigla || '';
     
     if (!qtd || qtd <= 0) { Swal.showValidationMessage('Quantidade inválida'); return false; }
     if (qtd > saldo) { Swal.showValidationMessage('Excede o saldo: ' + saldo.toFixed(0)); return false; }
     if (!lote) { Swal.showValidationMessage('O lote é obrigatório'); return false; }
-    if (!idsecao) { Swal.showValidationMessage('Selecione uma seção'); return false; }
-    if (!idendereco) { Swal.showValidationMessage('Selecione um endereço'); return false; }
     
     return { 
         quantidade: qtd, 
@@ -429,7 +427,7 @@ async function exibirModalConferencia(item) {
         validade: validade, 
         idsecao: idsecao, 
         idendereco: idendereco,
-        endereco: siglaEndereco 
+        endereco: siglaEndereco || 'PADRAO'
     };
 }
     });
@@ -437,34 +435,43 @@ async function exibirModalConferencia(item) {
     if (el) el.classList.remove('active');
 
     if (res.isConfirmed && res.value) {
-        // 📸 TIRAR FOTO
-        const fotoOK = await capturarFotoDesembarque(item.cod_item);
-        
-        if (!fotoOK) {
-            Swal.fire({ icon: 'error', title: 'Foto obrigatória!', text: 'É necessário registrar uma foto do produto.', position: 'top' });
-            return;
-        }
-        
-        // Gravar no banco
-        Swal.fire({ title: 'Gravando...', position: 'top', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
+        // Gravar no banco imediatamente (rápido e direto como no DOX)
+        Swal.fire({ title: 'Gravando conferência...', position: 'top', allowOutsideClick: false, didOpen: () => Swal.showLoading() });
         
         try {
-       const r = await apiFetch('v1/desembarque/confirmar', 'POST', {
-    idoc: ocAtual,
-    iditem: String(item.cod_item),
-    quantidade: res.value.quantidade,
-    lote: res.value.lote,
-    validade: res.value.validade,
-    idsecao: res.value.idsecao,
-    idendereco: res.value.idendereco,   
-    endereco: res.value.endereco,
-    usuario: document.getElementById('user_nome')?.value || 'SISTEMA'
-});
+            const r = await apiFetch('v1/desembarque/confirmar', 'POST', {
+                idoc: ocAtual,
+                iditem: String(item.cod_item),
+                quantidade: res.value.quantidade,
+                lote: res.value.lote,
+                validade: res.value.validade,
+                idsecao: res.value.idsecao,
+                idendereco: res.value.idendereco,   
+                endereco: res.value.endereco,
+                usuario: document.getElementById('user_nome')?.value || 'SISTEMA'
+            });
             
             Swal.close();
             
             if (r.success) {
-                await Swal.fire({ icon: 'success', title: '✅ Recebido!', text: `Lote: ${res.value.lote} | Qtd: ${res.value.quantidade} | Local: ${res.value.endereco}`, timer: 2500, showConfirmButton: false, position: 'top' });
+                if (r.oc_finalizada) {
+                    await Swal.fire({ 
+                        icon: 'success', 
+                        title: '🎉 Ordem de Compra Finalizada!', 
+                        text: `Todos os itens da OC #${ocAtual} foram 100% conferidos com sucesso!`,
+                        position: 'top',
+                        confirmButtonText: 'OK'
+                    });
+                } else {
+                    await Swal.fire({ 
+                        icon: 'success', 
+                        title: '✅ Item Conferido!', 
+                        text: `Item: ${nomeItem} | Lote: ${res.value.lote} | Qtd: ${res.value.quantidade}`, 
+                        timer: 2000, 
+                        showConfirmButton: false, 
+                        position: 'top' 
+                    });
+                }
             } else {
                 await Swal.fire({ icon: 'error', title: 'Erro', text: r.error || 'Erro ao gravar', position: 'top' });
             }

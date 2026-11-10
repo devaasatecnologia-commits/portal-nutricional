@@ -64,7 +64,7 @@ JOIN cliforemp f ON f.idcliforemp = oc.idcliforemp
 LEFT JOIN aps_oc_conferencia a ON a.idoc = oc.idoc
 WHERE oc.status = 1
   AND oc.idfilial IN (1,6)
-  AND oc.dataprevisao BETWEEN CURRENT_DATE - INTERVAL '5 days' AND CURRENT_DATE + INTERVAL '5 days'
+  AND (oc.data >= CURRENT_DATE - INTERVAL '120 days' OR oc.dataprevisao >= CURRENT_DATE - INTERVAL '30 days')
   AND (a.status IS NULL OR a.status <> 3)
 ORDER BY oc.idoc DESC
         ";
@@ -305,7 +305,8 @@ public function getSecoes(Request $request, Response $response): Response
         $idsecao = (int)($input['idsecao'] ?? 0);
         $idendereco = (int)($input['idendereco'] ?? 0);
         
-        if ($idoc <= 0 || $iditem <= 0 || $quantidade <= 0 || empty($lote) || empty($usuario) || $idsecao <= 0 || $idendereco <= 0) {
+        // Validação de dados essenciais (seção e endereço são opcionais no modo rápido DOX)
+        if ($idoc <= 0 || $iditem <= 0 || $quantidade <= 0 || empty($lote) || empty($usuario)) {
             $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
             return $response->withStatus(400);
         }
@@ -338,24 +339,27 @@ public function getSecoes(Request $request, Response $response): Response
                 return $this->json($response, ['error' => 'Item não encontrado na ordem de compra'], 404);
             }
 
-            $stmtEndereco = $this->pdo->prepare("
-                SELECT capacidade - ocupado AS disponivel
-                FROM secao_enderecos
-                WHERE idsecao = ? AND idendereco = ?
-                FOR UPDATE
-            ");
-            $stmtEndereco->execute([$idsecao, $idendereco]);
-            $capacidadeDisponivel = $stmtEndereco->fetchColumn();
-            if ($capacidadeDisponivel === false) {
-                $this->pdo->rollBack();
-                return $this->json($response, ['error' => 'Endereço não encontrado'], 404);
-            }
-            if ($quantidade > (float)$capacidadeDisponivel + 0.01) {
-                $this->pdo->rollBack();
-                return $this->json($response, [
-                    'error' => 'Quantidade excede a capacidade disponível do endereço',
-                    'capacidade_disponivel' => round((float)$capacidadeDisponivel, 2),
-                ], 422);
+            // Validação de endereço WMS (apenas se informado pelo conferente)
+            if ($idsecao > 0 && $idendereco > 0) {
+                $stmtEndereco = $this->pdo->prepare("
+                    SELECT capacidade - ocupado AS disponivel
+                    FROM secao_enderecos
+                    WHERE idsecao = ? AND idendereco = ?
+                    FOR UPDATE
+                ");
+                $stmtEndereco->execute([$idsecao, $idendereco]);
+                $capacidadeDisponivel = $stmtEndereco->fetchColumn();
+                if ($capacidadeDisponivel === false) {
+                    $this->pdo->rollBack();
+                    return $this->json($response, ['error' => 'Endereço não encontrado'], 404);
+                }
+                if ($quantidade > (float)$capacidadeDisponivel + 0.01) {
+                    $this->pdo->rollBack();
+                    return $this->json($response, [
+                        'error' => 'Quantidade excede a capacidade disponível do endereço',
+                        'capacidade_disponivel' => round((float)$capacidadeDisponivel, 2),
+                    ], 422);
+                }
             }
             
             // 1. Verificar/Criar registro na aps_oc_conferencia
@@ -512,11 +516,48 @@ if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
         'idendereco' => $idendereco
     ]);
 }
+
+            // 6. Verificar se todos os itens da OC foram 100% conferidos (conclusão automática estilo DOX)
+            $stmtPendencias = $this->pdo->prepare("
+                SELECT COUNT(*)
+                FROM oc_item item_oc
+                WHERE item_oc.idoc = :idoc
+                  AND COALESCE((
+                      SELECT conferencia.quantidadeconferida
+                      FROM aps_oc_conferencia_item conferencia
+                      WHERE conferencia.idoc = item_oc.idoc
+                        AND conferencia.iditem = item_oc.iditem
+                  ), 0) < item_oc.qt - 0.01
+            ");
+            $stmtPendencias->execute(['idoc' => $idoc]);
+            $pendentes = (int)$stmtPendencias->fetchColumn();
+            $ocFinalizada = false;
+
+            if ($pendentes === 0) {
+                $this->pdo->prepare("
+                    UPDATE aps_oc_conferencia 
+                    SET status = 3, 
+                        horafim = CURRENT_TIME,
+                        tempototal = CEIL(EXTRACT(EPOCH FROM (CURRENT_TIME - horainicio)) / 60.0)::int
+                    WHERE idoc = :idoc
+                ")->execute(['idoc' => $idoc]);
+
+                $this->pdo->prepare("
+                    INSERT INTO oc_operacao (idoc, idoperacao, idempresa, idfilial, acao, descricao, datahora, usuario, estacaologistica)
+                    SELECT :idoc, nextval('gi_OC_operacao'), 1, 1, 7, 
+                           'Conferência na expedição via PORTAL', NOW(), :usuario, 'DOX'
+                ")->execute(['idoc' => $idoc, 'usuario' => $usuario]);
+
+                $ocFinalizada = true;
+            }
+
             $this->pdo->commit();
             
-            $payload = json_encode(['success' => true]);
-            $response->getBody()->write($payload);
-            return $response->withHeader('Content-Type', 'application/json');
+            return $this->json($response, [
+                'success' => true,
+                'oc_finalizada' => $ocFinalizada,
+                'pendentes' => $pendentes
+            ]);
             
         } catch (\Exception $e) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
