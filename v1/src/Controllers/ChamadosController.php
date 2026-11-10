@@ -101,7 +101,7 @@ class ChamadosController
                 SELECT COALESCE(criticidade, 'media') AS criticidade, COUNT(*) AS total
                 FROM chamado
                 GROUP BY COALESCE(criticidade, 'media')
-                ORDER BY CASE criticidade WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
+                ORDER BY CASE COALESCE(criticidade, 'media') WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
             ")->fetchAll(PDO::FETCH_ASSOC);
 
             // Top Módulos com mais Demandas
