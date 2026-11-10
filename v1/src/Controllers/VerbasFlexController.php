@@ -99,7 +99,7 @@ class VerbasFlexController
                  JOIN cliforemp cli ON cli.idcliforemp = nfs.idcliforemp
                  JOIN cliforemp vend ON vend.idcliforemp = lfb.idvendrepre
                  LEFT JOIN cliforemp gestor ON gestor.idcliforemp = nfs.idsupervisor
-                 WHERE lfb.valor_tirado <> 0
+                 WHERE lfb.valor <> 0
                    AND nfs.datahora >= :inicio::date AND nfs.datahora < (:fim::date + 1)";
         $p = ['inicio' => $f['inicio'], 'fim' => $f['fim']];
 
@@ -184,11 +184,11 @@ class VerbasFlexController
                         cli.idcliforemp AS cdcliente, cli.fantasia AS cliente,
                         lfb.idvendrepre AS cdrepre, vend.fantasia AS representante,
                         gestor.fantasia AS gestor, nfs.valortotalitens AS valor_nota,
-                        lfb.valor_tirado, lfb.valor $from
+                        lfb.valor_tirado AS valor_coberto_gestor, ABS(lfb.valor) AS valor_tirado, lfb.valor $from
                  ORDER BY nfs.datahora DESC, lfb.id DESC LIMIT " . $f['limite'],
                 $p
             );
-            $tot = $this->consultar('SELECT COALESCE(SUM(lfb.valor_tirado),0) AS total, COUNT(*) AS qtd' . $from, $p)[0];
+            $tot = $this->consultar('SELECT COALESCE(SUM(ABS(lfb.valor)),0) AS total, COUNT(*) AS qtd' . $from, $p)[0];
 
             // representantes do periodo (sem o filtro de representante) para o seletor
             [$fromRep, $pRep] = $this->baseDebitos($f, $usuario, false);
@@ -322,7 +322,7 @@ class VerbasFlexController
                 [$d, $pd] = $this->baseDebitos($ff, $usuario);
                 [$c, $pc] = $this->baseCreditos($ff);
                 return [
-                    'debitos' => (float)$this->consultar('SELECT COALESCE(SUM(lfb.valor_tirado),0) v' . $d, $pd)[0]['v'],
+                    'debitos' => (float)$this->consultar('SELECT COALESCE(SUM(ABS(lfb.valor)),0) v' . $d, $pd)[0]['v'],
                     'creditos' => (float)$this->consultar('SELECT COALESCE(SUM(ldfg.valor_emprestimo),0) v' . $c, $pc)[0]['v'],
                 ];
             };
@@ -348,9 +348,9 @@ class VerbasFlexController
             [$d, $pd] = $this->baseDebitos($f, $usuario);
             $ranking = $this->consultar(
                 "SELECT lfb.idvendrepre AS id, vend.fantasia AS nome,
-                        ABS(SUM(lfb.valor_tirado)) AS total,
+                        ABS(SUM(lfb.valor)) AS total,
                         COUNT(*) AS qtd,
-                        ABS(MIN(lfb.valor_tirado)) AS maior_retirada
+                        ABS(MIN(lfb.valor)) AS maior_retirada
                  $d
                  GROUP BY 1, 2
                  ORDER BY total DESC",
@@ -368,8 +368,8 @@ class VerbasFlexController
             // Estatísticas detalhadas
             $statsDebitos = $this->consultar(
                 "SELECT COUNT(*) AS qtd,
-                        ABS(COALESCE(MIN(lfb.valor_tirado), 0)) AS maior_debito,
-                        ABS(COALESCE(AVG(lfb.valor_tirado), 0)) AS ticket_medio
+                        ABS(COALESCE(MIN(lfb.valor), 0)) AS maior_debito,
+                        ABS(COALESCE(AVG(lfb.valor), 0)) AS ticket_medio
                  $d",
                 $pd
             )[0] ?? ['qtd' => 0, 'maior_debito' => 0, 'ticket_medio' => 0];
@@ -385,14 +385,14 @@ class VerbasFlexController
 
             // Detalhe da maior retirada única
             $detalheMaiorDebito = $this->consultar(
-                "SELECT ABS(lfb.valor_tirado) AS valor,
+                "SELECT ABS(lfb.valor) AS valor,
                         lfb.numero_nota AS nota,
                         nfs.datahora AS data,
                         cli.fantasia AS cliente,
                         vend.idcliforemp AS idrepresentante,
                         vend.fantasia AS representante
                  $d
-                 ORDER BY ABS(lfb.valor_tirado) DESC, nfs.datahora DESC
+                 ORDER BY ABS(lfb.valor) DESC, nfs.datahora DESC
                  LIMIT 1",
                 $pd
             )[0] ?? null;
@@ -547,7 +547,7 @@ class VerbasFlexController
             // Série diária no período para gráficos de linha/área
             $serieDiaria = $this->consultar(
                 "SELECT date_trunc('day', nfs.datahora)::date AS dia,
-                        ABS(SUM(lfb.valor_tirado)) AS debito,
+                        ABS(SUM(lfb.valor)) AS debito,
                         COUNT(*) AS qtd
                  $d
                  GROUP BY 1
@@ -784,16 +784,16 @@ class VerbasFlexController
                     b.idvendrepre AS idcolaborador,
                     COALESCE(v.fantasia, v.razao, 'Rep ' || b.idvendrepre) AS colaborador,
                     'DEBITO' AS tipo,
-                    ABS(b.valor_tirado) AS valor,
+                    ABS(b.valor) AS valor,
                     NULL::numeric AS saldo_anterior,
                     NULL::numeric AS saldo_novo,
-                    (b.codgestor IS NOT NULL AND b.codgestor > 0) AS usou_gestor,
-                    b.codgestor AS idgestor,
-                    COALESCE(g.fantasia, g.razao, 'Gestor ' || b.codgestor) AS nome_gestor,
-                    CASE WHEN b.codgestor IS NOT NULL AND b.codgestor > 0 THEN ABS(b.valor_tirado) ELSE 0 END AS valor_gestor,
+                    (b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0) AS usou_gestor,
+                    CASE WHEN b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0 THEN b.codgestor ELSE NULL END AS idgestor,
+                    CASE WHEN b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0 THEN COALESCE(g.fantasia, g.razao, 'Gestor ' || b.codgestor) ELSE NULL END AS nome_gestor,
+                    ABS(COALESCE(b.valor_tirado, 0)) AS valor_gestor,
                     b.observacao,
                     b.numero_nota AS documento,
-                    json_build_object('numero_nota', b.numero_nota, 'valor_nota', b.valor, 'codgestor', b.codgestor, 'gestor', g.fantasia)::text AS detalhes
+                    json_build_object('numero_nota', b.numero_nota, 'valor_nota', b.valor, 'codgestor', b.codgestor, 'gestor', g.fantasia, 'valor_tirado_gestor', b.valor_tirado)::text AS detalhes
                 FROM log_flex_bonificacao b
                 LEFT JOIN cliforemp v ON v.idcliforemp = b.idvendrepre
                 LEFT JOIN cliforemp g ON g.idcliforemp = b.codgestor
@@ -801,7 +801,7 @@ class VerbasFlexController
 
                 UNION ALL
 
-                -- 3B. Bonificações - Cobertura do Gestor (quando codgestor > 0)
+                -- 3B. Bonificações - Cobertura do Gestor (apenas quando o gestor efetivamente cobriu valor_tirado > 0)
                 SELECT 
                     b.id,
                     b.data_criacao AS datahora,
@@ -825,6 +825,7 @@ class VerbasFlexController
                 LEFT JOIN cliforemp v ON v.idcliforemp = b.idvendrepre
                 LEFT JOIN cliforemp g ON g.idcliforemp = b.codgestor
                 WHERE b.idfilial = :filial AND b.codgestor IS NOT NULL AND b.codgestor > 0
+                  AND b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0
                   AND b.data_criacao >= :inicio_ts AND b.data_criacao <= :fim_ts
 
                 UNION ALL
