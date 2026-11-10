@@ -1011,6 +1011,17 @@ $protected->group('/flex-movimentacao', function ($group) {
     $group->post('/movimentar', [$controller, 'movimentar']);
 })->add(new ModulePermissionMiddleware(['movimentacao-flex', 'transferencia-flex', 'verbas-flex']));
 
+$protected->group('/chamados', function ($group) {
+    $controller = new \Nutricional\Controllers\ChamadosController();
+    $group->get('/dashboard', [$controller, 'dashboard']);
+    $group->get('/listar', [$controller, 'listar']);
+    $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
+    $group->post('/triagem-ia', [$controller, 'triarIa']);
+    $group->post('/criar', [$controller, 'criar']);
+    $group->post('/atualizar-status', [$controller, 'atualizarStatus']);
+    $group->post('/adicionar-interacao', [$controller, 'adicionarInteracao']);
+});
+
 $protected->group('/avaliacao-chapd', function ($group) {
     $controller = new \Nutricional\Controllers\AvaliacaoChapdController();
     $group->get('/contexto', [$controller, 'contexto']);
