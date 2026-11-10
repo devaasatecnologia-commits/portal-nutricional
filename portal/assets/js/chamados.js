@@ -1,6 +1,7 @@
 /**
  * Central de Chamados & Suporte Inteligente — Portal Nutricional
- * Gerenciamento reativo com Alpine.js, Kanban, Lista e Triagem de IA.
+ * Gerenciamento reativo com Alpine.js, Kanban, Modo Lista, Filtro de Período,
+ * Upload e Colagem de Prints (Ctrl+V) com Lightbox e Triagem de IA.
  */
 function chamadosApp() {
     return {
@@ -8,11 +9,17 @@ function chamadosApp() {
         carregando: false,
         analisandoIa: false,
         salvandoChamado: false,
+        anexoUploadando: false,
 
         // Modais
         modalNovoAberto: false,
         modalDetalhesAberto: false,
         triagemFeita: false,
+
+        // Lightbox de Prints/Anexos
+        lightboxAberto: false,
+        lightboxUrl: '',
+        lightboxTitulo: '',
 
         // Dados
         kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0 },
@@ -23,13 +30,16 @@ function chamadosApp() {
         timeline: [],
 
         // Filtros
+        filtroPeriodoAtivo: 'todos', // 'hoje', '7dias', 'mes', 'todos'
         filtros: {
             status: '',
             tipo_sistema: 'todos',
             modulo: 'todos',
             criticidade: 'todas',
             categoria: 'todas',
-            busca: ''
+            busca: '',
+            data_inicio: '',
+            data_fim: ''
         },
 
         // Formulário de Novo Chamado
@@ -52,7 +62,8 @@ function chamadosApp() {
             mensagem: '',
             tipo: 'comentario',
             eh_resolucao: false,
-            versao_entrega: 'v3.5'
+            versao_entrega: 'v3.5',
+            anexo_url: ''
         },
 
         async init() {
@@ -60,15 +71,23 @@ function chamadosApp() {
             await this.carregarChamados();
         },
 
-        // Chamada à API
+        // Chamada à API com suporte a multipart ou json
         async api(endpoint, options = {}) {
             const url = endpoint.startsWith('/') ? `/v1${endpoint}` : `/v1/${endpoint}`;
+            const isFormData = options.body instanceof FormData;
+
             const opts = {
-                headers: { 'Content-Type': 'application/json' },
                 ...options
             };
-            if (opts.body && typeof opts.body === 'object') {
-                opts.body = JSON.stringify(opts.body);
+
+            if (!isFormData) {
+                opts.headers = {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                };
+                if (opts.body && typeof opts.body === 'object') {
+                    opts.body = JSON.stringify(opts.body);
+                }
             }
 
             const fetchFn = window.fetchWithAuth || window.apiFetch || fetch;
@@ -108,6 +127,8 @@ function chamadosApp() {
                 if (this.filtros.criticidade !== 'todas') params.append('criticidade', this.filtros.criticidade);
                 if (this.filtros.categoria !== 'todas') params.append('categoria', this.filtros.categoria);
                 if (this.filtros.busca) params.append('busca', this.filtros.busca);
+                if (this.filtros.data_inicio) params.append('data_inicio', this.filtros.data_inicio);
+                if (this.filtros.data_fim) params.append('data_fim', this.filtros.data_fim);
 
                 const res = await this.api(`/chamados/listar?${params.toString()}`);
                 if (res.success) {
@@ -118,6 +139,32 @@ function chamadosApp() {
             } finally {
                 this.carregando = false;
             }
+        },
+
+        definirPeriodo(tipo) {
+            this.filtroPeriodoAtivo = tipo;
+            const hoje = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+            if (tipo === 'hoje') {
+                this.filtros.data_inicio = fmt(hoje);
+                this.filtros.data_fim = fmt(hoje);
+            } else if (tipo === '7dias') {
+                const d7 = new Date();
+                d7.setDate(hoje.getDate() - 7);
+                this.filtros.data_inicio = fmt(d7);
+                this.filtros.data_fim = fmt(hoje);
+            } else if (tipo === 'mes') {
+                const dInicio = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+                const dFim = new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0);
+                this.filtros.data_inicio = fmt(dInicio);
+                this.filtros.data_fim = fmt(dFim);
+            } else {
+                this.filtros.data_inicio = '';
+                this.filtros.data_fim = '';
+            }
+            this.carregarChamados();
         },
 
         colunaChamados(statusNum) {
@@ -164,6 +211,139 @@ function chamadosApp() {
             };
             this.triagemFeita = false;
             this.modalNovoAberto = true;
+        },
+
+        // Upload de Print Screen / Colar via Clipboard (Ctrl+V)
+        tratarColagemPrint(e, destino = 'novo') {
+            if (!e.clipboardData || !e.clipboardData.items) return;
+
+            for (let i = 0; i < e.clipboardData.items.length; i++) {
+                const item = e.clipboardData.items[i];
+                if (item.type.indexOf('image') !== -1) {
+                    const blob = item.getAsFile();
+                    if (blob) {
+                        e.preventDefault();
+                        this.enviarBlobComoPrint(blob, destino);
+                        return;
+                    }
+                }
+            }
+        },
+
+        async enviarBlobComoPrint(blob, destino = 'novo') {
+            this.anexoUploadando = true;
+            try {
+                const reader = new FileReader();
+                reader.onload = async (event) => {
+                    const base64Data = event.target.result;
+                    const res = await this.api('/chamados/upload-anexo', {
+                        method: 'POST',
+                        body: { imagem_base64: base64Data }
+                    });
+
+                    if (res.success && res.url) {
+                        if (destino === 'novo') {
+                            this.novoForm.anexo_url = res.url;
+                        } else {
+                            this.novaInteracao.anexo_url = res.url;
+                        }
+
+                        if (typeof Swal !== 'undefined') {
+                            const Toast = Swal.mixin({
+                                toast: true,
+                                position: 'top-end',
+                                showConfirmButton: false,
+                                timer: 2500,
+                                timerProgressBar: true
+                            });
+                            Toast.fire({
+                                icon: 'success',
+                                title: '📸 Print screen anexado com sucesso!'
+                            });
+                        }
+                    }
+                    this.anexoUploadando = false;
+                };
+                reader.readAsDataURL(blob);
+            } catch (err) {
+                this.anexoUploadando = false;
+                console.error('Erro ao enviar print:', err);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Falha no anexo', text: err.message });
+                }
+            }
+        },
+
+        async selecionarArquivoAnexo(e, destino = 'novo') {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+
+            this.anexoUploadando = true;
+            try {
+                const formData = new FormData();
+                formData.append('anexo', file);
+
+                const res = await this.api('/chamados/upload-anexo', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.success && res.url) {
+                    if (destino === 'novo') {
+                        this.novoForm.anexo_url = res.url;
+                    } else {
+                        this.novaInteracao.anexo_url = res.url;
+                    }
+
+                    if (typeof Swal !== 'undefined') {
+                        const Toast = Swal.mixin({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2500,
+                            timerProgressBar: true
+                        });
+                        Toast.fire({
+                            icon: 'success',
+                            title: 'Arquivo anexado com sucesso!'
+                        });
+                    }
+                }
+            } catch (err) {
+                console.error('Erro no upload de arquivo:', err);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Falha no upload', text: err.message });
+                }
+            } finally {
+                this.anexoUploadando = false;
+                e.target.value = '';
+            }
+        },
+
+        removerAnexo(destino = 'novo') {
+            if (destino === 'novo') {
+                this.novoForm.anexo_url = '';
+            } else {
+                this.novaInteracao.anexo_url = '';
+            }
+        },
+
+        abrirLightbox(url, titulo = 'Visualização do Anexo') {
+            if (!url) return;
+            this.lightboxUrl = url;
+            this.lightboxTitulo = titulo;
+            this.lightboxAberto = true;
+        },
+
+        fecharLightbox() {
+            this.lightboxAberto = false;
+            this.lightboxUrl = '';
+            this.lightboxTitulo = '';
+        },
+
+        ehImagem(url) {
+            if (!url) return false;
+            return /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url);
         },
 
         async analisarComIa() {
@@ -251,7 +431,8 @@ function chamadosApp() {
                         mensagem: '',
                         tipo: 'comentario',
                         eh_resolucao: false,
-                        versao_entrega: 'v3.5'
+                        versao_entrega: 'v3.5',
+                        anexo_url: ''
                     };
                     this.modalDetalhesAberto = true;
                 }
@@ -282,7 +463,8 @@ function chamadosApp() {
         },
 
         async enviarInteracao() {
-            if (!this.chamadoAtual || !this.novaInteracao.mensagem.trim()) return;
+            if (!this.chamadoAtual) return;
+            if (!this.novaInteracao.mensagem.trim() && !this.novaInteracao.anexo_url) return;
 
             try {
                 const res = await this.api('/chamados/adicionar-interacao', {
@@ -292,7 +474,8 @@ function chamadosApp() {
                         mensagem: this.novaInteracao.mensagem,
                         tipo: this.novaInteracao.eh_resolucao ? 'resolucao' : this.novaInteracao.tipo,
                         eh_resolucao: this.novaInteracao.eh_resolucao,
-                        versao_entrega: this.novaInteracao.versao_entrega
+                        versao_entrega: this.novaInteracao.versao_entrega,
+                        anexo_url: this.novaInteracao.anexo_url
                     }
                 });
 
@@ -321,6 +504,7 @@ function chamadosApp() {
                 `Objetivo: ${c.titulo}\n` +
                 `Relato / Necessidade: ${c.motivo || c.observacao}\n` +
                 (c.diagnostico_ia ? `\nDossiê Técnico:\n${c.diagnostico_ia}\n` : '') +
+                (c.anexo_url ? `\nAnexo/Print: ${c.anexo_url}\n` : '') +
                 `\nPor favor, analise os arquivos do módulo, execute as alterações necessárias no código conforme o checklist de 5 passos do Plano Diretor, teste a sintaxe, comite e registre a entrega técnica diretamente na timeline deste chamado no banco.`;
 
             if (navigator.clipboard && navigator.clipboard.writeText) {

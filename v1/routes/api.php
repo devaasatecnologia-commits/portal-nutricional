@@ -1020,6 +1020,7 @@ $protected->group('/chamados', function ($group) {
     $group->post('/criar', [$controller, 'criar']);
     $group->post('/atualizar-status', [$controller, 'atualizarStatus']);
     $group->post('/adicionar-interacao', [$controller, 'adicionarInteracao']);
+    $group->post('/upload-anexo', [$controller, 'uploadAnexo']);
 });
 
 $protected->group('/avaliacao-chapd', function ($group) {

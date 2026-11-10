@@ -147,6 +147,8 @@ class ChamadosController
             $categoria = trim((string)($q['categoria'] ?? ''));
             $tipoSistema = trim((string)($q['tipo_sistema'] ?? ''));
             $busca = trim((string)($q['busca'] ?? ''));
+            $dataInicio = trim((string)($q['data_inicio'] ?? ''));
+            $dataFim = trim((string)($q['data_fim'] ?? ''));
 
             $where = ['1=1'];
             $params = [];
@@ -170,6 +172,14 @@ class ChamadosController
             if ($categoria !== '' && $categoria !== 'todas') {
                 $where[] = 'c.categoria = :categoria';
                 $params['categoria'] = $categoria;
+            }
+            if ($dataInicio !== '') {
+                $where[] = 'c.data >= :dataInicio::date';
+                $params['dataInicio'] = $dataInicio;
+            }
+            if ($dataFim !== '') {
+                $where[] = 'c.data <= :dataFim::date';
+                $params['dataFim'] = $dataFim;
             }
             if ($busca !== '') {
                 $where[] = '(c.titulo ILIKE :busca OR c.motivo ILIKE :busca OR c.solicitante ILIKE :busca OR c.observacao ILIKE :busca OR CAST(c.idchamado AS TEXT) ILIKE :busca)';
@@ -267,7 +277,8 @@ class ChamadosController
                     usuario,
                     acao,
                     COALESCE(tipo, 'comentario') AS tipo,
-                    detalhes
+                    detalhes,
+                    anexo_url
                 FROM chamado_operacao
                 WHERE idchamado = :id
                 ORDER BY datahora ASC, idoperacao ASC
@@ -486,20 +497,21 @@ class ChamadosController
             $tipo = trim((string)($body['tipo'] ?? 'comentario'));
             $ehResolucao = !empty($body['eh_resolucao']);
             $versaoEntrega = trim((string)($body['versao_entrega'] ?? ''));
+            $anexoUrl = trim((string)($body['anexo_url'] ?? ''));
             $u = $this->usuario($request);
 
-            if ($id <= 0 || mb_strlen($mensagem) < 2) {
-                return $this->erro($response, 'Informe o chamado e o conteúdo da mensagem.');
+            if ($id <= 0 || (mb_strlen($mensagem) < 2 && empty($anexoUrl))) {
+                return $this->erro($response, 'Informe o chamado e o conteúdo da mensagem ou anexo.');
             }
 
             // Próximo idoperacao
             $nextOp = (int)$this->pdo->query("SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = {$id}")->fetchColumn();
 
-            $desc = $ehResolucao ? 'Resolução Técnica Aplicada' : 'Novo Comentário';
+            $desc = $ehResolucao ? 'Resolução Técnica Aplicada' : (!empty($anexoUrl) && empty($mensagem) ? 'Anexo / Print adicionado' : 'Novo Comentário');
 
             $stmtOp = $this->pdo->prepare("
-                INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes)
-                VALUES (:id, :op, :desc, NOW(), :user, 3, :tipo, :det)
+                INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes, anexo_url)
+                VALUES (:id, :op, :desc, NOW(), :user, 3, :tipo, :det, :anexo_url)
             ");
             $stmtOp->execute([
                 'id' => $id,
@@ -507,7 +519,8 @@ class ChamadosController
                 'desc' => $desc,
                 'user' => $u['username'],
                 'tipo' => $tipo,
-                'det' => $mensagem
+                'det' => $this->limpaWin1252($mensagem),
+                'anexo_url' => $this->limpaWin1252($anexoUrl)
             ]);
 
             // Se for resolução, atualiza chamado
@@ -522,7 +535,7 @@ class ChamadosController
                     WHERE idchamado = :id
                 ");
                 $stmtUp->execute([
-                    'sol' => $mensagem,
+                    'sol' => $this->limpaWin1252($mensagem),
                     'ver' => $versaoEntrega ?: 'v3.5',
                     'id' => $id
                 ]);
@@ -534,6 +547,119 @@ class ChamadosController
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao registrar interação: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /v1/chamados/upload-anexo
+     * Upload de imagens, prints (clipboard/base64) ou arquivos anexos.
+     */
+    public function uploadAnexo(Request $request, Response $response): Response
+    {
+        try {
+            $u = $this->usuario($request);
+            $uploadDir = __DIR__ . '/../../../portal/uploads/chamados';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0777, true);
+            }
+
+            $extensoesPermitidas = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'log'];
+            $maxBytes = 15 * 1024 * 1024; // 15MB
+
+            $body = $this->parsedBody($request);
+
+            // 1. Caso base64 (Print Screen / Ctrl+V)
+            if (!empty($body['imagem_base64'])) {
+                $rawBase64 = (string)$body['imagem_base64'];
+                $ext = 'png';
+                if (preg_match('/^data:image\/(\w+);base64,/', $rawBase64, $m)) {
+                    $ext = strtolower($m[1]) === 'jpeg' ? 'jpg' : strtolower($m[1]);
+                    $rawBase64 = substr($rawBase64, strpos($rawBase64, ',') + 1);
+                }
+                if (!in_array($ext, $extensoesPermitidas, true)) {
+                    $ext = 'png';
+                }
+
+                $data = base64_decode($rawBase64);
+                if ($data === false || strlen($data) === 0) {
+                    return $this->erro($response, 'Dados de imagem base64 inválidos.');
+                }
+                if (strlen($data) > $maxBytes) {
+                    return $this->erro($response, 'Arquivo excede o limite de 15MB.');
+                }
+
+                $nomeArquivo = 'print_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $caminhoFisico = $uploadDir . '/' . $nomeArquivo;
+
+                if (file_put_contents($caminhoFisico, $data) === false) {
+                    return $this->erro($response, 'Falha ao salvar print no servidor.', 500);
+                }
+
+                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
+                $urlRelativa = $appBase . '/portal/uploads/chamados/' . $nomeArquivo;
+
+                return $this->json($response, [
+                    'success' => true,
+                    'url' => $urlRelativa,
+                    'nome' => $nomeArquivo,
+                    'tamanho' => strlen($data),
+                    'tipo' => 'imagem'
+                ]);
+            }
+
+            // 2. Caso Multipart / Upload tradicional ($_FILES ou PSR-7)
+            $files = $request->getUploadedFiles();
+            $uploadedFile = $files['anexo'] ?? $files['file'] ?? null;
+
+            if (!$uploadedFile && !empty($_FILES['anexo'])) {
+                $tmp = $_FILES['anexo']['tmp_name'];
+                $origName = $_FILES['anexo']['name'];
+                $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+                if (!in_array($ext, $extensoesPermitidas, true)) {
+                    return $this->erro($response, 'Extensão de arquivo não permitida.');
+                }
+                if ($_FILES['anexo']['size'] > $maxBytes) {
+                    return $this->erro($response, 'Arquivo excede o limite de 15MB.');
+                }
+                $nomeArquivo = 'anexo_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $dest = $uploadDir . '/' . $nomeArquivo;
+                if (!move_uploaded_file($tmp, $dest)) {
+                    return $this->erro($response, 'Erro ao mover anexo.', 500);
+                }
+                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
+                return $this->json($response, [
+                    'success' => true,
+                    'url' => $appBase . '/portal/uploads/chamados/' . $nomeArquivo,
+                    'nome' => $origName,
+                    'tipo' => in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp']) ? 'imagem' : 'documento'
+                ]);
+            }
+
+            if ($uploadedFile && $uploadedFile->getError() === UPLOAD_ERR_OK) {
+                $origName = $uploadedFile->getClientFilename();
+                $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
+                if (!in_array($ext, $extensoesPermitidas, true)) {
+                    return $this->erro($response, 'Extensão de arquivo não permitida.');
+                }
+                if ($uploadedFile->getSize() > $maxBytes) {
+                    return $this->erro($response, 'Arquivo excede o limite de 15MB.');
+                }
+                $nomeArquivo = 'anexo_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $dest = $uploadDir . '/' . $nomeArquivo;
+                $uploadedFile->moveTo($dest);
+
+                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
+                return $this->json($response, [
+                    'success' => true,
+                    'url' => $appBase . '/portal/uploads/chamados/' . $nomeArquivo,
+                    'nome' => $origName,
+                    'tipo' => in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp']) ? 'imagem' : 'documento'
+                ]);
+            }
+
+            return $this->erro($response, 'Nenhum anexo ou print foi enviado.');
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro no upload: ' . $e->getMessage(), 500);
         }
     }
 }

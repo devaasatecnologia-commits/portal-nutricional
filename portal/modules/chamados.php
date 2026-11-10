@@ -119,7 +119,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- BARRA DE CONTROLE: FILTROS + VISUALIZAÇÃO -->
-    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm mb-5">
+    <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm mb-5 space-y-3">
         <div class="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
             <!-- Busca Textual -->
             <div class="relative flex-1">
@@ -169,6 +169,57 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span>Lista</span>
                     </button>
                 </div>
+            </div>
+        </div>
+
+        <!-- LINHA DE FILTRO DE PERÍODO COMPLETO (HOJE, 7 DIAS, MÊS, DATAS LIVRES) -->
+        <div class="pt-2.5 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs">
+            <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <i class="fa-regular fa-calendar text-slate-500"></i> Período:
+                </span>
+
+                <!-- Atalhos rápidos -->
+                <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                    <button type="button" @click="definirPeriodo('hoje')"
+                            class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition"
+                            :class="filtroPeriodoAtivo === 'hoje' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        Hoje
+                    </button>
+                    <button type="button" @click="definirPeriodo('7dias')"
+                            class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition"
+                            :class="filtroPeriodoAtivo === '7dias' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        7 Dias
+                    </button>
+                    <button type="button" @click="definirPeriodo('mes')"
+                            class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition"
+                            :class="filtroPeriodoAtivo === 'mes' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        Este Mês
+                    </button>
+                    <button type="button" @click="definirPeriodo('todos')"
+                            class="px-2.5 py-1 rounded-lg font-bold text-[11px] transition"
+                            :class="filtroPeriodoAtivo === 'todos' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        Todos
+                    </button>
+                </div>
+            </div>
+
+            <!-- Inputs de Data De / Até -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">De:</span>
+                    <input type="date" x-model="filtros.data_inicio" @change="filtroPeriodoAtivo = 'custom'; carregarChamados()"
+                           class="bg-transparent border-0 text-xs font-semibold text-slate-700 focus:outline-none">
+                </div>
+                <div class="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1">
+                    <span class="text-[10px] font-bold text-slate-400 uppercase">Até:</span>
+                    <input type="date" x-model="filtros.data_fim" @change="filtroPeriodoAtivo = 'custom'; carregarChamados()"
+                           class="bg-transparent border-0 text-xs font-semibold text-slate-700 focus:outline-none">
+                </div>
+                <button type="button" x-show="filtros.data_inicio || filtros.data_fim" @click="definirPeriodo('todos')"
+                        class="text-[11px] font-bold text-rose-500 hover:text-rose-700 px-2 py-1 rounded-lg hover:bg-rose-50 transition" title="Limpar filtro de data">
+                    <i class="fa-solid fa-xmark"></i> Limpar
+                </button>
             </div>
         </div>
     </div>
@@ -362,8 +413,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- MODAL 1: NOVO CHAMADO COM TRIAGEM DE IA -->
-    <div x-show="modalNovoAberto" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs" style="display: none;">
+    <!-- MODAL 1: NOVO CHAMADO COM TRIAGEM DE IA & ANEXO/PRINT -->
+    <div x-show="modalNovoAberto" @paste="tratarColagemPrint($event, 'novo')" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs" style="display: none;">
         <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden" @click.outside="modalNovoAberto = false">
             <div class="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div class="flex items-center gap-2.5">
@@ -372,7 +423,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                     <div>
                         <h3 class="text-base font-black text-slate-800">Abertura de Chamado Inteligente</h3>
-                        <p class="text-xs text-slate-400">Relate com suas próprias palavras; a IA formata e enriquece o chamado</p>
+                        <p class="text-xs text-slate-400">Relate com suas próprias palavras; anexe prints (Ctrl+V) e deixe a IA formatar</p>
                     </div>
                 </div>
                 <button @click="modalNovoAberto = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center">
@@ -532,6 +583,61 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </span>
                 </div>
 
+                <!-- 4. ANEXAR IMAGEM / PRINT SCREEN (UPLOAD & CTRL+V) -->
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                            Anexo / Print da Tela <span class="text-slate-400 font-normal lowercase">(opcional)</span>
+                        </label>
+                        <span class="text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200/60 flex items-center gap-1">
+                            <i class="fa-solid fa-keyboard text-indigo-500"></i> Cole print com <kbd class="font-mono bg-white px-1 py-0.2 rounded border border-indigo-200">Ctrl+V</kbd>
+                        </span>
+                    </div>
+
+                    <!-- Input file oculto -->
+                    <input type="file" x-ref="novoAnexoInput" @change="selecionarArquivoAnexo($event, 'novo')" accept="image/*,.pdf,.txt,.log" class="hidden">
+
+                    <!-- Dropzone / Área de Clique e Colagem -->
+                    <div x-show="!novoForm.anexo_url"
+                         @click="$refs.novoAnexoInput.click()"
+                         class="border-2 border-dashed border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/20 rounded-2xl p-4 text-center cursor-pointer transition flex flex-col items-center justify-center gap-1.5 group">
+                        <div class="w-10 h-10 rounded-xl bg-slate-100 group-hover:bg-indigo-100 text-slate-400 group-hover:text-indigo-600 flex items-center justify-center text-base transition">
+                            <i class="fa-solid fa-cloud-arrow-up" x-show="!anexoUploadando"></i>
+                            <i class="fa-solid fa-spinner fa-spin text-indigo-600" x-show="anexoUploadando"></i>
+                        </div>
+                        <div>
+                            <span class="text-xs font-bold text-slate-700 block">
+                                <span class="text-indigo-600 hover:underline">Clique para selecionar imagem</span> ou pressione <strong>Ctrl+V</strong> para colar print
+                            </span>
+                            <span class="text-[10px] text-slate-400 font-medium">PNG, JPG, WebP, PDF ou TXT (máx. 15MB)</span>
+                        </div>
+                    </div>
+
+                    <!-- Preview do Anexo Carregado -->
+                    <div x-show="novoForm.anexo_url" class="bg-indigo-50/70 border border-indigo-200 rounded-2xl p-3 flex items-center justify-between gap-3 shadow-xs">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <template x-if="ehImagem(novoForm.anexo_url)">
+                                <img :src="novoForm.anexo_url" class="w-14 h-14 object-cover rounded-xl border border-indigo-200 cursor-pointer shadow-xs hover:opacity-90 transition"
+                                     @click="abrirLightbox(novoForm.anexo_url, 'Print Anexado ao Chamado')" title="Clique para ampliar o print">
+                            </template>
+                            <template x-if="!ehImagem(novoForm.anexo_url)">
+                                <div class="w-12 h-12 rounded-xl bg-indigo-200 text-indigo-700 flex items-center justify-center text-lg shrink-0">
+                                    <i class="fa-solid fa-file-lines"></i>
+                                </div>
+                            </template>
+                            <div class="truncate">
+                                <span class="text-xs font-black text-indigo-950 block truncate">Print / Arquivo Anexado</span>
+                                <button type="button" @click="abrirLightbox(novoForm.anexo_url, 'Print Anexado')" class="text-[11px] text-indigo-600 font-bold hover:underline flex items-center gap-1 mt-0.5">
+                                    <i class="fa-solid fa-up-right-and-down-left-from-center text-[10px]"></i> Visualizar Ampliado
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" @click="removerAnexo('novo')" class="w-8 h-8 rounded-xl bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200 hover:border-rose-200 flex items-center justify-center transition shrink-0" title="Remover anexo">
+                            <i class="fa-solid fa-trash-can text-xs"></i>
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Botão de Triagem com IA -->
                 <div class="flex items-center justify-between bg-indigo-50/60 p-3 rounded-2xl border border-indigo-100">
                     <div class="flex items-center gap-2 text-xs text-indigo-900 font-semibold">
@@ -640,6 +746,35 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <p class="text-xs text-slate-700 whitespace-pre-wrap font-medium" x-text="chamadoAtual.motivo || chamadoAtual.observacao">Descrição</p>
                         </div>
 
+                        <!-- Card de Anexo / Print do Chamado (Se existir) -->
+                        <div x-show="chamadoAtual.anexo_url" class="bg-slate-50 p-3.5 rounded-2xl border border-indigo-100 flex items-center justify-between gap-3 shadow-xs">
+                            <div class="flex items-center gap-3 overflow-hidden">
+                                <template x-if="ehImagem(chamadoAtual.anexo_url)">
+                                    <img :src="chamadoAtual.anexo_url" class="w-16 h-16 object-cover rounded-xl border border-indigo-200 cursor-pointer shadow-xs hover:opacity-90 transition shrink-0"
+                                         @click="abrirLightbox(chamadoAtual.anexo_url, `Print do Chamado #${chamadoAtual.idchamado}`)" title="Clique para ampliar o print">
+                                </template>
+                                <template x-if="!ehImagem(chamadoAtual.anexo_url)">
+                                    <div class="w-14 h-14 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center text-xl shrink-0">
+                                        <i class="fa-solid fa-file-arrow-down"></i>
+                                    </div>
+                                </template>
+                                <div class="truncate">
+                                    <span class="text-xs font-black text-slate-800 block truncate">Anexo / Printscreen Comprobatório</span>
+                                    <span class="text-[11px] text-slate-400 block truncate" x-text="chamadoAtual.anexo_url">url</span>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <button type="button" @click="abrirLightbox(chamadoAtual.anexo_url, `Print do Chamado #${chamadoAtual.idchamado}`)"
+                                                class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                            <i class="fa-solid fa-up-right-and-down-left-from-center text-[10px]"></i> Visualizar Ampliado
+                                        </button>
+                                        <span class="text-slate-300">·</span>
+                                        <a :href="chamadoAtual.anexo_url" target="_blank" download class="text-[11px] font-bold text-slate-500 hover:text-slate-800 flex items-center gap-1 no-underline">
+                                            <i class="fa-solid fa-download text-[10px]"></i> Baixar Arquivo
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Dossiê Técnico da IA (Se existir) -->
                         <div x-show="chamadoAtual.diagnostico_ia" class="bg-slate-900 text-slate-100 p-4 rounded-2xl border border-slate-800">
                             <div class="flex items-center justify-between mb-2">
@@ -688,23 +823,60 @@ require_once __DIR__ . '/../estrutura/header.php';
                                             <div class="font-medium" :class="op.usuario === 'ANTIGRAVITY' ? 'text-purple-900 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
                                             <div x-show="op.detalhes" class="text-[11px] mt-1 whitespace-pre-wrap font-mono leading-relaxed p-2 rounded-lg"
                                                  :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-900/10 text-purple-950 border border-purple-200/50' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
+                                            
+                                            <!-- Anexo da Operação (Se houver) -->
+                                            <div x-show="op.anexo_url" class="mt-2">
+                                                <template x-if="ehImagem(op.anexo_url)">
+                                                    <img :src="op.anexo_url" class="max-w-[180px] max-h-[120px] rounded-lg border border-slate-200 cursor-pointer shadow-xs hover:opacity-90 transition"
+                                                         @click="abrirLightbox(op.anexo_url, `Anexo da Interação por ${op.usuario}`)" title="Clique para ampliar">
+                                                </template>
+                                                <template x-if="!ehImagem(op.anexo_url)">
+                                                    <a :href="op.anexo_url" target="_blank" download class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold border border-indigo-200 hover:bg-indigo-100 no-underline transition">
+                                                        <i class="fa-solid fa-file-arrow-down"></i> Baixar Anexo
+                                                    </a>
+                                                </template>
+                                            </div>
                                         </div>
                                     </div>
                                 </template>
                             </div>
                         </div>
 
-                        <!-- Formulário de Interação / Conclusão -->
-                        <div class="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 space-y-3">
-                            <span class="text-[11px] font-black uppercase text-indigo-900 block">Registrar Interação / Solução</span>
+                        <!-- Formulário de Interação / Conclusão com Suporte a Prints -->
+                        <div @paste="tratarColagemPrint($event, 'interacao')" class="bg-indigo-50/50 p-4 rounded-2xl border border-indigo-100 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-black uppercase text-indigo-900 block">Registrar Interação / Solução</span>
+                                <span class="text-[10px] text-slate-500 font-medium">Cole prints com <kbd class="font-mono bg-white px-1 py-0.2 rounded border border-indigo-200">Ctrl+V</kbd></span>
+                            </div>
                             <textarea x-model="novaInteracao.mensagem" rows="2" placeholder="Digite uma observação técnica, commit ou descrição da resolução..."
                                       class="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500"></textarea>
 
+                            <!-- Preview de Anexo na Interação -->
+                            <div x-show="novaInteracao.anexo_url" class="bg-white border border-indigo-200 rounded-xl p-2.5 flex items-center justify-between gap-2 shadow-2xs">
+                                <div class="flex items-center gap-2 overflow-hidden">
+                                    <template x-if="ehImagem(novaInteracao.anexo_url)">
+                                        <img :src="novaInteracao.anexo_url" class="w-10 h-10 object-cover rounded-lg border border-indigo-200 cursor-pointer"
+                                             @click="abrirLightbox(novaInteracao.anexo_url, 'Print Anexado à Interação')">
+                                    </template>
+                                    <span class="text-[11px] font-bold text-slate-700 truncate">Print / Arquivo pronto para envio</span>
+                                </div>
+                                <button type="button" @click="removerAnexo('interacao')" class="text-rose-500 hover:text-rose-700 text-xs px-2 py-1 font-bold transition">
+                                    <i class="fa-solid fa-trash-can"></i> Remover
+                                </button>
+                            </div>
+
                             <div class="flex flex-wrap items-center justify-between gap-2">
-                                <div class="flex items-center gap-2">
-                                    <label class="text-xs text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <input type="file" x-ref="interacaoAnexoInput" @change="selecionarArquivoAnexo($event, 'interacao')" accept="image/*,.pdf,.txt,.log" class="hidden">
+                                    <button type="button" @click="$refs.interacaoAnexoInput.click()"
+                                            class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-600 font-bold text-xs flex items-center gap-1.5 transition shadow-2xs">
+                                        <i class="fa-solid fa-paperclip text-slate-400"></i>
+                                        <span>Anexar Print</span>
+                                    </button>
+
+                                    <label class="text-xs text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer ml-1">
                                         <input type="checkbox" x-model="novaInteracao.eh_resolucao" class="rounded text-indigo-600 focus:ring-0">
-                                        <span>Marcar como Concluído / Resolvido</span>
+                                        <span>Marcar como Concluído</span>
                                     </label>
                                     <input type="text" x-show="novaInteracao.eh_resolucao" x-model="novaInteracao.versao_entrega" placeholder="Versão (ex: v3.5)"
                                            class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 w-24">
@@ -720,7 +892,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <option value="4">Status: Cancelado</option>
                                     </select>
 
-                                    <button @click="enviarInteracao()" :disabled="!novaInteracao.mensagem"
+                                    <button @click="enviarInteracao()" :disabled="!novaInteracao.mensagem && !novaInteracao.anexo_url"
                                             class="px-4 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs flex items-center gap-1.5 transition shadow-xs">
                                         <i class="fa-solid fa-paper-plane"></i>
                                         <span>Registrar</span>
@@ -731,6 +903,33 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
             </template>
+        </div>
+    </div>
+
+    <!-- MODAL 3: LIGHTBOX AMPLIAÇÃO DE PRINTS/IMAGENS -->
+    <div x-show="lightboxAberto" class="fixed inset-0 z-[80] flex items-center justify-center p-3 sm:p-6 bg-slate-950/85 backdrop-blur-md" style="display: none;"
+         @keydown.escape.window="fecharLightbox()">
+        <div class="relative max-w-5xl w-full flex flex-col items-center max-h-[95vh]" @click.outside="fecharLightbox()">
+            <!-- Barra superior do Lightbox -->
+            <div class="w-full flex items-center justify-between text-white pb-3 px-2">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid fa-image text-indigo-400"></i>
+                    <span class="text-xs sm:text-sm font-bold" x-text="lightboxTitulo">Anexo Ampliado</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <a :href="lightboxUrl" target="_blank" download class="px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold flex items-center gap-1.5 transition no-underline">
+                        <i class="fa-solid fa-download"></i> Baixar Original
+                    </a>
+                    <button type="button" @click="fecharLightbox()" class="w-8 h-8 rounded-xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                        <i class="fa-solid fa-xmark text-sm"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Imagem ampliada -->
+            <div class="bg-slate-900/60 rounded-2xl p-2 border border-white/10 shadow-2xl overflow-auto max-h-[85vh] flex items-center justify-center w-full">
+                <img :src="lightboxUrl" class="max-h-[80vh] w-auto max-w-full rounded-xl object-contain shadow-2xl">
+            </div>
         </div>
     </div>
 
