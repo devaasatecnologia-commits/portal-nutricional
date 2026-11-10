@@ -26,6 +26,12 @@
 - **Gestão de Chamados & Incidentes de Produção:**
   - Chamados que envolvam processos de rotinas corporativas (estoque, fiscal, faturamento, transferências, integrações) devem ser tratados com **prioridade crítica**.
   - Todo incidente resolvido ou investigado deve ser documentado na tabela `chamado` e suas etapas cronológicas registradas em `chamado_operacao`.
+- **Integração EMA <-> MERCOS (Força de Vendas):**
+  - **Serviço Integrador:** Spring Boot Java (`ema-mercos-integration.exe`) na porta 8081.
+  - **Banco DE-PARA (Firebird):** `DE_PARA_MERCOS.FDB` (porta 3050) mantém a tabela de De-Para de IDs entre Mercos e EMA (clientes, produtos, pedidos).
+  - **Fluxo de Pedidos:** Pedidos do Mercos entram no PostgreSQL pelas tabelas intermediárias `palmtop_pedido` e `palmtop_pedido_item` (transação padrão 1 - Venda, depara especial: 948943->66, 17447->3, 23248->6).
+  - **Regra de Estoque Mercos:** O integrador envia EXCLUSIVAMENTE o saldo físico do **Depósito 1** (`ema.stockFromDepositIds = 1`). Divergências de saldo entre Mercos e ERP devem ser checadas em `estoque_filial_deposito` com `iddeposito = 1`.
+  - **Tabelas de Preço & Janela de Bloqueio:** Sincroniza tabelas 1 a 15 (`ema.syncPriceTableIds`). Bloqueio diário automático de sincronização entre 08:00 e 08:05.
 - **Frontend:** PHP modular estruturado (`portal/modules/`) integrado com **Alpine.js** e **Tailwind CSS** (`portal/assets/js/`).
   - Cuidados recorrentes:
     - Modais empilhados devem respeitar camadas `z-index` (modal base `z-50`, modais secundários/detalhes `z-[70]`).
