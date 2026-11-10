@@ -76,3 +76,19 @@ O usuário solicitou rastrear no ERP Ema a origem exata da quantidade que consta
 - **Causa Raiz:** Flag de transferência automática ativada indevidamente na transação 1003 entre 04/09 e 29/10/2026, gerando 114 transferências fantasmas pendentes em `nf_transf_auto` e inflando a coluna `(+) Qtd transfe` de 57 itens.
 - **Validação:** Teste unitário executado na NF #150432 (Transf #379), comprovando recálculo instantâneo no ERP EMA de 19 para 18 un no item 1989.
 - **Entrega Técnica:** Queries DBeaver e comandos UPDATE em lote entregues na timeline de `chamado_operacao`.
+
+
+---
+
+## 9. Chamados Estratégicos Criados & Entregues: Chamados #32, #33 e #34
+- **Chamado #32:** `[CRITICO] PROJETO: Migracao Integrador Mercos ERP para o Portal Nutricional` (Status: Em Andamento / Roadmap 10/01/2027).
+- **Chamado #33:** `[CRITICO] PROJETO: Migracao e Aposentadoria do Portal DOX (Ema Studio)` (Status: Em Andamento / 33 processos mapeados).
+- **Chamado #34:** `[CRITICO] LOGISTICA: Conferencia de Descarregamento OC Modo Rapido (Sem Enderecamento)` (Status: Concluído - Entrega v3.5).
+  - **Arquivos modificados:**
+    - `v1/src/Controllers/DesembarqueController.php`
+    - `portal/assets/js/desembarque.js`
+  - **Melhorias entregues:**
+    1. Endereçamento WMS tornado opcional (seção e endereço não travam mais o recebimento).
+    2. Validação estrita de foto removida (agilidade máxima na doca de descarregamento).
+    3. Auto-conclusão da OC ativada quando todos os itens atingem saldo 0, gravando em `oc_operacao` com `acao = 7`.
+    4. Janela de OCs abertas ampliada para 120 dias (de 4 para 21 OCs disponíveis para recebimento).
