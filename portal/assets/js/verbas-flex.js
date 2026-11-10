@@ -1172,17 +1172,71 @@ async function carregarColaboradoresAuditoria() {
         const res = await apiFetch(`verbas-flex/colaboradores-auditoria?filial=${fil}`);
         if (res.success && Array.isArray(res.colaboradores)) {
             estado.colaboradoresAuditoria = res.colaboradores;
+            estado.saldoTotalEquipeMercos = Number(res.saldo_total_equipe || 0);
+            const totalAtivos = res.total_ativos_mercos || res.colaboradores.length;
             const atual = sel.value;
-            sel.innerHTML = '<option value="0">Todos os Colaboradores da Equipe</option>' + 
+            sel.innerHTML = `<option value="0">Todos os Colaboradores da Equipe (${totalAtivos} ativos)</option>` + 
                 res.colaboradores.map(c => `<option value="${c.id}">${esc(c.id)} - ${esc(c.nome)}${c.gestor ? ` (Gestor: ${esc(c.gestor)})` : ''}</option>`).join('');
             if (atual && sel.querySelector(`option[value="${atual}"]`)) {
                 sel.value = atual;
             }
+            atualizarCardSaldoMercos();
         }
     } catch (e) {
         console.warn('Aviso ao carregar colaboradores de auditoria:', e.message);
     }
 }
+
+function atualizarCardSaldoMercos() {
+    const sel = $('fAuditColab');
+    const colabId = Number(sel?.value || 0);
+
+    const lblTitulo = $('lblSaldoMercosTitulo');
+    const lblSub = $('lblSaldoMercosSubtitulo');
+    const lblVal = $('lblSaldoMercosValor');
+    const lblExtra = $('lblSaldoMercosExtra');
+    const ico = $('icoSaldoMercos');
+
+    if (!lblTitulo || !lblVal) return;
+
+    if (colabId === 0) {
+        lblTitulo.textContent = 'Saldo Total da Equipe (Mercos)';
+        lblSub.textContent = `Soma dos saldos de ${estado.colaboradoresAuditoria.length} colaboradores ativos na Filial`;
+        lblVal.textContent = brl(estado.saldoTotalEquipeMercos || 0);
+        lblExtra.textContent = 'Conta Flex Mercos Oficial';
+        if (ico) ico.className = 'fa-solid fa-users';
+    } else {
+        const colab = estado.colaboradoresAuditoria.find(c => Number(c.id) === colabId);
+        if (colab) {
+            lblTitulo.textContent = 'Saldo Atual no Mercos (Tempo Real)';
+            lblSub.textContent = `${colab.nome} (ID ${colab.id})${colab.gestor ? ` — Gestor: ${colab.gestor}` : ''}`;
+            const saldo = Number(colab.saldo_mercos || 0);
+            lblVal.textContent = brl(saldo);
+            lblVal.className = `text-2xl sm:text-3xl font-black ${saldo >= 0 ? 'text-emerald-400' : 'text-rose-400'} tracking-tight`;
+            lblExtra.textContent = 'Conta Flex Individual Mercos';
+            if (ico) ico.className = 'fa-solid fa-wallet';
+        } else {
+            lblTitulo.textContent = 'Saldo Atual no Mercos';
+            lblSub.textContent = 'Colaborador selecionado';
+            lblVal.textContent = '--';
+            lblExtra.textContent = 'Conta Flex Mercos';
+            if (ico) ico.className = 'fa-solid fa-wallet';
+        }
+    }
+}
+window.atualizarCardSaldoMercos = atualizarCardSaldoMercos;
+
+async function atualizarSaldoMercosLive() {
+    const spin = $('spinSaldoMercos');
+    if (spin) spin.classList.add('fa-spin');
+    try {
+        await carregarColaboradoresAuditoria();
+        await carregarAuditoria();
+    } finally {
+        if (spin) spin.classList.remove('fa-spin');
+    }
+}
+window.atualizarSaldoMercosLive = atualizarSaldoMercosLive;
 
 async function carregarAuditoria() {
     const tbody = $('tabelaAuditoriaCorpo');
@@ -1196,6 +1250,8 @@ async function carregarAuditoria() {
         if (!estado.colaboradoresAuditoria.length) {
             await carregarColaboradoresAuditoria();
         }
+
+        atualizarCardSaldoMercos();
 
         const b = filtroBase();
         const colab = $('fAuditColab')?.value || '0';
@@ -1483,7 +1539,10 @@ function vincularEventosUI() {
     $('fZerados')?.addEventListener('change', carregarCreditos);
 
     // 6.1 Filtros da Auditoria & Extrato Espelho
-    $('fAuditColab')?.addEventListener('change', carregarAuditoria);
+    $('fAuditColab')?.addEventListener('change', () => {
+        atualizarCardSaldoMercos();
+        carregarAuditoria();
+    });
     $('fAuditOrigem')?.addEventListener('change', carregarAuditoria);
     $('fAuditNatureza')?.addEventListener('change', carregarAuditoria);
     $('fAuditBusca')?.addEventListener('input', () => {

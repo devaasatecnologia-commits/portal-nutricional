@@ -605,6 +605,16 @@ class VerbasFlexController
                 return $this->erro($response, 'Filial não liberada para o seu usuário.', 403);
             }
 
+            // 1. Busca saldos ao vivo na API da Mercos para a filial
+            $saldosMercos = [];
+            try {
+                $mercosApi = new \Nutricional\Services\MercosFlexService($filial);
+                $saldosMercos = $mercosApi->saldos(false);
+            } catch (\Throwable $e) {
+                error_log(sprintf('[verbas-flex] falha ao buscar saldos mercos f%d: %s', $filial, $e->getMessage()));
+            }
+
+            // 2. Busca representantes ativos no ERP vinculados à filial
             $sql = "
                 SELECT DISTINCT ON (um.idcolaborador)
                     um.idcolaborador AS id,
@@ -614,9 +624,10 @@ class VerbasFlexController
                     um.gestor,
                     um.filial
                 FROM usuarios_mercos um
-                LEFT JOIN cliforemp c ON c.idcliforemp = um.idcolaborador
+                INNER JOIN cliforemp c ON c.idcliforemp = um.idcolaborador
                 WHERE um.filial = :filial
                   AND um.idcolaborador IS NOT NULL
+                  AND COALESCE(c.inativo, 'N') <> 'S'
             ";
 
             $p = ['filial' => $filial];
@@ -632,11 +643,67 @@ class VerbasFlexController
             $stmt->execute($p);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            usort($rows, fn($a, $b) => strcasecmp($a['nome'], $b['nome']));
+            // 3. Filtra apenas os que possuem conta flex ATIVA na Mercos (não excluídos)
+            $colaboradoresAtivos = [];
+            $saldoTotalEquipe = 0.0;
+
+            foreach ($rows as $r) {
+                $id = (int)$r['id'];
+                if (!empty($saldosMercos)) {
+                    if (!isset($saldosMercos[$id])) {
+                        continue; // Sem conta flex na API Mercos
+                    }
+                    if (!empty($saldosMercos[$id]['excluido'])) {
+                        continue; // Excluído na API Mercos
+                    }
+                    $saldo = (float)($saldosMercos[$id]['saldo_atual'] ?? 0.0);
+                } else {
+                    $saldo = 0.0;
+                }
+
+                $r['id'] = $id;
+                $r['saldo_mercos'] = $saldo;
+                $colaboradoresAtivos[] = $r;
+                $saldoTotalEquipe += $saldo;
+            }
+
+            // 4. Adiciona também o gestor da filial se não estiver na lista
+            $gestoresConfig = [
+                1 => ['id' => 12335, 'nome' => 'TIAGO (MOV) - Gestor Filial 1'],
+                6 => ['id' => 15816, 'nome' => 'TALES BINDE - Gestor Filial 6']
+            ];
+            if (isset($gestoresConfig[$filial])) {
+                $gId = $gestoresConfig[$filial]['id'];
+                $jaExiste = false;
+                foreach ($colaboradoresAtivos as $ca) {
+                    if ($ca['id'] === $gId) {
+                        $jaExiste = true;
+                        break;
+                    }
+                }
+                if (!$jaExiste && isset($saldosMercos[$gId])) {
+                    $saldoG = (float)($saldosMercos[$gId]['saldo_atual'] ?? 0.0);
+                    $colaboradoresAtivos[] = [
+                        'id' => $gId,
+                        'nome' => $gestoresConfig[$filial]['nome'],
+                        'username' => 'GESTOR',
+                        'cdgestor' => $gId,
+                        'gestor' => 'Gestor Geral',
+                        'filial' => $filial,
+                        'saldo_mercos' => $saldoG,
+                        'is_gestor' => true
+                    ];
+                }
+            }
+
+            usort($colaboradoresAtivos, fn($a, $b) => strcasecmp($a['nome'], $b['nome']));
 
             return $this->json($response, [
                 'success' => true,
-                'colaboradores' => $rows
+                'filial' => $filial,
+                'total_ativos_mercos' => count($colaboradoresAtivos),
+                'saldo_total_equipe' => round($saldoTotalEquipe, 2),
+                'colaboradores' => $colaboradoresAtivos
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao carregar colaboradores: ' . $e->getMessage(), 500);

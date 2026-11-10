@@ -342,6 +342,33 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
+            <!-- CARD DE DESTAQUE: SALDO ATUAL EM TEMPO REAL NO MERCOS -->
+            <div class="mb-4 p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-slate-900 via-purple-950 to-violet-950 text-white shadow-xl border border-purple-500/20 flex flex-wrap items-center justify-between gap-4">
+                <div class="flex items-center gap-4">
+                    <div class="w-12 h-12 rounded-2xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center justify-center text-xl flex-none shadow-inner">
+                        <i class="fa-solid fa-wallet" id="icoSaldoMercos"></i>
+                    </div>
+                    <div>
+                        <div class="flex items-center gap-2 mb-0.5">
+                            <span class="text-[10px] font-black uppercase tracking-wider text-purple-300" id="lblSaldoMercosTitulo">Saldo Total da Equipe (Mercos)</span>
+                            <span class="px-2 py-0.5 rounded-md bg-emerald-400/20 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Tempo Real
+                            </span>
+                        </div>
+                        <h4 class="text-xs sm:text-sm font-semibold text-slate-200 truncate max-w-md" id="lblSaldoMercosSubtitulo">Soma de saldos da equipe ativa</h4>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <div class="text-right">
+                        <div class="text-2xl sm:text-3xl font-black text-emerald-400 tracking-tight" id="lblSaldoMercosValor">R$ 0,00</div>
+                        <span class="text-[10px] text-slate-400 font-medium" id="lblSaldoMercosExtra">Conta Flex Mercos Oficial</span>
+                    </div>
+                    <button type="button" onclick="atualizarSaldoMercosLive()" class="w-10 h-10 rounded-2xl bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition shadow-xs border border-white/10" title="Atualizar saldo ao vivo no Mercos">
+                        <i class="fa-solid fa-rotate text-sm" id="spinSaldoMercos"></i>
+                    </button>
+                </div>
+            </div>
+
             <!-- TOTALIZADORES DO EXTRATO (4 CARDS) -->
             <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
