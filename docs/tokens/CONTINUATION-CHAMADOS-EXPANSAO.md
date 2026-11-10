@@ -1,12 +1,22 @@
 # Token de Continuidade — Central de Chamados Multi-Sistemas com IA & Backlog Real (Onda 1)
 
-**Data/Hora:** 10/11/2026 - 11:45
+**Data/Hora:** 10/11/2026 - 13:48
 **Autor:** Antigravity (Tech Lead & Arquiteto Sênior)
-**Status:** 100% Concluído e Validado
+**Status:** Chamado #2 Concluído com Sucesso! Próximo da fila: Chamado #3 (Movimentação de Flex)
 
 ---
 
 ## 1. O que foi Concluído nesta Etapa
+1. **Chamado #2 Concluído com Sucesso (`transferencia-flex` v3.5):**
+   - **Checklist de 5 passos aplicado e homologado:**
+     - *Passo 1 (Interface):* 4 KPIs com tooltips modernos flutuantes, cockpit de transferência em 3 colunas (DE -> VALOR -> PARA), atalhos rápidos de valores (+50, +100, etc.), cálculo de saldo pós-operação em tempo real e botão direto de "Treinamento & Manual".
+     - *Passo 2 (Backend & Concorrência):* `pg_try_advisory_lock` contra transferências simultâneas concorrentes do mesmo emissor, estorno automático em caso de falha de comunicação entre pontas e auditoria transparente com registro do operador e IDs.
+     - *Passo 3 (Resiliência):* Filtro estrito de representantes ativos no ERP e no Mercos, com respeito a `dash_filiais` e `dash_gestores`.
+     - *Passo 4 (Manual no Banco):* Atualizado `sistema_manuais` (ID 27) para `v3.5` com os 4 KPIs descritos, travas de segurança e FAQs.
+     - *Passo 5 (Encerramento & CLI):* Sintaxe PHP 100% validada (`php -l`) e chamado finalizado via conector Antigravity CLI com registro de resolução na timeline.
+
+2. **Próximo da Fila:**
+   - **Chamado #3:** `[Onda 1] [Movimentação de Flex] Integrar Histórico Auditado com Saldo Mercos Live e Gestores` (`movimentacao-flex`).
 1. **Multi-Sistemas Corporativos Concluído no Backend e Banco de Dados:**
    - Adicionadas com sucesso as colunas `tipo_sistema` (VARCHAR 50), `subtipo_item` (VARCHAR 120) e `equipamento_detalhe` (VARCHAR 150) na tabela `chamado`.
    - Controller (`ChamadosController.php`) atualizado nos métodos `dashboard`, `listar`, `triarIa`, `criar` e `detalhes`.
