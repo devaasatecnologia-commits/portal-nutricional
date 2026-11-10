@@ -1,42 +1,46 @@
-# Token de Continuidade — Verbas Flex: Resolução da Nota 300834 e Aba de Auditoria & Espelho Mercos
+# Continuation Token — Auditoria Mercos, Resolução Financeiro & Treinamentos
 
-**Data:** 10/11/2026  
-**Módulo:** Gestão de Verbas Flex (`portal/modules/verbas-flex.php`) & Cron de Bonificações (`v1/src/Controllers/CronRotinasController.php`)  
-**Status:** Concluído e Validado em Produção Local  
-
----
-
-## 1. Resumo das Implementações e Correções
-
-### 1.1 Resolução da Falha da Nota 300834 & Resiliência
-- **Causa Raiz:** O motor externo concorrente do ERP antigo tentou injetar saldo de crédito simultaneamente durante o processamento noturno, causando discrepância na checagem rígida do saldo final em `movimentarFlexSeguro`.
-- **Correção:**
-  - Ajustado `movimentarFlexSeguro` em `CronRotinasController.php` para validar o retorno HTTP 200 da API oficial Mercos sem quebrar por concorrência simultânea externa.
-  - Reprocessada com sucesso a nota fiscal **300834** (Welliton Cardoso Ramos - Hospital Veterinário Maria Schmitt, R$ 363,09), com cobertura integral pelo gestor Tiago (MOV) e gravação em `log_flex_bonificacao` (ID 2153).
-  - A view `verificabonificacao` agora está 100% limpa (0 pendências).
-
-### 1.2 Nova Aba: Auditoria & Espelho Completo Mercos no Portal
-- **Localização:** Módulo **`verbas-flex.php`**, preservando a hierarquia estrita de permissões do usuário logado (`UserScope`).
-- **Capacidades:**
-  - **Filtros:** Filial, Colaborador/Representante (com gestores inclusos), Origem (Todas, Bonificações, Transferências, Manuais, Flex Mínimo), Natureza (Créditos/Débitos) e Busca textual.
-  - **Cards Totalizadores:** Total de Créditos (+), Total de Débitos (-), Balanço Líquido e Total de Lançamentos rastreados.
-  - **Espelho Consolidado:** Tabela cronológica unificada com Data/Hora, Origem, Operador responsável (ex: `CRON SISTEMA`, `ROBSON`, `TIAGO`, etc.), Colaborador, Tipo, Valor, Saldo Antes ➔ Depois, Gestor de Cobertura e Documento/Motivo.
-  - **Modal de Detalhes:** Inspeção de payloads JSON, metadados técnicos e notas associadas.
-  - **Exportação Excel:** Download de extrato em `.csv` (UTF-8 com BOM).
-
-### 1.3 Correção Arquitetural do Campo `valor` vs `valor_tirado` (Caso Anaildo Pereira)
-- **Diagnóstico da Causa Raiz:** Na tabela `log_flex_bonificacao`, a coluna `valor` contém o valor integral da bonificação descontada do representante (ex: -247.90, -155.44, etc.), enquanto `valor_tirado` armazena exclusivamente o montante coberto pelo **gestor**. Quando o representante possui saldo suficiente (débito direto, como o Anaildo Pereira com R$ 965,31 de saldo), `valor_tirado` é gravado como `0.00` (pois zero foi tirado do gestor).
-- **Correção em `VerbasFlexController.php`:**
-  - Ajustado para selecionar `ABS(lfb.valor) AS valor` (e não `lfb.valor_tirado`) em todas as agregações, rankings, estatísticas e na auditoria espelho.
-  - Ajustado `usou_gestor` para `(b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0)` — eliminando a exibição indevida do badge de cobertura do gestor quando o colaborador pagou com recursos próprios.
-  - Validado no Anaildo Pereira: 6 bonificações somando **R$ 776,14** agora exibidas com precisão cirúrgica no extrato.
+**Data:** 10/11/2026 09:55  
+**Branch:** `main`  
+**Status:** Validado e pronto para deploy FTP
 
 ---
 
-## 2. Arquivos Modificados para Deploy FTP
+## 1. Síntese das Ações Executadas
 
-1. `v1/src/Controllers/CronRotinasController.php`
-2. `v1/src/Controllers/VerbasFlexController.php`
-3. `v1/routes/api.php`
-4. `portal/modules/verbas-flex.php`
-5. `portal/assets/js/verbas-flex.js`
+### A. Módulo Financeiro (`portal/modules/financeiro.php`)
+1. **Erro de Rate Limit HTTP 429 ("Muitas requisições. Tente novamente em 59 segundos"):**
+   - **Causa:** Ocorrido em 09/11 às 17:37:07 quando o painel carregava em paralelo `dashboard`, `metas/progresso`, `historico-kpi` e lista de usuários sob o limite compartilhado do RateLimitMiddleware.
+   - **Solução:** Aplicada no commit `571c235` com chaveamento isolado por rota (`user:ID:path:ROTA`) e teto ampliado para 200 req/min no dashboard (padrão 300). Tabela resetada e testada hoje com HTTP 200.
+2. **Treinamento e Documentação:**
+   - Manual completo na versão **3.3** salvo em `docs/manual-financeiro.md` e persistido na base de conhecimento (`sistema_manuais` ID 19).
+   - Botão direto `Treinamento & Manual` com ícone de capelo ativo no topo do módulo direcionando para `portal/modules/treinamentos.php?modulo=financeiro`.
+
+### B. Empréstimos Recorrentes de R$ 3.000,00 (Verbas Flex)
+- Concorrência identificada com o motor de 4 minutos do ERP legado. Como o agendamento foi desativado no ERP, o fluxo passa a ser controlado 100% pelo portal e crons oficiais.
+
+### C. Auditoria Verba Flex & Anaildo Pereira
+1. **Correção do - R$ 0,00:**
+   - Alterada a seleção de `b.valor_tirado` (cobertura do gestor) para `ABS(b.valor)` (bonificação real faturada) nas queries de auditoria e adicionado badge verde `Saldo Próprio (Débito Direto)`.
+   - Saldo do Anaildo no Mercos confirmado em R$ 190,13.
+2. **Filtro de Ativos no Mercos:**
+   - Dropdown lista apenas representantes com conta ativa no Mercos (`excluido != true`).
+3. **Card Hero Dinâmico no Topo:**
+   - Exibe o Saldo Atual no Mercos em Tempo Real (individual se selecionado um representante, ou soma da equipe se selecionado "Todos"), com botão de atualização instantânea ao vivo.
+4. **Chips Rápidos de Filtro:**
+   - Atalhos para Débitos (-), Créditos (+), Bonificações, Transferências e Flex Mínimo.
+
+---
+
+## 2. Arquivos para Deploy FTP (cPanel)
+
+1. `v1/src/Middleware/RateLimitMiddleware.php`
+2. `v1/src/Controllers/FinanceiroController.php`
+3. `v1/src/Controllers/VerbasFlexController.php`
+4. `v1/src/Controllers/CronRotinasController.php`
+5. `v1/routes/api.php`
+6. `portal/modules/financeiro.php`
+7. `portal/assets/js/financeiro.js`
+8. `portal/modules/verbas-flex.php`
+9. `portal/assets/js/verbas-flex.js`
+10. `docs/manual-financeiro.md`
