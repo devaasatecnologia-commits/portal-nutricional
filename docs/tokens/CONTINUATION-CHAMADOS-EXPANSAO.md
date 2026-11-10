@@ -23,18 +23,14 @@
    - Cards do Kanban e Tabela de Lista enriquecidos com badges de Sistema, Subtipo e Criticidade.
    - Respeito à hierarquia de permissões dos usuários ao listar módulos web.
 
-4. **Povoamento do Backlog Real (Onda 1 do Plano Diretor) e Exemplos Corporativos:**
-   - 10 chamados reais inseridos:
-     - `#1`: `[PORTAL] [Verbas Flex] Homologação e Deploy FTP de Bonificações e Extrato Live Mercos` (Concluído)
-     - `#2`: `[PORTAL] [Transferência de Flex] Padronização de Cards KPIs e Alinhamento com Auditoria Mercos` (Em Análise)
-     - `#3`: `[PORTAL] [Movimentação de Flex] Integrar Histórico Auditado com Saldo Mercos Live e Gestores` (Em Correção)
-     - `#4`: `[PORTAL] [Migração de Carteira] Blindagem de Duplicidade e Transição Segura de Clientes` (Aberto)
-     - `#5`: `[PORTAL] [Análise de Carteira] Otimização de Performance e Auditoria 360 de Inadimplência` (Aberto)
-     - `#6`: `[PORTAL] [Dashboard de Vendas & Cubo] Tooltips Flutuantes Modernos e Otimização de CTEs` (Aberto)
-     - `#7`: `[EQUIPAMENTO] [Impressora] Impressora Térmica de Etiquetas da Expedição com atolamento no rolo` (Aberto)
-     - `#8`: `[ERP_EMA] [Faturamento] Erro de validação de CFOP ao faturar pedido de transferência intercompany` (Aberto)
-     - `#9`: `[LOGISOFT] [MDF-e] Rejeição SEFAZ de MDFe por CTe anterior não encerrado` (Aberto)
-     - `#10`: `[EQUIPAMENTO] [Ramal] Ramal 204 da Sala de Vendas mudo para ligações externas` (Aberto)
+4. **Povoamento Oficial do Backlog Real (As 4 Ondas do Plano Diretor):**
+   - Removidos todos os chamados simulados/exemplos de testes.
+   - Cadastrados exatamente os **29 módulos estratégicos do Plano Diretor**, divididos nas 4 Ondas:
+     - **Onda 1 (Núcleo Financeiro, Verbas & Vendas):** `#1` Verbas Flex (Concluído), `#2` Transferência de Flex (Em Análise), `#3` Movimentação de Flex, `#4` Migração de Carteira, `#5` Controladoria Financeira, `#6` Análise de Carteira 360, `#7` Dashboard de Vendas, `#8` Cubo Vendas.
+     - **Onda 2 (Logística & Operação Física):** `#9` Separação WMS, `#10` Carregamento, `#11` Monitor Logístico, `#12` Auditoria de Estoque, `#13` Estoque com Previsão, `#14` Inventário Geral, `#15` Transferência Matriz-Filial.
+     - **Onda 3 (Frota, Expedição, Motoristas & Fiscal):** `#16` Gestão de Frotas, `#17` Embarques, `#18` Retorno de Carga, `#19` Acerto de Embarque, `#20` App do Motorista PWA, `#21` Conferência XML, `#22` Consulta Saldo.
+     - **Onda 4 (Marketing, RH, Treinamentos & TI):** `#23` CRM Clientes 360, `#24` Metas de Marketing, `#25` Admin Marketing, `#26` Avaliação C.H.A.P.D, `#27` Plano de Ação PDI, `#28` Nutricional Academy, `#29` Motores Cron.
+   - Cada chamado possui seu parecer técnico preliminar (dossiê) focado no Checklist de 5 passos do especialista.
 
 5. **Manual de Usabilidade do Módulo Atualizado:**
    - Registrado em `sistema_manuais` (ID 93) com o guia dos 10 sistemas corporativos e da triagem de IA.
