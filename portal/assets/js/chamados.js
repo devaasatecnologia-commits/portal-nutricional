@@ -312,6 +312,32 @@ function chamadosApp() {
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'Erro ao Registrar', text: e.message });
             }
+        },
+
+        copiarBriefingAntigravity() {
+            if (!this.chamadoAtual) return;
+            const c = this.chamadoAtual;
+            const texto = `Antigravity, assumir Chamado #${c.idchamado} [${c.modulo_nome || c.tipo_sistema}].\n` +
+                `Objetivo: ${c.titulo}\n` +
+                `Relato / Necessidade: ${c.motivo || c.observacao}\n` +
+                (c.diagnostico_ia ? `\nDossiê Técnico:\n${c.diagnostico_ia}\n` : '') +
+                `\nPor favor, analise os arquivos do módulo, execute as alterações necessárias no código conforme o checklist de 5 passos do Plano Diretor, teste a sintaxe, comite e registre a entrega técnica diretamente na timeline deste chamado no banco.`;
+
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(texto).then(() => {
+                    Swal.fire({
+                        icon: 'success',
+                        title: 'Briefing Copiado!',
+                        text: 'Comando copiado para a área de transferência. Basta colar no chat do Antigravity!',
+                        timer: 2500,
+                        showConfirmButton: false
+                    });
+                }).catch(() => {
+                    prompt('Copie o briefing abaixo e cole no chat do Antigravity:', texto);
+                });
+            } else {
+                prompt('Copie o briefing abaixo e cole no chat do Antigravity:', texto);
+            }
         }
     };
 }

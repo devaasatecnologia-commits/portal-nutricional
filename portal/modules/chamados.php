@@ -611,6 +611,29 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                     <!-- Corpo com Scroll -->
                     <div class="py-4 space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
+                        <!-- BARRA DE VÍNCULO DIRETO COM O AGENTE ANTIGRAVITY -->
+                        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-purple-950 text-white p-3.5 rounded-2xl border border-indigo-700/50 shadow-md flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <div class="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center text-base border border-indigo-500/30">
+                                    <i class="fa-solid fa-robot"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[10px] font-black uppercase tracking-wider text-indigo-300">Conector Antigravity IDE</span>
+                                        <span class="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-1.5 py-0.2 rounded font-bold">Online</span>
+                                    </div>
+                                    <span class="text-xs font-bold text-white block">Vincular resolução no código com o agente</span>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button type="button" @click="copiarBriefingAntigravity()"
+                                        class="w-full sm:w-auto px-4 py-2 rounded-xl bg-white text-indigo-950 hover:bg-indigo-50 active:scale-95 font-black text-xs flex items-center justify-center gap-2 transition shadow-xs">
+                                    <i class="fa-solid fa-copy text-indigo-600"></i>
+                                    <span>Copiar Briefing para o Chat</span>
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Relato Original -->
                         <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
                             <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Relato Original</span>
@@ -644,20 +667,27 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2">Linha do Tempo de Resolução</span>
                             <div class="space-y-2.5">
                                 <template x-for="op in timeline" :key="op.idoperacao">
-                                    <div class="flex items-start gap-2.5 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200/60">
-                                        <div class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0 text-[10px] mt-0.5">
-                                            <i class="fa-solid fa-comment" x-show="op.tipo === 'comentario'"></i>
-                                            <i class="fa-solid fa-arrows-rotate" x-show="op.tipo === 'mudanca_status'"></i>
-                                            <i class="fa-solid fa-check" x-show="op.tipo === 'resolucao'"></i>
-                                            <i class="fa-solid fa-plus" x-show="op.tipo === 'abertura'"></i>
+                                    <div class="flex items-start gap-2.5 text-xs p-3 rounded-xl border transition"
+                                         :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-50/70 border-purple-200 ring-1 ring-purple-100' : 'bg-slate-50 border-slate-200/60'">
+                                        <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs mt-0.5"
+                                             :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-600 text-white shadow-xs' : 'bg-indigo-100 text-indigo-600'">
+                                            <i class="fa-solid fa-robot" x-show="op.usuario === 'ANTIGRAVITY'"></i>
+                                            <i class="fa-solid fa-comment" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'comentario'"></i>
+                                            <i class="fa-solid fa-arrows-rotate" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'mudanca_status'"></i>
+                                            <i class="fa-solid fa-check" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'resolucao'"></i>
+                                            <i class="fa-solid fa-plus" x-show="op.usuario !== 'ANTIGRAVITY' && op.tipo === 'abertura'"></i>
                                         </div>
                                         <div class="flex-1">
                                             <div class="flex items-center justify-between text-[11px] mb-0.5">
-                                                <strong class="text-slate-800" x-text="op.usuario">User</strong>
+                                                <div class="flex items-center gap-1.5">
+                                                    <strong :class="op.usuario === 'ANTIGRAVITY' ? 'text-purple-900 font-black' : 'text-slate-800'" x-text="op.usuario">User</strong>
+                                                    <span x-show="op.usuario === 'ANTIGRAVITY'" class="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-purple-200 text-purple-800">IA Agente</span>
+                                                </div>
                                                 <span class="text-slate-400 text-[10px]" x-text="op.data_fmt">Data</span>
                                             </div>
-                                            <div class="text-slate-600 font-medium" x-text="op.descricao">Ação</div>
-                                            <div x-show="op.detalhes" class="text-[11px] text-slate-500 mt-1 italic whitespace-pre-wrap" x-text="op.detalhes"></div>
+                                            <div class="font-medium" :class="op.usuario === 'ANTIGRAVITY' ? 'text-purple-900 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
+                                            <div x-show="op.detalhes" class="text-[11px] mt-1 whitespace-pre-wrap font-mono leading-relaxed p-2 rounded-lg"
+                                                 :class="op.usuario === 'ANTIGRAVITY' ? 'bg-purple-900/10 text-purple-950 border border-purple-200/50' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
                                         </div>
                                     </div>
                                 </template>
