@@ -24,6 +24,13 @@
   - **Modal de Detalhes:** Inspeção de payloads JSON, metadados técnicos e notas associadas.
   - **Exportação Excel:** Download de extrato em `.csv` (UTF-8 com BOM).
 
+### 1.3 Correção Arquitetural do Campo `valor` vs `valor_tirado` (Caso Anaildo Pereira)
+- **Diagnóstico da Causa Raiz:** Na tabela `log_flex_bonificacao`, a coluna `valor` contém o valor integral da bonificação descontada do representante (ex: -247.90, -155.44, etc.), enquanto `valor_tirado` armazena exclusivamente o montante coberto pelo **gestor**. Quando o representante possui saldo suficiente (débito direto, como o Anaildo Pereira com R$ 965,31 de saldo), `valor_tirado` é gravado como `0.00` (pois zero foi tirado do gestor).
+- **Correção em `VerbasFlexController.php`:**
+  - Ajustado para selecionar `ABS(lfb.valor) AS valor` (e não `lfb.valor_tirado`) em todas as agregações, rankings, estatísticas e na auditoria espelho.
+  - Ajustado `usou_gestor` para `(b.valor_tirado IS NOT NULL AND ABS(b.valor_tirado) > 0)` — eliminando a exibição indevida do badge de cobertura do gestor quando o colaborador pagou com recursos próprios.
+  - Validado no Anaildo Pereira: 6 bonificações somando **R$ 776,14** agora exibidas com precisão cirúrgica no extrato.
+
 ---
 
 ## 2. Arquivos Modificados para Deploy FTP
