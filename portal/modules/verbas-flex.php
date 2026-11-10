@@ -381,6 +381,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
+            <!-- ATALHOS RÁPIDOS DE VISUALIZAÇÃO DO EXTRATO -->
+            <div class="flex flex-wrap items-center justify-between gap-2 mb-3" id="quickFiltrosAuditoria">
+                <div class="flex gap-1.5 overflow-x-auto pb-1" id="auditChips">
+                    <button type="button" data-audit-tipo="todas" class="vf-chip on"><i class="fa-solid fa-list mr-1"></i>Todas as Operações</button>
+                    <button type="button" data-audit-tipo="debito" class="vf-chip"><i class="fa-solid fa-arrow-down text-rose-500 mr-1"></i>Apenas Débitos (-)</button>
+                    <button type="button" data-audit-tipo="credito" class="vf-chip"><i class="fa-solid fa-arrow-up text-emerald-500 mr-1"></i>Apenas Créditos (+)</button>
+                    <button type="button" data-audit-tipo="bonificacao" class="vf-chip"><i class="fa-solid fa-receipt text-red-600 mr-1"></i>Bonificações</button>
+                    <button type="button" data-audit-tipo="transferencia" class="vf-chip"><i class="fa-solid fa-right-left text-purple-600 mr-1"></i>Transferências</button>
+                    <button type="button" data-audit-tipo="flex_minimo" class="vf-chip"><i class="fa-solid fa-vault text-emerald-600 mr-1"></i>Flex Mínimo</button>
+                </div>
+            </div>
+
             <!-- TABELA / LISTA DE MOVIMENTAÇÕES -->
             <div class="overflow-x-auto rounded-2xl border border-slate-100">
                 <table class="w-full text-left border-collapse min-w-[900px]">

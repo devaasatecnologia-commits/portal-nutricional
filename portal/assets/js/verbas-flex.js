@@ -1277,9 +1277,18 @@ function renderizarAuditoria() {
             ? `<div class="font-mono text-[11px] text-slate-600">${brl(r.saldo_anterior)} <span class="text-slate-400">➔</span> <b class="text-slate-800">${brl(r.saldo_novo)}</b></div>`
             : '<span class="text-slate-400 text-[11px]">--</span>';
 
-        const gestorBadge = r.usou_gestor
-            ? `<div class="text-[11px]"><span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">Gestor</span> <span class="text-slate-700 font-semibold">${esc(r.nome_gestor || 'Gestor ' + r.idgestor)}</span></div>`
-            : '<span class="text-slate-300 text-[11px]">—</span>';
+        let gestorBadge = '<span class="text-slate-300 text-[11px]">—</span>';
+        if (r.origem === 'BONIFICACAO_CRON') {
+            if (r.usou_gestor) {
+                gestorBadge = `<div class="text-[11px]"><span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-extrabold text-[10px] border border-amber-200/60" title="Cobriu ${brl(r.valor_gestor)}"><i class="fa-solid fa-shield-cat mr-1"></i>${esc(r.nome_gestor || 'Gestor ' + r.idgestor)}</span></div>`;
+            } else {
+                gestorBadge = `<span class="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 font-extrabold text-[10px] border border-emerald-200/50" title="Débito 100% próprio com saldo do representante"><i class="fa-solid fa-user-check mr-1"></i>Saldo Próprio</span>`;
+            }
+        } else if (r.origem === 'BONIFICACAO_GESTOR') {
+            gestorBadge = `<span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-extrabold text-[10px] border border-amber-200/60"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>Bancou Bonificação</span>`;
+        } else if (r.usou_gestor) {
+            gestorBadge = `<div class="text-[11px]"><span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">Gestor</span> <span class="text-slate-700 font-semibold">${esc(r.nome_gestor || 'Gestor ' + r.idgestor)}</span></div>`;
+        }
 
         const valorTxt = ehCredito
             ? `<span class="font-black text-emerald-600 text-[13px]">+ ${brl(r.valor)}</span>`
@@ -1482,6 +1491,35 @@ function vincularEventosUI() {
         estado.timerAudit = setTimeout(carregarAuditoria, 350);
     });
     $('btnAuditExcel')?.addEventListener('click', exportarAuditoriaExcel);
+
+    // 6.2 Chips rápidos da Auditoria
+    document.querySelectorAll('#auditChips button').forEach((b) => {
+        b.addEventListener('click', () => {
+            document.querySelectorAll('#auditChips button').forEach((c) => c.classList.remove('on'));
+            b.classList.add('on');
+            const tipo = b.getAttribute('data-audit-tipo');
+            if (tipo === 'todas') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'todas';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'todos';
+            } else if (tipo === 'debito') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'todas';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'debito';
+            } else if (tipo === 'credito') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'todas';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'credito';
+            } else if (tipo === 'bonificacao') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'bonificacao';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'todos';
+            } else if (tipo === 'transferencia') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'transferencia';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'todos';
+            } else if (tipo === 'flex_minimo') {
+                if ($('fAuditOrigem')) $('fAuditOrigem').value = 'flex_minimo';
+                if ($('fAuditNatureza')) $('fAuditNatureza').value = 'todos';
+            }
+            carregarAuditoria();
+        });
+    });
 
     // 7. Monitor API
     $('btnTestar')?.addEventListener('click', testarApi);
