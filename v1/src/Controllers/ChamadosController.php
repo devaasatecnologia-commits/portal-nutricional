@@ -62,11 +62,42 @@ class ChamadosController
         $username = strtoupper((string)($user['username'] ?? 'USUARIO'));
         $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $user['permissoes'] ?? [], true);
 
+        $podeVerTodos = $isAdmin || $username === 'MARCON';
+        $tiposPermitidos = 'TODOS';
+
+        if ($idusuario > 0 || $idcliforemp > 0) {
+            try {
+                $stmtPol = $this->pdo->prepare("
+                    SELECT chamados_ver_todos, chamados_tipos_permitidos 
+                    FROM usuario 
+                    WHERE idusuario = :id OR idcliforemp = :idcliforemp 
+                    LIMIT 1
+                ");
+                $stmtPol->execute([
+                    'id' => $idusuario,
+                    'idcliforemp' => $idcliforemp
+                ]);
+                $pol = $stmtPol->fetch(\PDO::FETCH_ASSOC);
+                if ($pol) {
+                    if (!$podeVerTodos) {
+                        $podeVerTodos = ($pol['chamados_ver_todos'] === 'S');
+                    }
+                    if (!$isAdmin && $username !== 'MARCON' && !empty($pol['chamados_tipos_permitidos'])) {
+                        $tiposPermitidos = trim($pol['chamados_tipos_permitidos']);
+                    }
+                }
+            } catch (\Throwable $e) {
+                // Silencioso se tabela não responder
+            }
+        }
+
         return [
             'idusuario' => $idusuario,
             'idcliforemp' => $idcliforemp,
             'username' => $username,
             'is_admin' => $isAdmin,
+            'pode_ver_todos' => $podeVerTodos,
+            'tipos_permitidos' => $tiposPermitidos,
             'permissoes' => (array)($user['permissoes'] ?? [])
         ];
     }
@@ -79,48 +110,120 @@ class ChamadosController
     {
         try {
             $u = $this->usuario($request);
+            $pUser = ['uid' => $u['idcliforemp'], 'u' => $u['username']];
 
             // KPIs
-            $kpiTotal = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado")->fetchColumn();
-            $kpiAbertos = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1)")->fetchColumn();
-            $kpiEmCorrecao = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 2")->fetchColumn();
-            $kpiCriticos = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND criticidade = 'critica'")->fetchColumn();
-            $kpiConcluidosMes = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 3 AND (concluido_em >= DATE_TRUNC('month', CURRENT_DATE) OR data >= DATE_TRUNC('month', CURRENT_DATE))")->fetchColumn();
+            if ($u['pode_ver_todos']) {
+                $kpiTotal = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado")->fetchColumn();
+                $kpiAbertos = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1)")->fetchColumn();
+                $kpiEmCorrecao = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 2")->fetchColumn();
+                $kpiCriticos = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND criticidade = 'critica'")->fetchColumn();
+                $kpiConcluidosMes = (int)$this->pdo->query("SELECT COUNT(*) FROM chamado WHERE status = 3 AND (concluido_em >= DATE_TRUNC('month', CURRENT_DATE) OR data >= DATE_TRUNC('month', CURRENT_DATE))")->fetchColumn();
+            } else {
+                $stK = $this->pdo->prepare("SELECT COUNT(*) FROM chamado WHERE (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)");
+                $stK->execute($pUser);
+                $kpiTotal = (int)$stK->fetchColumn();
+
+                $stA = $this->pdo->prepare("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1) AND (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)");
+                $stA->execute($pUser);
+                $kpiAbertos = (int)$stA->fetchColumn();
+
+                $stC = $this->pdo->prepare("SELECT COUNT(*) FROM chamado WHERE status = 2 AND (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)");
+                $stC->execute($pUser);
+                $kpiEmCorrecao = (int)$stC->fetchColumn();
+
+                $stCr = $this->pdo->prepare("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND criticidade = 'critica' AND (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)");
+                $stCr->execute($pUser);
+                $kpiCriticos = (int)$stCr->fetchColumn();
+
+                $stCm = $this->pdo->prepare("SELECT COUNT(*) FROM chamado WHERE status = 3 AND (concluido_em >= DATE_TRUNC('month', CURRENT_DATE) OR data >= DATE_TRUNC('month', CURRENT_DATE)) AND (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)");
+                $stCm->execute($pUser);
+                $kpiConcluidosMes = (int)$stCm->fetchColumn();
+            }
             $taxaResolucao = $kpiTotal > 0 ? round(($kpiConcluidosMes / $kpiTotal) * 100, 1) : 0;
 
             // Distribuição por Sistema
-            $porSistema = $this->pdo->query("
-                SELECT COALESCE(tipo_sistema, 'OUTROS') AS sistema, COUNT(*) AS total
-                FROM chamado
-                GROUP BY COALESCE(tipo_sistema, 'OUTROS')
-                ORDER BY total DESC
-            ")->fetchAll(PDO::FETCH_ASSOC);
+            if ($u['pode_ver_todos']) {
+                $porSistema = $this->pdo->query("
+                    SELECT COALESCE(tipo_sistema, 'OUTROS') AS sistema, COUNT(*) AS total
+                    FROM chamado
+                    GROUP BY COALESCE(tipo_sistema, 'OUTROS')
+                    ORDER BY total DESC
+                ")->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $stS = $this->pdo->prepare("
+                    SELECT COALESCE(tipo_sistema, 'OUTROS') AS sistema, COUNT(*) AS total
+                    FROM chamado
+                    WHERE (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)
+                    GROUP BY COALESCE(tipo_sistema, 'OUTROS')
+                    ORDER BY total DESC
+                ");
+                $stS->execute($pUser);
+                $porSistema = $stS->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Distribuição por Criticidade
-            $porCriticidade = $this->pdo->query("
-                SELECT COALESCE(criticidade, 'media') AS criticidade, COUNT(*) AS total
-                FROM chamado
-                GROUP BY COALESCE(criticidade, 'media')
-                ORDER BY CASE COALESCE(criticidade, 'media') WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
-            ")->fetchAll(PDO::FETCH_ASSOC);
+            if ($u['pode_ver_todos']) {
+                $porCriticidade = $this->pdo->query("
+                    SELECT COALESCE(criticidade, 'media') AS criticidade, COUNT(*) AS total
+                    FROM chamado
+                    GROUP BY COALESCE(criticidade, 'media')
+                    ORDER BY CASE COALESCE(criticidade, 'media') WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
+                ")->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $stCr = $this->pdo->prepare("
+                    SELECT COALESCE(criticidade, 'media') AS criticidade, COUNT(*) AS total
+                    FROM chamado
+                    WHERE (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)
+                    GROUP BY COALESCE(criticidade, 'media')
+                    ORDER BY CASE COALESCE(criticidade, 'media') WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END
+                ");
+                $stCr->execute($pUser);
+                $porCriticidade = $stCr->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Top Módulos com mais Demandas
-            $topModulos = $this->pdo->query("
-                SELECT COALESCE(modulo_nome, modulo_slug, 'Geral') AS modulo, COUNT(*) AS total
-                FROM chamado
-                GROUP BY COALESCE(modulo_nome, modulo_slug, 'Geral')
-                ORDER BY total DESC
-                LIMIT 6
-            ")->fetchAll(PDO::FETCH_ASSOC);
+            if ($u['pode_ver_todos']) {
+                $topModulos = $this->pdo->query("
+                    SELECT COALESCE(modulo_nome, modulo_slug, 'Geral') AS modulo, COUNT(*) AS total
+                    FROM chamado
+                    GROUP BY COALESCE(modulo_nome, modulo_slug, 'Geral')
+                    ORDER BY total DESC
+                    LIMIT 6
+                ")->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $stM = $this->pdo->prepare("
+                    SELECT COALESCE(modulo_nome, modulo_slug, 'Geral') AS modulo, COUNT(*) AS total
+                    FROM chamado
+                    WHERE (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)
+                    GROUP BY COALESCE(modulo_nome, modulo_slug, 'Geral')
+                    ORDER BY total DESC
+                    LIMIT 6
+                ");
+                $stM->execute($pUser);
+                $topModulos = $stM->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             // Últimos Chamados Resolvidos (Entregas Recentes)
-            $resolvidosRecentes = $this->pdo->query("
-                SELECT idchamado, titulo, tipo_sistema, modulo_nome, atendente, versao_entrega, concluido_em, datahora
-                FROM chamado
-                WHERE status = 3
-                ORDER BY COALESCE(concluido_em, datahora) DESC
-                LIMIT 6
-            ")->fetchAll(PDO::FETCH_ASSOC);
+            if ($u['pode_ver_todos']) {
+                $resolvidosRecentes = $this->pdo->query("
+                    SELECT idchamado, titulo, tipo_sistema, modulo_nome, atendente, versao_entrega, concluido_em, datahora
+                    FROM chamado
+                    WHERE status = 3
+                    ORDER BY COALESCE(concluido_em, datahora) DESC
+                    LIMIT 6
+                ")->fetchAll(PDO::FETCH_ASSOC);
+            } else {
+                $stR = $this->pdo->prepare("
+                    SELECT idchamado, titulo, tipo_sistema, modulo_nome, atendente, versao_entrega, concluido_em, datahora
+                    FROM chamado
+                    WHERE status = 3 AND (idcliforemp = :uid OR solicitante ILIKE :u OR usuario ILIKE :u)
+                    ORDER BY COALESCE(concluido_em, datahora) DESC
+                    LIMIT 6
+                ");
+                $stR->execute($pUser);
+                $resolvidosRecentes = $stR->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             foreach ($resolvidosRecentes as &$r) {
                 $r['concluido_fmt'] = !empty($r['concluido_em']) ? date('d/m H:i', strtotime($r['concluido_em'])) : date('d/m', strtotime($r['datahora']));
@@ -132,11 +235,17 @@ class ChamadosController
             // Filtragem de módulos por permissão caso não seja admin
             if (!$u['is_admin']) {
                 $perms = $u['permissoes'];
-                if (!empty($perms)) {
-                    $modulos = array_values(array_filter($modulos, function($m) use ($perms) {
-                        return in_array($m['slug'], $perms, true) || in_array($m['setor'], $perms, true) || $m['slug'] === 'chamados';
-                    }));
-                }
+                $modulos = array_values(array_filter($modulos, function($m) use ($perms) {
+                    return in_array($m['slug'], $perms, true);
+                }));
+            }
+
+            // Filtragem de sistemas pelo perfil de abertura permitido
+            if ($u['tipos_permitidos'] !== 'TODOS') {
+                $tiposPermitidosArr = array_map('trim', explode(',', $u['tipos_permitidos']));
+                $sistemas = array_values(array_filter($sistemas, function($s) use ($tiposPermitidosArr) {
+                    return in_array($s['id'], $tiposPermitidosArr, true);
+                }));
             }
 
             // Sistemas corporativos suportados
@@ -196,8 +305,15 @@ class ChamadosController
             $dataInicio = trim((string)($q['data_inicio'] ?? ''));
             $dataFim = trim((string)($q['data_fim'] ?? ''));
 
+            $u = $this->usuario($request);
             $where = ['1=1'];
             $params = [];
+
+            if (!$u['pode_ver_todos']) {
+                $where[] = '(c.idcliforemp = :uid_solicitante OR c.solicitante ILIKE :username_solicitante OR c.usuario ILIKE :username_solicitante)';
+                $params['uid_solicitante'] = $u['idcliforemp'];
+                $params['username_solicitante'] = $u['username'];
+            }
 
             if ($status !== null) {
                 $where[] = 'c.status = :status';
@@ -314,6 +430,16 @@ class ChamadosController
                 return $this->erro($response, 'Chamado não encontrado.', 404);
             }
 
+            $u = $this->usuario($request);
+            if (!$u['pode_ver_todos']) {
+                $eDono = ((int)($chamado['idcliforemp'] ?? 0) === $u['idcliforemp'])
+                    || (strtoupper((string)($chamado['solicitante'] ?? '')) === $u['username'])
+                    || (strtoupper((string)($chamado['usuario'] ?? '')) === $u['username']);
+                if (!$eDono) {
+                    return $this->erro($response, 'Acesso não autorizado aos detalhes deste chamado.', 403);
+                }
+            }
+
             // Timeline de operacoes
             $stmtOp = $this->pdo->prepare("
                 SELECT 
@@ -413,6 +539,24 @@ class ChamadosController
             $tipoSistemaFinal = !empty($triagem['tipo_sistema']) ? $triagem['tipo_sistema'] : ($tipoSistema ?: 'PORTAL');
             $subtipoFinal = !empty($triagem['subtipo_item']) ? $triagem['subtipo_item'] : ($subtipoItem ?: 'Geral');
             $equipDetalheFinal = $equipamentoDetalhe ?: ($tipoSistemaFinal === 'EQUIPAMENTO' ? $subtipoFinal : null);
+
+            // Validação de Permissão por Tipo de Sistema
+            if ($u['tipos_permitidos'] !== 'TODOS') {
+                $tiposPermitidosArr = array_map('trim', explode(',', $u['tipos_permitidos']));
+                if (!in_array($tipoSistemaFinal, $tiposPermitidosArr, true)) {
+                    return $this->erro($response, "Você não possui permissão para abrir chamados do tipo '{$tipoSistemaFinal}'.");
+                }
+            }
+
+            // Se for Portal, validar se tem acesso ao módulo escolhido
+            if ($tipoSistemaFinal === 'PORTAL' && !$u['is_admin']) {
+                $moduloEscolhido = $triagem['modulo_slug'] ?? $modulo;
+                if (!empty($moduloEscolhido) && $moduloEscolhido !== 'geral') {
+                    if (!in_array($moduloEscolhido, $u['permissoes'], true)) {
+                        return $this->erro($response, "Você não possui permissão no módulo '{$moduloEscolhido}' do Portal.");
+                    }
+                }
+            }
 
             // Próximo ID de chamado
             $idNovo = (int)$this->pdo->query("SELECT COALESCE(MAX(idchamado), 0) + 1 FROM chamado")->fetchColumn();

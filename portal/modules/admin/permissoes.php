@@ -104,10 +104,109 @@ require_once __DIR__ . '/components/sidebar.php';
             </div>
         </div>
     </div>
+
+    <!-- SEÇÃO: REGRAS DO MÓDULO DE CHAMADOS -->
+    <div class="mt-6 pt-6 border-t border-slate-200">
+        <div class="flex items-center gap-2 mb-4">
+            <div class="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-sm">
+                <i class="fa-solid fa-headset"></i>
+            </div>
+            <div>
+                <h5 class="text-sm font-bold text-slate-700 leading-none">Políticas do Módulo de Chamados & Suporte</h5>
+                <span class="text-[11px] text-slate-400">Defina o nível de visibilidade e os tipos de abertura permitidos</span>
+            </div>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <!-- 1. Visibilidade -->
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                    <i class="fa-solid fa-eye mr-1 text-indigo-500"></i> Visibilidade de Chamados
+                </label>
+                <label class="flex items-start gap-3 cursor-pointer mt-2">
+                    <input type="checkbox" id="chamadosVerTodos" 
+                           class="w-5 h-5 mt-0.5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500">
+                    <div>
+                        <span class="text-xs font-bold text-slate-800">Visualizar Todos os Chamados da Empresa</span>
+                        <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">
+                            Permite ver a fila global e o dashboard completo. Se <strong>desmarcado</strong>, o usuário terá visão restrita exclusivamente aos chamados que ele próprio abriu.
+                        </p>
+                    </div>
+                </label>
+            </div>
+
+            <!-- 2. Tipos de Chamados Permitidos -->
+            <div class="p-4 bg-slate-50 border border-slate-200 rounded-2xl">
+                <label class="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-2">
+                    <i class="fa-solid fa-filter mr-1 text-indigo-500"></i> Tipos de Abertura Permitidos
+                </label>
+                <label class="flex items-center gap-2.5 cursor-pointer mb-3">
+                    <input type="checkbox" id="chamadosTodosTipos" 
+                           class="w-5 h-5 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                           onchange="toggleSelecaoTiposChamados()">
+                    <span class="text-xs font-bold text-slate-800">Pode abrir qualquer tipo de chamado</span>
+                </label>
+
+                <div id="selecaoTiposChamados" style="display:none;" class="space-y-1.5 max-h-48 overflow-y-auto border border-slate-200 bg-white rounded-xl p-2.5 custom-scrollbar">
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="PORTAL" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Portal Nutricional (Módulos Web)</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="EQUIPAMENTO" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Equipamentos (Impressoras, Ramal, PC, Coletores)</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="ERP_EMA" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>ERP Ema Desktop</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="MERCOS" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Mercos (Força de Vendas)</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="COBLI" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Cobli (Telemetria & Frotas)</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="LOGISOFT" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Logisoft (CTe / MDFe / CIOT)</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="EMAIL" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Email Corporativo / Webmail</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="SITE" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Site Institucional / E-commerce</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="PLANILHAS" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Planilhas Excel / Relatórios</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="SERVIDOR" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Servidores, Rede & VPN</span>
+                    </label>
+                    <label class="flex items-center gap-2 p-1.5 hover:bg-slate-50 rounded-lg cursor-pointer text-xs font-semibold text-slate-700">
+                        <input type="checkbox" value="OUTROS" class="w-4 h-4 text-indigo-600 rounded">
+                        <span>Outros Assuntos</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
 let usuarioSelecionado = null;
+function toggleSelecaoTiposChamados() {
+    const todos = document.getElementById('chamadosTodosTipos')?.checked;
+    const div = document.getElementById('selecaoTiposChamados');
+    if (div) {
+        div.style.display = todos ? 'none' : 'block';
+    }
+}
 let permissoesAtuais = [];
 let todosModulos = [];
 let gestoresDisponiveis = [];
@@ -283,6 +382,20 @@ async function carregarPermissoes() {
         const permiteTodos = visData.permite_ver_todos === true;
         document.getElementById('permiteVerTodos').checked = permiteTodos;
         
+        // Configurações do Módulo de Chamados
+        const chVerTodos = data.usuario.chamados_ver_todos === 'S';
+        document.getElementById('chamadosVerTodos').checked = chVerTodos;
+
+        const chTipos = data.usuario.chamados_tipos_permitidos || 'TODOS';
+        const chTodosTipos = chTipos === 'TODOS';
+        document.getElementById('chamadosTodosTipos').checked = chTodosTipos;
+        toggleSelecaoTiposChamados();
+
+        const tiposArray = chTodosTipos ? [] : chTipos.split(',').map(t => t.trim());
+        document.querySelectorAll('#selecaoTiposChamados input[type="checkbox"]').forEach(cb => {
+            cb.checked = tiposArray.includes(cb.value);
+        });
+        
         usuariosVisualizarSelecionados = (visData.usuarios_visualizar || []).map(u => u.id);
         
         // Atualiza a interface de seleção
@@ -411,7 +524,9 @@ async function salvarPermissoes() {
         modulos: permissoesAtuais,
         dash_filiais: filiais,
         dash_gestores: gestores,
-        permite_ver_usuarios: permiteTodos ? 'S' : 'N'
+        permite_ver_usuarios: permiteTodos ? 'S' : 'N',
+        chamados_ver_todos: document.getElementById('chamadosVerTodos')?.checked ? 'S' : 'N',
+        chamados_tipos_permitidos: document.getElementById('chamadosTodosTipos')?.checked ? 'TODOS' : (Array.from(document.querySelectorAll('#selecaoTiposChamados input[type="checkbox"]:checked')).map(cb => cb.value).join(',') || 'PORTAL')
     };
     
     try {

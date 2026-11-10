@@ -31,6 +31,7 @@ function chamadosApp() {
         },
         modulos: [],
         sistemas: [],
+        usuario: null,
         chamados: [],
         chamadoAtual: null,
         timeline: [],
@@ -123,6 +124,7 @@ function chamadosApp() {
                     };
                     this.modulos = res.modulos || [];
                     this.sistemas = res.sistemas || [];
+                    this.usuario = res.usuario || {};
                 }
             } catch (e) {
                 console.error('Erro ao carregar dashboard:', e);
@@ -208,8 +210,12 @@ function chamadosApp() {
         },
 
         abrirModalNovo() {
+            const sistemaPadrao = (this.sistemas || []).some(s => s.id === 'PORTAL') 
+                ? 'PORTAL' 
+                : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL');
+
             this.novoForm = {
-                tipo_sistema: 'PORTAL',
+                tipo_sistema: sistemaPadrao,
                 subtipo_item: '',
                 equipamento_detalhe: '',
                 relato: '',

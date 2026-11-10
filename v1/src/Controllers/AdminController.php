@@ -320,6 +320,8 @@ public function editarUsuario(Request $request, Response $response): Response
         $dashGestores = $input['dash_gestores'] ?? '';
         $senha = $input['senha'] ?? '';
         $permiteVerUsuarios = $input['permite_ver_usuarios'] ?? 'N';
+        $chamadosVerTodos = ($input['chamados_ver_todos'] ?? 'N') === 'S' ? 'S' : 'N';
+        $chamadosTiposPermitidos = !empty($input['chamados_tipos_permitidos']) ? trim((string)$input['chamados_tipos_permitidos']) : 'TODOS';
 
         if (!$idcliforemp) {
             return $this->jsonResponse($response, ['error' => 'ID do usuário é obrigatório'], 400);
@@ -355,6 +357,8 @@ public function editarUsuario(Request $request, Response $response): Response
             'filiais' => $dashFiliais ?: null,
             'gestores' => $dashGestores ?: null,
             'permite_ver' => $permiteVerUsuarios === 'S' ? 'S' : 'N',
+            'chamados_ver_todos' => $chamadosVerTodos,
+            'chamados_tipos_permitidos' => $chamadosTiposPermitidos,
             'idusuario' => $idusuario
         ];
 
@@ -804,7 +808,7 @@ public function getPermissoesUsuario(Request $request, Response $response, array
         
         // Dados do usuário
         $stmtUser = $this->pdo->prepare(
-            "SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, inativo, permite_ver_usuarios
+            "SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, inativo, permite_ver_usuarios, chamados_ver_todos, chamados_tipos_permitidos
              FROM usuario WHERE idcliforemp = :idcliforemp"
         );
         $stmtUser->execute(['idcliforemp' => $idcliforemp]);
@@ -837,6 +841,8 @@ public function salvarPermissoes(Request $request, Response $response): Response
         $dashFiliais = $input['dash_filiais'] ?? '';
         $dashGestores = $input['dash_gestores'] ?? '';
         $permiteVerUsuarios = $input['permite_ver_usuarios'] ?? 'N';
+        $chamadosVerTodos = ($input['chamados_ver_todos'] ?? 'N') === 'S' ? 'S' : 'N';
+        $chamadosTiposPermitidos = !empty($input['chamados_tipos_permitidos']) ? trim((string)$input['chamados_tipos_permitidos']) : 'TODOS';
 
         if (!$idcliforemp) {
             return $this->jsonResponse($response, [
@@ -890,13 +896,17 @@ public function salvarPermissoes(Request $request, Response $response): Response
             "UPDATE usuario SET 
                 dash_filiais = :filiais, 
                 dash_gestores = :gestores,
-                permite_ver_usuarios = :permite_ver
+                permite_ver_usuarios = :permite_ver,
+                chamados_ver_todos = :chamados_ver_todos,
+                chamados_tipos_permitidos = :chamados_tipos_permitidos
              WHERE idusuario = :idusuario"
         );
         $stmtUp->execute([
             'filiais' => $dashFiliais ?: null,
             'gestores' => $dashGestores ?: null,
             'permite_ver' => $permiteVerUsuarios === 'S' ? 'S' : 'N',
+            'chamados_ver_todos' => $chamadosVerTodos,
+            'chamados_tipos_permitidos' => $chamadosTiposPermitidos,
             'idusuario' => $idusuario
         ]);
 

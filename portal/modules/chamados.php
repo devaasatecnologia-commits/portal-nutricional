@@ -40,12 +40,15 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-ia"></span> IA Triagem Ativa
                         </span>
+                        <span x-show="usuario && !usuario.pode_ver_todos" class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 flex items-center gap-1.5" style="display: none;">
+                            <i class="fa-solid fa-user-lock"></i> Meus Chamados
+                        </span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-1 flex items-center gap-2">
-                        Central de Chamados & Suporte
+                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Meus Chamados & Acompanhamento' : 'Central de Chamados & Suporte'">Central de Chamados & Suporte</span>
                     </h1>
                     <p class="text-xs sm:text-sm text-indigo-200 opacity-90 mt-0.5">
-                        Governança, triagem assistida por inteligência artificial e resolução ágil dos 40 módulos do Portal
+                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Acompanhe em tempo real o status, responsável técnico e andamento das suas solicitações' : 'Governança, triagem assistida por inteligência artificial e resolução ágil dos módulos corporativos'">Governança, triagem assistida por inteligência artificial e resolução ágil dos módulos corporativos</span>
                     </p>
                 </div>
             </div>
