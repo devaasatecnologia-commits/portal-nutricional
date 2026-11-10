@@ -984,15 +984,38 @@ async function carregarCreditos() {
         host.innerHTML = estado.creditos.length ? estado.creditos.map((c, i) => {
             const isZero = Number(c.valor_emprestimo) === 0;
             const isFalha = c.motivo && c.motivo.toLowerCase().includes('falha');
+            const mot = c.motivo || '';
+
+            // Classificação inteligente da natureza do lançamento
+            let categoriaNome = 'Aporte Flex Mínimo';
+            let categoriaBadge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            let categoriaIcon = 'fa-hand-holding-dollar';
+
+            if (isZero || isFalha) {
+                categoriaNome = 'Falha / Tentativa';
+                categoriaBadge = 'bg-rose-50 text-rose-700 border-rose-200';
+                categoriaIcon = 'fa-triangle-exclamation';
+            } else if (mot.includes('Bonificação INTEGRAL') || mot.includes('para Faturamento')) {
+                categoriaNome = 'Aporte p/ Faturamento de Bonificações';
+                categoriaBadge = 'bg-sky-50 text-sky-700 border-sky-200';
+                categoriaIcon = 'fa-receipt';
+            } else if (mot.includes('Suprir desfalque') || mot.includes('TIAGO') || mot.includes('Tales') || mot.includes('Flex Mínimo')) {
+                categoriaNome = 'Flex Mínimo (Manutenção de Caixa)';
+                categoriaBadge = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                categoriaIcon = 'fa-shield-halved';
+            }
 
             return `
             <div class="vf-row" onclick="verDetalheCredito(${i})">
                 <div class="w-10 h-10 rounded-xl ${isZero ? 'bg-amber-100 text-amber-700' : 'bg-emerald-50 text-emerald-700'} flex items-center justify-center font-bold text-sm flex-none">
-                    <i class="fa-solid ${isZero ? 'fa-triangle-exclamation' : 'fa-hand-holding-dollar'}"></i>
+                    <i class="fa-solid ${isZero ? 'fa-triangle-exclamation' : categoriaIcon}"></i>
                 </div>
                 <div class="flex-1 min-w-0">
-                    <div class="flex justify-between items-center gap-2">
-                        <b class="text-xs sm:text-sm text-slate-800">${dataBR(c.data)}</b>
+                    <div class="flex flex-wrap justify-between items-center gap-2">
+                        <div class="flex items-center gap-2">
+                            <b class="text-xs sm:text-sm text-slate-800">${dataBR(c.data)}</b>
+                            <span class="px-2 py-0.5 rounded-md text-[10px] font-bold border ${categoriaBadge}">${categoriaNome}</span>
+                        </div>
                         <b class="text-sm font-black ${isZero ? 'text-amber-600' : 'text-emerald-700'} whitespace-nowrap">
                             ${isZero ? 'R$ 0,00 (Falha)' : brl(c.valor_emprestimo)}
                         </b>
@@ -1010,14 +1033,24 @@ function verDetalheCredito(i) {
     const c = estado.creditos[i];
     if (!c) return;
 
+    const mot = c.motivo || '';
+    let explicacao = 'Lote de Verba Flex creditado na conta do gestor via API Mercos para manutenção do saldo operacional mínimo.';
+    if (mot.includes('Bonificação INTEGRAL') || mot.includes('para Faturamento')) {
+        explicacao = 'Lote de aporte padrão creditado na conta do gestor para suprir caixa e viabilizar a transferência das bonificações faturadas dos representantes na data.';
+    }
+
     Swal.fire({
         ...swalBase,
-        title: `Lançamento de Empréstimo #${c.id}`,
+        title: `Lançamento de Aporte Flex #${c.id}`,
         html: `
-            <div class="text-left text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2">
+            <div class="text-left text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2.5">
                 <div><span class="text-slate-400 font-bold uppercase">Data:</span><br><b class="text-sm text-slate-800">${dataBR(c.data)}</b></div>
-                <div><span class="text-slate-400 font-bold uppercase">Valor do Empréstimo:</span><br><b class="text-base text-emerald-700 font-black">${brl(c.valor_emprestimo)}</b></div>
-                <div class="pt-2 border-t border-slate-200"><span class="text-slate-400 font-bold uppercase">Motivo / Descrição:</span><br><i class="text-slate-700">${esc(c.motivo)}</i></div>
+                <div><span class="text-slate-400 font-bold uppercase">Valor do Lote Aportado:</span><br><b class="text-base text-emerald-700 font-black">${brl(c.valor_emprestimo)}</b></div>
+                <div class="pt-2 border-t border-slate-200"><span class="text-slate-400 font-bold uppercase">Motivo / Registro Original:</span><br><i class="text-slate-700">${esc(c.motivo)}</i></div>
+                <div class="p-2.5 rounded-xl bg-blue-50/80 border border-blue-200 text-blue-900 leading-relaxed">
+                    <i class="fa-solid fa-circle-info mr-1 text-blue-600"></i>
+                    <b>Finalidade Contábil:</b> ${explicacao}
+                </div>
             </div>
         `,
         confirmButtonText: 'Fechar'

@@ -276,9 +276,10 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <div class="flex items-center justify-between mb-4 p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
                 <div>
-                    <span class="vf-label text-emerald-700">Total Concedido em Empréstimos</span>
+                    <span class="vf-label text-emerald-700">Total Concedido em Empréstimos & Aportes Flex (Gestores)</span>
                     <div id="totC" class="text-2xl sm:text-3xl font-black text-emerald-700">R$ 0,00</div>
                     <div id="qtdC" class="text-xs text-emerald-800/80 font-bold mt-0.5"></div>
+                    <span class="text-[10px] text-slate-500 font-medium block mt-1">Lotes de crédito concedidos aos gestores para manutenção de caixa (Flex Mínimo) e cobertura de faturamento.</span>
                 </div>
                 <button id="xlsC" class="px-4 py-2.5 rounded-xl bg-white hover:bg-slate-50 text-emerald-800 border border-emerald-200 text-xs font-bold flex items-center gap-1.5 shadow-xs transition">
                     <i class="fa-solid fa-file-excel text-emerald-600"></i>

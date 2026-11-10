@@ -1573,91 +1573,50 @@ class CronRotinasController
     // ======================================================================
     // FLEX MÍNIMO GESTOR
     // ======================================================================
+    // FLEX MÍNIMO GESTOR (MOTOR CENTRALIZADO VIA FLEXMINIMOSERVICE)
+    // ======================================================================
     private function executarFlexMinimoGestor(array $params, string $usuario, string $ip): array
     {
         try {
-            $gestorId = $params['gestor_id'] ?? 12335;
-            $nomeGestor = $params['gestor_nome'] ?? 'Gestor';
-            $valorMinimo = $params['valor_minimo'] ?? 3000;
-            $valorEmprestimo = $params['valor_emprestimo'] ?? 3000;
-            $motivo = $params['motivo'] ?? 'Empréstimo para suprir desfalque de Verba Flex';
-            $idFilial = $params['id_filial'] ?? 1;
-            $urlApi = $params['url_api'] ?? 'http://mercosf1.nutricionalbr.com:8081/saldo_flex';
+            $service = new \Nutricional\Services\FlexMinimoService($this->pdo);
+            $resultados = $service->executar(false);
 
-            $ch = curl_init($urlApi);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-            $response = curl_exec($ch);
-            curl_close($ch);
+            $html = "<h2>Verificação de Flex Mínimo dos Gestores</h2><ul>";
+            $totalEmprestimos = 0;
+            $houveAcao = false;
 
-            $dados = json_decode($response, true);
-            if (!is_array($dados)) {
-                throw new \Exception('Resposta inválida da API');
-            }
+            foreach ($resultados as $r) {
+                $gestorId = $r['gestor'];
+                $filial = $r['filial'];
+                $acao = $r['acao'];
+                $saldo = number_format((float)($r['saldo'] ?? 0), 2, ',', '.');
 
-            $gestor = null;
-            foreach ($dados as $item) {
-                if ($item['cliforemp_id'] == $gestorId) {
-                    $gestor = $item;
-                    break;
+                if ($acao === 'emprestimo') {
+                    $houveAcao = true;
+                    $val = number_format((float)($r['valor'] ?? 0), 2, ',', '.');
+                    $totalEmprestimos += (float)($r['valor'] ?? 0);
+                    $html .= "<li style='color:#059669'><strong>Gestor #$gestorId (Filial $filial):</strong> Saldo anterior R$ $saldo. Empréstimo de <strong>R$ $val</strong> realizado com sucesso.</li>";
+                } elseif ($acao === 'falha') {
+                    $erro = htmlspecialchars($r['erro'] ?? 'Erro desconhecido');
+                    $html .= "<li style='color:#dc2626'><strong>Gestor #$gestorId (Filial $filial):</strong> Falha: $erro</li>";
+                } elseif ($acao === 'ocupado') {
+                    $html .= "<li style='color:#d97706'><strong>Gestor #$gestorId (Filial $filial):</strong> Em execução concorrente (lock ativo).</li>";
+                } else {
+                    $html .= "<li style='color:#475569'><strong>Gestor #$gestorId (Filial $filial):</strong> Saldo saudável (R$ $saldo). Nenhuma ação necessária.</li>";
                 }
             }
-
-            if (!$gestor) {
-                throw new \Exception("Gestor $gestorId não encontrado");
-            }
-
-            $saldoAtual = floatval($gestor['saldo_atual'] ?? 0);
-
-            if ($saldoAtual >= $valorMinimo) {
-                return [
-                    'success' => true,
-                    'message' => "Saldo suficiente (R$ " . number_format($saldoAtual, 2, ',', '.') . "). Nenhuma ação necessária.",
-                    'detalhes' => ['saldo_atual' => $saldoAtual, 'emprestimo_realizado' => false]
-                ];
-            }
-
-            $ch = curl_init($urlApi);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-                'colaborador_id' => $gestorId,
-                'valor_movimentado' => $valorEmprestimo,
-                'observacao' => $motivo
-            ]));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 15);
-            curl_exec($ch);
-            curl_close($ch);
-
-            $stmt = $this->pdo->prepare("
-                INSERT INTO log_debito_flex_gestor (cdgestor, valor_emprestimo, motivo, data, idfilial)
-                VALUES (?, ?, ?, CURRENT_DATE, ?)
-            ");
-            $stmt->execute([$gestorId, $valorEmprestimo, $motivo, $idFilial]);
-
-            $html = "<h2>✅ Empréstimo Realizado com Sucesso!</h2>
-                     <p><strong>Gestor:</strong> $nomeGestor</p>
-                     <p><strong>Valor:</strong> R$ " . number_format($valorEmprestimo, 2, ',', '.') . "</p>
-                     <p><strong>Saldo Anterior:</strong> R$ " . number_format($saldoAtual, 2, ',', '.') . "</p>
-                     <p><strong>Motivo:</strong> $motivo</p>";
-
-            if (!empty($params['email_notificacao'])) {
-                $this->enviarEmailNotificacao($params['email_notificacao'], 'Flex Mínimo Gestor - ' . date('d/m/Y'), $html);
-            }
+            $html .= "</ul>";
 
             return [
                 'success' => true,
-                'message' => "Empréstimo de R$ $valorEmprestimo realizado com sucesso!",
-                'detalhes' => [
-                    'saldo_anterior' => $saldoAtual,
-                    'valor_emprestimo' => $valorEmprestimo,
-                    'emprestimo_realizado' => true
-                ],
+                'message' => $houveAcao
+                    ? "Flex Mínimo processado. Total aportado: R$ " . number_format($totalEmprestimos, 2, ',', '.')
+                    : "Flex Mínimo verificado. Todos os gestores com saldo saudável.",
+                'detalhes' => $resultados,
                 'email_html' => $html
             ];
-        } catch (\Exception $e) {
-            return ['success' => false, 'message' => $e->getMessage()];
+        } catch (\Throwable $e) {
+            return ['success' => false, 'message' => 'Erro ao executar Flex Mínimo: ' . $e->getMessage()];
         }
     }
 
@@ -1977,8 +1936,11 @@ class CronRotinasController
 
             $tentativa++;
             $valorEmprestimo = $idfilial === 1 ? 3000.00 : 1000.00;
-            $motivoEmprestimo = $tentativa === 1 ? $motivo : "{$motivo} (tentativa adicional {$tentativa})";
-            $html .= "<li class=\"warning\">Saldo do gestor insuficiente (" . $this->moedaBonif($saldoAtual) . ") - Fazendo empréstimo PADRÃO de " . $this->moedaBonif($valorEmprestimo) . "</li>";
+            $motivoEmprestimo = "Aporte de Verba Flex (Lote de R$ " . number_format($valorEmprestimo, 2, ',', '.') . ") — Suprir Caixa do Gestor para Faturamento";
+            if ($tentativa > 1) {
+                $motivoEmprestimo .= " (Tentativa {$tentativa})";
+            }
+            $html .= "<li class=\"warning\">Saldo do gestor insuficiente (" . $this->moedaBonif($saldoAtual) . ") para cobrir bonificação pendente — Aporte padrão de Verba Flex de " . $this->moedaBonif($valorEmprestimo) . " realizado com sucesso</li>";
 
             $this->movimentarFlexSeguro($api, $cdgestor, $valorEmprestimo, $motivoEmprestimo, $html);
 
