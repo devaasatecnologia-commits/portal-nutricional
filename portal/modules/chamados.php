@@ -130,9 +130,18 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- Filtros em Selects -->
             <div class="flex flex-wrap items-center gap-2">
-                <!-- Filtro Módulo -->
-                <select x-model="filtros.modulo" @change="carregarChamados()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
-                    <option value="todos">Todos os Módulos (40)</option>
+                <!-- Filtro Sistema -->
+                <select x-model="filtros.tipo_sistema" @change="carregarChamados()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <option value="todos">Todos os Sistemas</option>
+                    <template x-for="s in sistemas" :key="s.id">
+                        <option :value="s.id" x-text="s.nome"></option>
+                    </template>
+                </select>
+
+                <!-- Filtro Módulo (Relevante quando sistema for Portal ou todos) -->
+                <select x-model="filtros.modulo" @change="carregarChamados()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500"
+                        x-show="filtros.tipo_sistema === 'todos' || filtros.tipo_sistema === 'PORTAL'">
+                    <option value="todos">Todos os Módulos Web</option>
                     <template x-for="m in modulos" :key="m.slug">
                         <option :value="m.slug" x-text="`${m.nome} (${m.setor})`"></option>
                     </template>
@@ -180,13 +189,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <template x-for="c in colunaChamados(0)" :key="c.idchamado">
                     <div class="kanban-card bg-white p-3 rounded-xl border border-slate-200/70 shadow-xs cursor-pointer hover:border-indigo-300"
                          @click="abrirDetalhes(c.idchamado)">
-                        <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                             <span class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100" x-text="`#${c.idchamado}`">#0</span>
-                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded ml-auto" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[120px]" x-text="c.modulo_nome">Módulo</span>
+                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
                             <span x-text="c.solicitante">User</span>
                         </div>
                     </div>
@@ -211,13 +221,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <template x-for="c in colunaChamados(1)" :key="c.idchamado">
                     <div class="kanban-card bg-white p-3 rounded-xl border border-slate-200/70 shadow-xs cursor-pointer hover:border-blue-300"
                          @click="abrirDetalhes(c.idchamado)">
-                        <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                             <span class="text-[10px] font-black text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100" x-text="`#${c.idchamado}`">#0</span>
-                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded ml-auto" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[120px]" x-text="c.modulo_nome">Módulo</span>
+                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
                             <span x-text="c.solicitante">User</span>
                         </div>
                     </div>
@@ -242,13 +253,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <template x-for="c in colunaChamados(2)" :key="c.idchamado">
                     <div class="kanban-card bg-white p-3 rounded-xl border border-slate-200/70 shadow-xs cursor-pointer hover:border-purple-300"
                          @click="abrirDetalhes(c.idchamado)">
-                        <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                             <span class="text-[10px] font-black text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100" x-text="`#${c.idchamado}`">#0</span>
-                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded ml-auto" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[120px]" x-text="c.modulo_nome">Módulo</span>
+                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
                             <span x-text="c.solicitante">User</span>
                         </div>
                     </div>
@@ -273,13 +285,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <template x-for="c in colunaChamados(3)" :key="c.idchamado">
                     <div class="kanban-card bg-white p-3 rounded-xl border border-slate-200/70 shadow-xs cursor-pointer hover:border-emerald-300 opacity-80 hover:opacity-100"
                          @click="abrirDetalhes(c.idchamado)">
-                        <div class="flex items-center justify-between mb-1.5">
+                        <div class="flex items-center gap-1.5 mb-1.5 flex-wrap">
                             <span class="text-[10px] font-black text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-100" x-text="`#${c.idchamado}`">#0</span>
-                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800">Resolvido</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 ml-auto">Resolvido</span>
                         </div>
                         <h4 class="text-xs font-bold text-slate-700 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[120px]" x-text="c.modulo_nome">Módulo</span>
+                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
                             <span x-text="c.concluido_fmt || c.data_fmt">Data</span>
                         </div>
                     </div>
@@ -298,8 +311,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <thead>
                     <tr class="bg-slate-50/80 border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider">
                         <th class="py-3 px-4"># ID</th>
+                        <th class="py-3 px-4">Sistema / Origem</th>
                         <th class="py-3 px-4">Título / Problema</th>
-                        <th class="py-3 px-4">Módulo</th>
+                        <th class="py-3 px-4">Módulo / Item</th>
                         <th class="py-3 px-4">Categoria</th>
                         <th class="py-3 px-4 text-center">Criticidade</th>
                         <th class="py-3 px-4 text-center">Status</th>
@@ -313,10 +327,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <tr class="hover:bg-slate-50/70 transition cursor-pointer" @click="abrirDetalhes(c.idchamado)">
                             <td class="py-3 px-4 font-black text-indigo-600" x-text="`#${c.idchamado}`">#1</td>
                             <td class="py-3 px-4">
+                                <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded border inline-block" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            </td>
+                            <td class="py-3 px-4">
                                 <span class="font-bold text-slate-800 block line-clamp-1" x-text="c.titulo">Título</span>
                                 <span class="text-[10px] text-slate-400 line-clamp-1 mt-0.5" x-text="c.motivo">Motivo</span>
                             </td>
-                            <td class="py-3 px-4 text-slate-700 font-bold" x-text="c.modulo_nome">Módulo</td>
+                            <td class="py-3 px-4 text-slate-700 font-bold" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</td>
                             <td class="py-3 px-4">
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded-md bg-slate-100 text-slate-600" x-text="c.categoria">Bug</span>
                             </td>
@@ -336,7 +353,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </tr>
                     </template>
                     <tr x-show="chamados.length === 0">
-                        <td colspan="9" class="py-8 text-center text-xs text-slate-400">
+                        <td colspan="10" class="py-8 text-center text-xs text-slate-400">
                             Nenhum chamado encontrado com os filtros selecionados.
                         </td>
                     </tr>
@@ -364,12 +381,33 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="py-4 space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
-                <!-- Seleção Opcional do Módulo -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <!-- 1. SELEÇÃO DO SISTEMA OU ORIGEM -->
+                <div>
+                    <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
+                        Sistema ou Equipamento Envolvido <span class="text-rose-500">*</span>
+                    </label>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                        <template x-for="s in sistemas" :key="s.id">
+                            <button type="button" @click="novoForm.tipo_sistema = s.id"
+                                    class="p-2.5 rounded-xl border text-left transition flex flex-col items-start gap-1 text-xs font-bold"
+                                    :class="novoForm.tipo_sistema === s.id ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 shadow-xs ring-1 ring-indigo-400' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
+                                <div class="flex items-center gap-1.5 w-full">
+                                    <i class="fa-solid text-sm" :class="[s.icon, novoForm.tipo_sistema === s.id ? 'text-indigo-600' : 'text-slate-400']"></i>
+                                    <span class="truncate font-black" x-text="s.id">ID</span>
+                                </div>
+                                <span class="text-[10px] text-slate-400 line-clamp-1 font-semibold" x-text="s.nome">Nome</span>
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <!-- 2. CAMPOS CONTEXTUAIS CONFORME SISTEMA -->
+                <!-- SE PORTAL: Módulos Web Liberados -->
+                <div x-show="novoForm.tipo_sistema === 'PORTAL'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
-                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Módulo Envolvido</label>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Módulo do Portal</label>
                         <select x-model="novoForm.modulo_slug" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
-                            <option value="">Deixar IA Detectar Automaticamente</option>
+                            <option value="">Deixar IA Detectar pelo Relato</option>
                             <template x-for="m in modulos" :key="m.slug">
                                 <option :value="m.slug" x-text="`${m.nome} (${m.setor})`"></option>
                             </template>
@@ -384,13 +422,114 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
-                <!-- Relato Livre do Usuário -->
+                <!-- SE EQUIPAMENTO: Impressora, Ramal, Computador -->
+                <div x-show="novoForm.tipo_sistema === 'EQUIPAMENTO'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Tipo de Equipamento</label>
+                        <select x-model="novoForm.subtipo_item" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="">Selecione o tipo...</option>
+                            <option value="Impressora">Impressora / Toner / Etiquetas</option>
+                            <option value="Telefonia / Ramal">Telefone / Ramal / PABX</option>
+                            <option value="Computador / Notebook">Computador / Notebook</option>
+                            <option value="Coletor / Leitor de Barras">Leitor / Coletor de Barras (Expedição)</option>
+                            <option value="Monitor / Teclado / Mouse">Monitor / Teclado / Mouse</option>
+                            <option value="Nobreak / Estabilizador">Nobreak / Estabilizador</option>
+                            <option value="Outro Dispositivo">Outro Dispositivo Físico</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Identificação / Setor do Aparelho</label>
+                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: HP LaserJet Expedição, Ramal 204, PC Fiscal 02"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- SE ERP EMA: Rotina / Módulo Desktop -->
+                <div x-show="novoForm.tipo_sistema === 'ERP_EMA'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Rotina do ERP Ema</label>
+                        <select x-model="novoForm.subtipo_item" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="">Selecione a rotina do Ema...</option>
+                            <option value="Pedidos de Venda">Pedidos de Venda / Orçamentos</option>
+                            <option value="Faturamento / Emissão de NF-e">Faturamento / Emissão de NF-e</option>
+                            <option value="Compras / Entrada de NF">Compras / Entrada de NF</option>
+                            <option value="Estoque / Saldos / Lotes">Estoque / Saldos / Lotes</option>
+                            <option value="Fiscal / Sped / CFOP">Fiscal / Sped / CFOP</option>
+                            <option value="Financeiro / Contas a Receber/Pagar">Financeiro / Contas a Receber/Pagar</option>
+                            <option value="Cadastros Gerais">Cadastros de Clientes/Produtos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Nº do Pedido / Nota / Tela</label>
+                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: NF 300808, Pedido 145920, Tela 0401"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- SE LOGISOFT: CT-e / MDF-e / CIOT -->
+                <div x-show="novoForm.tipo_sistema === 'LOGISOFT'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Operação Logisoft</label>
+                        <select x-model="novoForm.subtipo_item" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="Emissão de CT-e">Emissão de Conhecimento (CT-e)</option>
+                            <option value="Manifesto MDF-e">Manifesto Eletrônico (MDF-e)</option>
+                            <option value="Registro de CIOT">Registro / Encerramento de CIOT</option>
+                            <option value="Averbação de Seguro">Averbação de Carga / Seguro</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Nº CTe / Manifesto / Placa</label>
+                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: CTe 12440, MDF-e 342, Placa ABC-1234"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- SE COBLI: Rastreamento & Frotas -->
+                <div x-show="novoForm.tipo_sistema === 'COBLI'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Recurso Cobli</label>
+                        <select x-model="novoForm.subtipo_item" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="Rastreamento / Mapa">Localização / Rastreador Offline</option>
+                            <option value="Telemetria de Velocidade">Telemetria / Alertas de Velocidade</option>
+                            <option value="Jornada de Motorista">Controle de Jornada / Paradas</option>
+                            <option value="Dispositivo Veicular">Troca / Defeito de Equipamento na Cabine</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Placa do Veículo / Motorista</label>
+                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: Caminhão Mercedes Placa XYZ-9876"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- SE MERCOS: Força de Vendas -->
+                <div x-show="novoForm.tipo_sistema === 'MERCOS'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Recurso Mercos</label>
+                        <select x-model="novoForm.subtipo_item" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="Sincronização de Pedidos">Sincronização de Pedidos</option>
+                            <option value="Catálogo / Produtos">Catálogo de Produtos / Fotos</option>
+                            <option value="Tabela de Preços">Tabelas de Preços / Condições</option>
+                            <option value="App Vendedor Mobile">Aplicativo no Celular do RCA</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">RCA / Pedido Mercos</label>
+                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: RCA Roberto, Pedido Mercos #84102"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    </div>
+                </div>
+
+                <!-- 3. RELATO LIVRE DO USUÁRIO -->
                 <div>
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">
-                        O que aconteceu? (Descreva o erro, dúvida ou melhoria)
+                        O que aconteceu? (Descreva o erro, solicitação ou dúvida) <span class="text-rose-500">*</span>
                     </label>
-                    <textarea x-model="novoForm.relato" rows="4" placeholder="Ex: Na tela de verbas flex, a bonificação da nota 300808 do Anaildo ficou com saldo zerado e não debitou do gestor..."
+                    <textarea x-model="novoForm.relato" rows="4" placeholder="Ex: Impressora HP da expedição está puxando duas folhas e dando atolamento de papel... OU No módulo Verbas Flex a nota 300808 não deduziu o saldo..."
                               class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition"></textarea>
+                    <span class="text-[10px] text-slate-400 font-semibold block mt-1">
+                        💡 Dica: Você pode apenas descrever o ocorrido e clicar em <strong>Analisar com IA</strong> que ela identificará o sistema e os termos técnicos automaticamente!
+                    </span>
                 </div>
 
                 <!-- Botão de Triagem com IA -->
@@ -452,14 +591,17 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <!-- Topo do Modal -->
                     <div class="flex items-start justify-between pb-4 border-b border-slate-100">
                         <div>
-                            <div class="flex items-center gap-2 mb-1">
+                            <div class="flex items-center gap-2 mb-1 flex-wrap">
                                 <span class="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100" x-text="`CHAMADO #${chamadoAtual.idchamado}`">#1</span>
+                                <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded border" :class="badgeSistema(chamadoAtual.tipo_sistema)" x-text="chamadoAtual.tipo_sistema">PORTAL</span>
+                                <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700" x-show="chamadoAtual.subtipo_item && chamadoAtual.subtipo_item !== 'Geral'" x-text="chamadoAtual.subtipo_item">Item</span>
                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded" :class="badgeCriticidade(chamadoAtual.criticidade)" x-text="chamadoAtual.criticidade">Média</span>
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-700" x-text="chamadoAtual.categoria">Bug</span>
                             </div>
                             <h2 class="text-base sm:text-lg font-black text-slate-800" x-text="chamadoAtual.titulo || chamadoAtual.motivo">Título</h2>
                             <p class="text-[11px] text-slate-400 mt-0.5">
-                                Solicitado por <strong class="text-slate-700" x-text="chamadoAtual.solicitante">User</strong> em <span x-text="chamadoAtual.data_fmt">Data</span> · Módulo: <strong class="text-indigo-600" x-text="chamadoAtual.modulo_nome">Módulo</strong>
+                                Solicitado por <strong class="text-slate-700" x-text="chamadoAtual.solicitante">User</strong> em <span x-text="chamadoAtual.data_fmt">Data</span> · 
+                                Origem: <strong class="text-indigo-600" x-text="chamadoAtual.tipo_sistema === 'PORTAL' ? chamadoAtual.modulo_nome : (chamadoAtual.equipamento_detalhe || chamadoAtual.subtipo_item || chamadoAtual.tipo_sistema)">Módulo</strong>
                             </p>
                         </div>
                         <button @click="modalDetalhesAberto = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center">

@@ -17,6 +17,7 @@ function chamadosApp() {
         // Dados
         kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0 },
         modulos: [],
+        sistemas: [],
         chamados: [],
         chamadoAtual: null,
         timeline: [],
@@ -24,6 +25,7 @@ function chamadosApp() {
         // Filtros
         filtros: {
             status: '',
+            tipo_sistema: 'todos',
             modulo: 'todos',
             criticidade: 'todas',
             categoria: 'todas',
@@ -32,6 +34,9 @@ function chamadosApp() {
 
         // Formulário de Novo Chamado
         novoForm: {
+            tipo_sistema: 'PORTAL',
+            subtipo_item: '',
+            equipamento_detalhe: '',
             relato: '',
             modulo_slug: '',
             idfilial: 1,
@@ -86,6 +91,7 @@ function chamadosApp() {
                 if (res.success) {
                     this.kpis = res.kpis || {};
                     this.modulos = res.modulos || [];
+                    this.sistemas = res.sistemas || [];
                 }
             } catch (e) {
                 console.error('Erro ao carregar dashboard:', e);
@@ -97,6 +103,7 @@ function chamadosApp() {
             try {
                 const params = new URLSearchParams();
                 if (this.filtros.status !== '') params.append('status', this.filtros.status);
+                if (this.filtros.tipo_sistema !== 'todos') params.append('tipo_sistema', this.filtros.tipo_sistema);
                 if (this.filtros.modulo !== 'todos') params.append('modulo', this.filtros.modulo);
                 if (this.filtros.criticidade !== 'todas') params.append('criticidade', this.filtros.criticidade);
                 if (this.filtros.categoria !== 'todas') params.append('categoria', this.filtros.categoria);
@@ -131,8 +138,21 @@ function chamadosApp() {
             }
         },
 
+        badgeSistema(sistemaId) {
+            const sis = (this.sistemas || []).find(s => s.id === sistemaId);
+            return sis ? sis.badge : 'bg-slate-100 text-slate-700 border-slate-200';
+        },
+
+        nomeSistema(sistemaId) {
+            const sis = (this.sistemas || []).find(s => s.id === sistemaId);
+            return sis ? sis.nome : sistemaId;
+        },
+
         abrirModalNovo() {
             this.novoForm = {
+                tipo_sistema: 'PORTAL',
+                subtipo_item: '',
+                equipamento_detalhe: '',
                 relato: '',
                 modulo_slug: '',
                 idfilial: 1,
@@ -159,14 +179,17 @@ function chamadosApp() {
                     body: {
                         relato: this.novoForm.relato,
                         modulo: this.novoForm.modulo_slug,
-                        filial: this.novoForm.idfilial
+                        filial: this.novoForm.idfilial,
+                        tipo_sistema: this.novoForm.tipo_sistema
                     }
                 });
 
                 if (res.success && res.sugestao) {
                     const s = res.sugestao;
                     this.novoForm.titulo = s.titulo;
-                    this.novoForm.modulo_slug = s.modulo_slug;
+                    if (s.tipo_sistema) this.novoForm.tipo_sistema = s.tipo_sistema;
+                    if (s.subtipo_item) this.novoForm.subtipo_item = s.subtipo_item;
+                    if (s.modulo_slug) this.novoForm.modulo_slug = s.modulo_slug;
                     this.novoForm.categoria = s.categoria;
                     this.novoForm.criticidade = s.criticidade;
                     this.novoForm.diagnostico_ia = s.diagnostico_ia;
@@ -175,7 +198,7 @@ function chamadosApp() {
                     Swal.fire({
                         icon: 'success',
                         title: 'IA Triagem Concluída!',
-                        text: `Classificado como [${s.categoria}] com criticidade [${s.criticidade}].`,
+                        text: `Classificado para [${s.tipo_sistema || 'PORTAL'}] com criticidade [${s.criticidade}].`,
                         timer: 2000,
                         showConfirmButton: false
                     });

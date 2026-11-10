@@ -33,12 +33,14 @@ class ChamadosIaService
     /**
      * Realiza a triagem inteligente do chamado
      */
-    public function triar(string $relato, ?string $moduloInformado = null, int $filial = 1): array
+    public function triar(string $relato, ?string $moduloInformado = null, int $filial = 1, ?string $tipoSistemaInformado = null): array
     {
         $relatoLimpo = trim($relato);
         if (mb_strlen($relatoLimpo) < 5) {
             return [
                 'titulo' => 'Chamado sem descrição suficiente',
+                'tipo_sistema' => $tipoSistemaInformado ?: 'PORTAL',
+                'subtipo_item' => 'Geral',
                 'modulo_slug' => $moduloInformado ?: 'geral',
                 'modulo_nome' => 'Geral',
                 'categoria' => 'duvida',
@@ -51,27 +53,69 @@ class ChamadosIaService
         // Tenta Gemini API se disponível
         $geminiKey = getenv('GEMINI_API_KEY') ?: ($_ENV['GEMINI_API_KEY'] ?? '');
         if (!empty($geminiKey)) {
-            $analiseRemota = $this->chamarGemini($relatoLimpo, $geminiKey, $moduloInformado);
+            $analiseRemota = $this->chamarGemini($relatoLimpo, $geminiKey, $moduloInformado, $tipoSistemaInformado);
             if (!empty($analiseRemota['sucesso'])) {
                 return $analiseRemota['dados'];
             }
         }
 
         // Motor Heurístico Especialista (Local / Offline)
-        return $this->analiseEspecialistaLocal($relatoLimpo, $moduloInformado, $filial);
+        return $this->analiseEspecialistaLocal($relatoLimpo, $moduloInformado, $filial, $tipoSistemaInformado);
     }
 
     /**
      * Motor de análise especialista com base no conhecimento do ecossistema Nutricional
      */
-    private function analiseEspecialistaLocal(string $relato, ?string $moduloInformado, int $filial): array
+    private function analiseEspecialistaLocal(string $relato, ?string $moduloInformado, int $filial, ?string $tipoSistemaInformado): array
     {
         $texto = mb_strtolower($relato, 'UTF-8');
         $modulos = $this->catalogoModulos();
 
-        // 1. Detectar Módulo
+        // 1. Detectar Tipo de Sistema & Subtipo
+        $tipoSistema = $tipoSistemaInformado;
+        $subtipoItem = 'Geral';
+
+        if (empty($tipoSistema) || $tipoSistema === 'AUTO') {
+            if (preg_match('/(impressora|toner|papel|imprimir|impressão|telefone|ramal|ligação|mouse|teclado|monitor|computador|nobreak|leitor|coletor|bipeiro|cabo)/i', $texto)) {
+                $tipoSistema = 'EQUIPAMENTO';
+                if (preg_match('/(impressora|toner|imprimir|impressão)/i', $texto)) $subtipoItem = 'Impressora';
+                elseif (preg_match('/(telefone|ramal|ligação)/i', $texto)) $subtipoItem = 'Telefonia / Ramal';
+                elseif (preg_match('/(computador|pc|desktop|notebook)/i', $texto)) $subtipoItem = 'Computador';
+                elseif (preg_match('/(leitor|coletor|bipe)/i', $texto)) $subtipoItem = 'Coletor / Leitor';
+                else $subtipoItem = 'Periféricos';
+            } elseif (preg_match('/(logisoft|cte|mdfe|ciot|conhecimento de transporte|manifesto)/i', $texto)) {
+                $tipoSistema = 'LOGISOFT';
+                $subtipoItem = 'Emissão Fiscal (CTe / MDFe / CIOT)';
+            } elseif (preg_match('/(cobli|rastreador|telemetria|gps|ignição)/i', $texto)) {
+                $tipoSistema = 'COBLI';
+                $subtipoItem = 'Telemetria & Rastreamento';
+            } elseif (preg_match('/(ema|erp ema|tela do ema|pedido no ema|nota no ema|faturamento ema)/i', $texto)) {
+                $tipoSistema = 'ERP_EMA';
+                $subtipoItem = 'ERP Ema Desktop';
+            } elseif (preg_match('/(mercos|força de vendas|app mercos)/i', $texto) && !str_contains($texto, 'portal')) {
+                $tipoSistema = 'MERCOS';
+                $subtipoItem = 'App Mercos';
+            } elseif (preg_match('/(email|e-mail|roundcube|webmail|outlook|caixa postal|não recebo email)/i', $texto)) {
+                $tipoSistema = 'EMAIL';
+                $subtipoItem = 'Email Corporativo';
+            } elseif (preg_match('/(site|loja virtual|e-commerce|institucional)/i', $texto)) {
+                $tipoSistema = 'SITE';
+                $subtipoItem = 'Site & E-commerce';
+            } elseif (preg_match('/(planilha|excel|fórmula|macro)/i', $texto)) {
+                $tipoSistema = 'PLANILHAS';
+                $subtipoItem = 'Planilhas Excel';
+            } elseif (preg_match('/(servidor|vpn|internet|queda de link|roteador|switch|wi-fi|wifi)/i', $texto)) {
+                $tipoSistema = 'SERVIDOR';
+                $subtipoItem = 'Rede & Servidores';
+            } else {
+                $tipoSistema = 'PORTAL';
+                $subtipoItem = 'Módulos Web';
+            }
+        }
+
+        // 2. Detectar Módulo se for Portal ou associado
         $slugDetectado = $moduloInformado;
-        $nomeModulo = 'Portal Geral';
+        $nomeModulo = $tipoSistema !== 'PORTAL' ? $this->nomeFormatadoSistema($tipoSistema) : 'Portal Geral';
 
         $mapaTermos = [
             'verbas-flex' => ['flex', 'bonifica', 'saldo flex', 'gestor', 'empréstimo', 'aporte', 'mercos', 'saldo', 'verba'],
@@ -90,7 +134,7 @@ class ChamadosIaService
             'estoque-previsao' => ['previsão de chegada', 'estoque futuro', 'compra sugerida']
         ];
 
-        if (empty($slugDetectado)) {
+        if ($tipoSistema === 'PORTAL' && empty($slugDetectado)) {
             foreach ($mapaTermos as $slug => $palavras) {
                 foreach ($palavras as $p) {
                     if (str_contains($texto, $p)) {
@@ -102,7 +146,7 @@ class ChamadosIaService
         }
 
         if (empty($slugDetectado)) {
-            $slugDetectado = 'geral';
+            $slugDetectado = $tipoSistema === 'PORTAL' ? 'geral' : mb_strtolower($tipoSistema);
         }
 
         foreach ($modulos as $m) {
@@ -112,38 +156,41 @@ class ChamadosIaService
             }
         }
 
-        // 2. Detectar Criticidade
+        // 3. Detectar Criticidade
         $criticidade = 'media';
-        if (preg_match('/(travou|parou|bloqueado|não fatura|impossível|erro 500|429|urgente|paralisado|queda)/i', $texto)) {
+        if (preg_match('/(travou|parou|bloqueado|não fatura|impossível|erro 500|429|urgente|paralisado|queda|queimou|sem internet|sem sinal)/i', $texto)) {
             $criticidade = 'critica';
-        } elseif (preg_match('/(divergência|valor errado|saldo incorreto|não atualizou|duplicou|falhou)/i', $texto)) {
+        } elseif (preg_match('/(divergência|valor errado|saldo incorreto|não atualizou|duplicou|falhou|não imprime|falhando|sem ramal)/i', $texto)) {
             $criticidade = 'alta';
-        } elseif (preg_match('/(layout|cor|texto|botão|melhoria|sugestão|ajuste|posição)/i', $texto)) {
+        } elseif (preg_match('/(layout|cor|texto|botão|melhoria|sugestão|ajuste|posição|instalar)/i', $texto)) {
             $criticidade = 'baixa';
         }
 
-        // 3. Detectar Categoria
+        // 4. Detectar Categoria
         $categoria = 'bug';
         if (preg_match('/(como faço|como funciona|dúvida|onde fica|manual|ajuda)/i', $texto)) {
             $categoria = 'duvida';
         } elseif (preg_match('/(seria bom|sugestão|criar tela|adicionar botão|melhorar)/i', $texto)) {
             $categoria = 'melhoria';
-        } elseif (preg_match('/(novo módulo|novo processo|novo relatório)/i', $texto)) {
+        } elseif (preg_match('/(novo módulo|novo processo|novo relatório|novo equipamento|comprar)/i', $texto)) {
             $categoria = 'novo_modulo';
         }
 
-        // 4. Gerar Título Formatado
+        // 5. Gerar Título Formatado
         $primeiraLinha = trim(explode("\n", $relato)[0]);
         if (mb_strlen($primeiraLinha) > 70) {
             $primeiraLinha = mb_substr($primeiraLinha, 0, 67) . '...';
         }
-        $tituloFormatado = sprintf('[%s] %s', $nomeModulo, ucfirst($primeiraLinha));
+        $prefixo = $tipoSistema !== 'PORTAL' ? $this->nomeFormatadoSistema($tipoSistema) : $nomeModulo;
+        $tituloFormatado = sprintf('[%s] %s', $prefixo, ucfirst($primeiraLinha));
 
-        // 5. Gerar Dossiê Técnico para Desenvolvedores
-        $dossie = $this->gerarDossieTecnico($slugDetectado, $texto, $filial);
+        // 6. Gerar Dossiê Técnico para Desenvolvedores e Suporte
+        $dossie = $this->gerarDossieTecnicoCompleto($tipoSistema, $subtipoItem, $slugDetectado, $texto, $filial);
 
         return [
             'titulo' => $tituloFormatado,
+            'tipo_sistema' => $tipoSistema,
+            'subtipo_item' => $subtipoItem,
             'modulo_slug' => $slugDetectado,
             'modulo_nome' => $nomeModulo,
             'categoria' => $categoria,
@@ -151,6 +198,83 @@ class ChamadosIaService
             'diagnostico_ia' => $dossie,
             'relato_formatado' => $relato
         ];
+    }
+
+    private function nomeFormatadoSistema(string $sis): string
+    {
+        $map = [
+            'PORTAL' => 'Portal Nutricional',
+            'ERP_EMA' => 'ERP Ema',
+            'MERCOS' => 'Mercos',
+            'COBLI' => 'Cobli Rastreamento',
+            'LOGISOFT' => 'Logisoft CTe/MDFe',
+            'EMAIL' => 'Email Corporativo',
+            'SITE' => 'Site Institucional',
+            'EQUIPAMENTO' => 'Equipamentos & Hardware',
+            'PLANILHAS' => 'Planilhas Excel',
+            'SERVIDOR' => 'Rede & Servidores',
+            'OUTROS' => 'Outros'
+        ];
+        return $map[$sis] ?? $sis;
+    }
+
+    /**
+     * Dossiê Técnico abrangendo Portal, Equipamentos, ERP Ema e Softwares Integrados
+     */
+    private function gerarDossieTecnicoCompleto(string $sistema, string $subtipo, string $slug, string $texto, int $filial): string
+    {
+        $dossie = "[IA] DIAGNOSTICO PRELIMINAR DE ENGENHARIA & SUPORTE\n";
+        $dossie .= "--------------------------------------------------------\n";
+        $dossie .= "• Sistema / Origem: " . $this->nomeFormatadoSistema($sistema) . " ({$subtipo})\n";
+        $dossie .= "• Filial: " . ($filial === 1 ? '1 - Matriz SC' : '6 - Paraná PR') . "\n";
+
+        if ($sistema === 'EQUIPAMENTO') {
+            $dossie .= "• Categoria de Hardware: " . $subtipo . "\n";
+            $dossie .= "• Checklist de Atendimento TI:\n";
+            if ($subtipo === 'Impressora') {
+                $dossie .= "  1. Verificar cabo de rede/USB e endereço IP na rede local.\n";
+                $dossie .= "  2. Checar fila de spooler no Windows (services.msc -> Spooler de Impressão).\n";
+                $dossie .= "  3. Verificar nível de toner/cilindro e atolamento físico de papel.\n";
+            } elseif ($subtipo === 'Telefonia / Ramal') {
+                $dossie .= "  1. Verificar registro do ramal no PABX / Servidor VoIP.\n";
+                $dossie .= "  2. Testar cabo de rede RJ45 e conector do fone/headset.\n";
+                $dossie .= "  3. Validar se o IP do aparelho está respondendo ao ping.\n";
+            } else {
+                $dossie .= "  1. Identificar modelo do equipamento, número de patrimônio e ponto de rede.\n";
+                $dossie .= "  2. Testar alimentação elétrica e cabos de dados.\n";
+            }
+            return $dossie;
+        }
+
+        if ($sistema === 'ERP_EMA') {
+            $dossie .= "• Ambiente: ERP Ema Desktop / Banco PostgreSQL Legado\n";
+            $dossie .= "• Checklist de Engenharia:\n";
+            $dossie .= "  1. Verificar se a tela/processo no Ema está travando por lock de banco (pg_stat_activity).\n";
+            $dossie .= "  2. Checar integridade de chaves primárias e constraints nas tabelas legadas.\n";
+            $dossie .= "  3. Validar permissões do usuário no módulo correspondente do ERP.\n";
+            return $dossie;
+        }
+
+        if ($sistema === 'LOGISOFT') {
+            $dossie .= "• Ambiente: Logisoft (Emissão CTe / MDFe / CIOT)\n";
+            $dossie .= "• Checklist de Faturamento Fiscal:\n";
+            $dossie .= "  1. Checar status dos Web Services da SEFAZ autorizadora.\n";
+            $dossie .= "  2. Verificar validade do Certificado Digital A1 da filial.\n";
+            $dossie .= "  3. Validar se há rejeição específica de schema XML ou numeração duplicada.\n";
+            return $dossie;
+        }
+
+        if ($sistema === 'COBLI') {
+            $dossie .= "• Ambiente: Plataforma Cobli & Integração Frota API\n";
+            $dossie .= "• Checklist:\n";
+            $dossie .= "  1. Validar comunicação do dispositivo GPS do veículo.\n";
+            $dossie .= "  2. Checar chave de API COBLI_API_KEY no arquivo .env.api.\n";
+            return $dossie;
+        }
+
+        // Se for PORTAL, mantém a análise cirúrgica por módulo
+        $dossie .= $this->gerarDossieTecnico($slug, $texto, $filial);
+        return $dossie;
     }
 
     /**

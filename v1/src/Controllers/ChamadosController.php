@@ -90,6 +90,31 @@ class ChamadosController
             // Módulos para os selects
             $modulos = $this->pdo->query("SELECT slug, nome, setor, icon FROM sistema_modulos WHERE ativo = true ORDER BY setor, nome")->fetchAll(PDO::FETCH_ASSOC);
 
+            // Filtragem de módulos por permissão caso não seja admin
+            if (!$u['is_admin']) {
+                $perms = $u['permissoes'];
+                if (!empty($perms)) {
+                    $modulos = array_values(array_filter($modulos, function($m) use ($perms) {
+                        return in_array($m['slug'], $perms, true) || in_array($m['setor'], $perms, true) || $m['slug'] === 'chamados';
+                    }));
+                }
+            }
+
+            // Sistemas corporativos suportados
+            $sistemas = [
+                ['id' => 'PORTAL',      'nome' => 'Portal Nutricional (Módulos Web)', 'icon' => 'fa-globe', 'badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200'],
+                ['id' => 'ERP_EMA',     'nome' => 'ERP Ema Desktop',                 'icon' => 'fa-database', 'badge' => 'bg-blue-50 text-blue-700 border-blue-200'],
+                ['id' => 'MERCOS',      'nome' => 'Mercos (Força de Vendas)',        'icon' => 'fa-handshake', 'badge' => 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+                ['id' => 'COBLI',       'nome' => 'Cobli (Telemetria & Frotas)',     'icon' => 'fa-truck', 'badge' => 'bg-amber-50 text-amber-700 border-amber-200'],
+                ['id' => 'LOGISOFT',    'nome' => 'Logisoft (CTe / MDFe / CIOT)',    'icon' => 'fa-file-invoice', 'badge' => 'bg-teal-50 text-teal-700 border-teal-200'],
+                ['id' => 'EMAIL',       'nome' => 'Email Corporativo / Webmail',     'icon' => 'fa-envelope', 'badge' => 'bg-purple-50 text-purple-700 border-purple-200'],
+                ['id' => 'SITE',        'nome' => 'Site Institucional / E-commerce', 'icon' => 'fa-cart-shopping', 'badge' => 'bg-rose-50 text-rose-700 border-rose-200'],
+                ['id' => 'EQUIPAMENTO', 'nome' => 'Equipamentos (Impressora, Ramal, PC)', 'icon' => 'fa-print', 'badge' => 'bg-cyan-50 text-cyan-700 border-cyan-200'],
+                ['id' => 'PLANILHAS',   'nome' => 'Planilhas Excel / Relatórios',    'icon' => 'fa-file-excel', 'badge' => 'bg-green-50 text-green-700 border-green-200'],
+                ['id' => 'SERVIDOR',    'nome' => 'Servidores, Rede & VPN',          'icon' => 'fa-server', 'badge' => 'bg-slate-100 text-slate-700 border-slate-300'],
+                ['id' => 'OUTROS',      'nome' => 'Outros Assuntos',                 'icon' => 'fa-circle-question', 'badge' => 'bg-gray-50 text-gray-700 border-gray-200']
+            ];
+
             return $this->json($response, [
                 'success' => true,
                 'kpis' => [
@@ -100,6 +125,7 @@ class ChamadosController
                     'concluidos_mes' => $kpiConcluidosMes,
                 ],
                 'modulos' => $modulos,
+                'sistemas' => $sistemas,
                 'usuario' => $u
             ]);
         } catch (\Throwable $e) {
@@ -119,6 +145,7 @@ class ChamadosController
             $modulo = trim((string)($q['modulo'] ?? ''));
             $criticidade = trim((string)($q['criticidade'] ?? ''));
             $categoria = trim((string)($q['categoria'] ?? ''));
+            $tipoSistema = trim((string)($q['tipo_sistema'] ?? ''));
             $busca = trim((string)($q['busca'] ?? ''));
 
             $where = ['1=1'];
@@ -127,6 +154,10 @@ class ChamadosController
             if ($status !== null) {
                 $where[] = 'c.status = :status';
                 $params['status'] = $status;
+            }
+            if ($tipoSistema !== '' && $tipoSistema !== 'todos') {
+                $where[] = 'c.tipo_sistema = :tipoSistema';
+                $params['tipoSistema'] = $tipoSistema;
             }
             if ($modulo !== '' && $modulo !== 'todos') {
                 $where[] = 'c.modulo_slug = :modulo';
@@ -150,6 +181,8 @@ class ChamadosController
                     c.idchamado,
                     COALESCE(c.titulo, c.motivo, 'Sem título') AS titulo,
                     c.motivo,
+                    COALESCE(c.tipo_sistema, 'PORTAL') AS tipo_sistema,
+                    COALESCE(c.subtipo_item, 'Geral') AS subtipo_item,
                     c.modulo_slug,
                     COALESCE(c.modulo_nome, sm.nome, 'Portal Geral') AS modulo_nome,
                     COALESCE(c.categoria, 'bug') AS categoria,
@@ -270,12 +303,13 @@ class ChamadosController
             $relato = trim((string)($body['relato'] ?? ''));
             $modulo = !empty($body['modulo']) ? trim((string)$body['modulo']) : null;
             $filial = (int)($body['filial'] ?? 1);
+            $tipoSistema = !empty($body['tipo_sistema']) ? trim((string)$body['tipo_sistema']) : null;
 
             if (mb_strlen($relato) < 4) {
                 return $this->erro($response, 'Por favor, descreva o chamado com mais detalhes para a IA analisar.');
             }
 
-            $resultado = $this->ia->triar($relato, $modulo, $filial);
+            $resultado = $this->ia->triar($relato, $modulo, $filial, $tipoSistema);
 
             return $this->json($response, [
                 'success' => true,
@@ -303,16 +337,25 @@ class ChamadosController
 
             $modulo = trim((string)($body['modulo_slug'] ?? 'geral'));
             $filial = (int)($body['idfilial'] ?? 1);
+            $tipoSistema = !empty($body['tipo_sistema']) ? trim((string)$body['tipo_sistema']) : null;
+            $subtipoItem = !empty($body['subtipo_item']) ? trim((string)$body['subtipo_item']) : null;
+            $equipamentoDetalhe = !empty($body['equipamento_detalhe']) ? trim((string)$body['equipamento_detalhe']) : null;
 
             // Se o usuário não fez a triagem antes, a IA tria automaticamente no ato do salvamento
             $triagem = !empty($body['titulo']) ? [
                 'titulo' => trim((string)$body['titulo']),
+                'tipo_sistema' => $tipoSistema ?: 'PORTAL',
+                'subtipo_item' => $subtipoItem ?: 'Geral',
                 'modulo_slug' => $modulo,
                 'modulo_nome' => trim((string)($body['modulo_nome'] ?? $modulo)),
                 'categoria' => trim((string)($body['categoria'] ?? 'bug')),
                 'criticidade' => trim((string)($body['criticidade'] ?? 'media')),
                 'diagnostico_ia' => trim((string)($body['diagnostico_ia'] ?? '')),
-            ] : $this->ia->triar($relato, $modulo, $filial);
+            ] : $this->ia->triar($relato, $modulo, $filial, $tipoSistema);
+
+            $tipoSistemaFinal = !empty($triagem['tipo_sistema']) ? $triagem['tipo_sistema'] : ($tipoSistema ?: 'PORTAL');
+            $subtipoFinal = !empty($triagem['subtipo_item']) ? $triagem['subtipo_item'] : ($subtipoItem ?: 'Geral');
+            $equipDetalheFinal = $equipamentoDetalhe ?: ($tipoSistemaFinal === 'EQUIPAMENTO' ? $subtipoFinal : null);
 
             // Próximo ID de chamado
             $idNovo = (int)$this->pdo->query("SELECT COALESCE(MAX(idchamado), 0) + 1 FROM chamado")->fetchColumn();
@@ -322,12 +365,14 @@ class ChamadosController
                     idchamado, idtransacao, idfilial, idempresa, idcliforemp,
                     status, prioridade, data, hora, datahora,
                     solicitante, atendente, usuario, motivo, observacao,
+                    tipo_sistema, subtipo_item, equipamento_detalhe,
                     modulo_slug, modulo_nome, categoria, criticidade,
                     titulo, diagnostico_ia, anexo_url
                 ) VALUES (
                     :idchamado, 3, :idfilial, 1, :idcliforemp,
                     0, 10, CURRENT_DATE, NOW(), NOW(),
                     :solicitante, 'DEVAASA', :usuario, :motivo, :observacao,
+                    :tipo_sistema, :subtipo_item, :equipamento_detalhe,
                     :modulo_slug, :modulo_nome, :categoria, :criticidade,
                     :titulo, :diagnostico_ia, :anexo_url
                 )
@@ -341,8 +386,11 @@ class ChamadosController
                 'usuario' => $this->limpaWin1252($u['username']),
                 'motivo' => $this->limpaWin1252($relato),
                 'observacao' => $this->limpaWin1252($relato),
-                'modulo_slug' => $this->limpaWin1252($triagem['modulo_slug']),
-                'modulo_nome' => $this->limpaWin1252($triagem['modulo_nome']),
+                'tipo_sistema' => $this->limpaWin1252($tipoSistemaFinal),
+                'subtipo_item' => $this->limpaWin1252($subtipoFinal),
+                'equipamento_detalhe' => $equipDetalheFinal ? $this->limpaWin1252($equipDetalheFinal) : null,
+                'modulo_slug' => $this->limpaWin1252($triagem['modulo_slug'] ?? 'geral'),
+                'modulo_nome' => $this->limpaWin1252($triagem['modulo_nome'] ?? 'Geral'),
                 'categoria' => $this->limpaWin1252($triagem['categoria']),
                 'criticidade' => $this->limpaWin1252($triagem['criticidade']),
                 'titulo' => $this->limpaWin1252($triagem['titulo']),
@@ -358,7 +406,7 @@ class ChamadosController
             $stmtOp->execute([
                 'idchamado' => $idNovo,
                 'usuario' => $u['username'],
-                'detalhes' => "Chamado classificado como [{$triagem['categoria']}] com criticidade [{$triagem['criticidade']}]."
+                'detalhes' => "Chamado [{$tipoSistemaFinal}] classificado como [{$triagem['categoria']}] com criticidade [{$triagem['criticidade']}]."
             ]);
 
             return $this->json($response, [
