@@ -998,6 +998,8 @@ $protected->group('/verbas-flex', function ($group) {
     $group->get('/creditos', [$controller, 'creditos']);
     $group->get('/api-status', [$controller, 'apiStatus']);
     $group->get('/api-historico', [$controller, 'apiHistorico']);
+    $group->get('/auditoria-espelho', [$controller, 'auditoriaEspelho']);
+    $group->get('/colaboradores-auditoria', [$controller, 'colaboradoresAuditoria']);
 })->add(new ModulePermissionMiddleware('verbas-flex'));
 
 $protected->group('/flex-movimentacao', function ($group) {

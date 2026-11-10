@@ -112,6 +112,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         <button type="button" data-aba="ranking" class="vf-tab"><i class="fa-solid fa-ranking-star"></i> <span>Ranking Consumo</span></button>
         <button type="button" data-aba="debitos" class="vf-tab"><i class="fa-solid fa-receipt"></i> <span>Consumo Bonificações</span></button>
         <button type="button" data-aba="creditos" id="tabBtnCreditos" class="vf-tab"><i class="fa-solid fa-hand-holding-dollar"></i> <span>Créditos / Empréstimos</span></button>
+        <button type="button" data-aba="auditoria" id="tabBtnAuditoria" class="vf-tab"><i class="fa-solid fa-clipboard-check"></i> <span>Auditoria & Extrato</span></button>
         <a href="<?= $appBase ?>/portal/modules/transferencia-flex.php" id="tabLinkTransferencias" class="vf-tab text-center no-underline"><i class="fa-solid fa-right-left"></i> <span>Transferências</span></a>
     </div>
 
@@ -291,7 +292,122 @@ require_once __DIR__ . '/../estrutura/header.php';
     </section>
 
     <!-- ========================================== -->
-    <!-- ABA 5: API MERCOS                          -->
+    <!-- ABA 5: AUDITORIA & EXTRATO ESPELHO MERCOS  -->
+    <!-- ========================================== -->
+    <section id="aba-auditoria" class="hidden space-y-4">
+        <div class="vf-card p-5 sm:p-6">
+            <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
+                <div>
+                    <h3 class="text-base font-extrabold text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-clipboard-check text-purple-600"></i>
+                        <span>Auditoria & Espelho Completo de Movimentações Mercos</span>
+                    </h3>
+                    <p class="text-xs text-slate-400">Rastreamento consolidado de Bonificações, Transferências, Movimentações Manuais e Aportes de Flex Mínimo com identificação de operadores</p>
+                </div>
+                <button id="btnAuditExcel" type="button" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold flex items-center gap-1.5 transition shadow-xs">
+                    <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                    <span>Exportar Extrato Excel</span>
+                </button>
+            </div>
+
+            <!-- FILTROS AVANÇADOS DA AUDITORIA -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                <div>
+                    <label class="vf-label">Colaborador / Representante</label>
+                    <select id="fAuditColab" class="vf-input cursor-pointer">
+                        <option value="0">Todos os Colaboradores da Equipe</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="vf-label">Origem da Movimentação</label>
+                    <select id="fAuditOrigem" class="vf-input cursor-pointer">
+                        <option value="todas">Todas as Origens</option>
+                        <option value="bonificacao">Bonificações (Notas Fiscais)</option>
+                        <option value="transferencia">Transferências entre Colaboradores</option>
+                        <option value="manual">Movimentações Manuais (Portal)</option>
+                        <option value="flex_minimo">Aportes de Flex Mínimo (Gestores)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="vf-label">Natureza</label>
+                    <select id="fAuditNatureza" class="vf-input cursor-pointer">
+                        <option value="todos">Todas (Entradas e Saídas)</option>
+                        <option value="debito">Apenas Débitos / Saídas (-)</option>
+                        <option value="credito">Apenas Créditos / Entradas (+)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="vf-label">Buscar Termo</label>
+                    <input id="fAuditBusca" type="search" placeholder="Nota, motivo, operador, cliente..." class="vf-input">
+                </div>
+            </div>
+
+            <!-- TOTALIZADORES DO EXTRATO (4 CARDS) -->
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
+                <div class="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-100">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-800">Total Créditos (+)</span>
+                        <span id="auditQtdCreditos" class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 text-[10px] font-black">0</span>
+                    </div>
+                    <div id="auditTotCreditos" class="text-xl sm:text-2xl font-black text-emerald-700">R$ 0,00</div>
+                    <span class="text-[10px] text-emerald-800/70 font-semibold mt-0.5 block">Aportes e transferências recebidas</span>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-red-50/70 border border-red-100">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-red-800">Total Débitos (-)</span>
+                        <span id="auditQtdDebitos" class="px-2 py-0.5 rounded-lg bg-red-100 text-red-800 text-[10px] font-black">0</span>
+                    </div>
+                    <div id="auditTotDebitos" class="text-xl sm:text-2xl font-black text-red-600">R$ 0,00</div>
+                    <span class="text-[10px] text-red-800/70 font-semibold mt-0.5 block">Bonificações e transferências enviadas</span>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-violet-50/70 border border-violet-100" id="cardAuditLiquido">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-violet-800">Balanço Líquido</span>
+                        <i class="fa-solid fa-scale-balanced text-violet-500 text-xs"></i>
+                    </div>
+                    <div id="auditTotLiquido" class="text-xl sm:text-2xl font-black text-violet-700">R$ 0,00</div>
+                    <span class="text-[10px] text-violet-800/70 font-semibold mt-0.5 block">Saldo no período filtrado</span>
+                </div>
+
+                <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200">
+                    <div class="flex items-center justify-between mb-1">
+                        <span class="text-[11px] font-extrabold uppercase tracking-wider text-slate-600">Lançamentos</span>
+                        <i class="fa-solid fa-list-ol text-slate-400 text-xs"></i>
+                    </div>
+                    <div id="auditTotRegistros" class="text-xl sm:text-2xl font-black text-slate-700">0</div>
+                    <span class="text-[10px] text-slate-500 font-semibold mt-0.5 block">Operações registradas no escopo</span>
+                </div>
+            </div>
+
+            <!-- TABELA / LISTA DE MOVIMENTAÇÕES -->
+            <div class="overflow-x-auto rounded-2xl border border-slate-100">
+                <table class="w-full text-left border-collapse min-w-[900px]">
+                    <thead>
+                        <tr class="bg-slate-50/80 text-[10px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-100">
+                            <th class="py-3 px-3">Data / Hora</th>
+                            <th class="py-3 px-3">Origem</th>
+                            <th class="py-3 px-3">Operador</th>
+                            <th class="py-3 px-3">Colaborador</th>
+                            <th class="py-3 px-3">Tipo</th>
+                            <th class="py-3 px-3 text-right">Valor</th>
+                            <th class="py-3 px-3">Saldo Antes ➔ Depois</th>
+                            <th class="py-3 px-3">Gestor / Cobertura</th>
+                            <th class="py-3 px-3">Descrição / Documento</th>
+                            <th class="py-3 px-3 text-center">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tabelaAuditoriaCorpo" class="divide-y divide-slate-100 text-xs">
+                        <!-- Preenchido via JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+
+    <!-- ========================================== -->
+    <!-- ABA 6: API MERCOS                          -->
     <!-- ========================================== -->
     <section id="aba-api" class="hidden space-y-4">
         <div class="vf-card p-5">
@@ -361,6 +477,76 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <i class="fa-solid fa-shield-halved text-emerald-600"></i> Auditoria Oficial Mercos
                 </div>
                 <button type="button" onclick="fecharModalHistColab()" class="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition">
+                    Fechar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: DETALHES COMPLETOS DA AUDITORIA -->
+<div id="modalDetalhesAuditoria" class="fixed inset-0 z-[75] hidden overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onclick="fecharModalDetalhesAuditoria()"></div>
+        <span class="hidden sm:inline-block sm:align-middle sm:h-screen">&#8203;</span>
+        <div class="inline-block align-bottom bg-white rounded-3xl text-left overflow-hidden shadow-2xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full border border-slate-100">
+            <div class="bg-gradient-to-r from-violet-800 to-purple-700 px-6 py-4 text-white flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-white/15 flex items-center justify-center text-white font-black">
+                        <i class="fa-solid fa-file-invoice"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-purple-200">Auditoria & Rastreamento Técnico</span>
+                        <h3 class="text-base sm:text-lg font-black truncate" id="modalAuditTitulo">Detalhes da Movimentação</h3>
+                    </div>
+                </div>
+                <button type="button" onclick="fecharModalDetalhesAuditoria()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark text-sm"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-4">
+                <div class="grid grid-cols-2 gap-3 p-3.5 bg-slate-50 rounded-2xl border border-slate-100 text-xs">
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Data & Hora</span>
+                        <strong id="modalAuditData" class="text-slate-800">--</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Operador / Responsável</span>
+                        <strong id="modalAuditOperador" class="text-purple-700">--</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Origem</span>
+                        <strong id="modalAuditOrigem" class="text-slate-800">--</strong>
+                    </div>
+                    <div>
+                        <span class="text-slate-400 block text-[10px] uppercase font-bold">Valor & Natureza</span>
+                        <strong id="modalAuditValor" class="text-slate-800">--</strong>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-bold mb-1">Descrição / Observação Completa</span>
+                    <div id="modalAuditObs" class="p-3 bg-purple-50/50 rounded-xl text-xs text-slate-700 font-medium border border-purple-100"></div>
+                </div>
+
+                <div id="modalAuditBlocoGestor" class="hidden p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs">
+                    <div class="flex items-center gap-2 text-amber-800 font-bold mb-0.5">
+                        <i class="fa-solid fa-shield-cat"></i>
+                        <span>Cobertura Financeira pelo Gestor</span>
+                    </div>
+                    <div id="modalAuditGestorTexto" class="text-amber-900 font-medium"></div>
+                </div>
+
+                <div>
+                    <span class="text-slate-400 block text-[10px] uppercase font-bold mb-1">Payload Técnico & Metadados (JSON)</span>
+                    <pre id="modalAuditJson" class="p-3 bg-slate-900 text-slate-100 rounded-xl text-[11px] font-mono overflow-x-auto max-h-48"></pre>
+                </div>
+            </div>
+            <div class="bg-slate-50 px-6 py-3.5 border-t border-slate-100 flex items-center justify-between">
+                <div class="text-[11px] text-slate-400 font-semibold flex items-center gap-1.5">
+                    <i class="fa-solid fa-lock text-emerald-600"></i> Registro Imutável de Auditoria
+                </div>
+                <button type="button" onclick="fecharModalDetalhesAuditoria()" class="px-5 py-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold text-xs transition">
                     Fechar
                 </button>
             </div>

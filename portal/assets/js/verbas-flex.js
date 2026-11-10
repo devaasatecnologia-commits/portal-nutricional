@@ -145,6 +145,10 @@ const estado = {
     isAdmin: false,
     podeTransferir: false,
     podeMovimentar: false,
+    auditoria: [],
+    totaisAuditoria: {},
+    colaboradoresAuditoria: [],
+    carregandoAuditoria: false,
 };
 
 const iso = (d) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -210,7 +214,7 @@ function ativarAba(aba) {
         if (t.dataset.aba) t.classList.toggle('on', t.dataset.aba === aba);
     });
 
-    ['painel', 'ranking', 'debitos', 'creditos', 'api'].forEach((a) => {
+    ['painel', 'ranking', 'debitos', 'creditos', 'auditoria', 'api'].forEach((a) => {
         const sec = $(`aba-${a}`);
         if (sec) sec.classList.toggle('hidden', a !== aba);
     });
@@ -223,6 +227,7 @@ function recarregarAbaAtiva() {
     if (estado.aba === 'ranking') carregarRankingCompleto();
     if (estado.aba === 'debitos') carregarDebitos();
     if (estado.aba === 'creditos') carregarCreditos();
+    if (estado.aba === 'auditoria') carregarAuditoria();
     if (estado.aba === 'api') carregarApi();
 }
 
@@ -1156,6 +1161,244 @@ async function carregarApi() {
 }
 
 // ==========================================
+// ABA 5: AUDITORIA & EXTRATO ESPELHO MERCOS
+// ==========================================
+
+async function carregarColaboradoresAuditoria() {
+    const sel = $('fAuditColab');
+    if (!sel) return;
+    const fil = $('selFilial')?.value || '1';
+    try {
+        const res = await apiFetch(`verbas-flex/colaboradores-auditoria?filial=${fil}`);
+        if (res.success && Array.isArray(res.colaboradores)) {
+            estado.colaboradoresAuditoria = res.colaboradores;
+            const atual = sel.value;
+            sel.innerHTML = '<option value="0">Todos os Colaboradores da Equipe</option>' + 
+                res.colaboradores.map(c => `<option value="${c.id}">${esc(c.id)} - ${esc(c.nome)}${c.gestor ? ` (Gestor: ${esc(c.gestor)})` : ''}</option>`).join('');
+            if (atual && sel.querySelector(`option[value="${atual}"]`)) {
+                sel.value = atual;
+            }
+        }
+    } catch (e) {
+        console.warn('Aviso ao carregar colaboradores de auditoria:', e.message);
+    }
+}
+
+async function carregarAuditoria() {
+    const tbody = $('tabelaAuditoriaCorpo');
+    if (!tbody) return;
+    if (estado.carregandoAuditoria) return;
+    estado.carregandoAuditoria = true;
+
+    tbody.innerHTML = '<tr><td colspan="10" class="py-8 text-center text-slate-400"><i class="fa-solid fa-spinner fa-spin text-xl text-violet-600 block mb-2"></i>Carregando extrato e movimentações da equipe...</td></tr>';
+
+    try {
+        if (!estado.colaboradoresAuditoria.length) {
+            await carregarColaboradoresAuditoria();
+        }
+
+        const b = filtroBase();
+        const colab = $('fAuditColab')?.value || '0';
+        const origem = $('fAuditOrigem')?.value || 'todas';
+        const natureza = $('fAuditNatureza')?.value || 'todos';
+        const busca = $('fAuditBusca')?.value || '';
+
+        const params = new URLSearchParams({
+            filial: b.filial,
+            inicio: b.inicio,
+            fim: b.fim,
+            colaborador: colab,
+            origem: origem,
+            natureza: natureza,
+            q: busca,
+            limite: '500'
+        });
+
+        const res = await apiFetch(`verbas-flex/auditoria-espelho?${params.toString()}`);
+        if (!res.success) {
+            throw new Error(res.error || 'Falha ao buscar auditoria');
+        }
+
+        estado.auditoria = res.registros || [];
+        estado.totaisAuditoria = res.totais || {};
+
+        renderizarAuditoria();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="10" class="py-8 text-center text-rose-500 font-bold"><i class="fa-solid fa-triangle-exclamation text-lg block mb-1"></i>${esc(e.message)}</td></tr>`;
+    } finally {
+        estado.carregandoAuditoria = false;
+    }
+}
+
+function renderizarAuditoria() {
+    const tbody = $('tabelaAuditoriaCorpo');
+    if (!tbody) return;
+
+    const t = estado.totaisAuditoria || {};
+    if ($('auditTotCreditos')) $('auditTotCreditos').textContent = brl(t.total_creditos || 0);
+    if ($('auditQtdCreditos')) $('auditQtdCreditos').textContent = num(t.qtd_creditos || 0);
+    if ($('auditTotDebitos')) $('auditTotDebitos').textContent = brl(t.total_debitos || 0);
+    if ($('auditQtdDebitos')) $('auditQtdDebitos').textContent = num(t.qtd_debitos || 0);
+    
+    const saldoLiq = Number(t.saldo_liquido || 0);
+    if ($('auditTotLiquido')) {
+        $('auditTotLiquido').textContent = brl(saldoLiq);
+        $('auditTotLiquido').className = `text-xl sm:text-2xl font-black ${saldoLiq >= 0 ? 'text-violet-700' : 'text-rose-600'}`;
+    }
+    if ($('auditTotRegistros')) $('auditTotRegistros').textContent = num(t.total_registros || 0);
+
+    if (!estado.auditoria.length) {
+        tbody.innerHTML = '<tr><td colspan="10" class="py-10 text-center text-slate-400 font-medium">Nenhum lançamento encontrado para os filtros selecionados.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = estado.auditoria.map((r, idx) => {
+        const ehCredito = r.tipo === 'CREDITO';
+        const tipoBadge = ehCredito
+            ? '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-emerald-100 text-emerald-800 tracking-wide uppercase">Crédito (+)</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-rose-100 text-rose-800 tracking-wide uppercase">Débito (-)</span>';
+
+        let origemBadge = '';
+        if (r.origem === 'BONIFICACAO_CRON') {
+            origemBadge = '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-red-50 text-red-700 border border-red-200/60 inline-flex items-center gap-1"><i class="fa-solid fa-receipt"></i> Bonificação</span>';
+        } else if (r.origem === 'BONIFICACAO_GESTOR') {
+            origemBadge = '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-amber-50 text-amber-700 border border-amber-200/60 inline-flex items-center gap-1"><i class="fa-solid fa-shield-cat"></i> Cobertura Gestor</span>';
+        } else if (r.origem === 'TRANSFERENCIA') {
+            origemBadge = '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-purple-50 text-purple-700 border border-purple-200/60 inline-flex items-center gap-1"><i class="fa-solid fa-right-left"></i> Transferência</span>';
+        } else if (r.origem === 'MANUAL_PORTAL') {
+            origemBadge = '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-blue-50 text-blue-700 border border-blue-200/60 inline-flex items-center gap-1"><i class="fa-solid fa-hand-holding-dollar"></i> Manual Portal</span>';
+        } else if (r.origem === 'FLEX_MINIMO') {
+            origemBadge = '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-emerald-50 text-emerald-700 border border-emerald-200/60 inline-flex items-center gap-1"><i class="fa-solid fa-vault"></i> Flex Mínimo</span>';
+        } else {
+            origemBadge = `<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-slate-100 text-slate-700">${esc(r.origem_rotulo || r.origem)}</span>`;
+        }
+
+        const saldoTxt = (r.saldo_anterior !== null && r.saldo_novo !== null)
+            ? `<div class="font-mono text-[11px] text-slate-600">${brl(r.saldo_anterior)} <span class="text-slate-400">➔</span> <b class="text-slate-800">${brl(r.saldo_novo)}</b></div>`
+            : '<span class="text-slate-400 text-[11px]">--</span>';
+
+        const gestorBadge = r.usou_gestor
+            ? `<div class="text-[11px]"><span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-bold text-[10px]">Gestor</span> <span class="text-slate-700 font-semibold">${esc(r.nome_gestor || 'Gestor ' + r.idgestor)}</span></div>`
+            : '<span class="text-slate-300 text-[11px]">—</span>';
+
+        const valorTxt = ehCredito
+            ? `<span class="font-black text-emerald-600 text-[13px]">+ ${brl(r.valor)}</span>`
+            : `<span class="font-black text-rose-600 text-[13px]">- ${brl(r.valor)}</span>`;
+
+        return `
+            <tr class="hover:bg-purple-50/40 transition-colors">
+                <td class="py-2.5 px-3 text-slate-700 whitespace-nowrap font-medium text-[11px]">
+                    <i class="fa-regular fa-clock text-slate-400 mr-1 text-[10px]"></i>${esc(dataHora(r.datahora))}
+                </td>
+                <td class="py-2.5 px-3 whitespace-nowrap">${origemBadge}</td>
+                <td class="py-2.5 px-3 whitespace-nowrap">
+                    <span class="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-700 font-extrabold text-[10px] border border-slate-200/60">${esc(r.operador || 'SISTEMA')}</span>
+                </td>
+                <td class="py-2.5 px-3 max-w-[200px] truncate" title="${esc(r.colaborador)} (ID ${r.idcolaborador})">
+                    <strong class="text-slate-800 block truncate text-xs">${esc(r.colaborador)}</strong>
+                    <span class="text-[10px] text-slate-400 font-mono">ID ${esc(r.idcolaborador)}</span>
+                </td>
+                <td class="py-2.5 px-3 whitespace-nowrap">${tipoBadge}</td>
+                <td class="py-2.5 px-3 text-right whitespace-nowrap">${valorTxt}</td>
+                <td class="py-2.5 px-3 whitespace-nowrap">${saldoTxt}</td>
+                <td class="py-2.5 px-3 whitespace-nowrap">${gestorBadge}</td>
+                <td class="py-2.5 px-3 max-w-[280px]">
+                    <div class="truncate text-slate-700 text-xs font-medium" title="${esc(r.observacao)}">${esc(r.observacao)}</div>
+                    ${r.documento ? `<span class="text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">Doc/Nota: ${esc(r.documento)}</span>` : ''}
+                </td>
+                <td class="py-2.5 px-3 text-center whitespace-nowrap">
+                    <button type="button" onclick="verDetalhesAuditoria(${r.id}, ${idx})" class="p-1.5 rounded-xl bg-slate-100 hover:bg-violet-100 text-slate-600 hover:text-violet-700 transition" title="Ver Detalhes do Registro">
+                        <i class="fa-solid fa-eye text-xs"></i>
+                    </button>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function verDetalhesAuditoria(id, idx) {
+    const item = estado.auditoria[idx] || estado.auditoria.find(a => a.id === id);
+    if (!item) return;
+
+    if ($('modalAuditTitulo')) $('modalAuditTitulo').textContent = `${item.origem_rotulo || 'Movimentação'} #${item.id}`;
+    if ($('modalAuditData')) $('modalAuditData').textContent = dataHora(item.datahora);
+    if ($('modalAuditOperador')) $('modalAuditOperador').textContent = item.operador || 'SISTEMA';
+    if ($('modalAuditOrigem')) $('modalAuditOrigem').textContent = item.origem_rotulo || item.origem;
+    if ($('modalAuditValor')) {
+        const sinal = item.tipo === 'CREDITO' ? '+' : '-';
+        $('modalAuditValor').textContent = `${sinal} ${brl(item.valor)} (${item.tipo})`;
+    }
+    if ($('modalAuditObs')) $('modalAuditObs').textContent = item.observacao || 'Nenhuma observação informada.';
+
+    const blocoGestor = $('modalAuditBlocoGestor');
+    if (blocoGestor) {
+        if (item.usou_gestor) {
+            blocoGestor.classList.remove('hidden');
+            if ($('modalAuditGestorTexto')) {
+                $('modalAuditGestorTexto').textContent = `Gestor Responsável: ${item.nome_gestor || 'ID ' + item.idgestor}${item.valor_gestor > 0 ? ` — Valor coberto: ${brl(item.valor_gestor)}` : ''}`;
+            }
+        } else {
+            blocoGestor.classList.add('hidden');
+        }
+    }
+
+    if ($('modalAuditJson')) {
+        const payload = {
+            id: item.id,
+            origem: item.origem,
+            datahora: item.datahora,
+            operador: item.operador,
+            colaborador_id: item.idcolaborador,
+            colaborador_nome: item.colaborador,
+            tipo: item.tipo,
+            valor: item.valor,
+            saldo_anterior: item.saldo_anterior,
+            saldo_novo: item.saldo_novo,
+            usou_gestor: item.usou_gestor,
+            idgestor: item.idgestor,
+            nome_gestor: item.nome_gestor,
+            valor_gestor: item.valor_gestor,
+            documento: item.documento,
+            detalhes_tecnicos: item.detalhes
+        };
+        $('modalAuditJson').textContent = JSON.stringify(payload, null, 2);
+    }
+
+    $('modalDetalhesAuditoria')?.classList.remove('hidden');
+}
+window.verDetalhesAuditoria = verDetalhesAuditoria;
+
+function fecharModalDetalhesAuditoria() {
+    $('modalDetalhesAuditoria')?.classList.add('hidden');
+}
+window.fecharModalDetalhesAuditoria = fecharModalDetalhesAuditoria;
+
+function exportarAuditoriaExcel() {
+    if (!estado.auditoria.length) {
+        return aviso('warning', 'Sem Dados', 'Nenhum lançamento no extrato para exportar.');
+    }
+    const cols = ['ID', 'Data/Hora', 'Origem', 'Operador', 'ID Colaborador', 'Colaborador', 'Tipo', 'Valor (R$)', 'Saldo Anterior', 'Saldo Novo', 'Usou Gestor', 'Gestor', 'Documento', 'Observação'];
+    const rows = estado.auditoria.map(r => [
+        r.id,
+        dataHora(r.datahora),
+        r.origem_rotulo || r.origem,
+        r.operador || 'SISTEMA',
+        r.idcolaborador,
+        r.colaborador,
+        r.tipo,
+        Number(r.valor || 0).toFixed(2).replace('.', ','),
+        r.saldo_anterior !== null ? Number(r.saldo_anterior).toFixed(2).replace('.', ',') : '',
+        r.saldo_novo !== null ? Number(r.saldo_novo).toFixed(2).replace('.', ',') : '',
+        r.usou_gestor ? 'SIM' : 'NÃO',
+        r.nome_gestor || '',
+        r.documento || '',
+        r.observacao || ''
+    ]);
+    baixarCSV(`auditoria_espelho_verbas_flex_${iso(new Date())}.csv`, cols, rows);
+}
+window.exportarAuditoriaExcel = exportarAuditoriaExcel;
+
+// ==========================================
 // EXPORTAÇÕES EXCEL (CSV UTF-8 COM BOM)
 // ==========================================
 
@@ -1212,7 +1455,10 @@ function vincularEventosUI() {
     document.querySelectorAll('#atalhos .vf-chip').forEach((b) => {
         b.addEventListener('click', () => atalho(b.dataset.p));
     });
-    $('selFilial')?.addEventListener('change', recarregarAbaAtiva);
+    $('selFilial')?.addEventListener('change', () => {
+        carregarColaboradoresAuditoria();
+        recarregarAbaAtiva();
+    });
     $('btnAplicar')?.addEventListener('click', recarregarAbaAtiva);
 
     // 6. Filtros de Débitos e Créditos
@@ -1226,6 +1472,16 @@ function vincularEventosUI() {
         estado.timerC = setTimeout(carregarCreditos, 350);
     });
     $('fZerados')?.addEventListener('change', carregarCreditos);
+
+    // 6.1 Filtros da Auditoria & Extrato Espelho
+    $('fAuditColab')?.addEventListener('change', carregarAuditoria);
+    $('fAuditOrigem')?.addEventListener('change', carregarAuditoria);
+    $('fAuditNatureza')?.addEventListener('change', carregarAuditoria);
+    $('fAuditBusca')?.addEventListener('input', () => {
+        clearTimeout(estado.timerAudit);
+        estado.timerAudit = setTimeout(carregarAuditoria, 350);
+    });
+    $('btnAuditExcel')?.addEventListener('click', exportarAuditoriaExcel);
 
     // 7. Monitor API
     $('btnTestar')?.addEventListener('click', testarApi);

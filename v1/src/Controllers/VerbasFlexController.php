@@ -54,6 +54,8 @@ class VerbasFlexController
         }
 
         return [
+            'is_admin' => $isAdmin,
+            'idusuario' => (int)($user['idusuario'] ?? 0),
             'filiais' => $filiais,
             'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
         ];
@@ -581,6 +583,388 @@ class VerbasFlexController
             return $this->erro($response, $e->getMessage(), 403);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao montar resumo: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Retorna a lista de colaboradores (representantes e gestores) disponíveis para auditoria,
+     * respeitando rigorosamente a hierarquia de permissões do usuário logado.
+     * GET /v1/verbas-flex/colaboradores-auditoria
+     */
+    public function colaboradoresAuditoria(Request $request, Response $response): Response
+    {
+        try {
+            $usuario = $this->usuario($request);
+            $params = $request->getQueryParams();
+            $filial = (int)($params['filial'] ?? 0);
+
+            if ($filial === 0 && !empty($usuario['filiais'])) {
+                $filial = $usuario['filiais'][0];
+            }
+            if ($filial !== 0 && !in_array($filial, $usuario['filiais'], true)) {
+                return $this->erro($response, 'Filial não liberada para o seu usuário.', 403);
+            }
+
+            $sql = "
+                SELECT DISTINCT ON (um.idcolaborador)
+                    um.idcolaborador AS id,
+                    COALESCE(NULLIF(TRIM(c.fantasia), ''), NULLIF(TRIM(c.razao), ''), um.nome, 'ID ' || um.idcolaborador) AS nome,
+                    um.username,
+                    um.cdgestor,
+                    um.gestor,
+                    um.filial
+                FROM usuarios_mercos um
+                LEFT JOIN cliforemp c ON c.idcliforemp = um.idcolaborador
+                WHERE um.filial = :filial
+                  AND um.idcolaborador IS NOT NULL
+            ";
+
+            $p = ['filial' => $filial];
+
+            if (!$usuario['is_admin'] && !empty($usuario['gestores'])) {
+                $gestoresCsv = implode(',', array_map('intval', $usuario['gestores']));
+                $sql .= " AND (um.cdgestor IN ($gestoresCsv) OR um.idcolaborador IN ($gestoresCsv))";
+            }
+
+            $sql .= " ORDER BY um.idcolaborador, nome";
+
+            $stmt = $this->pdo->prepare($sql);
+            $stmt->execute($p);
+            $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            usort($rows, fn($a, $b) => strcasecmp($a['nome'], $b['nome']));
+
+            return $this->json($response, [
+                'success' => true,
+                'colaboradores' => $rows
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao carregar colaboradores: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Auditoria & Extrato Espelho Mercos:
+     * Unifica em ordem cronológica reversa:
+     * 1. Movimentações Manuais do Portal (com operador)
+     * 2. Transferências entre colaboradores (quem enviou, quem recebeu, operador)
+     * 3. Bonificações por Nota Fiscal faturada (débito rep + débito gestor quando cobriu)
+     * 4. Aportes de Flex Mínimo / Empréstimos concedidos ao caixa do gestor
+     *
+     * GET /v1/verbas-flex/auditoria-espelho
+     */
+    public function auditoriaEspelho(Request $request, Response $response): Response
+    {
+        try {
+            $usuario = $this->usuario($request);
+            $f = $this->filtros($request, $usuario);
+            $params = $request->getQueryParams();
+
+            $filial = $f['filial'];
+            if ($filial === 0 && !empty($usuario['filiais'])) {
+                $filial = $usuario['filiais'][0];
+            }
+
+            $colaboradorId = (int)($params['colaborador'] ?? 0);
+            $origemFiltro = trim((string)($params['origem'] ?? 'todas'));
+            $naturezaFiltro = trim((string)($params['natureza'] ?? 'todos'));
+            $busca = trim((string)($params['q'] ?? ''));
+            $limite = max(10, min(1000, (int)($params['limite'] ?? 300)));
+
+            $filtroColabsGestor = [];
+            if (!$usuario['is_admin'] && !empty($usuario['gestores'])) {
+                $gestoresCsv = implode(',', array_map('intval', $usuario['gestores']));
+                $stmt = $this->pdo->prepare("
+                    SELECT DISTINCT um.idcolaborador 
+                    FROM usuarios_mercos um 
+                    WHERE um.filial = :filial 
+                      AND (um.cdgestor IN ($gestoresCsv) OR um.idcolaborador IN ($gestoresCsv))
+                ");
+                $stmt->execute(['filial' => $filial]);
+                $filtroColabsGestor = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+                foreach ($usuario['gestores'] as $g) {
+                    $filtroColabsGestor[] = (int)$g;
+                }
+                $filtroColabsGestor = array_values(array_unique(array_filter($filtroColabsGestor)));
+
+                if ($colaboradorId > 0 && !in_array($colaboradorId, $filtroColabsGestor, true)) {
+                    return $this->erro($response, 'Você não tem permissão para visualizar o histórico deste colaborador.', 403);
+                }
+            }
+
+            $inicioTs = $f['inicio'] . ' 00:00:00';
+            $fimTs = $f['fim'] . ' 23:59:59';
+            $inicioDate = $f['inicio'];
+            $fimDate = $f['fim'];
+
+            $sql = "
+            WITH extrato AS (
+                -- 1. Manuais Portal
+                SELECT 
+                    m.id,
+                    m.data_movimentacao AS datahora,
+                    'MANUAL_PORTAL' AS origem,
+                    'Manual (Portal)' AS origem_rotulo,
+                    COALESCE(m.usuario, 'PORTAL') AS operador,
+                    m.idcolaborador,
+                    COALESCE(m.nome_colaborador, 'Colab ' || m.idcolaborador) AS colaborador,
+                    m.tipo_movimentacao AS tipo,
+                    m.valor_solicitado AS valor,
+                    m.saldo_anterior_rep AS saldo_anterior,
+                    m.saldo_novo_rep AS saldo_novo,
+                    m.usou_gestor,
+                    m.idgestor,
+                    m.nome_gestor,
+                    m.valor_gestor,
+                    m.observacao,
+                    NULL::text AS documento,
+                    m.detalhes_json::text AS detalhes
+                FROM movimentacoes_flex_mercos_log m
+                WHERE m.filial = :filial AND m.data_movimentacao >= :inicio_ts AND m.data_movimentacao <= :fim_ts
+
+                UNION ALL
+
+                -- 2A. Transferências - Saída (Quem enviou)
+                SELECT 
+                    t.id,
+                    t.data_transferencia AS datahora,
+                    'TRANSFERENCIA' AS origem,
+                    'Transferência Enviada' AS origem_rotulo,
+                    COALESCE(t.usuario, 'PORTAL') AS operador,
+                    t.colaborador_de AS idcolaborador,
+                    COALESCE(t.nome_de, 'Colab ' || t.colaborador_de) AS colaborador,
+                    'DEBITO' AS tipo,
+                    t.valor,
+                    t.valor_saldo_anterior_de AS saldo_anterior,
+                    t.valor_novo_saldo_de AS saldo_novo,
+                    false AS usou_gestor,
+                    t.colaborador_para AS idgestor,
+                    t.nome_para AS nome_gestor,
+                    0 AS valor_gestor,
+                    'Enviado para ' || COALESCE(t.nome_para, 'colab ' || t.colaborador_para) || ' — Motivo: ' || COALESCE(t.motivo, 'Sem motivo') AS observacao,
+                    NULL::text AS documento,
+                    json_build_object('colaborador_para', t.colaborador_para, 'nome_para', t.nome_para, 'saldo_anterior', t.valor_saldo_anterior_de, 'saldo_novo', t.valor_novo_saldo_de)::text AS detalhes
+                FROM transferencias_flex_mercos_log t
+                WHERE t.filial = :filial AND t.sucesso = true AND t.data_transferencia >= :inicio_ts AND t.data_transferencia <= :fim_ts
+
+                UNION ALL
+
+                -- 2B. Transferências - Entrada (Quem recebeu)
+                SELECT 
+                    t.id,
+                    t.data_transferencia AS datahora,
+                    'TRANSFERENCIA' AS origem,
+                    'Transferência Recebida' AS origem_rotulo,
+                    COALESCE(t.usuario, 'PORTAL') AS operador,
+                    t.colaborador_para AS idcolaborador,
+                    COALESCE(t.nome_para, 'Colab ' || t.colaborador_para) AS colaborador,
+                    'CREDITO' AS tipo,
+                    t.valor,
+                    t.valor_saldo_anterior_para AS saldo_anterior,
+                    t.valor_novo_saldo_para AS saldo_novo,
+                    false AS usou_gestor,
+                    t.colaborador_de AS idgestor,
+                    t.nome_de AS nome_gestor,
+                    0 AS valor_gestor,
+                    'Recebido de ' || COALESCE(t.nome_de, 'colab ' || t.colaborador_de) || ' — Motivo: ' || COALESCE(t.motivo, 'Sem motivo') AS observacao,
+                    NULL::text AS documento,
+                    json_build_object('colaborador_de', t.colaborador_de, 'nome_de', t.nome_de, 'saldo_anterior', t.valor_saldo_anterior_para, 'saldo_novo', t.valor_novo_saldo_para)::text AS detalhes
+                FROM transferencias_flex_mercos_log t
+                WHERE t.filial = :filial AND t.sucesso = true AND t.data_transferencia >= :inicio_ts AND t.data_transferencia <= :fim_ts
+
+                UNION ALL
+
+                -- 3A. Bonificações - Representante
+                SELECT 
+                    b.id,
+                    b.data_criacao AS datahora,
+                    'BONIFICACAO_CRON' AS origem,
+                    'Bonificação (Nota Fiscal)' AS origem_rotulo,
+                    'CRON SISTEMA' AS operador,
+                    b.idvendrepre AS idcolaborador,
+                    COALESCE(v.fantasia, v.razao, 'Rep ' || b.idvendrepre) AS colaborador,
+                    'DEBITO' AS tipo,
+                    ABS(b.valor_tirado) AS valor,
+                    NULL::numeric AS saldo_anterior,
+                    NULL::numeric AS saldo_novo,
+                    (b.codgestor IS NOT NULL AND b.codgestor > 0) AS usou_gestor,
+                    b.codgestor AS idgestor,
+                    COALESCE(g.fantasia, g.razao, 'Gestor ' || b.codgestor) AS nome_gestor,
+                    CASE WHEN b.codgestor IS NOT NULL AND b.codgestor > 0 THEN ABS(b.valor_tirado) ELSE 0 END AS valor_gestor,
+                    b.observacao,
+                    b.numero_nota AS documento,
+                    json_build_object('numero_nota', b.numero_nota, 'valor_nota', b.valor, 'codgestor', b.codgestor, 'gestor', g.fantasia)::text AS detalhes
+                FROM log_flex_bonificacao b
+                LEFT JOIN cliforemp v ON v.idcliforemp = b.idvendrepre
+                LEFT JOIN cliforemp g ON g.idcliforemp = b.codgestor
+                WHERE b.idfilial = :filial AND b.data_criacao >= :inicio_ts AND b.data_criacao <= :fim_ts
+
+                UNION ALL
+
+                -- 3B. Bonificações - Cobertura do Gestor (quando codgestor > 0)
+                SELECT 
+                    b.id,
+                    b.data_criacao AS datahora,
+                    'BONIFICACAO_GESTOR' AS origem,
+                    'Cobertura de Bonificação' AS origem_rotulo,
+                    'CRON SISTEMA' AS operador,
+                    b.codgestor AS idcolaborador,
+                    COALESCE(g.fantasia, g.razao, 'Gestor ' || b.codgestor) AS colaborador,
+                    'DEBITO' AS tipo,
+                    ABS(b.valor_tirado) AS valor,
+                    NULL::numeric AS saldo_anterior,
+                    NULL::numeric AS saldo_novo,
+                    true AS usou_gestor,
+                    b.codgestor AS idgestor,
+                    COALESCE(g.fantasia, g.razao, 'Gestor ' || b.codgestor) AS nome_gestor,
+                    ABS(b.valor_tirado) AS valor_gestor,
+                    'Cobertura de bonificação do rep ' || COALESCE(v.fantasia, v.razao, '' || b.idvendrepre) || ' — Nota: ' || b.numero_nota || ' | ' || b.observacao AS observacao,
+                    b.numero_nota AS documento,
+                    json_build_object('numero_nota', b.numero_nota, 'valor_nota', b.valor, 'idvendrepre', b.idvendrepre, 'rep', v.fantasia)::text AS detalhes
+                FROM log_flex_bonificacao b
+                LEFT JOIN cliforemp v ON v.idcliforemp = b.idvendrepre
+                LEFT JOIN cliforemp g ON g.idcliforemp = b.codgestor
+                WHERE b.idfilial = :filial AND b.codgestor IS NOT NULL AND b.codgestor > 0
+                  AND b.data_criacao >= :inicio_ts AND b.data_criacao <= :fim_ts
+
+                UNION ALL
+
+                -- 4. Aportes Flex Mínimo ao Gestor
+                SELECT 
+                    a.id,
+                    (a.data::text || ' 00:00:00')::timestamp AS datahora,
+                    'FLEX_MINIMO' AS origem,
+                    'Aporte / Flex Mínimo' AS origem_rotulo,
+                    'MOTOR FLEX MÍNIMO' AS operador,
+                    a.cdgestor AS idcolaborador,
+                    COALESCE(g.fantasia, g.razao, 'Gestor ' || a.cdgestor) AS colaborador,
+                    'CREDITO' AS tipo,
+                    a.valor_emprestimo AS valor,
+                    NULL::numeric AS saldo_anterior,
+                    NULL::numeric AS saldo_novo,
+                    false AS usou_gestor,
+                    NULL::integer AS idgestor,
+                    NULL::text AS nome_gestor,
+                    0 AS valor_gestor,
+                    a.motivo AS observacao,
+                    NULL::text AS documento,
+                    json_build_object('cdgestor', a.cdgestor, 'filial', a.idfilial, 'data', a.data)::text AS detalhes
+                FROM log_debito_flex_gestor a
+                LEFT JOIN cliforemp g ON g.idcliforemp = a.cdgestor
+                WHERE a.idfilial = :filial AND a.data >= :inicio_d AND a.data <= :fim_d
+            )
+            ";
+
+            $whereClauses = ["1=1"];
+            $binds = [
+                'filial' => $filial,
+                'inicio_ts' => $inicioTs,
+                'fim_ts' => $fimTs,
+                'inicio_d' => $inicioDate,
+                'fim_d' => $fimDate,
+            ];
+
+            if ($colaboradorId > 0) {
+                $whereClauses[] = "idcolaborador = :colaborador_id";
+                $binds['colaborador_id'] = $colaboradorId;
+            } elseif (!empty($filtroColabsGestor)) {
+                $whereClauses[] = "idcolaborador IN (" . implode(',', $filtroColabsGestor) . ")";
+            }
+
+            if ($origemFiltro === 'bonificacao') {
+                $whereClauses[] = "origem IN ('BONIFICACAO_CRON', 'BONIFICACAO_GESTOR')";
+            } elseif ($origemFiltro === 'manual') {
+                $whereClauses[] = "origem = 'MANUAL_PORTAL'";
+            } elseif ($origemFiltro === 'transferencia') {
+                $whereClauses[] = "origem = 'TRANSFERENCIA'";
+            } elseif ($origemFiltro === 'flex_minimo') {
+                $whereClauses[] = "origem = 'FLEX_MINIMO'";
+            }
+
+            if ($naturezaFiltro === 'credito') {
+                $whereClauses[] = "tipo = 'CREDITO'";
+            } elseif ($naturezaFiltro === 'debito') {
+                $whereClauses[] = "tipo = 'DEBITO'";
+            }
+
+            if ($busca !== '') {
+                $whereClauses[] = "(colaborador ILIKE :busca OR operador ILIKE :busca OR observacao ILIKE :busca OR documento ILIKE :busca OR nome_gestor ILIKE :busca)";
+                $binds['busca'] = '%' . $busca . '%';
+            }
+
+            $whereSql = implode(' AND ', $whereClauses);
+
+            $sqlTotais = "$sql SELECT 
+                COALESCE(SUM(CASE WHEN tipo = 'CREDITO' THEN valor ELSE 0 END), 0) AS total_creditos,
+                COALESCE(SUM(CASE WHEN tipo = 'DEBITO' THEN valor ELSE 0 END), 0) AS total_debitos,
+                COUNT(CASE WHEN tipo = 'CREDITO' THEN 1 END) AS qtd_creditos,
+                COUNT(CASE WHEN tipo = 'DEBITO' THEN 1 END) AS qtd_debitos,
+                COUNT(*) AS total_registros
+            FROM extrato WHERE $whereSql";
+
+            $totaisStmt = $this->pdo->prepare($sqlTotais);
+            $totaisStmt->execute($binds);
+            $totais = $totaisStmt->fetch(PDO::FETCH_ASSOC) ?: [
+                'total_creditos' => 0,
+                'total_debitos' => 0,
+                'qtd_creditos' => 0,
+                'qtd_debitos' => 0,
+                'total_registros' => 0,
+            ];
+
+            $sqlRegistros = "$sql SELECT * FROM extrato WHERE $whereSql ORDER BY datahora DESC, id DESC LIMIT :limite";
+            $regStmt = $this->pdo->prepare($sqlRegistros);
+            foreach ($binds as $k => $v) {
+                $regStmt->bindValue($k, $v);
+            }
+            $regStmt->bindValue('limite', $limite, PDO::PARAM_INT);
+            $regStmt->execute();
+            $registros = $regStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($registros as &$r) {
+                $r['id'] = (int)$r['id'];
+                $r['idcolaborador'] = (int)$r['idcolaborador'];
+                $r['valor'] = (float)$r['valor'];
+                $r['saldo_anterior'] = $r['saldo_anterior'] !== null ? (float)$r['saldo_anterior'] : null;
+                $r['saldo_novo'] = $r['saldo_novo'] !== null ? (float)$r['saldo_novo'] : null;
+                $r['usou_gestor'] = (bool)$r['usou_gestor'];
+                $r['idgestor'] = $r['idgestor'] !== null ? (int)$r['idgestor'] : null;
+                $r['valor_gestor'] = (float)$r['valor_gestor'];
+                if ($r['detalhes'] && is_string($r['detalhes'])) {
+                    $r['detalhes'] = json_decode($r['detalhes'], true);
+                }
+            }
+            unset($r);
+
+            $totalCreditos = (float)$totais['total_creditos'];
+            $totalDebitos = (float)$totais['total_debitos'];
+
+            return $this->json($response, [
+                'success' => true,
+                'filtros' => [
+                    'filial' => $filial,
+                    'inicio' => $f['inicio'],
+                    'fim' => $f['fim'],
+                    'colaborador' => $colaboradorId,
+                    'origem' => $origemFiltro,
+                    'natureza' => $naturezaFiltro,
+                    'busca' => $busca,
+                    'limite' => $limite,
+                ],
+                'totais' => [
+                    'total_creditos' => $totalCreditos,
+                    'total_debitos' => $totalDebitos,
+                    'saldo_liquido' => $totalCreditos - $totalDebitos,
+                    'qtd_creditos' => (int)$totais['qtd_creditos'],
+                    'qtd_debitos' => (int)$totais['qtd_debitos'],
+                    'total_registros' => (int)$totais['total_registros'],
+                ],
+                'registros' => $registros,
+            ]);
+        } catch (\DomainException $e) {
+            return $this->erro($response, $e->getMessage(), 403);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro na auditoria espelho: ' . $e->getMessage(), 500);
         }
     }
 }
