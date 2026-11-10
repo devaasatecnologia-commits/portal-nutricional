@@ -32,6 +32,7 @@
   - **Fluxo de Pedidos:** Pedidos do Mercos entram no PostgreSQL pelas tabelas intermediárias `palmtop_pedido` e `palmtop_pedido_item` (transação padrão 1 - Venda, depara especial: 948943->66, 17447->3, 23248->6).
   - **Regra de Estoque Mercos:** O integrador envia EXCLUSIVAMENTE o saldo físico do **Depósito 1** (`ema.stockFromDepositIds = 1`). Divergências de saldo entre Mercos e ERP devem ser checadas em `estoque_filial_deposito` com `iddeposito = 1`.
   - **Tabelas de Preço & Janela de Bloqueio:** Sincroniza tabelas 1 a 15 (`ema.syncPriceTableIds`). Bloqueio diário automático de sincronização entre 08:00 e 08:05.
+  - **Roadmap 2027 (Projeto Integrador Próprio Mercos):** Planejado para início em 10/01/2027 a substituição do integrador `.exe` e do Firebird por rotinas nativas do Portal Nutricional (PostgreSQL + Slim Crons), operando até lá estritamente em modo sombra/leitura para testes de precisão.
 - **Frontend:** PHP modular estruturado (`portal/modules/`) integrado com **Alpine.js** e **Tailwind CSS** (`portal/assets/js/`).
   - Cuidados recorrentes:
     - Modais empilhados devem respeitar camadas `z-index` (modal base `z-50`, modais secundários/detalhes `z-[70]`).
