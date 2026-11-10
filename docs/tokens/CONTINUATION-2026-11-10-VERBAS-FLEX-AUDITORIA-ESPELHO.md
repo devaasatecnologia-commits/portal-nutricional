@@ -1,46 +1,47 @@
-# Continuation Token — Auditoria Mercos, Resolução Financeiro & Treinamentos
+# Continuation Token — Auditoria Mercos, Revisão Crons & Preparação Futura
 
-**Data:** 10/11/2026 09:55  
+**Data:** 10/11/2026 10:33  
 **Branch:** `main`  
-**Status:** Validado e pronto para deploy FTP
+**Status:** Revisão concluída, Crons 100% validados, pronto para deploy FTP
 
 ---
 
-## 1. Síntese das Ações Executadas
+## 1. Auditoria e Validação dos Crons de Verba Flex
 
-### A. Módulo Financeiro (`portal/modules/financeiro.php`)
-1. **Erro de Rate Limit HTTP 429 ("Muitas requisições. Tente novamente em 59 segundos"):**
-   - **Causa:** Ocorrido em 09/11 às 17:37:07 quando o painel carregava em paralelo `dashboard`, `metas/progresso`, `historico-kpi` e lista de usuários sob o limite compartilhado do RateLimitMiddleware.
-   - **Solução:** Aplicada no commit `571c235` com chaveamento isolado por rota (`user:ID:path:ROTA`) e teto ampliado para 200 req/min no dashboard (padrão 300). Tabela resetada e testada hoje com HTTP 200.
-2. **Treinamento e Documentação:**
-   - Manual completo na versão **3.3** salvo em `docs/manual-financeiro.md` e persistido na base de conhecimento (`sistema_manuais` ID 19).
-   - Botão direto `Treinamento & Manual` com ícone de capelo ativo no topo do módulo direcionando para `portal/modules/treinamentos.php?modulo=financeiro`.
+### A. Rotina de Bonificações (`bonificacoes_flex`)
+- **Status:** 100% Operacional e Validada em Simulação (Dry-Run).
+- **View `verificabonificacao`:** 0 pendências (todas as notas faturadas e liquidadas com sucesso).
+- **Tabela `log_flex_bonificacao`:** 2.095 registros históricos preservados.
+- **Conectividade Mercos Filial 1 (Gestor 12335 - Tiago MOV):** Online (848ms) | Saldo: R$ 6.132,52.
+- **Conectividade Mercos Filial 6 (Gestor 15816 - Tales):** Online (770ms) | Saldo: R$ 1.536,90.
 
-### B. Empréstimos Recorrentes de R$ 3.000,00 (Verbas Flex)
-- Concorrência identificada com o motor de 4 minutos do ERP legado. Como o agendamento foi desativado no ERP, o fluxo passa a ser controlado 100% pelo portal e crons oficiais.
-
-### C. Auditoria Verba Flex & Anaildo Pereira
-1. **Correção do - R$ 0,00:**
-   - Alterada a seleção de `b.valor_tirado` (cobertura do gestor) para `ABS(b.valor)` (bonificação real faturada) nas queries de auditoria e adicionado badge verde `Saldo Próprio (Débito Direto)`.
-   - Saldo do Anaildo no Mercos confirmado em R$ 190,13.
-2. **Filtro de Ativos no Mercos:**
-   - Dropdown lista apenas representantes com conta ativa no Mercos (`excluido != true`).
-3. **Card Hero Dinâmico no Topo:**
-   - Exibe o Saldo Atual no Mercos em Tempo Real (individual se selecionado um representante, ou soma da equipe se selecionado "Todos"), com botão de atualização instantânea ao vivo.
-4. **Chips Rápidos de Filtro:**
-   - Atalhos para Débitos (-), Créditos (+), Bonificações, Transferências e Flex Mínimo.
+### B. Rotina de Flex Mínimo (`flex_minimo_gestor`)
+- **Status:** 100% Operacional e Validada.
+- **Configuração no Banco (`flex_minimo_config`):**
+  - Filial 1 (SC): Gestor 12335 (Tiago MOV) — Mínimo R$ 3.000,00 | Aporte R$ 3.000,00 | Ativo: Sim.
+  - Filial 6 (PR): Gestor 15816 (Tales) — Mínimo R$ 1.000,00 | Aporte R$ 1.000,00 | Ativo: Sim.
+- **Última execução:** 10:30:07 com 0 falhas e ambos os gestores acima do piso de segurança.
 
 ---
 
-## 2. Arquivos para Deploy FTP (cPanel)
+## 2. Preparação Futura para Extrato e Pedidos Mercos
+- Adicionados em [`MercosFlexService.php`](file:///c:/xampp/htdocs/API/v1/src/Services/MercosFlexService.php) os métodos defensivos:
+  - `buscarExtratoMercos(int $colaborador = 0)`
+  - `buscarPedidosFlexMercos(array $filtros = [])`
+  - Se o desenvolvedor do bridge disponibilizar `/extrato_flex` ou `/pedidos_flex` na porta 8081/8086, a API já consumirá de forma transparente sem necessidade de refatoração do core.
 
-1. `v1/src/Middleware/RateLimitMiddleware.php`
-2. `v1/src/Controllers/FinanceiroController.php`
+---
+
+## 3. Lista Final de Arquivos para Deploy FTP (cPanel)
+
+1. `v1/src/Services/MercosFlexService.php`
+2. `v1/src/Controllers/CronRotinasController.php`
 3. `v1/src/Controllers/VerbasFlexController.php`
-4. `v1/src/Controllers/CronRotinasController.php`
-5. `v1/routes/api.php`
-6. `portal/modules/financeiro.php`
-7. `portal/assets/js/financeiro.js`
-8. `portal/modules/verbas-flex.php`
-9. `portal/assets/js/verbas-flex.js`
-10. `docs/manual-financeiro.md`
+4. `v1/src/Controllers/FinanceiroController.php`
+5. `v1/src/Middleware/RateLimitMiddleware.php`
+6. `v1/routes/api.php`
+7. `portal/modules/verbas-flex.php`
+8. `portal/assets/js/verbas-flex.js`
+9. `portal/modules/financeiro.php`
+10. `portal/assets/js/financeiro.js`
+11. `docs/manual-financeiro.md`
