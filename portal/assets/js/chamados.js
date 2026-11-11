@@ -31,6 +31,7 @@ function chamadosApp() {
         },
         modulos: [],
         sistemas: [],
+        filiais: [],
         usuario: null,
         chamados: [],
         chamadoAtual: null,
@@ -125,6 +126,7 @@ function chamadosApp() {
                     };
                     this.modulos = res.modulos || [];
                     this.sistemas = res.sistemas || [];
+                    this.filiais = res.filiais || [];
                     this.usuario = res.usuario || {};
                 }
             } catch (e) {
@@ -216,7 +218,9 @@ function chamadosApp() {
                 ? 'PORTAL' 
                 : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL');
 
-            const filialPadrao = (this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1;
+            const filialPadrao = (this.filiais && this.filiais.length > 0)
+                ? Number(this.filiais[0].idfilial)
+                : ((this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1);
 
             this.novoForm = {
                 tipo_sistema: sistemaPadrao,

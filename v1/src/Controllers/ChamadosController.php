@@ -304,6 +304,32 @@ class ChamadosController
                 }));
             }
 
+            // Filiais liberadas para o usuário (respeita restrição do cadastro)
+            $filiaisLiberadas = [];
+            if (!empty($u['filiais'])) {
+                $inFiliais = implode(',', array_map('intval', $u['filiais']));
+                $filiaisLiberadas = $this->pdo->query("
+                    SELECT idfilial, razao 
+                    FROM filial 
+                    WHERE idfilial IN ($inFiliais) 
+                    ORDER BY idfilial
+                ")->fetchAll(\PDO::FETCH_ASSOC);
+            }
+            if (empty($filiaisLiberadas)) {
+                $filiaisLiberadas = $this->pdo->query("
+                    SELECT idfilial, razao 
+                    FROM filial 
+                    WHERE inativo = 'N' AND idfilial IN (1, 6)
+                    ORDER BY idfilial
+                ")->fetchAll(\PDO::FETCH_ASSOC);
+            }
+
+            foreach ($filiaisLiberadas as &$fl) {
+                $fl['idfilial'] = (int)$fl['idfilial'];
+                $fl['nome'] = $fl['idfilial'] === 1 ? 'Filial 1 - Matriz SC' : ($fl['idfilial'] === 6 ? 'Filial 6 - Paraná (PR)' : "Filial {$fl['idfilial']} - " . $fl['razao']);
+            }
+            unset($fl);
+
             return $this->json($response, [
                 'success' => true,
                 'kpis' => [
@@ -322,6 +348,7 @@ class ChamadosController
                 ],
                 'modulos' => $modulos,
                 'sistemas' => $sistemas,
+                'filiais' => $filiaisLiberadas,
                 'usuario' => $u
             ]);
         } catch (\Throwable $e) {
@@ -607,6 +634,13 @@ class ChamadosController
                     if (!in_array($moduloEscolhido, $u['permissoes'], true)) {
                         return $this->erro($response, "Você não possui permissão no módulo '{$moduloEscolhido}' do Portal.");
                     }
+                }
+            }
+
+            // Validação de Permissão de Filial (garante integridade conforme o cadastro do usuário)
+            if (!$u['is_admin'] && !empty($u['filiais'])) {
+                if (!in_array($filial, $u['filiais'], true)) {
+                    $filial = (int)$u['filiais'][0];
                 }
             }
 

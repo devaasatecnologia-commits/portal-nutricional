@@ -883,8 +883,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Filial da Ocorrência</label>
                         <select x-model="novoForm.idfilial" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
-                            <option value="1">Filial 1 - Matriz SC</option>
-                            <option value="6">Filial 6 - Paraná (PR)</option>
+                            <template x-for="f in filiais" :key="f.idfilial">
+                                <option :value="f.idfilial" x-text="f.nome || `${f.idfilial} - ${f.razao}`"></option>
+                            </template>
                         </select>
                     </div>
                 </div>
