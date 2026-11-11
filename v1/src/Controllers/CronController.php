@@ -311,9 +311,12 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
         try {
             $params = $request->getQueryParams();
             $tipo = $params['tipo'] ?? '';
-            $limit = min((int)($params['limit'] ?? 50), 200);
+            $status = $params['status'] ?? '';
+            $jobId = !empty($params['job_id']) ? (int)$params['job_id'] : 0;
+            $busca = trim((string)($params['busca'] ?? ''));
+            $limit = min((int)($params['limit'] ?? 50), 300);
             
-            $sql = "SELECT e.*, j.nome, j.comando, c.cor as cor_categoria
+            $sql = "SELECT e.*, j.nome, j.comando, c.cor as cor_categoria, c.nome as categoria_nome
                     FROM cron_execucoes e
                     JOIN cron_jobs j ON j.id = e.job_id
                     LEFT JOIN cron_categorias c ON c.id = j.categoria_id";
@@ -325,6 +328,18 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 $conditions[] = "j.comando = :tipo";
                 $bindings['tipo'] = $tipo;
             }
+            if (!empty($jobId)) {
+                $conditions[] = "j.id = :job_id";
+                $bindings['job_id'] = $jobId;
+            }
+            if (!empty($status)) {
+                $conditions[] = "e.status = :status";
+                $bindings['status'] = $status;
+            }
+            if (!empty($busca)) {
+                $conditions[] = "(j.nome ILIKE :busca OR j.comando ILIKE :busca OR e.usuario ILIKE :busca OR e.ip ILIKE :busca)";
+                $bindings['busca'] = "%{$busca}%";
+            }
             
             if (!empty($conditions)) {
                 $sql .= " WHERE " . implode(' AND ', $conditions);
@@ -335,14 +350,18 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             
             $stmt = $this->pdo->prepare($sql);
             foreach ($bindings as $key => $value) {
-                $stmt->bindValue($key, $value, $key === 'limit' ? \PDO::PARAM_INT : \PDO::PARAM_STR);
+                $stmt->bindValue($key, $value, ($key === 'limit' || $key === 'job_id') ? \PDO::PARAM_INT : \PDO::PARAM_STR);
             }
             $stmt->execute();
             $auditoria = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Retorna também lista de jobs para alimentar os seletores de filtro
+            $jobs = $this->pdo->query("SELECT id, nome, comando, categoria_id FROM cron_jobs ORDER BY nome ASC")->fetchAll(\PDO::FETCH_ASSOC);
             
             return $this->jsonResponse($response, [
                 'success' => true,
-                'auditoria' => $auditoria
+                'auditoria' => $auditoria,
+                'jobs' => $jobs
             ]);
         } catch (\Exception $e) {
             return $this->jsonResponse($response, ['error' => $e->getMessage()], 500);

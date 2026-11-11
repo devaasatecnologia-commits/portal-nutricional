@@ -240,15 +240,91 @@ require_once __DIR__ . '/components/sidebar.php';
     </div>
 </div>
 
-<!-- Execuções Recentes -->
-<div class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-    <div class="p-5 border-b border-slate-100">
-        <h5 class="text-sm font-bold text-slate-700">
-            <i class="fa-solid fa-history mr-2"></i>Execuções Recentes
-        </h5>
+<!-- Histórico Completo & Auditoria de Execuções -->
+<div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+    <div class="p-6 border-b border-slate-100">
+        <div class="flex flex-wrap items-center justify-between gap-4 mb-5">
+            <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shadow-xs">
+                    <i class="fa-solid fa-clipboard-check text-xl"></i>
+                </div>
+                <div>
+                    <h4 class="text-base font-extrabold text-slate-800">Histórico Completo & Auditoria de Execuções</h4>
+                    <p class="text-xs text-slate-400">Audite cada execução dos Crons em tempo real, filtre por rotina específica, analise tempos e visualize logs técnicos completos.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button onclick="carregarAuditoria()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5 shadow-xs">
+                    <i class="fa-solid fa-rotate"></i> Atualizar Auditoria
+                </button>
+            </div>
+        </div>
+
+        <!-- Barra de Filtros da Auditoria -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-100">
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Rotina / Job</label>
+                <select id="filtroAuditoriaJob" onchange="carregarAuditoria()" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="">Todos os Jobs</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Status</label>
+                <select id="filtroAuditoriaStatus" onchange="carregarAuditoria()" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="">Todos os Status</option>
+                    <option value="sucesso">✅ Sucesso</option>
+                    <option value="falha">❌ Falha</option>
+                    <option value="executando">⏳ Em Execução</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Registros</label>
+                <select id="filtroAuditoriaLimit" onchange="carregarAuditoria()" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                    <option value="25">25 mais recentes</option>
+                    <option value="50" selected>50 mais recentes</option>
+                    <option value="100">100 mais recentes</option>
+                    <option value="200">200 mais recentes</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Busca Rápida</label>
+                <div class="relative">
+                    <i class="fa-solid fa-search absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                    <input type="text" id="filtroAuditoriaBusca" oninput="debounceAuditoria()" placeholder="Usuário, IP, comando..." class="w-full pl-8 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                </div>
+            </div>
+        </div>
     </div>
-    <div id="execucoesRecentes" class="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
-        <p class="text-center text-slate-400 py-4">Carregando...</p>
+
+    <!-- Tabela de Auditoria -->
+    <div class="overflow-x-auto">
+        <table class="w-full text-left">
+            <thead class="bg-slate-50 border-b border-slate-200">
+                <tr>
+                    <th class="px-4 py-3 text-xs font-bold text-slate-400 uppercase"># ID</th>
+                    <th class="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Data & Hora</th>
+                    <th class="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Rotina / Job</th>
+                    <th class="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Comando</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Status</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Duração</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Disparado Por</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Ações</th>
+                </tr>
+            </thead>
+            <tbody id="tabelaAuditoriaBody" class="divide-y divide-slate-100">
+                <tr><td colspan="8" class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Carregando histórico completo de auditoria...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Paginação / Rodapé de Contagem -->
+    <div class="p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+        <div>
+            Exibindo <b id="auditoriaCountExibidos">0</b> de <b id="auditoriaCountTotal">0</b> execuções auditadas.
+        </div>
+        <div class="flex items-center gap-2">
+            <span class="text-[11px] text-slate-400"><i class="fa-solid fa-shield-halved text-emerald-500 mr-1"></i>Auditoria persistida em PostgreSQL</span>
+        </div>
     </div>
 </div>
 
@@ -870,6 +946,124 @@ function atualizarRecentes(execucoes) {
 }
 
 // ======================================================================
+// AUDITORIA COMPLETA & HISTÓRICO DE EXECUÇÕES
+// ======================================================================
+let debounceAuditoriaTimer = null;
+function debounceAuditoria() {
+    clearTimeout(debounceAuditoriaTimer);
+    debounceAuditoriaTimer = setTimeout(() => {
+        carregarAuditoria();
+    }, 300);
+}
+
+async function carregarAuditoria() {
+    const tbody = document.getElementById('tabelaAuditoriaBody');
+    if (!tbody) return;
+
+    const jobId = document.getElementById('filtroAuditoriaJob')?.value || '';
+    const status = document.getElementById('filtroAuditoriaStatus')?.value || '';
+    const limit = document.getElementById('filtroAuditoriaLimit')?.value || '50';
+    const busca = document.getElementById('filtroAuditoriaBusca')?.value || '';
+
+    let url = `/cron/auditoria?limit=${encodeURIComponent(limit)}`;
+    if (jobId) url += `&job_id=${encodeURIComponent(jobId)}`;
+    if (status) url += `&status=${encodeURIComponent(status)}`;
+    if (busca) url += `&busca=${encodeURIComponent(busca)}`;
+
+    try {
+        const resp = await apiFetch(url, 'GET');
+        const lista = resp.auditoria || [];
+        const jobs = resp.jobs || [];
+
+        // Popula seletor de jobs se estiver com apenas 1 opção
+        const selectJob = document.getElementById('filtroAuditoriaJob');
+        if (selectJob && jobs.length > 0 && selectJob.options.length <= 1) {
+            jobs.forEach(j => {
+                const opt = document.createElement('option');
+                opt.value = j.id;
+                opt.textContent = `${j.nome} (${j.comando})`;
+                selectJob.appendChild(opt);
+            });
+        }
+
+        const elExibidos = document.getElementById('auditoriaCountExibidos');
+        const elTotal = document.getElementById('auditoriaCountTotal');
+        if (elExibidos) elExibidos.textContent = lista.length;
+        if (elTotal) elTotal.textContent = lista.length;
+
+        if (!lista.length) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="8" class="text-center py-10 text-slate-400">
+                        <i class="fa-solid fa-inbox text-3xl mb-2 text-slate-300 block"></i>
+                        Nenhuma execução encontrada para os filtros selecionados.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = lista.map(exec => {
+            let statusBadge = '';
+            if (exec.status === 'sucesso') {
+                statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-100 text-emerald-800"><i class="fa-solid fa-check text-[10px]"></i> Sucesso</span>';
+            } else if (exec.status === 'falha') {
+                statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-rose-100 text-rose-800"><i class="fa-solid fa-xmark text-[10px]"></i> Falha</span>';
+            } else {
+                statusBadge = '<span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-extrabold bg-amber-100 text-amber-800"><i class="fa-solid fa-spinner fa-spin text-[10px]"></i> Executando</span>';
+            }
+
+            const duracaoFmt = formatarDuracao(parseFloat(exec.duracao_segundos));
+            const dataHoraFmt = formatarData(exec.iniciado_em);
+            const corCat = exec.cor_categoria || '#64748b';
+
+            return `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-4 py-3 text-xs font-mono font-bold text-slate-500">#${exec.id}</td>
+                    <td class="px-4 py-3 text-xs text-slate-700 whitespace-nowrap font-medium">
+                        <i class="fa-regular fa-clock text-slate-400 mr-1.5"></i>${dataHoraFmt}
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-2.5 h-2.5 rounded-full flex-shrink-0" style="background-color: ${corCat};"></span>
+                            <span class="text-xs font-extrabold text-slate-800">${escapeHtml(exec.nome || 'Job #' + exec.job_id)}</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-xs font-mono text-slate-600">
+                        <span class="px-2 py-0.5 rounded bg-slate-100 text-[11px] font-bold">${escapeHtml(exec.comando || '-')}</span>
+                    </td>
+                    <td class="px-4 py-3 text-center whitespace-nowrap">${statusBadge}</td>
+                    <td class="px-4 py-3 text-center text-xs font-bold text-slate-600 whitespace-nowrap">
+                        ${duracaoFmt}
+                    </td>
+                    <td class="px-4 py-3 text-xs text-slate-600">
+                        <div class="flex items-center gap-1.5">
+                            <i class="fa-solid fa-user-shield text-slate-400 text-[10px]"></i>
+                            <span class="font-bold text-slate-700">${escapeHtml(exec.usuario || 'SISTEMA')}</span>
+                            <span class="text-[10px] text-slate-400">(${escapeHtml(exec.origem || 'CLI')}${exec.ip ? ' · ' + escapeHtml(exec.ip) : ''})</span>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-center whitespace-nowrap">
+                        <button onclick="verDetalhesExecucao(${exec.id})" class="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1 mx-auto shadow-xs" title="Ver detalhes completos e auditoria">
+                            <i class="fa-solid fa-eye"></i> Detalhes
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+    } catch (e) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-6 text-rose-500 font-bold">
+                    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Erro ao carregar histórico: ${escapeHtml(e.message)}
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// ======================================================================
 // TESTAR / SIMULAR CONFIGURAÇÃO E PROCESSO (DRY-RUN)
 // ======================================================================
 async function testarCronRapido(comando, id = null) {
@@ -1228,7 +1422,7 @@ async function executarCronManual(comando) {
 async function verDetalhesExecucao(id) {
     try {
         Swal.fire({
-            title: 'Carregando detalhes...',
+            title: 'Carregando auditoria...',
             allowOutsideClick: false,
             didOpen: () => Swal.showLoading()
         });
@@ -1237,83 +1431,116 @@ async function verDetalhesExecucao(id) {
         Swal.close();
         
         if (!data.execucao) {
-            Swal.fire('Info', 'Detalhes não encontrados', 'info');
+            Swal.fire('Info', 'Detalhes da execução não encontrados', 'info');
             return;
         }
         
         const exec = data.execucao;
-        const statusBg = exec.status === 'sucesso' ? 'bg-emerald-100 text-emerald-700' : 
-                         exec.status === 'falha' ? 'bg-rose-100 text-rose-700' : 
-                         'bg-amber-100 text-amber-700';
-        
+        const statusBadge = exec.status === 'sucesso' 
+            ? '<span class="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-100 text-emerald-800">✅ Sucesso</span>'
+            : exec.status === 'falha'
+            ? '<span class="px-2.5 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-800">❌ Falha</span>'
+            : '<span class="px-2.5 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-800">⏳ Em Execução</span>';
+
         let resultadoHtml = '';
+        let jsonStr = '';
         if (exec.resultado && typeof exec.resultado === 'object') {
             const relatorioHtml = exec.resultado.email_html
-                ? `<div class="mb-3">
-                    <p class="text-xs font-bold text-slate-500 uppercase mb-1">Relatório de Execução:</p>
-                    <div class="bg-slate-50 border border-slate-200 p-3 rounded-xl text-xs max-h-[240px] overflow-auto">${exec.resultado.email_html}</div>
+                ? `<div class="mb-4">
+                    <p class="text-xs font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1.5">
+                        <i class="fa-solid fa-envelope-open-text text-indigo-600"></i> Relatório / HTML Gerado:
+                    </p>
+                    <div class="bg-slate-50 border border-slate-200 p-4 rounded-2xl text-xs max-h-[260px] overflow-auto shadow-inner">${exec.resultado.email_html}</div>
                    </div>`
                 : '';
             const copiaJson = { ...exec.resultado };
             delete copiaJson.email_html;
-            resultadoHtml = `${relatorioHtml}<pre class="text-xs bg-slate-100 p-3 rounded-xl max-h-[220px] overflow-auto">${escapeHtml(JSON.stringify(copiaJson, null, 2))}</pre>`;
+            jsonStr = JSON.stringify(copiaJson, null, 2);
+            resultadoHtml = `${relatorioHtml}
+                <div>
+                    <div class="flex items-center justify-between mb-1.5">
+                        <p class="text-xs font-bold text-slate-500 uppercase flex items-center gap-1.5">
+                            <i class="fa-solid fa-code text-indigo-600"></i> Payload JSON Retornado:
+                        </p>
+                        <button type="button" onclick="copiarJsonAuditoria()" class="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1">
+                            <i class="fa-regular fa-copy"></i> Copiar JSON
+                        </button>
+                    </div>
+                    <pre class="text-xs font-mono bg-slate-900 text-emerald-400 p-4 rounded-2xl max-h-[260px] overflow-auto leading-relaxed shadow-inner">${escapeHtml(jsonStr)}</pre>
+                </div>
+            `;
         } else if (exec.resultado) {
-            resultadoHtml = `<p class="text-sm text-slate-600">${escapeHtml(String(exec.resultado))}</p>`;
+            resultadoHtml = `<div class="p-3.5 bg-slate-50 rounded-xl text-xs font-mono text-slate-700">${escapeHtml(String(exec.resultado))}</div>`;
         } else {
-            resultadoHtml = '<p class="text-sm text-slate-400">Sem resultado detalhado</p>';
+            resultadoHtml = '<p class="text-xs text-slate-400 italic">Nenhum payload de retorno gravado.</p>';
         }
+
+        window._jsonAuditoriaAtual = jsonStr;
         
         Swal.fire({
-            title: `Execução #${exec.id}`,
+            title: `Auditoria da Execução #${exec.id}`,
             html: `
-                <div class="text-left space-y-3">
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Job:</span>
-                        <b>${escapeHtml(exec.nome || 'N/A')}</b>
+                <div class="text-left space-y-4 pt-2">
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5 p-3.5 rounded-2xl bg-slate-50 border border-slate-100">
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block">Status</span>
+                            <div class="mt-1">${statusBadge}</div>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block">Duração</span>
+                            <span class="text-xs font-black text-slate-800 mt-1 block">${formatarDuracao(exec.duracao_segundos)}</span>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block">Usuário</span>
+                            <span class="text-xs font-bold text-slate-700 mt-1 block">${escapeHtml(exec.usuario || 'SISTEMA')}</span>
+                        </div>
+                        <div>
+                            <span class="text-[10px] font-bold text-slate-400 uppercase block">Origem / IP</span>
+                            <span class="text-xs font-medium text-slate-600 mt-1 block">${escapeHtml(exec.origem || 'CLI')}${exec.ip ? ' (' + escapeHtml(exec.ip) + ')' : ''}</span>
+                        </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Comando:</span>
-                        <code class="text-xs bg-slate-100 px-2 py-1 rounded">${escapeHtml(exec.comando || 'N/A')}</code>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl bg-slate-100 text-xs">
+                        <div>
+                            <span class="text-slate-500">Job:</span> <b class="text-slate-800">${escapeHtml(exec.nome || 'Job #' + exec.job_id)}</b>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Comando:</span> <code class="px-2 py-0.5 rounded bg-white font-mono text-indigo-700 font-bold">${escapeHtml(exec.comando || 'N/A')}</code>
+                        </div>
+                        <div>
+                            <span class="text-slate-500">Iniciado em:</span> <span class="text-slate-700 font-medium">${formatarData(exec.iniciado_em)}</span>
+                        </div>
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Status:</span>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusBg}">${escapeHtml(exec.status)}</span>
+
+                    <div>
+                        ${resultadoHtml}
                     </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Usuário:</span>
-                        <span>${escapeHtml(exec.usuario || '-')}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Origem:</span>
-                        <span>${escapeHtml(exec.origem || '-')}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Início:</span>
-                        <span>${formatarData(exec.iniciado_em)}</span>
-                    </div>
-                    <div class="flex justify-between">
-                        <span class="text-slate-500">Duração:</span>
-                        <span>${formatarDuracao(exec.duracao_segundos)}</span>
-                    </div>
-                    <hr class="border-slate-200">
-                    <p class="text-xs font-bold text-slate-500 uppercase">Resultado:</p>
-                    ${resultadoHtml}
                 </div>
             `,
-            icon: 'info',
-            confirmButtonColor: '#274036',
-            width: '720px'
+            showCloseButton: true,
+            confirmButtonText: 'Fechar Auditoria',
+            confirmButtonColor: '#4f46e5',
+            width: '800px'
         });
         
     } catch (e) {
         Swal.close();
-        Swal.fire('Erro', 'Falha ao carregar detalhes', 'error');
+        Swal.fire('Erro', 'Falha ao carregar detalhes: ' + e.message, 'error');
+    }
+}
+
+function copiarJsonAuditoria() {
+    if (window._jsonAuditoriaAtual) {
+        navigator.clipboard.writeText(window._jsonAuditoriaAtual).then(() => {
+            showToast('JSON da auditoria copiado para a área de transferência!');
+        });
     }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     carregarJobs();
     atualizarDashboard();
+    carregarAuditoria();
 });
 </script>
 

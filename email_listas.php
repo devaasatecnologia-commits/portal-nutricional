@@ -102,6 +102,11 @@ class EmailListas {
                 'robson@nutricionalbr.com',
                 'financeiro@nutricionalbr.com'
             ],
+
+            // 8.3 ALTERA CUSTO GERENCIAL (DOX #5)
+            'custo_gerencial' => [
+                'alan@nutricionalbr.com'
+            ],
             
             // 9. DEFAULT
             'default' => [

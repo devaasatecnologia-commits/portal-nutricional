@@ -272,7 +272,7 @@ require_once __DIR__ . '/estrutura/header.php';
                    class="pm-card animate-fadeInUp group">
                     <div class="flex items-start justify-between mb-4">
                         <div class="pm-tile"><i :class="`fa-solid ${iconeModulo(mod.icon)}`"></i></div>
-                        <template x-if="mod.id === 'admin'">
+                        <template x-if="mod.id === 'admin' || mod.id === 'crons'">
                             <span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[9px] font-bold">ADMIN</span>
                         </template>
                     </div>
@@ -516,10 +516,21 @@ function portalDashboard() {
                 const modulosPermitidos = modulosData.filter(mod => isAdmin || (Array.isArray(permissoes) && permissoes.includes(mod.slug)));
                 
                 // Agrupa por setor
+                const baseApp = window.location.pathname.includes('/API/') ? '/API' : '';
                 const modulosPorSetor = {};
                 modulosPermitidos.forEach(mod => {
                     const sn = mod.setor || 'Geral';
                     if (!modulosPorSetor[sn]) modulosPorSetor[sn] = [];
+
+                    let finalUrl = mod.url;
+                    if (mod.slug === 'crons' || (finalUrl && finalUrl.includes('crons.php'))) {
+                        finalUrl = `${baseApp}/portal/modules/admin/crons.php`;
+                    } else if (finalUrl && finalUrl.startsWith('/portal/')) {
+                        finalUrl = `${baseApp}${finalUrl}`;
+                    } else if (finalUrl && !finalUrl.startsWith('http') && !finalUrl.startsWith('/')) {
+                        finalUrl = `${baseApp}/portal/${finalUrl}`;
+                    }
+
                     modulosPorSetor[sn].push({
                         id: mod.slug,
                         nome: mod.nome,
@@ -527,7 +538,7 @@ function portalDashboard() {
                         icon: mod.icon,
                         bgColor: mod.corbg || mod.corBg || 'bg-slate-50',
                         iconColor: mod.cortexto || mod.corTexto || 'text-slate-600',
-                        url: mod.url,
+                        url: finalUrl,
                         from: mod.corFrom || null,
                         to: mod.corTo || mod.corFrom || null,
                         setor: sn

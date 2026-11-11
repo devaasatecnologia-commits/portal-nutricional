@@ -58,25 +58,92 @@ require_once __DIR__ . '/components/sidebar.php';
 
 <div class="space-y-6">
 
-    <!-- SEÇÃO: DESTINATÁRIOS & LISTAS DE E-MAILS (NOVA) -->
+    <!-- SEÇÃO: DESTINATÁRIOS & LISTAS DE E-MAILS -->
     <section id="secao-emails" class="bg-white rounded-3xl p-5 sm:p-7 shadow-sm border border-slate-100 transition-all">
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-4 border-b border-slate-100">
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-4 border-b border-slate-100">
             <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
-                    <i class="fa-solid fa-envelope-open-text text-lg"></i>
+                <div class="w-12 h-12 rounded-2xl bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold shadow-xs">
+                    <i class="fa-solid fa-envelope-open-text text-xl"></i>
                 </div>
                 <div>
-                    <h3 class="text-base font-extrabold text-slate-800">Listas de E-mails & Destinatários (Crons & Notificações)</h3>
-                    <p class="text-xs text-slate-400">Edite os e-mails das listas de cópia (CC), consolidado da diretoria e relatórios automáticos. As alterações entram em vigor imediatamente.</p>
+                    <h3 class="text-lg font-extrabold text-slate-800">Listas de E-mails & Destinatários (Crons & Notificações)</h3>
+                    <p class="text-xs text-slate-400">Configure os e-mails das listas de cópia (CC), consolidado da diretoria e relatórios automáticos de Crons (incluindo Custo Gerencial, Limite de Crédito, Clientes Isentos).</p>
                 </div>
             </div>
-            <button onclick="carregarConfiguracoes()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
-                <i class="fa-solid fa-rotate"></i> Recarregar
-            </button>
+            <div class="flex items-center gap-2">
+                <button onclick="carregarConfiguracoes()" class="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-rotate"></i> Recarregar
+                </button>
+            </div>
+        </div>
+
+        <!-- Estatísticas das Listas -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-list-check"></i>
+                </div>
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total de Listas</span>
+                    <span id="statTotalListas" class="text-lg font-black text-slate-800">-</span>
+                </div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-at"></i>
+                </div>
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Destinatários Únicos</span>
+                    <span id="statTotalDestinatarios" class="text-lg font-black text-slate-800">-</span>
+                </div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-cyan-100 text-cyan-600 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-gears"></i>
+                </div>
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Processamento / Crons</span>
+                    <span id="statTotalProcessamento" class="text-lg font-black text-slate-800">-</span>
+                </div>
+            </div>
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center gap-3">
+                <div class="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center font-bold text-sm">
+                    <i class="fa-solid fa-users"></i>
+                </div>
+                <div>
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Gestão & Comercial</span>
+                    <span id="statTotalComercial" class="text-lg font-black text-slate-800">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Barra de Busca e Filtros de Categoria -->
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-6 bg-slate-50 p-3 rounded-2xl border border-slate-100">
+            <div class="flex flex-wrap items-center gap-1.5" id="filtroCategoriasEmail">
+                <button onclick="filtrarCategoriaEmails('todas')" class="cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition bg-indigo-600 text-white shadow-xs" data-cat="todas">
+                    <i class="fa-solid fa-border-all mr-1"></i>Todas (<span id="countCatTodas">0</span>)
+                </button>
+                <button onclick="filtrarCategoriaEmails('processamento')" class="cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-200 border border-slate-200" data-cat="processamento">
+                    <i class="fa-solid fa-gears text-emerald-600 mr-1"></i>Processamento / Crons (<span id="countCatProc">0</span>)
+                </button>
+                <button onclick="filtrarCategoriaEmails('representantes')" class="cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-200 border border-slate-200" data-cat="representantes">
+                    <i class="fa-solid fa-users text-blue-600 mr-1"></i>Representantes & Gestores (<span id="countCatRep">0</span>)
+                </button>
+                <button onclick="filtrarCategoriaEmails('comercial')" class="cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-200 border border-slate-200" data-cat="comercial">
+                    <i class="fa-solid fa-cart-shopping text-purple-600 mr-1"></i>Comercial & Pedidos (<span id="countCatCom">0</span>)
+                </button>
+                <button onclick="filtrarCategoriaEmails('fiscal')" class="cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition bg-white text-slate-600 hover:bg-slate-200 border border-slate-200" data-cat="fiscal">
+                    <i class="fa-solid fa-file-invoice text-rose-600 mr-1"></i>Fiscal & XML (<span id="countCatFisc">0</span>)
+                </button>
+            </div>
+            <div class="relative w-full sm:w-72">
+                <i class="fa-solid fa-search absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+                <input type="text" id="buscaListasEmails" oninput="filtrarListasEmails()" placeholder="Buscar lista, cron ou e-mail..." class="w-full pl-9 pr-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-medium focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            </div>
         </div>
 
         <div id="estadoEmails" class="text-sm text-slate-400 py-3">Carregando listas de e-mails...</div>
-        <div id="listaEmailsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+        <div id="listaEmailsContainer" class="grid grid-cols-1 md:grid-cols-2 gap-5"></div>
     </section>
 
     <!-- SEÇÃO 1: VERBAS FLEX · FLEX MÍNIMO -->
@@ -236,59 +303,287 @@ async function configRequest(path, method = 'GET', body = null) {
 // ======================================================================
 // RENDERIZAÇÃO DAS LISTAS DE E-MAILS (NOVO)
 // ======================================================================
+// DESTINATÁRIOS & LISTAS DE E-MAILS (LAYOUT MODERNO & CRONS)
+// ======================================================================
+window.filtroCatEmailAtiva = 'todas';
+window.filtroBuscaEmailTermo = '';
+
+function filtrarCategoriaEmails(cat) {
+    window.filtroCatEmailAtiva = cat;
+    document.querySelectorAll('#filtroCategoriasEmail .cat-pill').forEach(btn => {
+        const isCurrent = btn.dataset.cat === cat;
+        btn.className = `cat-pill px-3 py-1.5 rounded-xl text-xs font-bold transition ${isCurrent ? 'bg-indigo-600 text-white shadow-xs' : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'}`;
+    });
+    renderListasEmails();
+}
+
+function filtrarListasEmails() {
+    window.filtroBuscaEmailTermo = (document.getElementById('buscaListasEmails')?.value || '').toLowerCase().trim();
+    renderListasEmails();
+}
+
+function copiarEmailsLista(chave) {
+    const lista = (configState.listasEmails || []).find(l => l.chave === chave);
+    if (!lista) return;
+    let txt = '';
+    if (chave === 'clientes_isento' && typeof lista.emails === 'object') {
+        const g = (lista.emails.geral || []).join(', ');
+        const f1 = ((lista.emails.filiais && lista.emails.filiais['1']) || []).join(', ');
+        const f6 = ((lista.emails.filiais && lista.emails.filiais['6']) || []).join(', ');
+        txt = `Geral: ${g}\nFilial 1: ${f1}\nFilial 6: ${f6}`;
+    } else {
+        txt = Array.isArray(lista.emails) ? lista.emails.join(', ') : String(lista.emails || '');
+    }
+    navigator.clipboard.writeText(txt).then(() => {
+        showToast('E-mails copiados para a área de transferência!');
+    }).catch(() => {
+        showToast('Erro ao copiar.');
+    });
+}
+
+function obterMetadadosListaEmail(chave, categoriaRaw) {
+    const cat = String(categoriaRaw || '').toLowerCase();
+    const ch = String(chave || '').toLowerCase();
+
+    if (ch.includes('custo_gerencial')) {
+        return {
+            categoria: 'processamento',
+            badgeNome: 'Cron · A cada 5 min',
+            badgeBg: 'bg-emerald-100 text-emerald-800',
+            icon: 'fa-solid fa-calculator',
+            iconBg: 'bg-emerald-100 text-emerald-600',
+            borda: 'border-emerald-200'
+        };
+    }
+    if (ch.includes('limite_credito')) {
+        return {
+            categoria: 'processamento',
+            badgeNome: 'Cron Mensal · Dia 1º',
+            badgeBg: 'bg-emerald-100 text-emerald-800',
+            icon: 'fa-solid fa-scale-balanced',
+            iconBg: 'bg-emerald-100 text-emerald-600',
+            borda: 'border-emerald-200'
+        };
+    }
+    if (ch.includes('clientes_isento')) {
+        return {
+            categoria: 'processamento',
+            badgeNome: 'Cron Diário · 10:00',
+            badgeBg: 'bg-teal-100 text-teal-800',
+            icon: 'fa-solid fa-file-excel',
+            iconBg: 'bg-teal-100 text-teal-600',
+            borda: 'border-teal-200'
+        };
+    }
+    if (ch.includes('representantes') || ch.includes('alteracoes')) {
+        return {
+            categoria: 'representantes',
+            badgeNome: 'Representantes',
+            badgeBg: 'bg-blue-100 text-blue-800',
+            icon: 'fa-solid fa-users',
+            iconBg: 'bg-blue-100 text-blue-600',
+            borda: 'border-blue-200'
+        };
+    }
+    if (ch.includes('gestores')) {
+        return {
+            categoria: 'representantes',
+            badgeNome: 'Gestores & Supervisores',
+            badgeBg: 'bg-amber-100 text-amber-800',
+            icon: 'fa-solid fa-chart-pie',
+            iconBg: 'bg-amber-100 text-amber-600',
+            borda: 'border-amber-200'
+        };
+    }
+    if (ch.includes('pedidos') || ch.includes('migracao')) {
+        return {
+            categoria: 'comercial',
+            badgeNome: 'Comercial & Pedidos',
+            badgeBg: 'bg-purple-100 text-purple-800',
+            icon: 'fa-solid fa-cart-shopping',
+            iconBg: 'bg-purple-100 text-purple-600',
+            borda: 'border-purple-200'
+        };
+    }
+    if (ch.includes('xml')) {
+        return {
+            categoria: 'fiscal',
+            badgeNome: 'Fiscal & NFe',
+            badgeBg: 'bg-rose-100 text-rose-800',
+            icon: 'fa-solid fa-file-invoice-dollar',
+            iconBg: 'bg-rose-100 text-rose-600',
+            borda: 'border-rose-200'
+        };
+    }
+
+    return {
+        categoria: cat || 'outros',
+        badgeNome: cat.toUpperCase() || 'GERAL',
+        badgeBg: 'bg-slate-100 text-slate-800',
+        icon: 'fa-solid fa-envelope',
+        iconBg: 'bg-slate-100 text-slate-600',
+        borda: 'border-slate-200'
+    };
+}
+
 function renderListasEmails() {
     const host = document.getElementById('listaEmailsContainer');
     const estadoEl = document.getElementById('estadoEmails');
     const listas = configState.listasEmails || [];
 
     if (!listas.length) {
-        estadoEl.textContent = 'Nenhuma lista de e-mail encontrada.';
+        if (estadoEl) estadoEl.textContent = 'Nenhuma lista de e-mail encontrada.';
         if (host) host.innerHTML = '';
         return;
     }
-    estadoEl.textContent = '';
-
+    if (estadoEl) estadoEl.textContent = '';
     if (!host) return;
 
-    host.innerHTML = listas.map(l => {
+    // Métricas gerais
+    let totalEmailsUnicos = new Set();
+    let countsCat = { processamento: 0, representantes: 0, comercial: 0, fiscal: 0 };
+
+    listas.forEach(l => {
+        const meta = obterMetadadosListaEmail(l.chave, l.categoria);
+        if (countsCat[meta.categoria] !== undefined) {
+            countsCat[meta.categoria]++;
+        }
+        if (typeof l.emails === 'object' && l.chave === 'clientes_isento') {
+            (l.emails.geral || []).forEach(e => totalEmailsUnicos.add(String(e).toLowerCase().trim()));
+            if (l.emails.filiais) {
+                Object.values(l.emails.filiais).forEach(arr => {
+                    (arr || []).forEach(e => totalEmailsUnicos.add(String(e).toLowerCase().trim()));
+                });
+            }
+        } else if (Array.isArray(l.emails)) {
+            l.emails.forEach(e => totalEmailsUnicos.add(String(e).toLowerCase().trim()));
+        } else if (typeof l.emails === 'string' && l.emails) {
+            l.emails.split(',').forEach(e => totalEmailsUnicos.add(e.toLowerCase().trim()));
+        }
+    });
+
+    // Atualiza contadores no topo
+    const elTot = document.getElementById('statTotalListas');
+    const elDest = document.getElementById('statTotalDestinatarios');
+    const elProc = document.getElementById('statTotalProcessamento');
+    const elCom = document.getElementById('statTotalComercial');
+    if (elTot) elTot.textContent = listas.length;
+    if (elDest) elDest.textContent = totalEmailsUnicos.size;
+    if (elProc) elProc.textContent = countsCat.processamento;
+    if (elCom) elCom.textContent = countsCat.representantes + countsCat.comercial;
+
+    const elCAll = document.getElementById('countCatTodas');
+    const elCPr = document.getElementById('countCatProc');
+    const elCRep = document.getElementById('countCatRep');
+    const elCCom = document.getElementById('countCatCom');
+    const elCFisc = document.getElementById('countCatFisc');
+    if (elCAll) elCAll.textContent = listas.length;
+    if (elCPr) elCPr.textContent = countsCat.processamento;
+    if (elCRep) elCRep.textContent = countsCat.representantes;
+    if (elCCom) elCCom.textContent = countsCat.comercial;
+    if (elCFisc) elCFisc.textContent = countsCat.fiscal;
+
+    // Filtra conforme categoria ativa e busca
+    const catAtiva = window.filtroCatEmailAtiva || 'todas';
+    const termo = window.filtroBuscaEmailTermo || '';
+
+    const filtradas = listas.filter(l => {
+        const meta = obterMetadadosListaEmail(l.chave, l.categoria);
+        if (catAtiva !== 'todas' && meta.categoria !== catAtiva) {
+            return false;
+        }
+        if (termo) {
+            const rawStr = JSON.stringify(l).toLowerCase();
+            return rawStr.includes(termo);
+        }
+        return true;
+    });
+
+    if (!filtradas.length) {
+        host.innerHTML = `
+            <div class="md:col-span-2 text-center py-12 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                <i class="fa-solid fa-filter-circle-xmark text-3xl text-slate-300 mb-2"></i>
+                <p class="text-sm font-bold text-slate-600">Nenhuma lista encontrada para este filtro.</p>
+                <button onclick="filtrarCategoriaEmails('todas'); document.getElementById('buscaListasEmails').value=''; filtrarListasEmails();" class="mt-3 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition">
+                    Ver Todas as Listas
+                </button>
+            </div>
+        `;
+        return;
+    }
+
+    host.innerHTML = filtradas.map(l => {
         const isClientesIsentos = l.chave === 'clientes_isento';
         const rawEmails = l.emails || [];
+        const meta = obterMetadadosListaEmail(l.chave, l.categoria);
 
         if (isClientesIsentos) {
-            const geral = Array.isArray(rawEmails.geral) ? rawEmails.geral.join(', ') : '';
-            const f1 = (rawEmails.filiais && Array.isArray(rawEmails.filiais['1'])) ? rawEmails.filiais['1'].join(', ') : '';
-            const f6 = (rawEmails.filiais && Array.isArray(rawEmails.filiais['6'])) ? rawEmails.filiais['6'].join(', ') : '';
+            const geralArr = Array.isArray(rawEmails.geral) ? rawEmails.geral : [];
+            const f1Arr = (rawEmails.filiais && Array.isArray(rawEmails.filiais['1'])) ? rawEmails.filiais['1'] : [];
+            const f6Arr = (rawEmails.filiais && Array.isArray(rawEmails.filiais['6'])) ? rawEmails.filiais['6'] : [];
 
             return `
-            <div class="md:col-span-2 rounded-2xl border border-indigo-200 bg-white p-5 shadow-xs">
-                <div class="flex items-center justify-between pb-3 mb-3 border-b border-indigo-100">
-                    <div>
-                        <div class="flex items-center gap-2">
-                            <h4 class="font-bold text-sm text-slate-800">${configEsc(l.titulo)}</h4>
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-teal-100 text-teal-800">Filiais & Geral</span>
+            <div class="md:col-span-2 rounded-3xl border ${meta.borda} bg-white p-6 shadow-sm hover:shadow-md transition-all">
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-11 h-11 rounded-2xl ${meta.iconBg} flex items-center justify-center font-bold text-lg shadow-xs">
+                            <i class="${meta.icon}"></i>
                         </div>
-                        <p class="text-xs text-slate-400 mt-0.5">${configEsc(l.descricao)}</p>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-extrabold text-base text-slate-800">${configEsc(l.titulo)}</h4>
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black ${meta.badgeBg}">${meta.badgeNome}</span>
+                            </div>
+                            <p class="text-xs text-slate-400 mt-0.5">${configEsc(l.descricao)}</p>
+                        </div>
                     </div>
-                    <span class="text-[10px] text-slate-400">Atualizado: ${configDate(l.atualizado_em)}</span>
+                    <div class="flex items-center gap-3">
+                        <button type="button" onclick="copiarEmailsLista('${configEsc(l.chave)}')" class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition flex items-center gap-1.5" title="Copiar todos">
+                            <i class="fa-regular fa-copy"></i> Copiar
+                        </button>
+                        <span class="text-[11px] text-slate-400 font-medium">Atualizado: ${configDate(l.atualizado_em)}</span>
+                    </div>
                 </div>
 
-                <form onsubmit="salvarListaIsentos(event, '${configEsc(l.chave)}')" class="space-y-3">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                        <label class="block">
-                            <span class="config-label text-indigo-700">Visão Geral (Diretoria / Todas Filiais)</span>
-                            <textarea name="geral" rows="2" class="config-field text-xs">${configEsc(geral)}</textarea>
-                        </label>
-                        <label class="block">
-                            <span class="config-label text-sky-700">Filial 1 · Matriz SC</span>
-                            <textarea name="filial_1" rows="2" class="config-field text-xs">${configEsc(f1)}</textarea>
-                        </label>
-                        <label class="block">
-                            <span class="config-label text-purple-700">Filial 6 · PR</span>
-                            <textarea name="filial_6" rows="2" class="config-field text-xs">${configEsc(f6)}</textarea>
-                        </label>
+                <form onsubmit="salvarListaIsentos(event, '${configEsc(l.chave)}')" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-black text-indigo-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-building text-indigo-600"></i> Visão Geral / Diretoria
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-700">${geralArr.length} e-mail(s)</span>
+                            </div>
+                            <textarea name="geral" rows="3" class="config-field text-xs font-mono bg-white">${configEsc(geralArr.join(', '))}</textarea>
+                            <p class="text-[10px] text-indigo-500 mt-1.5">Recebe todos os clientes isentos de ST das duas filiais.</p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-sky-50/50 border border-sky-100">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-black text-sky-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-warehouse text-sky-600"></i> Filial 1 · Matriz SC
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-700">${f1Arr.length} e-mail(s)</span>
+                            </div>
+                            <textarea name="filial_1" rows="3" class="config-field text-xs font-mono bg-white">${configEsc(f1Arr.join(', '))}</textarea>
+                            <p class="text-[10px] text-sky-500 mt-1.5">Recebe apenas a carteira de clientes de Santa Catarina.</p>
+                        </div>
+
+                        <div class="p-4 rounded-2xl bg-purple-50/50 border border-purple-100">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-xs font-black text-purple-900 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-truck text-purple-600"></i> Filial 6 · PR
+                                </span>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">${f6Arr.length} e-mail(s)</span>
+                            </div>
+                            <textarea name="filial_6" rows="3" class="config-field text-xs font-mono bg-white">${configEsc(f6Arr.join(', '))}</textarea>
+                            <p class="text-[10px] text-purple-500 mt-1.5">Recebe apenas a carteira de clientes do Paraná.</p>
+                        </div>
                     </div>
-                    <div class="flex justify-end pt-2">
-                        <button type="submit" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
+
+                    <div class="flex items-center justify-between pt-2">
+                        <span class="text-xs text-slate-400">Modificado por <b>${configEsc(l.atualizado_por || '—')}</b></span>
+                        <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold transition flex items-center gap-2 shadow-sm">
                             <i class="fa-solid fa-floppy-disk"></i> Salvar Destinatários Clientes Isentos
                         </button>
                     </div>
@@ -297,25 +592,63 @@ function renderListasEmails() {
             `;
         }
 
-        const emailsStr = Array.isArray(rawEmails) ? rawEmails.join(', ') : String(rawEmails);
-        const count = Array.isArray(rawEmails) ? rawEmails.length : (emailsStr ? emailsStr.split(',').length : 0);
+        const emailsArr = Array.isArray(rawEmails) ? rawEmails : (typeof rawEmails === 'string' && rawEmails ? rawEmails.split(',').map(s => s.trim()).filter(Boolean) : []);
+        const emailsStr = emailsArr.join(', ');
+        const count = emailsArr.length;
+
+        // Preview dos primeiros chips visuais de e-mails
+        const chipsHtml = emailsArr.length > 0
+            ? emailsArr.slice(0, 4).map(em => `
+                <span class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                    <i class="fa-solid fa-at text-[9px] text-slate-400"></i>${configEsc(em)}
+                </span>
+            `).join('') + (emailsArr.length > 4 ? `<span class="px-2 py-1 text-[11px] text-slate-400 font-bold">+${emailsArr.length - 4} outros</span>` : '')
+            : '<span class="text-xs text-slate-400 italic">Nenhum e-mail cadastrado</span>';
 
         return `
-        <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs flex flex-col justify-between">
+        <div class="rounded-3xl border ${meta.borda} bg-white p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
             <div>
-                <div class="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
-                    <h4 class="font-bold text-sm text-slate-800">${configEsc(l.titulo)}</h4>
-                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">${count} e-mail(s)</span>
+                <div class="flex items-start justify-between gap-3 pb-3 mb-3 border-b border-slate-100">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-2xl ${meta.iconBg} flex items-center justify-center font-bold shadow-xs">
+                            <i class="${meta.icon}"></i>
+                        </div>
+                        <div>
+                            <div class="flex items-center gap-2">
+                                <h4 class="font-extrabold text-sm text-slate-800 leading-tight">${configEsc(l.titulo)}</h4>
+                            </div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${meta.badgeBg}">${meta.badgeNome}</span>
+                                <span class="text-[10px] text-slate-400">Chave: <code class="font-mono text-slate-600">${configEsc(l.chave)}</code></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-1.5">
+                        <span class="px-2.5 py-1 rounded-xl text-xs font-black bg-slate-100 text-slate-700">${count} e-mail(s)</span>
+                        <button type="button" onclick="copiarEmailsLista('${configEsc(l.chave)}')" class="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs transition" title="Copiar e-mails">
+                            <i class="fa-regular fa-copy"></i>
+                        </button>
+                    </div>
                 </div>
-                <p class="text-xs text-slate-400 mb-3">${configEsc(l.descricao)}</p>
+
+                <p class="text-xs text-slate-500 leading-relaxed mb-3">${configEsc(l.descricao)}</p>
+
+                <!-- Chips Visuais -->
+                <div class="flex flex-wrap items-center gap-1.5 mb-3.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    ${chipsHtml}
+                </div>
 
                 <form onsubmit="salvarListaSimples(event, '${configEsc(l.chave)}')">
                     <label class="block mb-3">
-                        <span class="config-label">E-mails (separados por vírgula)</span>
+                        <div class="flex items-center justify-between mb-1">
+                            <span class="config-label mb-0">E-mails (separados por vírgula)</span>
+                            <span class="text-[10px] text-slate-400">Separe múltiplos com vírgula</span>
+                        </div>
                         <textarea name="emails" rows="3" class="config-field text-xs font-mono" placeholder="email1@empresa.com, email2@empresa.com">${configEsc(emailsStr)}</textarea>
                     </label>
-                    <div class="flex items-center justify-between pt-1">
-                        <span class="text-[10px] text-slate-400">Modificado por ${configEsc(l.atualizado_por || '—')}</span>
+
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <span class="text-[10px] text-slate-400">Modificado por <b>${configEsc(l.atualizado_por || '—')}</b></span>
                         <button type="submit" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition flex items-center gap-1.5 shadow-sm">
                             <i class="fa-solid fa-floppy-disk"></i> Salvar Lista
                         </button>

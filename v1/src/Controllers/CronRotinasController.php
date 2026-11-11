@@ -3026,23 +3026,33 @@ class CronRotinasController
             $this->pdo->commit();
             $durTotal = round(microtime(true) - $inicio, 2);
 
-            // Notificação por e-mail opcional se configurado
+            // Notificação por e-mail: mescla config_email_listas ('custo_gerencial') com parâmetros do job
+            $emails = function_exists('getEmails') ? getEmails('custo_gerencial') : (class_exists('\EmailListas') ? \EmailListas::get('custo_gerencial') : []);
+            if (!is_array($emails)) $emails = !empty($emails) ? [$emails] : [];
+
             $notif = $params['email_notificacao'] ?? $params['notificar_email'] ?? '';
-            if (!empty($notif) && ($afetados1 > 0 || !empty($params['notificar_sempre']))) {
-                $emails = is_array($notif) ? $notif : array_filter(array_map('trim', explode(',', (string)$notif)));
-                if (!empty($emails)) {
-                    $htmlAviso = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
-                        . "<h3 style='color:#059669;'>✅ Custo Gerencial Atualizado com Sucesso</h3>"
-                        . "<p>A rotina automática de atualização de custo gerencial (DOX #5) foi executada em <b>" . date('d/m/Y H:i:s') . "</b>.</p>"
-                        . "<ul>"
-                        . "<li><b>Itens Atualizados (Estoque Filial):</b> {$afetados1}</li>"
-                        . "<li><b>Registros no Histórico:</b> {$afetados2}</li>"
-                        . "<li><b>Registros de Auditoria:</b> {$afetados3}</li>"
-                        . "<li><b>Sincronizações Filial 6 (PR):</b> {$afetados4}</li>"
-                        . "<li><b>Duração Total:</b> {$durTotal}s</li>"
-                        . "</ul></div>";
-                    $this->enviarEmailNotificacao($emails, "Custo Gerencial Atualizado: {$afetados1} itens", $htmlAviso);
+            if (!empty($notif)) {
+                $extras = is_array($notif) ? $notif : array_filter(array_map('trim', explode(',', (string)$notif)));
+                foreach ($extras as $em) {
+                    $em = strtolower(trim((string)$em));
+                    if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $emails, true)) {
+                        $emails[] = $em;
+                    }
                 }
+            }
+
+            if (!empty($emails) && ($afetados1 > 0 || !empty($params['notificar_sempre']))) {
+                $htmlAviso = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
+                    . "<h3 style='color:#059669;'>✅ Custo Gerencial Atualizado com Sucesso</h3>"
+                    . "<p>A rotina automática de atualização de custo gerencial (DOX #5) foi executada em <b>" . date('d/m/Y H:i:s') . "</b>.</p>"
+                    . "<ul>"
+                    . "<li><b>Itens Atualizados (Estoque Filial):</b> {$afetados1}</li>"
+                    . "<li><b>Registros no Histórico:</b> {$afetados2}</li>"
+                    . "<li><b>Registros de Auditoria:</b> {$afetados3}</li>"
+                    . "<li><b>Sincronizações Filial 6 (PR):</b> {$afetados4}</li>"
+                    . "<li><b>Duração Total:</b> {$durTotal}s</li>"
+                    . "</ul></div>";
+                $this->enviarEmailNotificacao($emails, "Custo Gerencial Atualizado: {$afetados1} itens", $htmlAviso);
             }
 
             return [
@@ -3136,7 +3146,9 @@ class CronRotinasController
             ];
 
             // 4. Destinatários de notificação
-            $emails = [];
+            $emails = function_exists('getEmails') ? getEmails('custo_gerencial') : (class_exists('\EmailListas') ? \EmailListas::get('custo_gerencial') : []);
+            if (!is_array($emails)) $emails = !empty($emails) ? [$emails] : [];
+
             $emailsExtrasRaw = $parametros['email_notificacao'] ?? $parametros['notificar_email'] ?? $parametros['emails'] ?? '';
             if (!empty($emailsExtrasRaw)) {
                 $extras = is_array($emailsExtrasRaw) ? $emailsExtrasRaw : explode(',', (string)$emailsExtrasRaw);
