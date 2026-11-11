@@ -95,6 +95,13 @@ class EmailListas {
                 'alan@nutricionalbr.com',
                 'robson@nutricionalbr.com'
             ],
+
+            // 8.2 LIMITE DE CRÉDITO MENSAL (DOX #6)
+            'limite_credito' => [
+                'alan@nutricionalbr.com',
+                'robson@nutricionalbr.com',
+                'financeiro@nutricionalbr.com'
+            ],
             
             // 9. DEFAULT
             'default' => [

@@ -76,6 +76,9 @@ class CronRotinasController
             case 'alerta_certificado':
                 return $this->executarAlertaCertificado($params, $usuario, $ip);
 
+            case 'limite_credito_mensal':
+                return $this->executarLimiteCreditoMensal($params, $usuario, $ip);
+
             default:
                 return ['success' => false, 'message' => "Comando '$comando' não implementado"];
         }
@@ -306,6 +309,48 @@ class CronRotinasController
                     ];
                 } catch (\Throwable $e) {
                     return ['success' => false, 'message' => 'Erro: ' . $e->getMessage(), 'checks' => [['etapa' => 'Consulta Representantes', 'status' => 'error', 'detalhe' => $e->getMessage()]]];
+                }
+
+            case 'limite_credito_mensal':
+                try {
+                    $kpis = $this->pdo->query("
+                        SELECT 
+                            COUNT(*) AS total_analisados,
+                            COUNT(CASE WHEN ABS(COALESCE(limite_atual, 0) - novo_limite_sugerido) > 0.99 THEN 1 END) AS total_com_alteracao,
+                            COUNT(CASE WHEN novo_limite_sugerido > COALESCE(limite_atual, 0) + 0.99 THEN 1 END) AS total_aumentos,
+                            COUNT(CASE WHEN novo_limite_sugerido < COALESCE(limite_atual, 0) - 0.99 THEN 1 END) AS total_reducoes,
+                            ROUND(COALESCE(SUM(CASE WHEN ABS(COALESCE(limite_atual, 0) - novo_limite_sugerido) > 0.99 THEN (novo_limite_sugerido - COALESCE(limite_atual, 0)) ELSE 0 END), 0), 2) AS impacto_liquido
+                        FROM analise_financeira_clientes
+                    ")->fetch(\PDO::FETCH_ASSOC);
+
+                    $emails = function_exists('getEmails') ? getEmails('limite_credito') : (class_exists('\EmailListas') ? \EmailListas::get('limite_credito') : []);
+                    if (empty($emails)) {
+                        $emails = ['alan@nutricionalbr.com', 'robson@nutricionalbr.com', 'financeiro@nutricionalbr.com'];
+                    }
+
+                    $checks[] = [
+                        'etapa' => 'View analise_financeira_clientes',
+                        'status' => 'ok',
+                        'detalhe' => "{$kpis['total_analisados']} clientes analisados | {$kpis['total_com_alteracao']} com alteração ({$kpis['total_aumentos']} aumentos, {$kpis['total_reducoes']} reduções)."
+                    ];
+                    $checks[] = [
+                        'etapa' => 'Destinatários do Relatório Executivo',
+                        'status' => 'ok',
+                        'detalhe' => 'E-mails configurados: ' . implode(', ', (array)$emails)
+                    ];
+
+                    return [
+                        'success' => true,
+                        'message' => "Simulação concluída com sucesso: {$kpis['total_com_alteracao']} clientes seriam atualizados no ERP EMA. Impacto líquido: R$ " . number_format((float)$kpis['impacto_liquido'], 2, ',', '.') . '.',
+                        'checks' => $checks,
+                        'detalhes' => $kpis
+                    ];
+                } catch (\Throwable $e) {
+                    return [
+                        'success' => false,
+                        'message' => 'Erro na simulação de limite de crédito: ' . $e->getMessage(),
+                        'checks' => [['etapa' => 'Simulação Limite Crédito', 'status' => 'error', 'detalhe' => $e->getMessage()]]
+                    ];
                 }
 
             default:
@@ -2355,6 +2400,87 @@ class CronRotinasController
         } catch (\Exception $e) {
             error_log("Erro ao enviar email: " . $e->getMessage());
             return false;
+        }
+    }
+
+    /**
+     * Executa a rotina mensal de recálculo de limite de crédito dos clientes (DOX #6 Aposentado)
+     */
+    private function executarLimiteCreditoMensal(array $params, string $usuario, string $ip): array
+    {
+        try {
+            $controller = new \Nutricional\Controllers\FinanceiroLimiteCreditoController();
+
+            // 1. Obter e-mails configurados
+            $emails = function_exists('getEmails') ? getEmails('limite_credito') : (class_exists('\EmailListas') ? \EmailListas::get('limite_credito') : []);
+            if (empty($emails)) {
+                $emails = ['alan@nutricionalbr.com', 'robson@nutricionalbr.com', 'financeiro@nutricionalbr.com'];
+            }
+
+            // 2. Gerar HTML do relatório executivo
+            $html = $controller->gerarHtmlRelatorio();
+
+            // 3. Disparar e-mail de aviso / notificação
+            $assunto = 'Relatório Mensal: Alteração de Limite de Crédito - ' . date('m/Y');
+            $emailEnviado = $this->enviarEmailNotificacao($emails, $assunto, $html);
+
+            // 4. Aplicar atualização no banco de dados ERP EMA (se nao for dry-run)
+            $dryRun = !empty($params['dry_run']) || !empty($params['simular']);
+            $totalAtualizados = 0;
+
+            if (!$dryRun) {
+                $this->pdo->beginTransaction();
+                $sqlUpdate = "
+                    UPDATE cliente c
+                    SET valorlimitecredito = sub.novo_limite_sugerido
+                    FROM analise_financeira_clientes sub
+                    WHERE c.idcliforemp = sub.cod_cliente
+                      AND ABS(COALESCE(sub.limite_atual, 0) - sub.novo_limite_sugerido) > 0.99
+                ";
+                $totalAtualizados = $this->pdo->exec($sqlUpdate);
+
+                // Registrar operação na timeline do chamado #33
+                $stmtOp = $this->pdo->prepare("
+                    INSERT INTO chamado_operacao (
+                        idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes
+                    ) VALUES (
+                        33,
+                        (SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = 33),
+                        :descricao,
+                        NOW(),
+                        :usuario,
+                        2,
+                        'execucao',
+                        :detalhes
+                    )
+                ");
+                $stmtOp->execute([
+                    'descricao' => "Cron Mensal: Limite de Credito Atualizado ($totalAtualizados clientes)",
+                    'usuario' => $usuario,
+                    'detalhes' => "Execucao automatica mensal do Cron Portal Nutricional (Substituicao DOX #6). Clientes alterados: {$totalAtualizados}. Relatorio executivo enviado para: " . implode(', ', (array)$emails) . "."
+                ]);
+
+                $this->pdo->commit();
+            }
+
+            return [
+                'success' => true,
+                'message' => $dryRun ? "Simulação concluída. {$totalAtualizados} clientes com alteração." : "Rotina mensal executada com sucesso! {$totalAtualizados} clientes atualizados no ERP EMA.",
+                'detalhes' => [
+                    'clientes_atualizados' => $totalAtualizados,
+                    'email_enviado' => $emailEnviado,
+                    'destinatarios' => $emails,
+                    'modo' => $dryRun ? 'simulacao' : 'producao'
+                ]
+            ];
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return [
+                'success' => false,
+                'message' => 'Erro ao executar rotina mensal de limite de crédito: ' . $e->getMessage()
+            ];
         }
     }
 

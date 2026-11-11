@@ -2,7 +2,11 @@
 
 ## 1. Contexto & Chamado
 - **Chamado:** #33 - `[CRITICO] PROJETO: Migracao e Aposentadoria do Portal DOX (Ema Studio)`
-- **Objetivo Concluído:** Absorção e aposentadoria definitiva do procedimento DOX nº 6 (**"ALTERA LIMITE CREDITO DO CLIENTE"**), com correção da view `analise_financeira_clientes`, criação de backend Slim 4 com recálculo automático (+60% Bom, -30% Ruim, piso R$ 200), pré-visualização/envio de relatório executivo por e-mail e aplicação de lote no ERP EMA.
+- **Objetivo Concluído:** Absorção e aposentadoria definitiva do procedimento DOX nº 6 (**"ALTERA LIMITE CREDITO DO CLIENTE"**):
+  - Correção da view `analise_financeira_clientes` (removido bug histórico da trava `idcliforemp = 15144`).
+  - Módulo nativo no Portal Nutricional com recálculo automático (+60% Bom, -30% Ruim, piso R$ 200).
+  - Registro de rotina automatizada de Cron mensal (`limite_credito_mensal`) todo dia 1 às 20:00 (`0 20 1 * *`), substituindo 100% o agendamento do DOX (Agendamento ID 308).
+  - Gerenciamento de e-mails em `config_email_listas` (chave `limite_credito`).
 
 ---
 
@@ -10,38 +14,33 @@
 
 ### A. Banco de Dados (PostgreSQL)
 1. **View `analise_financeira_clientes`:**
-   - Corrigido bug crítico herdado do DOX: removido filtro estático `AND receber.idcliforemp = 15144` que limitava o cálculo a um único cliente.
-   - Preservadas exatamente as 28 colunas ordinais e regras de negócio:
-     - Títulos quitados/abertos status 2, 3 e 4.
-     - Vendas por boleto (`idmetodo = 6`).
-     - Tratamento para `data_ult_cobranca` nula ou `'1900-01-01'`.
-     - Regra de classificação BOM (atraso <= 5 dias -> média + 60%) e RUIM (atraso > 5 dias -> média - 30%).
-     - Piso mínimo garantido de R$ 200,00 para todos os clientes (incluindo inativos e sem compras).
-2. **Tabela `sistema_modulos`:**
-   - Cadastrado módulo ID 101 (`limite-credito`), setor Financeiro.
-   - Permissões concedidas para administradores (IDs 1, 2 e 5).
-3. **Chamado #33 & Timeline `chamado_operacao`:**
-   - Atualizado status, versão de entrega (`v3.7 (Limite Credito)`), solução técnica e inserida operação de timeline nº 3.
+   - Mantidas todas as 28 colunas ordinais e regras de negócio.
+   - 9.437 clientes analisados em ~1s.
+2. **Tabela `cron_jobs`:**
+   - Cadastrado job `Limite de Crédito Mensal (DOX #6)` (comando: `limite_credito_mensal`, schedule: `0 20 1 * *`, categoria: 4 - Financeiro, ativo: `true`, próxima execução: `01/12/2026 20:00:00`).
+3. **Tabela `config_email_listas`:**
+   - Chave `limite_credito` criada para armazenar os 3 e-mails destinatários.
+4. **Chamado #33 & Timeline `chamado_operacao`:**
+   - Registro de operações e auditoria técnica.
 
-### B. Backend API (`v1/src/Controllers/FinanceiroLimiteCreditoController.php` & `v1/routes/api.php`)
-- `GET /v1/financeiro/limite-credito/analise`: Retorna KPIs rápidos e lista paginada com buscas e filtros.
-- `GET /v1/financeiro/limite-credito/preview-email`: Retorna o relatório executivo em HTML (design responsivo padrão DOX modernizado).
-- `POST /v1/financeiro/limite-credito/enviar-email`: Disparo de e-mail via PHPMailer institucional com destinatários configuráveis.
-- `POST /v1/financeiro/limite-credito/aplicar`: Atualiza `cliente.valorlimitecredito` no ERP EMA para clientes selecionados ou em lote, registrando auditoria.
+### B. Backend & Crons (`v1/src/Controllers/`)
+- `CronRotinasController.php`: Rotina de execução (`executarLimiteCreditoMensal`) e teste/simulação Dry-run (`testarRotina('limite_credito_mensal')`).
+- `CronController.php`: Sincronização em `$jobsPadrao`.
+- `FinanceiroLimiteCreditoController.php`: Método `gerarHtmlRelatorio()` exposto publicamente para o Cron.
+- `email_listas.php`: Chave `limite_credito` registrada como fallback.
 
-### C. Frontend (`portal/modules/financeiro-limite-credito.php` & `portal/assets/js/financeiro-limite-credito.js`)
-- Interface moderna Alpine.js + Tailwind CSS.
-- Cards de KPIs no topo (Total Clientes, Com Alteração, Aumentos, Reduções e Impacto Líquido).
-- Tabela zebrada com seleção individual/geral, badges de classificação de risco e status da alteração.
-- Modal de Pré-visualização e envio de Relatório Executivo por E-mail.
-- Botão seguro de Aplicação de Limite no ERP EMA com confirmação via SweetAlert2.
+### C. Frontend (`portal/modules/` & `portal/assets/js/`)
+- `portal/modules/financeiro-limite-credito.php` e `portal/assets/js/financeiro-limite-credito.js`.
 
 ---
 
 ## 3. Arquivos para Deploy FTP
 ```
 v1/src/Controllers/FinanceiroLimiteCreditoController.php
+v1/src/Controllers/CronController.php
+v1/src/Controllers/CronRotinasController.php
 v1/routes/api.php
+email_listas.php
 portal/modules/financeiro-limite-credito.php
 portal/assets/js/financeiro-limite-credito.js
 ```

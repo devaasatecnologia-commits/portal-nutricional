@@ -298,7 +298,7 @@ class FinanceiroLimiteCreditoController
     /**
      * Gera o HTML completo do relatório de alterações
      */
-    private function gerarHtmlRelatorio(): string
+    public function gerarHtmlRelatorio(): string
     {
         $stmt = $this->pdo->query("
             SELECT 

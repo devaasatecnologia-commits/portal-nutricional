@@ -1062,6 +1062,7 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
             ['Bonificações Flex', 'Processa débito automático de notas bonificadas na API Mercos Flex', 'bonificacoes_flex', '0 22 * * *', $catFin],
             ['Alerta Certificado Digital', 'Verifica vencimento dos certificados digitais NFe das filiais ativas', 'alerta_certificado', '0 8 * * 1', $catProc],
             ['Atualizar Cubo de Vendas', 'Atualiza a materialized view / cubo de vendas no banco de dados', 'refresh_cubo_vendas', '0 */2 * * *', $catProc],
+            ['Limite de Crédito Mensal (DOX #6)', 'Recálculo mensal de limite de crédito dos clientes, envio de relatório por e-mail e atualização de cliente.valorlimitecredito no ERP EMA', 'limite_credito_mensal', '0 20 1 * *', $catFin],
         ];
 
         $insStmt = $this->pdo->prepare("
