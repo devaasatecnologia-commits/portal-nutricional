@@ -1,6 +1,8 @@
-# Continuation Token
+# CONTINUATION TOKEN ATUAL
 
-Token ativo atual: `docs/tokens/CONTINUATION-CHAMADOS-EXPANSAO.md`
-Data/Hora: 10/11/2026 - 17:40
-Assunto: Central de Chamados Multi-Sistemas Corporativa, Dashboard & KPIs Executivos, White-Label DevOps/TI e Chamados #30 a #35 (Concluídos)
-Status: Concluído, 100% Validado e Comitado
+> **Última atualização:** 11/11/2026
+> **Token ativo:** [CONTINUATION-2026-11-11-LIMITE-CREDITO-DOX.md](tokens/CONTINUATION-2026-11-11-LIMITE-CREDITO-DOX.md)
+> **Módulo:** Financeiro / Limite de Crédito (Absorção DOX #6)
+> **Status:** Concluído, testado e comitado.
+
+Consulte o arquivo apontado acima para o resumo detalhado da entrega, arquitetura e arquivos para deploy FTP.

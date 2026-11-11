@@ -716,6 +716,17 @@ $protected->group('/financeiro', function ($group) {
 })->add(new ModulePermissionMiddleware('financeiro'));
 
         // ======================================================================
+        // FINANCEIRO - ALTERAÇÃO DE LIMITES DE CRÉDITO (MIGRAÇÃO DOX #6)
+        // ======================================================================
+$protected->group('/financeiro/limite-credito', function ($group) {
+    $controller = new \Nutricional\Controllers\FinanceiroLimiteCreditoController();
+    $group->get('/analise', [$controller, 'analise']);
+    $group->get('/preview-email', [$controller, 'previewEmail']);
+    $group->post('/enviar-email', [$controller, 'enviarEmail']);
+    $group->post('/aplicar', [$controller, 'aplicar']);
+})->add(new ModulePermissionMiddleware(['financeiro', 'limite-credito', 'analise_carteira']));
+
+        // ======================================================================
         // RECEITA FEDERAL - CONSULTA CNPJ
         // ======================================================================
 $protected->post('/receita/consultar', [new ReceitaController(), 'consultar']);
