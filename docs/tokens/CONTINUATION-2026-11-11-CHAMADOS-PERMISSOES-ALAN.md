@@ -72,10 +72,10 @@ docs/CONTINUATION_TOKEN.md
 | `portal/modules/admin/crons.php` | `portal/modules/admin/crons.php` | Proteção contra `null` em `innerHTML`/`textContent` no dashboard de crons e auditoria |
 | `portal/modules/admin/components/header.php` | `portal/modules/admin/components/header.php` | Normalização de query parameters na montagem da URL em `apiFetch` |
 | `portal/modules/admin/components/footer.php` | `portal/modules/admin/components/footer.php` | Normalização de query parameters na montagem da URL em `apiFetch` |
-| `portal/modules/chamados.php` | `portal/modules/chamados.php` | Isolamento visual: solicitante vê cards limpos sem tabela duplicada; alternador apenas para admin |
-| `portal/assets/js/chamados.js` | `portal/assets/js/chamados.js` | Filial dinâmica do usuário no modal novo e binding de sistemas/atendentes |
+| `portal/modules/chamados.php` | `portal/modules/chamados.php` | Select dinâmico de filial via template Alpine; só exibe filiais liberadas do usuário (Tales só Filial 6) |
+| `portal/assets/js/chamados.js` | `portal/assets/js/chamados.js` | Estado reativo de filiais liberadas e inicialização com a filial permitida |
 | `portal/assets/js/verbas-flex.js` | `portal/assets/js/verbas-flex.js` | Inicialização automática da filial nativa (Filial 6) com persistência |
-| `v1/src/Controllers/ChamadosController.php` | `v1/src/Controllers/ChamadosController.php` | Filial padrão do usuário, novos sistemas (`SUPORTE_COMERCIAL`, `RELATORIOS`), endpoint `/assumir` |
+| `v1/src/Controllers/ChamadosController.php` | `v1/src/Controllers/ChamadosController.php` | Endpoint `/dashboard` retorna `filiais` filtradas por `dash_filiais` e validação estrita em `/criar` |
 | `v1/src/Controllers/VerbasFlexController.php` | `v1/src/Controllers/VerbasFlexController.php` | `filial_padrao` no contexto e fallback automático para filial do usuário |
 | `v1/src/Controllers/CronRotinasController.php` | `v1/src/Controllers/CronRotinasController.php` | Implementação do comando `custo_gerencial_auto` e simulador Dry-Run |
 | `v1/routes/api.php` | `v1/routes/api.php` | Rota POST `/v1/chamados/assumir` |
