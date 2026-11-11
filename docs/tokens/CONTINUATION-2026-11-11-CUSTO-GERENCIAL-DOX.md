@@ -30,10 +30,14 @@
   - Tabela responsiva com badges visuais de status, duração precisa e dados do disparador.
   - Modal técnico de Auditoria ampla (800px) com métricas de tempo, usuário, IP, relatório em HTML e payload JSON formatado com botão "Copiar JSON".
 
-### 1.4. Unificação do Módulo Crons no Portal
-- `portal/modules/crons.php` configurado com redirecionamento HTTP 302 + meta refresh + `window.location.replace` para `portal/modules/admin/crons.php`.
-- `sistema_modulos` atualizado para `/portal/modules/admin/crons.php`.
-- `portal/index.php` atualizado para resolver o redirecionamento com badge visual `ADMIN`.
+### 1.5. Correção de Frontend e Alinhamento Dispatcher Remoto
+- **Correção de Frontend em `portal/modules/admin/crons.php`:** Adicionada guarda defensiva `if (!container) return;` nas funções `atualizarRecentes()` e `atualizarProximas()`. Isso eliminou a exceção JavaScript `Cannot set properties of null (setting 'innerHTML')` ao abrir o dashboard.
+- **Diagnóstico Preciso da Execução #455 (`custo_gerencial_auto não implementado`):**
+  - O banco de dados PostgreSQL é compartilhado com a produção. O dispatcher remoto do cPanel (`172.71.238.29 via curl`) dispara o cron a cada minuto.
+  - Como o arquivo `CronRotinasController.php` foi criado localmente e ainda não havia sido enviado via FTP para o cPanel, o servidor de produção executou a versão antiga onde a rotina não existia.
+  - Teste local comprovou execução #456 com **100% de Sucesso em 0.02s**.
+  - Assim que o arquivo for subido via FTP para o servidor web, as execuções do cPanel passarão a retornar sucesso automaticamente.
+- **Chamado #33:** Operação #6 registrada formalmente na timeline da tabela `chamado_operacao`.
 
 ---
 
