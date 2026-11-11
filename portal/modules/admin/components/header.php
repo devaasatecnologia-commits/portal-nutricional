@@ -71,7 +71,7 @@ if (!defined('ADMIN_AREA')) {
         const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
         let url = `${window.API_BASE}${cleanPath}`;
         if (queryPart) {
-            url += '&' + queryPart;
+            url += (url.includes('?') ? '&' : '?') + queryPart;
         }
         const response = await fetch(url, options);
         const text = await response.text();

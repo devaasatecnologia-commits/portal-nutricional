@@ -53,7 +53,7 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     const cleanPath = cleanEndpoint.startsWith('/') ? cleanEndpoint : '/' + cleanEndpoint;
     let url = `${API_BASE}${cleanPath}`;
     if (queryPart) {
-        url += '&' + queryPart;
+        url += (url.includes('?') ? '&' : '?') + queryPart;
     }
 
     const response = await fetch(url, options);

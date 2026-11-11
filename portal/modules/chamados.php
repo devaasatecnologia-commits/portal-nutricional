@@ -212,8 +212,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <option value="baixa">🟢 Baixa</option>
                 </select>
 
-                <!-- Alternador Kanban / Lista / Dashboard -->
-                <div class="bg-slate-100 p-0.5 rounded-xl border border-slate-200 flex items-center">
+                <!-- Alternador Kanban / Lista / Dashboard (Somente para Atendentes / Admin) -->
+                <div x-show="usuario && usuario.pode_ver_todos" class="bg-slate-100 p-0.5 rounded-xl border border-slate-200 flex items-center">
                     <button @click="modoExibicao = 'kanban'" class="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition"
                             :class="modoExibicao === 'kanban' ? 'bg-white text-indigo-700 shadow-sm' : 'text-slate-500 hover:text-slate-800'">
                         <i class="fa-solid fa-table-columns"></i>
@@ -511,8 +511,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- CONTEÚDO PRINCIPAL: MODO LISTA -->
-    <div x-show="modoExibicao === 'lista'" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
+    <!-- CONTEÚDO PRINCIPAL: MODO LISTA (ADMIN / SERVICE DESK) -->
+    <div x-show="usuario && usuario.pode_ver_todos && modoExibicao === 'lista'" class="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
         <div class="overflow-x-auto">
             <table class="w-full text-left border-collapse">
                 <thead>

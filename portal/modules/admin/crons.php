@@ -748,16 +748,27 @@ async function atualizarDashboard() {
         const data = await apiFetch(`/cron/dashboard?dias=${periodo}`, 'GET');
         Swal.close();
 
-        document.getElementById('totalJobs').textContent = data.stats?.total_jobs || 0;
-        document.getElementById('jobsAtivos').textContent = data.stats?.jobs_ativos || 0;
-        document.getElementById('execucoesHoje').textContent = data.stats?.execucoes_hoje || 0;
-        document.getElementById('falhasHoje').textContent = data.stats?.falhas_hoje || 0;
+        const elTotal = document.getElementById('totalJobs');
+        if (elTotal) elTotal.textContent = data?.stats?.total_jobs ?? 0;
+        const elAtivos = document.getElementById('jobsAtivos');
+        if (elAtivos) elAtivos.textContent = data?.stats?.jobs_ativos ?? 0;
+        const elExecHoje = document.getElementById('execucoesHoje');
+        if (elExecHoje) elExecHoje.textContent = data?.stats?.execucoes_hoje ?? 0;
+        const elFalhasHoje = document.getElementById('falhasHoje');
+        if (elFalhasHoje) elFalhasHoje.textContent = data?.stats?.falhas_hoje ?? 0;
 
-        if (data.grafico && data.grafico.length > 0) atualizarGrafico(data.grafico);
-        if (data.proximas) atualizarProximas(data.proximas);
-        if (data.recentes) atualizarRecentes(data.recentes);
+        if (data?.grafico && data.grafico.length > 0) {
+            try { atualizarGrafico(data.grafico); } catch (ge) { console.warn('Erro ao atualizar grafico:', ge); }
+        }
+        if (data?.proximas) {
+            try { atualizarProximas(data.proximas); } catch (pe) { console.warn('Erro ao atualizar proximas:', pe); }
+        }
+        if (data?.recentes) {
+            try { atualizarRecentes(data.recentes); } catch (re) { console.warn('Erro ao atualizar recentes:', re); }
+        }
     } catch (e) {
         Swal.close();
+        console.error('Falha ao carregar dashboard:', e);
         showError('Erro', 'Falha ao carregar dashboard: ' + e.message);
     }
 }
