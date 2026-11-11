@@ -18,6 +18,7 @@ class CronRotinasController
         'alerta_certificado'    => ['Alerta Certificado Digital', 'Verifica vencimento dos certificados digitais NFe das filiais'],
         'refresh_cubo_vendas'   => ['Atualizar Cubo de Vendas', 'Executa refresh_cubo_vendas() no banco'],
         'limite_credito_mensal' => ['Limite de Crédito Mensal (DOX #6)', 'Recálculo mensal de limite de crédito dos clientes e atualização no ERP EMA'],
+        'custo_gerencial_auto'  => ['Altera Custo Gerencial (DOX #5)', 'Sincronização automática do custo gerencial das filiais 1 e 6 com base no custo de compra mais recente'],
     ];
 
     private $pdo;
@@ -79,6 +80,9 @@ class CronRotinasController
 
             case 'limite_credito_mensal':
                 return $this->executarLimiteCreditoMensal($params, $usuario, $ip);
+
+            case 'custo_gerencial_auto':
+                return $this->executarCustoGerencialAuto($params, $usuario, $ip);
 
             default:
                 return ['success' => false, 'message' => "Comando '$comando' não implementado"];
@@ -369,6 +373,9 @@ class CronRotinasController
                         'checks' => [['etapa' => 'Simulação Limite Crédito', 'status' => 'error', 'detalhe' => $e->getMessage()]]
                     ];
                 }
+
+            case 'custo_gerencial_auto':
+                return $this->testarCustoGerencialAuto($parametros);
 
             default:
                 return [
@@ -752,6 +759,18 @@ class CronRotinasController
                 $controller = new \Nutricional\Controllers\FinanceiroLimiteCreditoController();
                 $htmlCorpo = $controller->gerarHtmlRelatorio();
                 $assunto = "[TESTE] Relatório Executivo Mensal: Alteração de Limite de Crédito - " . date('m/Y');
+                break;
+
+            case 'custo_gerencial_auto':
+                $htmlCorpo = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
+                    . "<h3 style='color:#059669;'>✅ [SIMULAÇÃO] Atualização Automática de Custo Gerencial</h3>"
+                    . "<p>Rotina executada com sucesso. Simulação de alinhamento entre Custo de Compra e Custo Gerencial.</p>"
+                    . "<ul>"
+                    . "<li><b>Filiais Monitoradas:</b> Filial 1 (SC) e Filial 6 (PR)</li>"
+                    . "<li><b>Periodicidade:</b> A cada 5 minutos</li>"
+                    . "<li><b>Tabelas de Auditoria:</b> item_historico e item_altera_custogerencial</li>"
+                    . "</ul></div>";
+                $assunto = "[TESTE] Alerta Automático: Atualização de Custo Gerencial";
                 break;
 
             default:
@@ -2478,6 +2497,17 @@ class CronRotinasController
                 $emails = ['alan@nutricionalbr.com', 'robson@nutricionalbr.com', 'financeiro@nutricionalbr.com'];
             }
 
+            $emailsExtrasRaw = $params['email_notificacao'] ?? $params['notificar_email'] ?? $params['emails'] ?? '';
+            if (!empty($emailsExtrasRaw)) {
+                $extras = is_array($emailsExtrasRaw) ? $emailsExtrasRaw : explode(',', (string)$emailsExtrasRaw);
+                foreach ($extras as $em) {
+                    $em = strtolower(trim((string)$em));
+                    if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $emails, true)) {
+                        $emails[] = $em;
+                    }
+                }
+            }
+
             // 2. Gerar HTML do relatório executivo
             $html = $controller->gerarHtmlRelatorio();
 
@@ -2570,5 +2600,581 @@ class CronRotinasController
         if (!$data) return '';
         $timestamp = strtotime($data);
         return date('d/m/Y', $timestamp);
+    }
+
+    /**
+     * Executa a rotina de sincronização de Custo Gerencial (DOX #5 Aposentado)
+     * Roda a cada 5 minutos.
+     * Primeiro verifica se houve alteração em ITEM_HISTORICO nos últimos 7 minutos.
+     * Se sim, executa os eventos 1 a 4. Se não, finaliza imediatamente (economia de recursos).
+     */
+    private function executarCustoGerencialAuto(array $params, string $usuario, string $ip): array
+    {
+        $inicio = microtime(true);
+        try {
+            // Evento 0: Verificação se houve alteração de custo compra nos últimos 7 minutos
+            $sqlExiste = "
+                SELECT 
+                  CASE WHEN EXISTS (
+                    SELECT 1 FROM ITEM_HISTORICO ih
+                    WHERE ih.datahora >= (NOW() - INTERVAL '7 minutes')
+                    AND ih.CUSTOCOMPRANOVO > 0
+                    AND ih.CUSTOCOMPRAANTERIOR <> ih.CUSTOCOMPRANOVO
+                    AND ih.datahora = (
+                      SELECT MAX(datahora) 
+                      FROM ITEM_HISTORICO 
+                      WHERE iditem = ih.iditem 
+                      AND idfilial = ih.idfilial
+                    )
+                  ) THEN 'S' ELSE 'N' END AS existe;
+            ";
+            $existe = $this->pdo->query($sqlExiste)->fetchColumn();
+
+            if ($existe !== 'S' && empty($params['forcar'])) {
+                $durMs = round((microtime(true) - $inicio) * 1000, 2);
+                return [
+                    'success' => true,
+                    'message' => "Nenhuma alteração recente de custo de compra (últimos 7 minutos). Custo gerencial está em dia ({$durMs}ms).",
+                    'detalhes' => [
+                        'alteracao_recente' => false,
+                        'itens_afetados' => 0,
+                        'duracao_ms' => $durMs
+                    ]
+                ];
+            }
+
+            // Inicia transação para executar os 4 eventos do DOX #5
+            $this->pdo->beginTransaction();
+
+            // Evento 1: UPDATE estoque_filial
+            $sql1 = "
+                UPDATE estoque_filial 
+                SET  
+                    custogerencial = dd.custogerencialnovo, 
+                    datahoraultimaatualizacao = dd.datahora,
+                    custogerencialanterior = dd.custogerencialanterior, 
+                    identificacaolocal = dd.usuario
+                FROM (
+                    SELECT DISTINCT 
+                        ih.idfilial AS cd_filial,
+                        ih.iditem AS cd_item,
+                        'AUTOMATICO'::character varying AS Usuario,
+                        CURRENT_TIMESTAMP AS datahora,
+                        COALESCE(
+                            (
+                                SELECT ih_ant.custogerencialnovo  
+                                FROM ITEM_HISTORICO ih_ant
+                                WHERE ih_ant.iditem = ih.iditem 
+                                AND ih_ant.idfilial = ih.idfilial
+                                AND ih_ant.custogerencialnovo > 0
+                                ORDER BY ih_ant.datahora DESC
+                                LIMIT 1
+                            ),
+                            CAST('0.00' AS numeric(5,2))
+                        ) AS custogerencialanterior,
+                        COALESCE(
+                            (
+                                SELECT ih1.custocompranovo 
+                                FROM ITEM_HISTORICO ih1
+                                WHERE ih1.iditem = ih.iditem
+                                AND ih1.idfilial = 1
+                                AND ih1.CUSTOCOMPRANOVO > 0
+                                ORDER BY ih1.datahora DESC
+                                LIMIT 1
+                            ),
+                            (
+                                SELECT ih2.custocompranovo  
+                                FROM ITEM_HISTORICO ih2
+                                WHERE ih2.iditem = ih.iditem 
+                                AND ih2.idfilial = ih.idfilial
+                                AND ih2.CUSTOCOMPRANOVO > 0
+                                ORDER BY ih2.datahora DESC
+                                LIMIT 1
+                            ),
+                            CAST('0.00' AS numeric(5,2))
+                        ) AS custogerencialnovo
+                    FROM item_historico ih
+                    JOIN ITEM i ON i.iditem = ih.iditem
+                    JOIN ESTOQUE_FILIAL ef ON ef.iditem = ih.iditem AND ef.idfilial = ih.idfilial
+                    WHERE i.INATIVO = 'N'
+                    AND ef.idfilial IN (1, 6)
+                    AND (
+                        SELECT MAX(ih3.datahora) 
+                        FROM ITEM_HISTORICO ih3
+                        WHERE ih3.iditem = ih.iditem 
+                        AND ih3.idfilial = ih.idfilial
+                        AND ih3.CUSTOCOMPRANOVO > 0 
+                        AND ih3.CUSTOCOMPRAANTERIOR <> ih3.CUSTOCOMPRANOVO
+                    ) > (
+                        SELECT COALESCE(MAX(ih4.datahora), CAST('2000-01-01' AS date))
+                        FROM ITEM_HISTORICO ih4
+                        WHERE ih4.iditem = ih.iditem  
+                        AND ih4.idfilial = ih.idfilial
+                        AND ih4.CUSTOGERENCIALNOVO > 0 
+                        AND ih4.CUSTOGERENCIALANTERIOR <> ih4.CUSTOGERENCIALNOVO
+                    )
+                    AND ih.datahora = (
+                        SELECT MAX(datahora)                 
+                        FROM ITEM_HISTORICO H
+                        WHERE H.iditem = ih.iditem               
+                        AND h.idfilial = ih.idfilial
+                    )
+                    AND COALESCE(
+                        (
+                            SELECT ih_ant.custogerencialnovo  
+                            FROM ITEM_HISTORICO ih_ant
+                            WHERE ih_ant.iditem = ih.iditem 
+                            AND ih_ant.idfilial = ih.idfilial
+                            AND ih_ant.custogerencialnovo > 0
+                            ORDER BY ih_ant.datahora DESC
+                            LIMIT 1
+                        ),
+                        CAST('0.00' AS numeric(5,2))
+                    ) IS DISTINCT FROM COALESCE(
+                        (
+                            SELECT ih1.custocompranovo 
+                            FROM ITEM_HISTORICO ih1
+                            WHERE ih1.iditem = ih.iditem
+                            AND ih1.idfilial = 1
+                            AND ih1.CUSTOCOMPRANOVO > 0
+                            ORDER BY ih1.datahora DESC
+                            LIMIT 1
+                        ),
+                        (
+                            SELECT ih2.custocompranovo  
+                            FROM ITEM_HISTORICO ih2
+                            WHERE ih2.iditem = ih.iditem 
+                            AND ih2.idfilial = ih.idfilial
+                            AND ih2.CUSTOCOMPRANOVO > 0
+                            ORDER BY ih2.datahora DESC
+                            LIMIT 1
+                        ),
+                        CAST('0.00' AS numeric(5,2))
+                    )
+                ) AS dd
+                WHERE estoque_filial.iditem = dd.cd_item
+                AND estoque_filial.idfilial = dd.cd_filial
+            ";
+            $afetados1 = $this->pdo->exec($sql1);
+
+            // Evento 2: INSERT item_historico
+            $sql2 = "
+                INSERT INTO public.item_historico (
+                    idempresa, idfilial, iditem, idhistorico, precoanterior, preconovo, 
+                    custoanterior, custonovo, usuario, datahora, origem, atualiza_tabela_preco, 
+                    perc_ipi, valor_custo_com_perc_inc, tipo_atu_preco_tabelas, 
+                    custogerencialanterior, custogerencialnovo, custocompraanterior, 
+                    percmargemanterior, percmargemnovo, percmarkupanterior, percmarkupnovo, 
+                    precominimoanterior, precominimonovo, \"data\", idtabela, 
+                    valorcustoobsoleto_old, valorcustoobsoleto_new, custocompranovo
+                )
+                SELECT 
+                    ih.idempresa,
+                    ih.idfilial,
+                    ih.iditem,
+                    (SELECT COALESCE(MAX(idhistorico), 0) + 1 FROM item_historico WHERE iditem = ih.iditem AND idfilial = ih.idfilial),
+                    0, 0, 0, 0,
+                    'AUTOMATICO'::character varying,
+                    CURRENT_TIMESTAMP,
+                    'C.G. Auto.'::character varying,
+                    'N', 0, 0, 0,
+                    COALESCE(
+                        (
+                            SELECT ih_ant.custogerencialnovo  
+                            FROM ITEM_HISTORICO ih_ant
+                            WHERE ih_ant.iditem = ih.iditem 
+                            AND ih_ant.idfilial = ih.idfilial
+                            AND ih_ant.custogerencialnovo > 0
+                            ORDER BY ih_ant.datahora DESC
+                            LIMIT 1
+                        ),
+                        CAST('0.00' AS numeric(5,2))
+                    ) AS custogerencialanterior,
+                    COALESCE(
+                        (
+                            SELECT ih1.custocompranovo 
+                            FROM ITEM_HISTORICO ih1
+                            WHERE ih1.iditem = ih.iditem
+                            AND ih1.idfilial = 1
+                            AND ih1.CUSTOCOMPRANOVO > 0
+                            ORDER BY ih1.datahora DESC
+                            LIMIT 1
+                        ),
+                        (
+                            SELECT ih2.custocompranovo  
+                            FROM ITEM_HISTORICO ih2
+                            WHERE ih2.iditem = ih.iditem 
+                            AND ih2.idfilial = ih.idfilial
+                            AND ih2.CUSTOCOMPRANOVO > 0
+                            ORDER BY ih2.datahora DESC
+                            LIMIT 1
+                        ),
+                        CAST('0.00' AS numeric(5,2))
+                    ) AS custogerencialnovo,
+                    0, 0, 0, 0, 0, 0, 0,
+                    CURRENT_DATE,
+                    0, 0, 0, 0
+                FROM item_historico ih
+                JOIN ITEM i ON i.iditem = ih.iditem
+                JOIN ESTOQUE_FILIAL ef ON ef.iditem = ih.iditem AND ef.idfilial = ih.idfilial
+                WHERE i.INATIVO = 'N'
+                AND ef.idfilial IN (1, 6)
+                AND (
+                    SELECT MAX(ih3.datahora) 
+                    FROM ITEM_HISTORICO ih3
+                    WHERE ih3.iditem = ih.iditem 
+                    AND ih3.idfilial = ih.idfilial
+                    AND ih3.CUSTOCOMPRANOVO > 0 
+                    AND ih3.CUSTOCOMPRAANTERIOR <> ih3.CUSTOCOMPRANOVO
+                ) > (
+                    SELECT COALESCE(MAX(ih4.datahora), CAST('2000-01-01' AS date))
+                    FROM ITEM_HISTORICO ih4
+                    WHERE ih4.iditem = ih.iditem  
+                    AND ih4.idfilial = ih.idfilial
+                    AND ih4.CUSTOGERENCIALNOVO > 0 
+                    AND ih4.CUSTOGERENCIALANTERIOR <> ih4.CUSTOGERENCIALNOVO
+                )
+                AND ih.datahora = (
+                    SELECT MAX(datahora)                 
+                    FROM ITEM_HISTORICO H
+                    WHERE H.iditem = ih.iditem               
+                    AND h.idfilial = ih.idfilial
+                )
+                AND COALESCE(
+                    (
+                        SELECT ih_ant.custogerencialnovo  
+                        FROM ITEM_HISTORICO ih_ant
+                        WHERE ih_ant.iditem = ih.iditem 
+                        AND ih_ant.idfilial = ih.idfilial
+                        AND ih_ant.custogerencialnovo > 0
+                        ORDER BY ih_ant.datahora DESC
+                        LIMIT 1
+                    ),
+                    CAST('0.00' AS numeric(5,2))
+                ) IS DISTINCT FROM COALESCE(
+                    (
+                        SELECT ih1.custocompranovo 
+                        FROM ITEM_HISTORICO ih1
+                        WHERE ih1.iditem = ih.iditem
+                        AND ih1.idfilial = 1
+                        AND ih1.CUSTOCOMPRANOVO > 0
+                        ORDER BY ih1.datahora DESC
+                        LIMIT 1
+                    ),
+                    (
+                        SELECT ih2.custocompranovo  
+                        FROM ITEM_HISTORICO ih2
+                        WHERE ih2.iditem = ih.iditem 
+                        AND ih2.idfilial = ih.idfilial
+                        AND ih2.CUSTOCOMPRANOVO > 0
+                        ORDER BY ih2.datahora DESC
+                        LIMIT 1
+                    ),
+                    CAST('0.00' AS numeric(5,2))
+                )
+            ";
+            $afetados2 = $this->pdo->exec($sql2);
+
+            // Evento 3: INSERT item_altera_custogerencial
+            $sql3 = "
+                INSERT INTO public.item_altera_custogerencial (
+                    idempresa, idfilial, iditem, usuario, datahora, sequencial, 
+                    custogerencialnovo, custogerencialatual
+                )
+                SELECT 
+                    ih.idempresa,
+                    ih.idfilial,
+                    ih.iditem,
+                    'AUTOMATICO'::character varying,
+                    CURRENT_TIMESTAMP,
+                    nextval('gi_item_altera_custogerencial'),
+                    ROUND(
+                        COALESCE(
+                            (SELECT ih1.custocompranovo 
+                             FROM ITEM_HISTORICO ih1
+                             WHERE ih1.iditem = ih.iditem
+                             AND ih1.idfilial = 1
+                             AND ih1.CUSTOCOMPRANOVO > 0
+                             ORDER BY ih1.datahora DESC
+                             LIMIT 1),
+                            (SELECT ih2.custocompranovo  
+                             FROM ITEM_HISTORICO ih2
+                             WHERE ih2.iditem = ih.iditem 
+                             AND ih2.idfilial = ih.idfilial
+                             AND ih2.CUSTOCOMPRANOVO > 0
+                             AND ih2.CUSTOCOMPRAANTERIOR <> ih2.CUSTOCOMPRANOVO
+                             ORDER BY ih2.datahora DESC
+                             LIMIT 1),
+                            0.00
+                        ), 4
+                    ) AS custogerencialnovo,
+                    ROUND(
+                        COALESCE(
+                            (SELECT ih3.custogerencialnovo  
+                             FROM ITEM_HISTORICO ih3
+                             WHERE ih3.iditem = ih.iditem 
+                             AND ih3.idfilial = ih.idfilial
+                             AND ih3.custogerencialnovo > 0
+                             ORDER BY ih3.datahora DESC
+                             LIMIT 1),
+                            0.00
+                        ), 4
+                    ) AS custogerencialatual
+                FROM item_historico ih
+                JOIN ITEM i ON i.iditem = ih.iditem
+                JOIN ESTOQUE_FILIAL ef ON ef.iditem = ih.iditem AND ef.idfilial = ih.idfilial
+                WHERE i.INATIVO = 'N'
+                AND ef.idfilial IN (1, 6)
+                AND ih.datahora = (
+                    SELECT MAX(datahora)
+                    FROM ITEM_HISTORICO
+                    WHERE iditem = ih.iditem
+                    AND idfilial = ih.idfilial
+                    AND usuario = 'AUTOMATICO'
+                    AND datahora > COALESCE(
+                        (SELECT MAX(datahora)
+                         FROM item_altera_custogerencial
+                         WHERE iditem = ih.iditem
+                         AND idfilial = ih.idfilial),
+                        '2000-01-01'::timestamp
+                    )
+                )
+                AND ROUND(
+                    COALESCE(
+                        (SELECT ih1.custocompranovo 
+                         FROM ITEM_HISTORICO ih1
+                         WHERE ih1.iditem = ih.iditem
+                         AND ih1.idfilial = 1
+                         AND ih1.CUSTOCOMPRANOVO > 0
+                         ORDER BY ih1.datahora DESC
+                         LIMIT 1),
+                        (SELECT ih2.custocompranovo  
+                         FROM ITEM_HISTORICO ih2
+                         WHERE ih2.iditem = ih.iditem 
+                         AND ih2.idfilial = ih.idfilial
+                         AND ih2.CUSTOCOMPRANOVO > 0
+                         AND ih2.CUSTOCOMPRAANTERIOR <> ih2.CUSTOCOMPRANOVO
+                         ORDER BY ih2.datahora DESC
+                         LIMIT 1),
+                        0.00
+                    ), 4
+                ) <> ROUND(
+                    COALESCE(
+                        (SELECT ih3.custogerencialnovo  
+                         FROM ITEM_HISTORICO ih3
+                         WHERE ih3.iditem = ih.iditem 
+                         AND ih3.idfilial = ih.idfilial
+                         AND ih3.custogerencialnovo > 0
+                         ORDER BY ih3.datahora DESC
+                         LIMIT 1),
+                        0.00
+                    ), 4
+                )
+            ";
+            $afetados3 = $this->pdo->exec($sql3);
+
+            // Evento 4: UPDATE estoque_filial Filial 6 sincronizando com Filial 1
+            $sql4 = "
+                UPDATE estoque_filial 
+                SET  
+                    custogerencial = dd.custogerencial_filial1, 
+                    datahoraultimaatualizacao = dd.datahora,
+                    custogerencialanterior = dd.custogerencial_anterior_filial6, 
+                    identificacaolocal = dd.usuario
+                FROM (
+                    SELECT 
+                        ef6.idfilial AS cd_filial,
+                        ef6.iditem AS cd_item,
+                        'AUTOMATICO'::character varying AS Usuario,
+                        CURRENT_TIMESTAMP AS datahora,
+                        COALESCE(ef6.custogerencial, CAST('0.00' AS numeric(5,2))) AS custogerencial_anterior_filial6,
+                        COALESCE(ef1.custogerencial, CAST('0.00' AS numeric(5,2))) AS custogerencial_filial1
+                    FROM estoque_filial ef6
+                    JOIN estoque_filial ef1 ON ef1.iditem = ef6.iditem AND ef1.idfilial = 1
+                    JOIN ITEM i ON i.iditem = ef6.iditem
+                    WHERE ef6.idfilial = 6
+                    AND i.INATIVO = 'N'
+                    AND COALESCE(ef6.custogerencial, 0) <> COALESCE(ef1.custogerencial, 0)
+                    AND ef1.custogerencial > 0
+                ) AS dd
+                WHERE estoque_filial.iditem = dd.cd_item
+                AND estoque_filial.idfilial = dd.cd_filial
+            ";
+            $afetados4 = $this->pdo->exec($sql4);
+
+            // Registro no Chamado #33
+            $stmtOp = $this->pdo->prepare("
+                INSERT INTO chamado_operacao (
+                    idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes
+                ) VALUES (
+                    33,
+                    (SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = 33),
+                    :descricao,
+                    NOW(),
+                    :usuario,
+                    2,
+                    'execucao',
+                    :detalhes
+                )
+            ");
+            $stmtOp->execute([
+                'descricao' => "Cron Custo Gerencial: Atualização automática ($afetados1 itens)",
+                'usuario' => $usuario,
+                'detalhes' => "Execução automática do Cron Portal Nutricional (Substituição DOX #5). Estoque filial atualizados: {$afetados1}, Histórico inserido: {$afetados2}, Auditoria: {$afetados3}, Filial 6 alinhada: {$afetados4}."
+            ]);
+
+            $this->pdo->commit();
+            $durTotal = round(microtime(true) - $inicio, 2);
+
+            // Notificação por e-mail opcional se configurado
+            $notif = $params['email_notificacao'] ?? $params['notificar_email'] ?? '';
+            if (!empty($notif) && ($afetados1 > 0 || !empty($params['notificar_sempre']))) {
+                $emails = is_array($notif) ? $notif : array_filter(array_map('trim', explode(',', (string)$notif)));
+                if (!empty($emails)) {
+                    $htmlAviso = "<div style='font-family:Arial,sans-serif;max-width:600px;margin:auto;padding:20px;border:1px solid #ddd;border-radius:10px;'>"
+                        . "<h3 style='color:#059669;'>✅ Custo Gerencial Atualizado com Sucesso</h3>"
+                        . "<p>A rotina automática de atualização de custo gerencial (DOX #5) foi executada em <b>" . date('d/m/Y H:i:s') . "</b>.</p>"
+                        . "<ul>"
+                        . "<li><b>Itens Atualizados (Estoque Filial):</b> {$afetados1}</li>"
+                        . "<li><b>Registros no Histórico:</b> {$afetados2}</li>"
+                        . "<li><b>Registros de Auditoria:</b> {$afetados3}</li>"
+                        . "<li><b>Sincronizações Filial 6 (PR):</b> {$afetados4}</li>"
+                        . "<li><b>Duração Total:</b> {$durTotal}s</li>"
+                        . "</ul></div>";
+                    $this->enviarEmailNotificacao($emails, "Custo Gerencial Atualizado: {$afetados1} itens", $htmlAviso);
+                }
+            }
+
+            return [
+                'success' => true,
+                'message' => "Custo gerencial atualizado com sucesso! {$afetados1} itens atualizados em {$durTotal}s.",
+                'detalhes' => [
+                    'alteracao_recente' => true,
+                    'estoque_filial_atualizados' => $afetados1,
+                    'item_historico_inseridos' => $afetados2,
+                    'auditoria_inseridos' => $afetados3,
+                    'filial6_sincronizados' => $afetados4,
+                    'duracao_segundos' => $durTotal
+                ]
+            ];
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return [
+                'success' => false,
+                'message' => 'Erro ao executar atualização de custo gerencial: ' . $e->getMessage()
+            ];
+        }
+    }
+
+    /**
+     * Simula / Testa a rotina de Custo Gerencial em modo Dry-Run (somente leitura)
+     */
+    private function testarCustoGerencialAuto(array $parametros): array
+    {
+        $checks = [];
+        try {
+            // 1. Verificação se houve alteração nos últimos 7 minutos
+            $t0 = microtime(true);
+            $sqlExiste = "
+                SELECT 
+                  CASE WHEN EXISTS (
+                    SELECT 1 FROM ITEM_HISTORICO ih
+                    WHERE ih.datahora >= (NOW() - INTERVAL '7 minutes')
+                    AND ih.CUSTOCOMPRANOVO > 0
+                    AND ih.CUSTOCOMPRAANTERIOR <> ih.CUSTOCOMPRANOVO
+                    AND ih.datahora = (
+                      SELECT MAX(datahora) 
+                      FROM ITEM_HISTORICO 
+                      WHERE iditem = ih.iditem 
+                      AND idfilial = ih.idfilial
+                    )
+                  ) THEN 'S' ELSE 'N' END AS existe;
+            ";
+            $existe = $this->pdo->query($sqlExiste)->fetchColumn();
+            $dur0 = round((microtime(true) - $t0) * 1000, 2);
+
+            $checks[] = [
+                'etapa' => 'Verificação de Alterações Recentes (7 min)',
+                'status' => 'ok',
+                'detalhe' => $existe === 'S' 
+                    ? "Detectadas alterações de Custo Compra pendentes ({$dur0}ms)" 
+                    : "Nenhuma alteração recente nos últimos 7 minutos ({$dur0}ms)"
+            ];
+
+            // 2. Verificação da Sequence gi_item_altera_custogerencial
+            $tSeq = microtime(true);
+            $seqVal = $this->pdo->query("SELECT last_value FROM gi_item_altera_custogerencial")->fetchColumn();
+            $durSeq = round((microtime(true) - $tSeq) * 1000, 2);
+            $checks[] = [
+                'etapa' => 'Sequence gi_item_altera_custogerencial',
+                'status' => 'ok',
+                'detalhe' => "Sequence ativa (Último ID: {$seqVal}, {$durSeq}ms)"
+            ];
+
+            // 3. Verificação de Divergência Filial 6 x Filial 1
+            $tF6 = microtime(true);
+            $sqlF6 = "
+                SELECT COUNT(*) 
+                FROM estoque_filial ef6
+                JOIN estoque_filial ef1 ON ef1.iditem = ef6.iditem AND ef1.idfilial = 1
+                JOIN ITEM i ON i.iditem = ef6.iditem
+                WHERE ef6.idfilial = 6
+                AND i.INATIVO = 'N'
+                AND COALESCE(ef6.custogerencial, 0) <> COALESCE(ef1.custogerencial, 0)
+                AND ef1.custogerencial > 0
+            ";
+            $difF6 = (int)$this->pdo->query($sqlF6)->fetchColumn();
+            $durF6 = round((microtime(true) - $tF6) * 1000, 2);
+            $checks[] = [
+                'etapa' => 'Alinhamento Custo Filial 6 (PR) x Filial 1 (SC)',
+                'status' => $difF6 === 0 ? 'ok' : 'info',
+                'detalhe' => $difF6 === 0 
+                    ? "100% dos itens da Filial 6 estão alinhados com a Matriz ({$durF6}ms)"
+                    : "{$difF6} itens na Filial 6 possuem divergência de custo em relação à Matriz ({$durF6}ms)"
+            ];
+
+            // 4. Destinatários de notificação
+            $emails = [];
+            $emailsExtrasRaw = $parametros['email_notificacao'] ?? $parametros['notificar_email'] ?? $parametros['emails'] ?? '';
+            if (!empty($emailsExtrasRaw)) {
+                $extras = is_array($emailsExtrasRaw) ? $emailsExtrasRaw : explode(',', (string)$emailsExtrasRaw);
+                foreach ($extras as $em) {
+                    $em = strtolower(trim((string)$em));
+                    if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $emails, true)) {
+                        $emails[] = $em;
+                    }
+                }
+            }
+
+            $checks[] = [
+                'etapa' => 'Destinatários de Notificação',
+                'status' => 'ok',
+                'detalhe' => !empty($emails) ? 'Notificação configurada para: ' . implode(', ', $emails) : 'Nenhum e-mail adicional configurado (rotina opera silenciosamente)'
+            ];
+
+            return [
+                'success' => true,
+                'message' => "Diagnóstico concluído: Rotina pronta para execução a cada 5 minutos. Alteração recente: " . ($existe === 'S' ? 'SIM' : 'NÃO') . " | Divergências Filial 6: {$difF6}.",
+                'checks' => $checks,
+                'detalhes' => [
+                    'existe_alteracao' => $existe === 'S',
+                    'divergencias_filial6' => $difF6,
+                    'ultimo_sequencial_auditoria' => $seqVal
+                ],
+                'hierarquia_destinatarios' => !empty($emails) ? [
+                    'tipo' => 'Operacional / Custo Gerencial',
+                    'destinatarios' => $emails,
+                    'pode_enviar_amostra' => true
+                ] : null
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'success' => false,
+                'message' => 'Erro na simulação do Custo Gerencial: ' . $e->getMessage(),
+                'checks' => [['etapa' => 'Diagnóstico Custo Gerencial', 'status' => 'error', 'detalhe' => $e->getMessage()]]
+            ];
+        }
     }
 }

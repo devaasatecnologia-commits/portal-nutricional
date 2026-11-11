@@ -126,7 +126,7 @@ require_once __DIR__ . '/components/sidebar.php';
             </button>
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-3 mt-3">
         <div class="flex rounded-xl overflow-hidden shadow-sm border border-red-200">
             <button onclick="executarCronManual('alerta_certificado')" class="flex-1 p-3 bg-red-600 text-white font-bold hover:bg-red-700 transition-all text-sm text-left">
                 <i class="fa-solid fa-certificate mr-2"></i>Alerta Certificado Digital
@@ -156,6 +156,14 @@ require_once __DIR__ . '/components/sidebar.php';
                 <i class="fa-solid fa-scale-balanced mr-2"></i>Limite Crédito Mensal
             </button>
             <button onclick="testarCronRapido('limite_credito_mensal')" class="px-3.5 bg-emerald-50 text-emerald-800 font-bold hover:bg-emerald-100 transition-all text-xs border-l border-emerald-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-cyan-200">
+            <button onclick="executarCronManual('custo_gerencial_auto')" class="flex-1 p-3 bg-cyan-700 text-white font-bold hover:bg-cyan-800 transition-all text-sm text-left">
+                <i class="fa-solid fa-calculator mr-2"></i>Custo Gerencial (DOX #5)
+            </button>
+            <button onclick="testarCronRapido('custo_gerencial_auto')" class="px-3.5 bg-cyan-50 text-cyan-800 font-bold hover:bg-cyan-100 transition-all text-xs border-l border-cyan-200" title="Simular / Testar Configuração (Dry-Run)">
                 <i class="fa-solid fa-vial mr-1"></i>Testar
             </button>
         </div>
