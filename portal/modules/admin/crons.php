@@ -126,7 +126,7 @@ require_once __DIR__ . '/components/sidebar.php';
             </button>
         </div>
     </div>
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-3">
+    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
         <div class="flex rounded-xl overflow-hidden shadow-sm border border-red-200">
             <button onclick="executarCronManual('alerta_certificado')" class="flex-1 p-3 bg-red-600 text-white font-bold hover:bg-red-700 transition-all text-sm text-left">
                 <i class="fa-solid fa-certificate mr-2"></i>Alerta Certificado Digital
@@ -148,6 +148,14 @@ require_once __DIR__ . '/components/sidebar.php';
                 <i class="fa-solid fa-envelope-open-text mr-2"></i>Representantes Mensal
             </button>
             <button onclick="testarCronRapido('representantes_mensal')" class="px-3.5 bg-indigo-50 text-indigo-700 font-bold hover:bg-indigo-100 transition-all text-xs border-l border-indigo-200" title="Simular / Testar Configuração (Dry-Run)">
+                <i class="fa-solid fa-vial mr-1"></i>Testar
+            </button>
+        </div>
+        <div class="flex rounded-xl overflow-hidden shadow-sm border border-emerald-200">
+            <button onclick="executarCronManual('limite_credito_mensal')" class="flex-1 p-3 bg-emerald-700 text-white font-bold hover:bg-emerald-800 transition-all text-sm text-left">
+                <i class="fa-solid fa-scale-balanced mr-2"></i>Limite Crédito Mensal
+            </button>
+            <button onclick="testarCronRapido('limite_credito_mensal')" class="px-3.5 bg-emerald-50 text-emerald-800 font-bold hover:bg-emerald-100 transition-all text-xs border-l border-emerald-200" title="Simular / Testar Configuração (Dry-Run)">
                 <i class="fa-solid fa-vial mr-1"></i>Testar
             </button>
         </div>
@@ -305,8 +313,12 @@ require_once __DIR__ . '/components/sidebar.php';
                     </div>
                     
                     <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Emails para Notificação</label>
-                        <input type="text" id="jobNotificarEmail" class="w-full p-3 border border-slate-200 rounded-xl text-sm" placeholder="email1@exemplo.com, email2@exemplo.com">
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-bold text-slate-500 uppercase">E-mails de Recebimento / Destinatários</label>
+                            <span class="text-[10px] text-slate-400">Separados por vírgula</span>
+                        </div>
+                        <input type="text" id="jobNotificarEmail" class="w-full p-3 border border-slate-200 rounded-xl text-sm" placeholder="ex: alan@nutricionalbr.com, financeiro@nutricionalbr.com">
+                        <p class="text-[11px] text-slate-400 mt-1">Os relatórios ou avisos gerados por esta rotina serão enviados para estes e-mails além dos destinatários automáticos do sistema.</p>
                     </div>
                     
                     <div class="flex gap-6">
@@ -608,6 +620,12 @@ function renderizarJobs(lista) {
                         <div>
                             <b class="text-sm">${job.nome}</b>
                             <br><small class="text-slate-400">${job.descricao || 'Sem descrição'}</small>
+                            ${job.notificar_email ? `
+                                <div class="mt-1 flex items-center gap-1.5 text-[11px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md inline-flex font-medium" title="Destinatários adicionais configurados">
+                                    <i class="fa-solid fa-envelope text-[10px]"></i>
+                                    <span>${escapeHtml(job.notificar_email)}</span>
+                                </div>
+                            ` : ''}
                         </div>
                     </div>
                 </td>

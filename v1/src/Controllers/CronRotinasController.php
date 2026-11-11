@@ -17,6 +17,7 @@ class CronRotinasController
         'bonificacoes_flex'     => ['Bonificações Flex', 'Processa débito de notas bonificadas na API Mercos Flex'],
         'alerta_certificado'    => ['Alerta Certificado Digital', 'Verifica vencimento dos certificados digitais NFe das filiais'],
         'refresh_cubo_vendas'   => ['Atualizar Cubo de Vendas', 'Executa refresh_cubo_vendas() no banco'],
+        'limite_credito_mensal' => ['Limite de Crédito Mensal (DOX #6)', 'Recálculo mensal de limite de crédito dos clientes e atualização no ERP EMA'],
     ];
 
     private $pdo;
@@ -328,6 +329,17 @@ class CronRotinasController
                         $emails = ['alan@nutricionalbr.com', 'robson@nutricionalbr.com', 'financeiro@nutricionalbr.com'];
                     }
 
+                    $emailsExtrasRaw = $parametros['email_notificacao'] ?? $parametros['notificar_email'] ?? $parametros['emails'] ?? '';
+                    if (!empty($emailsExtrasRaw)) {
+                        $extras = is_array($emailsExtrasRaw) ? $emailsExtrasRaw : explode(',', (string)$emailsExtrasRaw);
+                        foreach ($extras as $em) {
+                            $em = strtolower(trim((string)$em));
+                            if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $emails, true)) {
+                                $emails[] = $em;
+                            }
+                        }
+                    }
+
                     $checks[] = [
                         'etapa' => 'View analise_financeira_clientes',
                         'status' => 'ok',
@@ -343,7 +355,12 @@ class CronRotinasController
                         'success' => true,
                         'message' => "Simulação concluída com sucesso: {$kpis['total_com_alteracao']} clientes seriam atualizados no ERP EMA. Impacto líquido: R$ " . number_format((float)$kpis['impacto_liquido'], 2, ',', '.') . '.',
                         'checks' => $checks,
-                        'detalhes' => $kpis
+                        'detalhes' => $kpis,
+                        'hierarquia_destinatarios' => [
+                            'tipo' => 'Financeiro / Relatório Executivo',
+                            'destinatarios' => $emails,
+                            'pode_enviar_amostra' => true
+                        ]
                     ];
                 } catch (\Throwable $e) {
                     return [
@@ -731,6 +748,12 @@ class CronRotinasController
                 $assunto = "[TESTE] Flex Mínimo Gestor - Alerta de Empréstimo";
                 break;
 
+            case 'limite_credito_mensal':
+                $controller = new \Nutricional\Controllers\FinanceiroLimiteCreditoController();
+                $htmlCorpo = $controller->gerarHtmlRelatorio();
+                $assunto = "[TESTE] Relatório Executivo Mensal: Alteração de Limite de Crédito - " . date('m/Y');
+                break;
+
             default:
                 $htmlCorpo = "<div style='font-family:Arial,sans-serif;padding:20px;'>"
                     . "<h3>Simulação de Notificação da Rotina: " . htmlspecialchars($comando) . "</h3>"
@@ -833,7 +856,7 @@ class CronRotinasController
     // ======================================================================
     // GESTORES - Relatório de inadimplência (com planilhas Excel em anexo)
     // ======================================================================
-    private function mapearGestoresInadimplencia(): array
+    private function mapearGestoresInadimplencia(array $emailsExtras = []): array
     {
         $emailsGestores = function_exists('getEmails')
             ? getEmails('gestores_destino')
@@ -848,6 +871,10 @@ class CronRotinasController
                 'michel@nutricionalbr.com',
                 'tales@nutricionalbr.com'
             ];
+        }
+
+        if (!empty($emailsExtras)) {
+            $emailsGestores = array_unique(array_merge($emailsGestores, $emailsExtras));
         }
 
         // Mapeamento corporativo oficial de e-mails para IDs de carteira de gestão no ERP
@@ -951,7 +978,12 @@ class CronRotinasController
                 ];
             }
 
-            $gestoresArray = $this->mapearGestoresInadimplencia();
+            $emailsExtras = [];
+            $notif = $params['email_notificacao'] ?? $params['notificar_email'] ?? '';
+            if (!empty($notif)) {
+                $emailsExtras = is_array($notif) ? $notif : array_filter(array_map('trim', explode(',', (string)$notif)));
+            }
+            $gestoresArray = $this->mapearGestoresInadimplencia($emailsExtras);
             $listaIdsStr = implode(',', array_keys($gestoresArray));
 
             $sql = "SELECT
@@ -1244,6 +1276,15 @@ class CronRotinasController
     {
         try {
             $destinosGeral = function_exists('getEmails') ? (getEmails('clientes_isento')['geral'] ?? []) : [];
+            $notif = $params['email_notificacao'] ?? $params['notificar_email'] ?? '';
+            if (!empty($notif)) {
+                $extras = is_array($notif) ? $notif : array_filter(array_map('trim', explode(',', (string)$notif)));
+                foreach ($extras as $em) {
+                    if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $destinosGeral, true)) {
+                        $destinosGeral[] = $em;
+                    }
+                }
+            }
 
             $sqlGeral = "SELECT DISTINCT
                             cli.idcliforemp AS cd_cliente,
@@ -1374,6 +1415,26 @@ class CronRotinasController
                 $enviados++;
             }
 
+            $emailsCc = function_exists('getEmails') ? getEmails('consolidado_representantes') : (class_exists('\EmailListas') ? \EmailListas::get('consolidado_representantes') : []);
+            if (!empty($params['email_notificacao'])) {
+                $extras = is_array($params['email_notificacao']) ? $params['email_notificacao'] : explode(',', (string)$params['email_notificacao']);
+                foreach ($extras as $em) {
+                    $em = strtolower(trim((string)$em));
+                    if (filter_var($em, FILTER_VALIDATE_EMAIL) && !in_array($em, $emailsCc, true)) {
+                        $emailsCc[] = $em;
+                    }
+                }
+            }
+            if (!empty($emailsCc) && $enviados > 0) {
+                $resumoHtml = "<div style='font-family:Arial,sans-serif;padding:20px;border:1px solid #ddd;border-radius:10px;max-width:600px;margin:auto;'>"
+                    . "<h3 style='color:#1e3a8a;'>Consolidado de Disparo: Relatório Mensal de Representantes</h3>"
+                    . "<p>Disparo mensal finalizado em <b>" . date('d/m/Y H:i') . "</b>.</p>"
+                    . "<ul>"
+                    . "<li><b>Total de Representantes Notificados:</b> {$enviados}</li>"
+                    . "</ul></div>";
+                $this->enviarEmailNotificacao($emailsCc, "Consolidado Mensal Representantes - " . date('m/Y'), $resumoHtml);
+            }
+
             return [
                 'success' => true,
                 'message' => "Relatório mensal enviado para {$enviados} representantes.",
@@ -1391,7 +1452,7 @@ class CronRotinasController
     {
         try {
             $diasAlerta = (int)($params['dias_alerta'] ?? 30);
-            $emailDestino = $params['email_destino'] ?? null;
+            $emailDestino = $params['email_destino'] ?? $params['email_notificacao'] ?? null;
             if (!$emailDestino) {
                 $emailDestino = $_ENV['MAIL_ALERTA_CERTIFICADO'] ?? 'alan@nutricionalbr.com';
             }

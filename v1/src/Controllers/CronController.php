@@ -611,6 +611,10 @@ public function refreshCuboVendas(Request $request, Response $response): Respons
                 }
             }
 
+            if (!empty($notificarEmail) && empty($parametros['email_notificacao'])) {
+                $parametros['email_notificacao'] = $notificarEmail;
+            }
+
             // 5. Simulação (Dry-Run) específica da rotina (100% somente leitura)
             $simulacao = null;
             if (!$temErro && isset(CronRotinasController::ROTINAS[$comando])) {
