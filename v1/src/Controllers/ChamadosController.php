@@ -60,15 +60,27 @@ class ChamadosController
         $idusuario = (int)($user['idusuario'] ?? 0);
         $idcliforemp = (int)($user['uid'] ?? $user['idcliforemp'] ?? 0);
         $username = strtoupper((string)($user['username'] ?? 'USUARIO'));
+        
         $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $user['permissoes'] ?? [], true);
+        if (!$isAdmin && $idusuario > 0) {
+            $stAdm = $this->pdo->prepare("SELECT 1 FROM usuarios_admin WHERE idusuario = :id AND ativo = true LIMIT 1");
+            $stAdm->execute(['id' => $idusuario]);
+            if ($stAdm->fetchColumn()) {
+                $isAdmin = true;
+            }
+        }
+        if (!$isAdmin && in_array($username, ['ALAN', 'MARCON', 'GERENTE', 'ROBSON'], true)) {
+            $isAdmin = true;
+        }
 
-        $podeVerTodos = $isAdmin || $username === 'MARCON';
+        $podeVerTodos = $isAdmin;
         $tiposPermitidos = 'TODOS';
+        $permissoesModulos = (array)($user['permissoes'] ?? []);
 
         if ($idusuario > 0 || $idcliforemp > 0) {
             try {
                 $stmtPol = $this->pdo->prepare("
-                    SELECT chamados_ver_todos, chamados_tipos_permitidos 
+                    SELECT idusuario, chamados_ver_todos, chamados_tipos_permitidos 
                     FROM usuario 
                     WHERE idusuario = :id OR idcliforemp = :idcliforemp 
                     LIMIT 1
@@ -79,11 +91,27 @@ class ChamadosController
                 ]);
                 $pol = $stmtPol->fetch(\PDO::FETCH_ASSOC);
                 if ($pol) {
-                    if (!$podeVerTodos) {
-                        $podeVerTodos = ($pol['chamados_ver_todos'] === 'S');
+                    $idReal = (int)($pol['idusuario'] ?? $idusuario);
+                    if (!$podeVerTodos && ($pol['chamados_ver_todos'] ?? 'N') === 'S') {
+                        $podeVerTodos = true;
                     }
-                    if (!$isAdmin && $username !== 'MARCON' && !empty($pol['chamados_tipos_permitidos'])) {
+                    if (!$isAdmin && !empty($pol['chamados_tipos_permitidos'])) {
                         $tiposPermitidos = trim($pol['chamados_tipos_permitidos']);
+                    }
+
+                    // Se não for admin, obtém os módulos exatos liberados em usuario_permissoes
+                    if (!$isAdmin && $idReal > 0) {
+                        $stP = $this->pdo->prepare("
+                            SELECT sm.slug 
+                            FROM usuario_permissoes up
+                            JOIN sistema_modulos sm ON sm.id = up.idmodulo
+                            WHERE up.idusuario = :id AND sm.ativo = true
+                        ");
+                        $stP->execute(['id' => $idReal]);
+                        $slugsBanco = $stP->fetchAll(\PDO::FETCH_COLUMN);
+                        if (!empty($slugsBanco)) {
+                            $permissoesModulos = array_unique(array_merge($permissoesModulos, $slugsBanco));
+                        }
                     }
                 }
             } catch (\Throwable $e) {
@@ -98,7 +126,7 @@ class ChamadosController
             'is_admin' => $isAdmin,
             'pode_ver_todos' => $podeVerTodos,
             'tipos_permitidos' => $tiposPermitidos,
-            'permissoes' => (array)($user['permissoes'] ?? [])
+            'permissoes' => $permissoesModulos
         ];
     }
 
@@ -240,14 +268,6 @@ class ChamadosController
                 }));
             }
 
-            // Filtragem de sistemas pelo perfil de abertura permitido
-            if ($u['tipos_permitidos'] !== 'TODOS') {
-                $tiposPermitidosArr = array_map('trim', explode(',', $u['tipos_permitidos']));
-                $sistemas = array_values(array_filter($sistemas, function($s) use ($tiposPermitidosArr) {
-                    return in_array($s['id'], $tiposPermitidosArr, true);
-                }));
-            }
-
             // Sistemas corporativos suportados
             $sistemas = [
                 ['id' => 'PORTAL',      'nome' => 'Portal Nutricional (Módulos Web)', 'icon' => 'fa-globe', 'badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200'],
@@ -262,6 +282,14 @@ class ChamadosController
                 ['id' => 'SERVIDOR',    'nome' => 'Servidores, Rede & VPN',          'icon' => 'fa-server', 'badge' => 'bg-slate-100 text-slate-700 border-slate-300'],
                 ['id' => 'OUTROS',      'nome' => 'Outros Assuntos',                 'icon' => 'fa-circle-question', 'badge' => 'bg-gray-50 text-gray-700 border-gray-200']
             ];
+
+            // Filtragem de sistemas pelo perfil de abertura permitido
+            if ($u['tipos_permitidos'] !== 'TODOS') {
+                $tiposPermitidosArr = array_map('trim', explode(',', $u['tipos_permitidos']));
+                $sistemas = array_values(array_filter($sistemas, function($s) use ($tiposPermitidosArr) {
+                    return in_array($s['id'], $tiposPermitidosArr, true);
+                }));
+            }
 
             return $this->json($response, [
                 'success' => true,
@@ -304,6 +332,7 @@ class ChamadosController
             $busca = trim((string)($q['busca'] ?? ''));
             $dataInicio = trim((string)($q['data_inicio'] ?? ''));
             $dataFim = trim((string)($q['data_fim'] ?? ''));
+            $atendente = trim((string)($q['atendente'] ?? ''));
 
             $u = $this->usuario($request);
             $where = ['1=1'];
@@ -313,6 +342,16 @@ class ChamadosController
                 $where[] = '(c.idcliforemp = :uid_solicitante OR c.solicitante ILIKE :username_solicitante OR c.usuario ILIKE :username_solicitante)';
                 $params['uid_solicitante'] = $u['idcliforemp'];
                 $params['username_solicitante'] = $u['username'];
+            } elseif ($atendente !== '' && $atendente !== 'todos') {
+                if ($atendente === 'mim') {
+                    $where[] = '(c.atendente ILIKE :atendente OR (c.atendente IS NULL AND :atendente = \'ALAN\'))';
+                    $params['atendente'] = $u['username'];
+                } elseif ($atendente === 'sem_atendente') {
+                    $where[] = "(c.atendente IS NULL OR c.atendente = '' OR c.atendente = '.')";
+                } else {
+                    $where[] = 'c.atendente ILIKE :atendente';
+                    $params['atendente'] = '%' . $atendente . '%';
+                }
             }
 
             if ($status !== null) {
@@ -558,6 +597,9 @@ class ChamadosController
                 }
             }
 
+            // Responsável técnico padrão para solução dos chamados: 'ALAN'
+            $atendentePadrao = 'ALAN';
+
             // Próximo ID de chamado
             $idNovo = (int)$this->pdo->query("SELECT COALESCE(MAX(idchamado), 0) + 1 FROM chamado")->fetchColumn();
 
@@ -572,7 +614,7 @@ class ChamadosController
                 ) VALUES (
                     :idchamado, 3, :idfilial, 1, :idcliforemp,
                     0, 10, CURRENT_DATE, NOW(), NOW(),
-                    :solicitante, 'DEVAASA', :usuario, :motivo, :observacao,
+                    :solicitante, :atendente, :usuario, :motivo, :observacao,
                     :tipo_sistema, :subtipo_item, :equipamento_detalhe,
                     :modulo_slug, :modulo_nome, :categoria, :criticidade,
                     :titulo, :diagnostico_ia, :anexo_url
@@ -584,6 +626,7 @@ class ChamadosController
                 'idfilial' => $filial,
                 'idcliforemp' => $u['idcliforemp'] ?: 5297,
                 'solicitante' => $this->limpaWin1252($u['username']),
+                'atendente' => $atendentePadrao,
                 'usuario' => $this->limpaWin1252($u['username']),
                 'motivo' => $this->limpaWin1252($relato),
                 'observacao' => $this->limpaWin1252($relato),
@@ -602,12 +645,12 @@ class ChamadosController
             // Registra primeira operação na timeline
             $stmtOp = $this->pdo->prepare("
                 INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes)
-                VALUES (:idchamado, 1, 'Chamado aberto no Portal com Triagem de IA', NOW(), :usuario, 1, 'abertura', :detalhes)
+                VALUES (:idchamado, 1, 'Chamado aberto no Portal e direcionado para TI (ALAN)', NOW(), :usuario, 1, 'abertura', :detalhes)
             ");
             $stmtOp->execute([
                 'idchamado' => $idNovo,
                 'usuario' => $u['username'],
-                'detalhes' => "Chamado [{$tipoSistemaFinal}] classificado como [{$triagem['categoria']}] com criticidade [{$triagem['criticidade']}]."
+                'detalhes' => "Chamado [{$tipoSistemaFinal}] classificado como [{$triagem['categoria']}] com criticidade [{$triagem['criticidade']}]. Atendente responsável: {$atendentePadrao}."
             ]);
 
             return $this->json($response, [
@@ -617,6 +660,68 @@ class ChamadosController
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao criar chamado: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /v1/chamados/assumir
+     * O atendente/técnico assume a responsabilidade pelo chamado.
+     */
+    public function assumir(Request $request, Response $response): Response
+    {
+        try {
+            $body = $this->parsedBody($request);
+            $id = (int)($body['idchamado'] ?? 0);
+            $u = $this->usuario($request);
+
+            if ($id <= 0) {
+                return $this->erro($response, 'ID de chamado inválido.');
+            }
+
+            if (!$u['pode_ver_todos']) {
+                return $this->erro($response, 'Apenas membros da equipe técnica podem assumir chamados.', 403);
+            }
+
+            $stmtCham = $this->pdo->prepare("SELECT idchamado, status, atendente FROM chamado WHERE idchamado = :id");
+            $stmtCham->execute(['id' => $id]);
+            $chamado = $stmtCham->fetch(PDO::FETCH_ASSOC);
+
+            if (!$chamado) {
+                return $this->erro($response, 'Chamado não encontrado.', 404);
+            }
+
+            $novoStatus = (int)$chamado['status'];
+            // Se estiver Aberto (0), move automaticamente para Em Análise (1)
+            if ($novoStatus === 0) {
+                $novoStatus = 1;
+            }
+
+            $stmtUp = $this->pdo->prepare("UPDATE chamado SET atendente = :at, status = :st, atualizado_em = NOW() WHERE idchamado = :id");
+            $stmtUp->execute([
+                'at' => $u['username'],
+                'st' => $novoStatus,
+                'id' => $id
+            ]);
+
+            // Grava operação na timeline
+            $nextOp = (int)$this->pdo->query("SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = {$id}")->fetchColumn();
+            $stmtOp = $this->pdo->prepare("
+                INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes)
+                VALUES (:id, :op, 'Chamado assumido para atendimento técnico', NOW(), :user, 2, 'atendimento', :det)
+            ");
+            $stmtOp->execute([
+                'id' => $id,
+                'op' => $nextOp,
+                'user' => $u['username'],
+                'det' => "O técnico {$u['username']} assumiu a responsabilidade pela condução deste chamado."
+            ]);
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => "Chamado #{$id} atribuído com sucesso para {$u['username']}!"
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao assumir chamado: ' . $e->getMessage(), 500);
         }
     }
 

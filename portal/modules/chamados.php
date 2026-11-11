@@ -33,31 +33,34 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <i class="fa-solid fa-arrow-left"></i>
                 </a>
                 <div>
-                    <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-[10px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30 flex items-center gap-1.5">
                             <i class="fa-solid fa-bolt text-amber-300"></i> Service Desk Inteligente
                         </span>
                         <span class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 flex items-center gap-1.5">
                             <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-ia"></span> IA Triagem Ativa
                         </span>
+                        <span x-show="usuario && usuario.pode_ver_todos" class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-500/30 text-purple-200 border border-purple-400/30 flex items-center gap-1.5">
+                            <i class="fa-solid fa-crown text-amber-300"></i> Painel de Solução (TI)
+                        </span>
                         <span x-show="usuario && !usuario.pode_ver_todos" class="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-blue-500/30 text-blue-200 border border-blue-400/30 flex items-center gap-1.5" style="display: none;">
-                            <i class="fa-solid fa-user-lock"></i> Meus Chamados
+                            <i class="fa-solid fa-user-lock"></i> Visão Solicitante
                         </span>
                     </div>
                     <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-1 flex items-center gap-2">
-                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Meus Chamados & Acompanhamento' : 'Central de Chamados & Suporte'">Central de Chamados & Suporte</span>
+                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Central de Atendimento & Meus Chamados' : 'Central de Solução & Service Desk'">Central de Chamados & Suporte</span>
                     </h1>
                     <p class="text-xs sm:text-sm text-indigo-200 opacity-90 mt-0.5">
-                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Acompanhe em tempo real o status, responsável técnico e andamento das suas solicitações' : 'Governança, triagem assistida por inteligência artificial e resolução ágil dos módulos corporativos'">Governança, triagem assistida por inteligência artificial e resolução ágil dos módulos corporativos</span>
+                        <span x-text="usuario && !usuario.pode_ver_todos ? 'Abra novos chamados de qualquer módulo liberado e acompanhe a resolução em tempo real com o responsável técnico (ALAN).' : 'Fila unificada de incidentes corporativos, triagem de IA e solução técnica integrada ao ERP.'">Governança, triagem assistida por inteligência artificial e resolução ágil dos módulos corporativos</span>
                     </p>
                 </div>
             </div>
 
             <!-- BOTÕES DE AÇÃO DO TOPO -->
             <div class="flex flex-wrap items-center gap-2.5">
-                <button @click="abrirModalNovo()" class="px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-900 text-xs font-black flex items-center gap-2 transition shadow-lg shadow-amber-500/20">
-                    <i class="fa-solid fa-plus-circle text-sm"></i>
-                    <span>Abrir Chamado</span>
+                <button @click="abrirModalNovo()" class="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-300 hover:to-amber-400 text-slate-900 text-xs font-black flex items-center gap-2 transition shadow-lg shadow-amber-500/25 active:scale-95">
+                    <i class="fa-solid fa-plus-circle text-base"></i>
+                    <span>Abrir Novo Chamado</span>
                 </button>
 
                 <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=chamados" class="px-4 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition no-underline shadow-sm border border-white/15">
@@ -68,14 +71,41 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
+    <!-- BANNER CONVIDATIVO DE ABERTURA PARA USUÁRIO SOLICITANTE -->
+    <div x-show="usuario && !usuario.pode_ver_todos" class="bg-gradient-to-r from-indigo-50/80 via-white to-amber-50/40 rounded-3xl p-5 border border-indigo-100 shadow-sm mb-5 flex flex-col md:flex-row items-center justify-between gap-4">
+        <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shadow-indigo-600/20 shrink-0">
+                <i class="fa-solid fa-headset"></i>
+            </div>
+            <div>
+                <span class="text-[10px] font-black uppercase tracking-wider text-indigo-600 flex items-center gap-1.5">
+                    <i class="fa-solid fa-circle-check"></i> Suporte Direto & Resolução Rápida
+                </span>
+                <h3 class="text-sm sm:text-base font-black text-slate-800 mt-0.5">
+                    Precisa de ajuda ou encontrou alguma dúvida no sistema?
+                </h3>
+                <p class="text-xs text-slate-500 font-medium mt-0.5 leading-relaxed">
+                    Ao abrir o chamado, ele cairá automaticamente na fila do responsável técnico (<strong>ALAN</strong>) para triagem e resolução prioritária.
+                </p>
+            </div>
+        </div>
+        <button type="button" @click="abrirModalNovo()"
+                class="w-full md:w-auto px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-md shadow-indigo-600/20 shrink-0">
+            <i class="fa-solid fa-paper-plane"></i>
+            <span>Criar Solicitação Agora</span>
+        </button>
+    </div>
+
     <!-- 4 KPI CARDS -->
     <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <!-- KPI 1: Total Geral -->
         <div class="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm flex items-center justify-between">
             <div>
-                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Total Registrado</span>
+                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Minhas Demandas' : 'Total Registrado'">Total Registrado</span>
                 <span class="text-2xl font-black text-slate-800" x-text="kpis.total || 0">0</span>
-                <span class="text-[10px] text-slate-400 font-semibold block mt-0.5">Histórico integrado ao ERP</span>
+                <span class="text-[10px] text-slate-400 font-semibold block mt-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Histórico de suas solicitações' : 'Histórico integrado ao ERP'">Histórico integrado ao ERP</span>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-lg">
                 <i class="fa-solid fa-ticket"></i>
@@ -85,9 +115,11 @@ require_once __DIR__ . '/../estrutura/header.php';
         <!-- KPI 2: Abertos & Em Análise -->
         <div class="bg-white rounded-2xl p-4 border border-amber-100 shadow-sm flex items-center justify-between">
             <div>
-                <span class="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-0.5">Abertos / Fila</span>
+                <span class="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Aguardando Suporte' : 'Abertos / Fila'">Abertos / Fila</span>
                 <span class="text-2xl font-black text-amber-600" x-text="kpis.abertos || 0">0</span>
-                <span class="text-[10px] text-amber-700/70 font-semibold block mt-0.5">Aguardando atendimento</span>
+                <span class="text-[10px] text-amber-700/70 font-semibold block mt-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Na fila do técnico (ALAN)' : 'Aguardando atendimento'">Aguardando atendimento</span>
             </div>
             <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
                 <i class="fa-solid fa-clock"></i>
@@ -110,7 +142,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="bg-white rounded-2xl p-4 border border-rose-100 shadow-sm flex items-center justify-between"
              :class="kpis.criticos > 0 ? 'bg-rose-50/50 border-rose-300' : ''">
             <div>
-                <span class="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-0.5">Críticos em Aberto</span>
+                <span class="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Demandas Críticas' : 'Críticos em Aberto'">Críticos em Aberto</span>
                 <span class="text-2xl font-black text-rose-600" x-text="kpis.criticos || 0">0</span>
                 <span class="text-[10px] text-rose-600/70 font-semibold block mt-0.5" x-text="kpis.criticos > 0 ? 'Exigem ação prioritária!' : 'Nenhum bloqueio crítico'">Nenhum bloqueio</span>
             </div>
@@ -133,6 +166,26 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- Filtros em Selects -->
             <div class="flex flex-wrap items-center gap-2">
+                <!-- Filtro Atendente (Exclusivo para Administrador / TI ALAN) -->
+                <div x-show="usuario && usuario.pode_ver_todos" class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                    <button type="button" @click="filtroAtendente = 'todos'; carregarChamados()"
+                            class="px-2.5 py-1.5 rounded-lg font-bold text-xs transition"
+                            :class="filtroAtendente === 'todos' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        Todos
+                    </button>
+                    <button type="button" @click="filtroAtendente = 'mim'; carregarChamados()"
+                            class="px-2.5 py-1.5 rounded-lg font-bold text-xs transition flex items-center gap-1.5"
+                            :class="filtroAtendente === 'mim' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        <i class="fa-solid fa-user-check text-emerald-400"></i>
+                        <span>Atribuídos a Mim (ALAN)</span>
+                    </button>
+                    <button type="button" @click="filtroAtendente = 'sem_atendente'; carregarChamados()"
+                            class="px-2.5 py-1.5 rounded-lg font-bold text-xs transition"
+                            :class="filtroAtendente === 'sem_atendente' ? 'bg-indigo-600 text-white shadow-xs' : 'text-slate-600 hover:text-slate-900'">
+                        Sem Atendente
+                    </button>
+                </div>
+
                 <!-- Filtro Sistema -->
                 <select x-model="filtros.tipo_sistema" @change="carregarChamados()" class="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                     <option value="todos">Todos os Sistemas</option>
@@ -232,8 +285,76 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- CONTEÚDO PRINCIPAL: MODO KANBAN -->
-    <div x-show="modoExibicao === 'kanban'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <!-- VISÃO EXCLUSIVA: MEUS CHAMADOS (USUÁRIO SOLICITANTE) -->
+    <div x-show="usuario && !usuario.pode_ver_todos" class="space-y-4 mb-6">
+        <div class="flex items-center justify-between">
+            <h3 class="text-sm font-black text-slate-700 uppercase tracking-wider flex items-center gap-2">
+                <i class="fa-solid fa-list-check text-indigo-600"></i> Minhas Solicitações Registradas
+            </h3>
+            <span class="text-xs font-bold text-slate-500" x-text="`${chamados.length} chamado(s) encontrado(s)`">0 chamados</span>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" x-show="chamados.length > 0">
+            <template x-for="c in chamados" :key="c.idchamado">
+                <div class="bg-white rounded-2xl p-5 border border-slate-200/90 shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer flex flex-col justify-between"
+                     @click="abrirDetalhes(c.idchamado)">
+                    <div>
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <span class="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg border border-indigo-100" x-text="`#${c.idchamado}`">#0</span>
+                            <span class="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border" :class="c.status_info.cor" x-text="c.status_info.label">Aberto</span>
+                        </div>
+
+                        <h4 class="text-sm font-black text-slate-800 line-clamp-2 mb-2 leading-snug" x-text="c.titulo || c.motivo">Título</h4>
+                        <p class="text-xs text-slate-500 line-clamp-2 mb-3 font-medium leading-relaxed" x-text="c.motivo">Relato</p>
+
+                        <div class="flex items-center gap-2 flex-wrap mb-3">
+                            <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
+                            <span class="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-0.5 rounded" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
+                            <span class="text-[10px] font-bold px-2 py-0.5 rounded" :class="badgeCriticidade(c.criticidade)" x-text="c.criticidade">Média</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <div class="pt-3 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-400">
+                            <div class="flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full" :class="c.status == 3 ? 'bg-emerald-500' : 'bg-amber-400'"></span>
+                                <span class="font-semibold text-slate-600">
+                                    Técnico: <strong class="text-indigo-700" x-text="c.atendente || 'ALAN'">ALAN</strong>
+                                </span>
+                            </div>
+                            <span class="font-medium" x-text="c.data_fmt">11/11/2026</span>
+                        </div>
+
+                        <div class="mt-3 pt-1">
+                            <button type="button" class="w-full py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
+                                <i class="fa-regular fa-comments"></i>
+                                <span>Acompanhar Andamento</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </template>
+        </div>
+
+        <!-- Empty State Solicitante -->
+        <div x-show="chamados.length === 0 && !carregando" class="bg-white rounded-3xl p-10 border border-slate-200/80 shadow-xs text-center max-w-lg mx-auto my-6">
+            <div class="w-16 h-16 rounded-3xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-2xl mx-auto mb-4">
+                <i class="fa-solid fa-clipboard-check"></i>
+            </div>
+            <h4 class="text-base font-black text-slate-800">Você não possui chamados em aberto</h4>
+            <p class="text-xs text-slate-500 font-medium mt-1 leading-relaxed">
+                Toda solicitação que você abrir cairá diretamente para a equipe técnica de TI (<strong>ALAN</strong>) e você poderá acompanhar o status em tempo real aqui.
+            </p>
+            <button type="button" @click="abrirModalNovo()"
+                    class="mt-5 px-5 py-2.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs inline-flex items-center gap-2 transition shadow-md shadow-indigo-600/20">
+                <i class="fa-solid fa-plus-circle"></i>
+                <span>Abrir Novo Chamado</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- CONTEÚDO PRINCIPAL: MODO KANBAN (PARA ADMIN / SERVICE DESK) -->
+    <div x-show="usuario && usuario.pode_ver_todos && modoExibicao === 'kanban'" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <!-- COLUNA 1: ABERTOS (Status 0) -->
         <div class="bg-slate-50/70 rounded-2xl p-3 border border-slate-200/80 flex flex-col">
             <div class="flex items-center justify-between mb-3 px-1">
@@ -255,8 +376,16 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
-                            <span x-text="c.solicitante">User</span>
+                            <span class="truncate max-w-[110px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-[9px] bg-slate-100 px-1 py-0.2 rounded" x-text="c.atendente || 'ALAN'">ALAN</span>
+                                <button type="button" x-show="usuario && usuario.pode_ver_todos && c.atendente !== usuario.username"
+                                        @click.stop="assumirChamado(c.idchamado)"
+                                        class="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded hover:bg-emerald-100 border border-emerald-200"
+                                        title="Assumir chamado para mim">
+                                    Assumir
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -287,8 +416,16 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
-                            <span x-text="c.solicitante">User</span>
+                            <span class="truncate max-w-[110px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-[9px] bg-slate-100 px-1 py-0.2 rounded" x-text="c.atendente || 'ALAN'">ALAN</span>
+                                <button type="button" x-show="usuario && usuario.pode_ver_todos && c.atendente !== usuario.username"
+                                        @click.stop="assumirChamado(c.idchamado)"
+                                        class="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded hover:bg-emerald-100 border border-emerald-200"
+                                        title="Assumir chamado para mim">
+                                    Assumir
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -319,8 +456,16 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                         <h4 class="text-xs font-bold text-slate-800 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
-                            <span x-text="c.solicitante">User</span>
+                            <span class="truncate max-w-[110px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-[9px] bg-slate-100 px-1 py-0.2 rounded" x-text="c.atendente || 'ALAN'">ALAN</span>
+                                <button type="button" x-show="usuario && usuario.pode_ver_todos && c.atendente !== usuario.username"
+                                        @click.stop="assumirChamado(c.idchamado)"
+                                        class="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded hover:bg-emerald-100 border border-emerald-200"
+                                        title="Assumir chamado para mim">
+                                    Assumir
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -351,8 +496,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                         <h4 class="text-xs font-bold text-slate-700 line-clamp-2 mb-1.5" x-text="c.titulo">Título</h4>
                         <div class="flex items-center justify-between text-[10px] text-slate-400 pt-1.5 border-t border-slate-100">
-                            <span class="truncate max-w-[130px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
-                            <span x-text="c.concluido_fmt || c.data_fmt">Data</span>
+                            <span class="truncate max-w-[110px] font-semibold text-slate-600" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</span>
+                            <div class="flex items-center gap-1">
+                                <span class="font-bold text-slate-700 text-[9px] bg-slate-100 px-1 py-0.2 rounded" x-text="c.atendente || 'ALAN'">ALAN</span>
+                                <span class="text-[9px] text-slate-400" x-text="c.concluido_fmt || c.data_fmt">Data</span>
+                            </div>
                         </div>
                     </div>
                 </template>
@@ -377,6 +525,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <th class="py-3 px-4 text-center">Criticidade</th>
                         <th class="py-3 px-4 text-center">Status</th>
                         <th class="py-3 px-4">Solicitante</th>
+                        <th class="py-3 px-4">Técnico TI</th>
                         <th class="py-3 px-4">Data Abertura</th>
                         <th class="py-3 px-4 text-center">Ações</th>
                     </tr>
@@ -403,6 +552,17 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full border" :class="c.status_info.cor" x-text="c.status_info.label">Aberto</span>
                             </td>
                             <td class="py-3 px-4 text-slate-500" x-text="c.solicitante">User</td>
+                            <td class="py-3 px-4">
+                                <div class="flex items-center gap-1.5">
+                                    <span class="font-bold text-slate-800" x-text="c.atendente || 'ALAN'">ALAN</span>
+                                    <button type="button" x-show="usuario && usuario.pode_ver_todos && c.atendente !== usuario.username"
+                                            @click.stop="assumirChamado(c.idchamado)"
+                                            class="text-[9px] font-bold text-emerald-700 hover:text-emerald-900 px-1.5 py-0.5 rounded bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 transition"
+                                            title="Assumir este chamado para mim">
+                                        Assumir
+                                    </button>
+                                </div>
+                            </td>
                             <td class="py-3 px-4 text-slate-400 text-[11px]" x-text="c.data_fmt">10/11/2026</td>
                             <td class="py-3 px-4 text-center">
                                 <button class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs transition">
@@ -412,7 +572,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </tr>
                     </template>
                     <tr x-show="chamados.length === 0">
-                        <td colspan="10" class="py-8 text-center text-xs text-slate-400">
+                        <td colspan="11" class="py-8 text-center text-xs text-slate-400">
                             Nenhum chamado encontrado com os filtros selecionados.
                         </td>
                     </tr>
@@ -931,16 +1091,22 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button type="button" @click="modalNovoAberto = false" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">
-                    Cancelar
-                </button>
-                <button type="button" @click="salvarNovoChamado()" :disabled="salvandoChamado || !novoForm.relato"
-                        class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-2 transition shadow-md shadow-indigo-600/20">
-                    <i class="fa-solid fa-paper-plane" x-show="!salvandoChamado"></i>
-                    <i class="fa-solid fa-spinner fa-spin" x-show="salvandoChamado"></i>
-                    <span>Confirmar & Abrir Chamado</span>
-                </button>
+            <div class="pt-4 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <span class="text-[11px] text-slate-500 font-medium flex items-center gap-1.5">
+                    <i class="fa-solid fa-shield-halved text-emerald-500"></i>
+                    <span>Direcionamento automático para a fila técnica: <strong>ALAN</strong></span>
+                </span>
+                <div class="flex items-center gap-2.5 w-full sm:w-auto justify-end">
+                    <button type="button" @click="modalNovoAberto = false" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100 transition">
+                        Cancelar
+                    </button>
+                    <button type="button" @click="salvarNovoChamado()" :disabled="salvandoChamado || !novoForm.relato"
+                            class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-2 transition shadow-md shadow-indigo-600/20">
+                        <i class="fa-solid fa-paper-plane" x-show="!salvandoChamado"></i>
+                        <i class="fa-solid fa-spinner fa-spin" x-show="salvandoChamado"></i>
+                        <span>Confirmar & Abrir Chamado</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -951,7 +1117,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             <template x-if="chamadoAtual">
                 <div class="flex flex-col h-full overflow-hidden">
                     <!-- Topo do Modal -->
-                    <div class="flex items-start justify-between pb-4 border-b border-slate-100">
+                    <div class="flex items-start justify-between pb-4 border-b border-slate-100 gap-3">
                         <div>
                             <div class="flex items-center gap-2 mb-1 flex-wrap">
                                 <span class="text-xs font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded border border-indigo-100" x-text="`CHAMADO #${chamadoAtual.idchamado}`">#1</span>
@@ -963,12 +1129,22 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <h2 class="text-base sm:text-lg font-black text-slate-800" x-text="chamadoAtual.titulo || chamadoAtual.motivo">Título</h2>
                             <p class="text-[11px] text-slate-400 mt-0.5">
                                 Solicitado por <strong class="text-slate-700" x-text="chamadoAtual.solicitante">User</strong> em <span x-text="chamadoAtual.data_fmt">Data</span> · 
-                                Origem: <strong class="text-indigo-600" x-text="chamadoAtual.tipo_sistema === 'PORTAL' ? chamadoAtual.modulo_nome : (chamadoAtual.equipamento_detalhe || chamadoAtual.subtipo_item || chamadoAtual.tipo_sistema)">Módulo</strong>
+                                Origem: <strong class="text-indigo-600" x-text="chamadoAtual.tipo_sistema === 'PORTAL' ? chamadoAtual.modulo_nome : (chamadoAtual.equipamento_detalhe || chamadoAtual.subtipo_item || chamadoAtual.tipo_sistema)">Módulo</strong> · 
+                                Técnico: <strong class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" x-text="chamadoAtual.atendente || 'ALAN'">ALAN</strong>
                             </p>
                         </div>
-                        <button @click="modalDetalhesAberto = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center">
-                            <i class="fa-solid fa-xmark"></i>
-                        </button>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <button type="button" x-show="usuario && usuario.pode_ver_todos && chamadoAtual.atendente !== usuario.username"
+                                    @click="assumirChamado(chamadoAtual.idchamado)"
+                                    class="px-3 py-1.5 rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-700 hover:to-emerald-800 text-white font-black text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition"
+                                    title="Atribuir este chamado para mim">
+                                <i class="fa-solid fa-user-check"></i>
+                                <span>Assumir Chamado</span>
+                            </button>
+                            <button @click="modalDetalhesAberto = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center">
+                                <i class="fa-solid fa-xmark"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Corpo com Scroll -->
@@ -1059,26 +1235,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <div class="space-y-2.5">
                                 <template x-for="op in timeline" :key="op.idoperacao">
                                     <div class="flex items-start gap-2.5 text-xs p-3 rounded-xl border transition"
-                                         :class="op.usuario === 'MARCON' ? 'bg-indigo-50/70 border-indigo-200 ring-1 ring-indigo-100' : 'bg-slate-50 border-slate-200/60'">
+                                         :class="(op.usuario === 'MARCON' || op.usuario === 'ALAN') ? 'bg-indigo-50/70 border-indigo-200 ring-1 ring-indigo-100' : 'bg-slate-50 border-slate-200/60'">
                                         <div class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-xs mt-0.5"
-                                             :class="op.usuario === 'MARCON' ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-200 text-slate-700'">
-                                            <i class="fa-solid fa-laptop-code" x-show="op.usuario === 'MARCON'"></i>
-                                            <i class="fa-solid fa-comment" x-show="op.usuario !== 'MARCON' && op.tipo === 'comentario'"></i>
-                                            <i class="fa-solid fa-arrows-rotate" x-show="op.usuario !== 'MARCON' && op.tipo === 'mudanca_status'"></i>
-                                            <i class="fa-solid fa-check" x-show="op.usuario !== 'MARCON' && op.tipo === 'resolucao'"></i>
-                                            <i class="fa-solid fa-plus" x-show="op.usuario !== 'MARCON' && op.tipo === 'abertura'"></i>
+                                             :class="(op.usuario === 'MARCON' || op.usuario === 'ALAN') ? 'bg-indigo-600 text-white shadow-xs' : 'bg-slate-200 text-slate-700'">
+                                            <i class="fa-solid fa-laptop-code" x-show="op.usuario === 'MARCON' || op.usuario === 'ALAN'"></i>
+                                            <i class="fa-solid fa-comment" x-show="op.usuario !== 'MARCON' && op.usuario !== 'ALAN' && op.tipo === 'comentario'"></i>
+                                            <i class="fa-solid fa-arrows-rotate" x-show="op.usuario !== 'MARCON' && op.usuario !== 'ALAN' && op.tipo === 'mudanca_status'"></i>
+                                            <i class="fa-solid fa-check" x-show="op.usuario !== 'MARCON' && op.usuario !== 'ALAN' && op.tipo === 'resolucao'"></i>
+                                            <i class="fa-solid fa-plus" x-show="op.usuario !== 'MARCON' && op.usuario !== 'ALAN' && op.tipo === 'abertura'"></i>
                                         </div>
                                         <div class="flex-1">
                                             <div class="flex items-center justify-between text-[11px] mb-0.5">
                                                 <div class="flex items-center gap-1.5">
-                                                    <strong :class="op.usuario === 'MARCON' ? 'text-indigo-950 font-black' : 'text-slate-800'" x-text="op.usuario">User</strong>
-                                                    <span x-show="op.usuario === 'MARCON'" class="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-indigo-200 text-indigo-900 font-bold">DevOps / TI</span>
+                                                    <strong :class="(op.usuario === 'MARCON' || op.usuario === 'ALAN') ? 'text-indigo-950 font-black' : 'text-slate-800'" x-text="op.usuario">User</strong>
+                                                    <span x-show="op.usuario === 'MARCON' || op.usuario === 'ALAN'" class="text-[9px] font-black uppercase px-1.5 py-0.2 rounded bg-indigo-200 text-indigo-900 font-bold">Suporte / TI</span>
                                                 </div>
                                                 <span class="text-slate-400 text-[10px]" x-text="op.data_fmt">Data</span>
                                             </div>
-                                            <div class="font-medium" :class="op.usuario === 'MARCON' ? 'text-indigo-950 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
+                                            <div class="font-medium" :class="(op.usuario === 'MARCON' || op.usuario === 'ALAN') ? 'text-indigo-950 font-bold' : 'text-slate-600'" x-text="op.descricao">Ação</div>
                                             <div x-show="op.detalhes" class="text-[11px] mt-1 whitespace-pre-wrap font-mono leading-relaxed p-2 rounded-lg"
-                                                 :class="op.usuario === 'MARCON' ? 'bg-indigo-900/5 text-indigo-950 border border-indigo-200/60' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
+                                                 :class="(op.usuario === 'MARCON' || op.usuario === 'ALAN') ? 'bg-indigo-900/5 text-indigo-950 border border-indigo-200/60' : 'text-slate-500 italic bg-white/70 border border-slate-100'" x-text="op.detalhes"></div>
                                             
                                             <!-- Anexo da Operação (Se houver) -->
                                             <div x-show="op.anexo_url" class="mt-2">

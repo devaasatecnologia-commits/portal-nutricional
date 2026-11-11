@@ -38,6 +38,7 @@ function chamadosApp() {
 
         // Filtros
         filtroPeriodoAtivo: 'todos', // 'hoje', '7dias', 'mes', 'todos'
+        filtroAtendente: 'todos', // 'todos', 'mim', 'sem_atendente'
         filtros: {
             status: '',
             tipo_sistema: 'todos',
@@ -143,6 +144,7 @@ function chamadosApp() {
                 if (this.filtros.busca) params.append('busca', this.filtros.busca);
                 if (this.filtros.data_inicio) params.append('data_inicio', this.filtros.data_inicio);
                 if (this.filtros.data_fim) params.append('data_fim', this.filtros.data_fim);
+                if (this.filtroAtendente && this.filtroAtendente !== 'todos') params.append('atendente', this.filtroAtendente);
 
                 const res = await this.api(`/chamados/listar?${params.toString()}`);
                 if (res.success) {
@@ -477,6 +479,39 @@ function chamadosApp() {
                 }
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'Erro ao Mudar Status', text: e.message });
+            }
+        },
+
+        async assumirChamado(id) {
+            try {
+                const res = await this.api('/chamados/assumir', {
+                    method: 'POST',
+                    body: { idchamado: id }
+                });
+                if (res.success) {
+                    await this.carregarDashboard();
+                    await this.carregarChamados();
+                    if (this.modalDetalhesAberto && this.chamadoAtual && this.chamadoAtual.idchamado == id) {
+                        await this.abrirDetalhes(id);
+                    }
+                    if (typeof Swal !== 'undefined') {
+                        const Toast = Swal.mixin({
+                            toast: true,
+                            position: 'top-end',
+                            showConfirmButton: false,
+                            timer: 2500,
+                            timerProgressBar: true
+                        });
+                        Toast.fire({
+                            icon: 'success',
+                            title: res.message || 'Chamado assumido com sucesso!'
+                        });
+                    }
+                }
+            } catch (e) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Erro ao Assumir', text: e.message });
+                }
             }
         },
 

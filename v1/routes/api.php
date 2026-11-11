@@ -1029,6 +1029,7 @@ $protected->group('/chamados', function ($group) {
     $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
     $group->post('/triagem-ia', [$controller, 'triarIa']);
     $group->post('/criar', [$controller, 'criar']);
+    $group->post('/assumir', [$controller, 'assumir']);
     $group->post('/atualizar-status', [$controller, 'atualizarStatus']);
     $group->post('/adicionar-interacao', [$controller, 'adicionarInteracao']);
     $group->post('/upload-anexo', [$controller, 'uploadAnexo']);
