@@ -38,12 +38,33 @@
 
 ```text
 v1/src/Controllers/ChamadosController.php
+v1/src/Controllers/CronRotinasController.php
 v1/routes/api.php
 portal/assets/js/chamados.js
 portal/modules/chamados.php
+portal/modules/admin/crons.php
+portal/modules/admin/components/header.php
+portal/modules/admin/components/footer.php
 docs/tokens/CONTINUATION-2026-11-11-CHAMADOS-PERMISSOES-ALAN.md
 docs/CONTINUATION_TOKEN.md
 ```
+
+---
+
+## 3. Diagnóstico e Resolução das Imagens Relatadas
+
+1. **Imagem 1 — `Falha ao carregar dashboard: Cannot set properties of null (setting 'innerHTML')`:**
+   - **Causa:** O commit anterior substituiu o antigo bloco de execuções recentes pela nova tabela completa de auditoria (`tabelaAuditoriaBody`), removendo o elemento `<div id="execucoesRecentes">`. Quando `atualizarDashboard()` chamava `atualizarRecentes()`, a tentativa de atribuir `innerHTML` a um container nulo gerava a exceção capturada no modal.
+   - **Solução:** Aplicada guarda defensiva `if (!container) return;` e try/catch em todas as etapas de renderização do dashboard, além de blindagem de query string em `apiFetch`.
+
+2. **Imagem 2 — `Auditoria da Execução #455 (Comando 'custo_gerencial_auto' não implementado)`:**
+   - **Diagnóstico:** A execução #455 exibida ocorreu às 11:50:08, exatamente no instante em que o cron do cPanel rodou antes de o arquivo `CronRotinasController.php` ser atualizado no servidor.
+   - **Status Atual:** As execuções subsequentes (#481 às 12:50, #483 às 12:56, #485 às 13:00, #487 às 13:05 e #489 às 13:10) foram executadas com **SUCESSO**, confirmando que a rotina está 100% operacional no banco de dados.
+
+3. **Imagem 3 — Chamado #36 do TALES com `Técnico: DEVAASA` e duplicação de cards + tabela:**
+   - **Causa do Atendente:** O chamado foi aberto às 09:42 antes do ajuste do código. O banco foi corrigido (`UPDATE chamado SET atendente = 'ALAN' WHERE idchamado = 36`).
+   - **Causa de não aparecer para o ALAN:** O usuário `ALAN` estava com a flag `chamados_ver_todos = 'N'` na tabela `usuario`, caindo na visão de solicitante comum. Foi corrigido no banco para `chamados_ver_todos = 'S'`.
+   - **Causa da Duplicação:** A tabela de listagem do modo lista não tinha a condição `usuario.pode_ver_todos`, aparecendo embaixo dos cards. Agora o solicitante vê estritamente seus cards e o administrador tem o painel completo de Service Desk.
 
 ---
 
