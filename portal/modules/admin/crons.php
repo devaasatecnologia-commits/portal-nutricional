@@ -847,6 +847,7 @@ function atualizarGrafico(dados) {
 
 function atualizarProximas(jobs) {
     const container = document.getElementById('proximasExecucoes');
+    if (!container) return;
     
     if (!jobs || jobs.length === 0) {
         container.innerHTML = '<p class="text-center text-slate-400 py-4">Nenhum job agendado</p>';
@@ -880,6 +881,7 @@ function atualizarProximas(jobs) {
 
 function atualizarRecentes(execucoes) {
     const container = document.getElementById('execucoesRecentes');
+    if (!container) return;
     
     if (!execucoes || execucoes.length === 0) {
         container.innerHTML = '<p class="text-center text-slate-400 py-6">Nenhuma execução recente</p>';
