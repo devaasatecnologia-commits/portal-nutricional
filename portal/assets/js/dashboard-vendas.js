@@ -615,6 +615,35 @@ function dashboardVendasHandler() {
                     dataLabels: { enabled: false },
                     grid: { borderColor: '#f1f5f9' },
                     legend: { position: 'top', horizontalAlign: 'right', fontSize: '11px', fontWeight: 600 },
+                    responsive: [{
+                        breakpoint: 640,
+                        options: {
+                            chart: { height: 260 },
+                            xaxis: { tickAmount: Math.min(labels.length, 6), labels: { style: { fontSize: '9px' } } },
+                            yaxis: [
+                                {
+                                    title: { text: '' },
+                                    labels: {
+                                        style: { fontSize: '9px' },
+                                        formatter: (v) => v >= 1000000
+                                            ? (v / 1000000).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + 'M'
+                                            : (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'k'
+                                    }
+                                },
+                                {
+                                    opposite: true,
+                                    title: { text: '' },
+                                    labels: {
+                                        style: { fontSize: '9px' },
+                                        formatter: (v) => v >= 1000
+                                            ? (v / 1000).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 't'
+                                            : v.toLocaleString('pt-BR', { maximumFractionDigits: 0 }) + 'kg'
+                                    }
+                                }
+                            ],
+                            legend: { position: 'bottom', horizontalAlign: 'center', fontSize: '10px' }
+                        }
+                    }],
                     tooltip: {
                         shared: true,
                         intersect: false,

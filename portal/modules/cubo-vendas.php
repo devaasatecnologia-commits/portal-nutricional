@@ -22,23 +22,23 @@ require_once __DIR__ . '/../estrutura/header.php';
     
     <!-- HEADER MOBILE -->
     <div class="mobile-toolbar block lg:hidden fixed top-0 left-0 right-0 z-50 shadow-lg">
-        <div class="flex items-center justify-between px-4 py-3">
-            <a href="/portal/" class="flex items-center gap-2 no-underline">
-                <i class="fa-solid fa-arrow-left text-lg"></i>
-                <span class="text-sm font-bold">VOLTAR</span>
+        <div class="flex items-center justify-between gap-3 px-4 py-3">
+            <a href="/portal/" class="flex items-center gap-1.5 no-underline flex-none">
+                <i class="fa-solid fa-arrow-left text-base"></i>
+                <span class="text-xs font-extrabold tracking-wide">VOLTAR</span>
             </a>
-            <div class="text-center">
-                <span class="text-sm font-bold modulo-nome">CUBO VENDAS</span>
+            <div class="text-center flex-1 min-w-0 truncate">
+                <span class="text-xs sm:text-sm font-black modulo-nome tracking-wide">CUBO DE VENDAS</span>
             </div>
-            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" class="text-amber-400 text-lg no-underline" title="Treinamento e Manual">
-                <i class="fa-solid fa-graduation-cap"></i>
+            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" class="w-8 h-8 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center no-underline flex-none" title="Treinamento e Manual">
+                <i class="fa-solid fa-graduation-cap text-sm"></i>
             </a>
         </div>
     </div>
     <div class="mobile-spacer block lg:hidden h-14"></div>
 
     <!-- HEADER DESKTOP -->
-    <div class="glass rounded-3xl p-5 mb-6 flex justify-between items-center shadow-sm bg-white">
+    <div class="glass rounded-3xl p-5 mb-6 hidden lg:flex justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
             <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline" >
                 <i class="fa-solid fa-arrow-left"></i>
@@ -64,59 +64,77 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <div class="max-w-full mx-auto px-4 lg:px-6">
+    <div class="max-w-full mx-auto px-3 sm:px-4 lg:px-6 pt-2 lg:pt-0">
         
         <!-- PAINEL DE FILTROS - HIERARQUIA CORRETA -->
-        <!-- sticky: o painel fica fixo no topo ao rolar a página (ver cubo-vendas.css #cuboFiltros) -->
-        <div id="cuboFiltros" class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-6">
+        <!-- No desktop fica sticky; no mobile é compacto e recolhível para liberar 100% da visão -->
+        <div id="cuboFiltros" x-data="{ expandirFiltrosMobile: false }" class="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-slate-100 mb-5">
             <!-- Barra Superior: Atalhos Rápidos de Período + Botões de Ação -->
-            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
-                <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
-                        <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>Período rápido:
+            <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2.5 pb-3 mb-3 border-b border-slate-100">
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                    <span class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-0.5 whitespace-nowrap flex-none">
+                        <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>Período:
                     </span>
                     <button type="button" @click="definirPeriodoRapido('hoje')"
                         :class="periodoRapidoAtivo === 'hoje' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Hoje</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Hoje</button>
                     <button type="button" @click="definirPeriodoRapido('mes_atual')"
                         :class="periodoRapidoAtivo === 'mes_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Mês</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Este Mês</button>
                     <button type="button" @click="definirPeriodoRapido('mes_passado')"
                         :class="periodoRapidoAtivo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Mês Passado</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Mês Passado</button>
                     <button type="button" @click="definirPeriodoRapido('ultimos_30')"
                         :class="periodoRapidoAtivo === 'ultimos_30' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Últimos 30 dias</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">30 dias</button>
                     <button type="button" @click="definirPeriodoRapido('ano_atual')"
                         :class="periodoRapidoAtivo === 'ano_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Ano</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Este Ano</button>
                 </div>
 
                 <!-- Botões de Ação -->
-                <div class="flex flex-wrap items-center gap-2">
-                    <button @click="abrirModalFiltrosAvancados()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer" data-tooltip="Filtros Avançados|Abra para filtrar por Região, Cidade, Grupo, Marca ou Tipo de Pedido">
-                        <i class="fa-solid fa-filter mr-1.5 text-slate-500"></i>Filtros<span x-show="filtrosAvancadosAtivos > 0" class="ml-1.5 text-[11px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5" x-text="filtrosAvancadosAtivos"></span>
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <button type="button" @click="expandirFiltrosMobile = !expandirFiltrosMobile"
+                        class="lg:hidden flex-1 px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-sliders text-emerald-600"></i>
+                        <span x-text="expandirFiltrosMobile ? 'Ocultar Seletores' : 'Filial, Gestor & Datas'"></span>
+                        <i class="fa-solid text-[10px]" :class="expandirFiltrosMobile ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                     </button>
-                    <button @click="abrirModalMetricas()" class="px-3.5 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer" data-tooltip="Personalizar Métricas|Selecione quais colunas de valores, pesos e quantidades exibir">
-                        <i class="fa-solid fa-chart-simple mr-1.5 text-slate-500"></i>Métricas
+                    <button @click="abrirModalFiltrosAvancados()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer whitespace-nowrap" data-tooltip="Filtros Avançados|Abra para filtrar por Região, Cidade, Grupo, Marca ou Tipo de Pedido">
+                        <i class="fa-solid fa-filter mr-1 text-slate-500"></i>Filtros<span x-show="filtrosAvancadosAtivos > 0" class="ml-1 text-[10px] bg-emerald-600 text-white rounded-full px-1.5 py-0.5" x-text="filtrosAvancadosAtivos"></span>
                     </button>
-                    <button @click="exportarDados()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all cursor-pointer" data-tooltip="Exportar para Excel|Baixar a tabela consolidada em formato CSV">
-                        <i class="fa-regular fa-file-excel mr-1.5"></i>Exportar CSV
+                    <button @click="abrirModalMetricas()" class="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-bold hover:bg-slate-200 transition-all cursor-pointer whitespace-nowrap" data-tooltip="Personalizar Métricas|Selecione quais colunas de valores, pesos e quantidades exibir">
+                        <i class="fa-solid fa-chart-simple mr-1 text-slate-500"></i>Métricas
+                    </button>
+                    <button @click="exportarDados()" class="px-3 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all cursor-pointer whitespace-nowrap" data-tooltip="Exportar para Excel|Baixar a tabela consolidada em formato CSV">
+                        <i class="fa-regular fa-file-excel mr-1"></i>CSV
                     </button>
                 </div>
             </div>
 
-            <!-- Grade Simétrica de Filtros Principais -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+            <!-- Barra Mobile Sempre Visível: Agrupar Por (para análise rápida 1-toque no celular) -->
+            <div class="lg:hidden flex items-center gap-2 mb-1">
+                <label class="text-[11px] font-extrabold text-emerald-800 uppercase whitespace-nowrap flex items-center gap-1">
+                    <i class="fa-solid fa-layer-group text-emerald-600"></i> Agrupar:
+                </label>
+                <select x-model="rowDimension" @change="atualizar()" class="flex-1 p-2 border-2 border-emerald-200 bg-emerald-50/40 rounded-xl text-xs font-bold text-slate-800">
+                    <template x-for="(dim, key) in dimensionsDisponiveis" :key="'mob_' + key">
+                        <option :value="key" x-text="dim.label"></option>
+                    </template>
+                </select>
+            </div>
+
+            <!-- Grade Simétrica de Filtros Principais (Sempre visível no Desktop; colapsável no Mobile) -->
+            <div :class="expandirFiltrosMobile ? 'grid mt-3 pt-3 border-t border-slate-100' : 'hidden lg:grid'" class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
                 
-                <!-- Período (ocupa 2 colunas para nunca espremer as datas) -->
+                <!-- Período (ocupa 2 colunas no desktop e empilha no celular estreito para nunca cortar o ano) -->
                 <div class="sm:col-span-2 lg:col-span-2">
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                         <i class="fa-regular fa-calendar mr-1"></i> Período
                     </label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="date" x-model="filters.data_inicio" @change="periodoRapidoAtivo = ''; opcoesCarregadas = false; atualizar()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-sm font-medium focus:border-emerald-500 outline-none">
-                        <input type="date" x-model="filters.data_fim" @change="periodoRapidoAtivo = ''; opcoesCarregadas = false; atualizar()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-sm font-medium focus:border-emerald-500 outline-none">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="date" x-model="filters.data_inicio" @change="periodoRapidoAtivo = ''; opcoesCarregadas = false; atualizar()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:border-emerald-500 outline-none">
+                        <input type="date" x-model="filters.data_fim" @change="periodoRapidoAtivo = ''; opcoesCarregadas = false; atualizar()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:border-emerald-500 outline-none">
                     </div>
                 </div>
                 
@@ -326,12 +344,12 @@ require_once __DIR__ . '/../estrutura/header.php';
         <!-- GRÁFICO + RANKING -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
             <!-- GRÁFICO -->
-            <div class="lg:col-span-2 bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                <div class="flex justify-between items-center mb-4">
-                    <h4 class="text-sm font-bold text-slate-700 uppercase">
-                        <i class="fa-regular fa-chart-line mr-2 text-emerald-500"></i> EVOLUÇÃO MENSAL
+            <div class="lg:col-span-2 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 min-w-0">
+                <div class="flex flex-wrap justify-between items-center gap-2 mb-4">
+                    <h4 class="text-xs sm:text-sm font-bold text-slate-700 uppercase">
+                        <i class="fa-regular fa-chart-line mr-1.5 text-emerald-500"></i> EVOLUÇÃO MENSAL
                     </h4>
-                    <select id="graficoTipo" onchange="mudarTipoGrafico()" class="px-3 py-2 border border-slate-200 rounded-lg text-xs font-bold">
+                    <select id="graficoTipo" onchange="mudarTipoGrafico()" class="px-2.5 py-1.5 border border-slate-200 rounded-lg text-xs font-bold bg-white max-w-full">
                         <option value="valor_total">Venda Líquida (R$)</option>
                         <option value="valor_bruto">Venda Bruta (R$)</option>
                         <option value="valor_devolvido">Devolução (R$)</option>
@@ -345,9 +363,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>     
             <!-- RANKING -->
-            <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
-                <h4 class="text-sm font-bold text-slate-700 uppercase mb-4">
-                    <i class="fa-solid fa-trophy mr-2 text-amber-500"></i> TOP 10 CLIENTES
+            <div class="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 min-w-0">
+                <h4 class="text-xs sm:text-sm font-bold text-slate-700 uppercase mb-4">
+                    <i class="fa-solid fa-trophy mr-1.5 text-amber-500"></i> TOP 10 CLIENTES
                 </h4>
                 <div class="space-y-2 max-h-80 overflow-y-auto" id="rankingContainer">
                     <div class="text-center py-8 text-slate-400" id="rankingVazio">
@@ -360,46 +378,46 @@ require_once __DIR__ . '/../estrutura/header.php';
 
         <!-- TABELA DE DADOS -->
         <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mb-6">
-            <div class="bg-slate-50 px-5 py-3.5 border-b border-slate-200 flex flex-wrap justify-between items-center gap-3">
+            <div class="bg-slate-50 px-4 sm:px-5 py-3.5 border-b border-slate-200 flex flex-col sm:flex-row sm:flex-wrap justify-between items-stretch sm:items-center gap-3">
                 <div>
-                    <h4 class="text-sm font-bold text-slate-700 uppercase">
-                        <i class="fa-solid fa-table mr-2 text-emerald-600"></i> 
+                    <h4 class="text-xs sm:text-sm font-bold text-slate-700 uppercase">
+                        <i class="fa-solid fa-table mr-1.5 text-emerald-600"></i> 
                         DETALHAMENTO POR <span x-text="rowDimensionLabel.toUpperCase()"></span>
                     </h4>
-                    <span class="text-[11px] text-slate-400">Clique em qualquer linha para abrir os documentos e itens rastreados</span>
+                    <span class="text-[11px] text-slate-400">Toque ou clique em qualquer linha para abrir os documentos e itens rastreados</span>
                 </div>
-                <div class="flex items-center gap-3">
-                    <div class="relative">
+                <div class="flex items-center gap-2 sm:gap-3">
+                    <div class="relative flex-1 sm:flex-none">
                         <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs absolute left-3 top-1/2 -translate-y-1/2"></i>
                         <input type="search" x-model="buscaTabela" placeholder="Filtrar na tabela..."
-                            class="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:border-emerald-500 outline-none w-48 sm:w-56">
+                            class="pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:border-emerald-500 outline-none w-full sm:w-56">
                     </div>
-                    <span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg" x-text="linhasFiltradas.length + ' linha(s)'"></span>
+                    <span class="text-xs font-bold text-slate-500 bg-white border border-slate-200 px-2.5 py-1 rounded-lg whitespace-nowrap flex-none" x-text="linhasFiltradas.length + ' linha(s)'"></span>
                 </div>
             </div>
             <div class="overflow-x-auto" id="tabelaContainer">
-                <table class="w-full">
+                <table class="w-full min-w-[540px]">
                     <thead class="bg-slate-50 border-b border-slate-200">
                         <tr>
-                            <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase" x-text="rowDimensionLabel"></th>
+                            <th class="px-3 sm:px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase whitespace-nowrap" x-text="rowDimensionLabel"></th>
                             <template x-for="metric in metricsSelecionadas" :key="metric">
-                                <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase" x-text="getMetricLabel(metric)"></th>
+                                <th class="px-3 sm:px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase whitespace-nowrap" x-text="getMetricLabel(metric)"></th>
                             </template>
-                            <th class="px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase w-40">% Participação</th>
+                            <th class="px-3 sm:px-4 py-3 text-right text-xs font-bold text-slate-400 uppercase whitespace-nowrap w-32 sm:w-40">% Part.</th>
                         </tr>
                     </thead>
                     <tbody>
                         <template x-for="row in linhasFiltradas" :key="row.dimensao_id + '|' + row.dimensao">
                             <tr class="border-b border-slate-100 hover:bg-slate-50 transition-colors cursor-pointer group" 
                             @click="verDetalhes(row)">
-                                <td class="px-4 py-3 font-semibold text-slate-700 group-hover:text-emerald-700 transition-colors">
+                                <td class="px-3 sm:px-4 py-3 font-semibold text-xs sm:text-sm text-slate-700 group-hover:text-emerald-700 transition-colors">
                                     <span x-text="row.dimensao"></span>
                                     <i class="fa-solid fa-arrow-up-right-from-square text-[10px] text-slate-300 group-hover:text-emerald-500 ml-1.5 transition-colors"></i>
                                 </td>
                                 <template x-for="metric in metricsSelecionadas" :key="metric">
-                                    <td class="px-4 py-3 text-right whitespace-nowrap" :class="getMetricClass(metric)" x-text="formatMetric(row[metric], metric)"></td>
+                                    <td class="px-3 sm:px-4 py-3 text-right text-xs sm:text-sm whitespace-nowrap" :class="getMetricClass(metric)" x-text="formatMetric(row[metric], metric)"></td>
                                 </template>
-                                <td class="px-4 py-3 text-right">
+                                <td class="px-3 sm:px-4 py-3 text-right whitespace-nowrap">
                                     <template x-if="row.percentual_participacao !== null">
                                         <div class="flex items-center justify-end gap-2">
                                             <div class="w-16 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:block">
@@ -421,13 +439,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                             </td>
                         </tr>
                     </tbody>
-                    <tfoot x-show="linhasFiltradas.length > 0" class="bg-slate-50 border-t-2 border-slate-200 font-bold text-sm">
+                    <tfoot x-show="linhasFiltradas.length > 0" class="bg-slate-50 border-t-2 border-slate-200 font-bold text-xs sm:text-sm">
                         <tr>
-                            <td class="px-4 py-3 text-slate-700 uppercase text-xs font-extrabold">Total Consolidado</td>
+                            <td class="px-3 sm:px-4 py-3 text-slate-700 uppercase text-xs font-extrabold whitespace-nowrap">Total Consolidado</td>
                             <template x-for="metric in metricsSelecionadas" :key="'tot_' + metric">
-                                <td class="px-4 py-3 text-right whitespace-nowrap" :class="getMetricClass(metric)" x-text="formatMetric(totalColuna(metric), metric)"></td>
+                                <td class="px-3 sm:px-4 py-3 text-right whitespace-nowrap" :class="getMetricClass(metric)" x-text="formatMetric(totalColuna(metric), metric)"></td>
                             </template>
-                            <td class="px-4 py-3 text-right text-emerald-700 text-xs font-extrabold">100,00%</td>
+                            <td class="px-3 sm:px-4 py-3 text-right text-emerald-700 text-xs font-extrabold whitespace-nowrap">100,00%</td>
                         </tr>
                     </tfoot>
                 </table>

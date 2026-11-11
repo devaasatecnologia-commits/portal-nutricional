@@ -207,7 +207,9 @@ function atualizarPrevisoes() {
 // ==========================================
 async function carregarContexto(forcarRecarregar = false) {
     try {
-        const filial = Number($('selFilial').value || estado.filial || 1);
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}');
+        const filialPref = localStorage.getItem('vf_filial_pref') || userData.filial_padrao || (userData.dash_filiais && userData.dash_filiais[0]);
+        const filial = Number($('selFilial')?.value || estado.filial || filialPref || 1);
         const data = await apiFetch('flex/contexto', 'GET', { filial });
 
         estado.usuario = data.usuario || 'GESTOR';
@@ -229,6 +231,7 @@ async function carregarContexto(forcarRecarregar = false) {
 
 async function mudarFilial() {
     estado.filial = Number($('selFilial').value);
+    localStorage.setItem('vf_filial_pref', String(estado.filial));
     resetarCampos();
     await carregarContexto();
 }

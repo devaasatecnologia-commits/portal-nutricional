@@ -17,8 +17,8 @@ $extraCss = '
 .ac-wrap { font-family: "Plus Jakarta Sans", system-ui, sans-serif; }
 .ac-hero { background: linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #334155 100%); }
 .ac-card { background: #ffffff; border-radius: 1.5rem; box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.05); border: 1px solid #f1f5f9; }
-.ac-label { font-size: 0.72rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
-.ac-input { width: 100%; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.7rem 1rem; font-size: 0.92rem; background: #f8fafc; font-weight: 600; color: #1e293b; transition: all 0.2s; }
+.ac-label { font-size: 0.65rem; font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; color: #64748b; }
+.ac-input { width: 100%; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.65rem 0.95rem; font-size: 0.88rem; background: #f8fafc; font-weight: 600; color: #1e293b; transition: all 0.2s; }
 .ac-input:focus { outline: none; border-color: #3b82f6; background: #ffffff; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.12); }
 
 /* KPIs */
@@ -27,8 +27,13 @@ $extraCss = '
     cursor: pointer;
     position: relative;
     overflow: hidden;
+    min-width: 0;
     border-radius: 1.25rem;
-    padding: 1.15rem;
+    padding: 0.85rem;
+}
+@media (min-width: 640px) {
+    .kpi-card { padding: 1.15rem; }
+    .ac-label { font-size: 0.72rem; letter-spacing: 0.05em; }
 }
 .kpi-card:hover {
     transform: translateY(-3px);
@@ -77,28 +82,28 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div id="shimmer-bar" class="shimmer-bar"></div>
 
     <!-- HERO HEADER -->
-    <div class="ac-hero rounded-3xl p-5 sm:p-7 text-white shadow-xl mb-5 border border-slate-700/40">
+    <div class="ac-hero rounded-3xl p-4 sm:p-7 text-white shadow-xl mb-5 border border-slate-700/40">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
-            <div class="flex items-center gap-3">
-                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white no-underline transition shadow-sm border border-white/10" title="Voltar ao Portal">
+            <div class="flex items-start sm:items-center gap-3 min-w-0">
+                <a href="<?= $appBase ?>/portal/" class="w-10 h-10 sm:w-11 sm:h-11 flex-none rounded-2xl bg-white/10 hover:bg-white/20 flex items-center justify-center text-white no-underline transition shadow-sm border border-white/10" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left"></i>
                 </a>
-                <div>
-                    <div class="flex items-center gap-2">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
                         <span class="ac-chip bg-white/10 text-white backdrop-blur-sm border border-white/15"><i class="fa-solid fa-chart-pie text-amber-400"></i> Gestão de Crédito</span>
                         <span class="ac-chip bg-amber-500/20 text-amber-200 border border-amber-400/30">Tolerância 3 Dias</span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-1 text-white">Análise de Carteira & Inadimplência</h1>
+                    <h1 class="text-lg sm:text-2xl font-black tracking-tight mt-1 text-white leading-tight">Análise de Carteira & Inadimplência</h1>
                     <p class="text-xs sm:text-sm text-slate-300 mt-0.5" id="subtitulo-header">Controle de títulos vencidos por gestor, representante e ocorrências de clientes</p>
                 </div>
             </div>
 
-            <div class="flex items-center gap-2.5">
+            <div class="flex flex-wrap items-center gap-2 sm:gap-2.5">
                 <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=analise-carteira" 
-                   class="px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-2xl font-extrabold text-xs sm:text-sm transition-all shadow-md flex items-center gap-2 no-underline">
+                   class="flex-1 sm:flex-none justify-center px-3.5 sm:px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-2xl font-extrabold text-xs sm:text-sm transition-all shadow-md flex items-center gap-2 no-underline whitespace-nowrap">
                     <i class="fa-solid fa-graduation-cap"></i> Treinamento &amp; Manual
                 </a>
-                <button onclick="exportarExcelCompleto()" class="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 shadow-sm border border-emerald-500/30">
+                <button onclick="exportarExcelCompleto()" class="flex-1 sm:flex-none justify-center bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm py-2.5 px-3.5 sm:px-4 rounded-2xl transition flex items-center gap-2 shadow-sm border border-emerald-500/30 whitespace-nowrap">
                     <i class="fa-solid fa-file-excel"></i> Baixar Excel Completo
                 </button>
             </div>
@@ -106,7 +111,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- BARRA DE PERÍODOS RÁPIDOS & FILTROS (GESTOR & REPRESENTANTE) -->
-    <div class="ac-card p-4 sm:p-5 mb-5 space-y-4">
+    <div class="ac-card p-3.5 sm:p-5 mb-5 space-y-4">
         <!-- Linha 1: Períodos Rápidos -->
         <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
             <div class="flex flex-wrap items-center gap-2">
@@ -165,10 +170,10 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- Linha 2: Filtros de Gestor e Representante -->
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
             <div>
                 <label class="block">
-                    <span class="ac-label flex items-center justify-between">
+                    <span class="ac-label flex items-center justify-between gap-2">
                         <span class="flex items-center gap-1.5"><i class="fa-solid fa-user-tie text-blue-600"></i> Gestor Responsável</span>
                         <span id="badge-gestor-escopo" class="text-[10px] text-slate-500 font-semibold"></span>
                     </span>
@@ -179,7 +184,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <div>
                 <label class="block">
-                    <span class="ac-label flex items-center justify-between">
+                    <span class="ac-label flex items-center justify-between gap-2">
                         <span class="flex items-center gap-1.5"><i class="fa-solid fa-user text-blue-500"></i> Representante Comercial</span>
                         <span id="badge-rep-escopo" class="text-[10px] text-slate-500 font-semibold"></span>
                     </span>
@@ -192,117 +197,99 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- 5 KPIS REORGANIZADOS COM HIERARQUIA VISUAL CLARA -->
-    <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 mb-5" id="kpi-cards">
+    <div class="grid grid-cols-2 lg:grid-cols-5 gap-2.5 sm:gap-4 mb-5" id="kpi-cards">
         <!-- KPI 1: Vencidos (Inadimplência) -->
         <div class="kpi-card bg-gradient-to-br from-rose-50 to-red-50/70 border border-rose-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer" 
              onclick="scrollToTable('tabela-representantes')"
              data-tooltip="Total Vencido|Soma de duplicatas e boletos em aberto com atraso superior a 3 dias úteis (tolerância operacional da empresa). Clique para rolar até a tabela de representantes.">
-            <div class="flex items-center justify-between text-rose-600 mb-1">
-                <span class="ac-label text-rose-700 flex items-center gap-1">
-                    Total Vencido <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
-                </span>
-                <i class="fa-solid fa-triangle-exclamation text-xs"></i>
+            <div class="flex items-center justify-between gap-1 text-rose-600 mb-1 min-w-0">
+                <span class="ac-label text-rose-700 truncate">Total Vencido</span>
+                <i class="fa-solid fa-triangle-exclamation text-xs flex-none"></i>
             </div>
-            <div id="kpi-vencidos" class="text-xl sm:text-2xl font-black text-rose-600">R$ 0,00</div>
-            <div id="kpi-vencidos-perc" class="text-[0.65rem] text-rose-700 font-bold mt-1">0% da carteira</div>
+            <div id="kpi-vencidos" class="text-base sm:text-2xl font-black text-rose-600 tracking-tight truncate">R$ 0,00</div>
+            <div id="kpi-vencidos-perc" class="text-[0.65rem] text-rose-700 font-bold mt-1 truncate">0% da carteira</div>
         </div>
 
         <!-- KPI 2: IAG (Índice de Atraso Geral) -->
         <div class="kpi-card bg-gradient-to-br from-amber-50 to-orange-50/70 border border-amber-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
              data-tooltip="IAG (Índice de Atraso Geral)|Percentual de inadimplência da carteira: (Total Vencido / Carteira Total) * 100. Classificação: Saudável (<5%), Atenção (5% a 15%) e Crítico (>15%).">
-            <div class="flex items-center justify-between text-amber-600 mb-1">
-                <span class="ac-label text-amber-700 flex items-center gap-1">
-                    IAG (Inadimplência) <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
-                </span>
-                <i class="fa-solid fa-percent text-xs"></i>
+            <div class="flex items-center justify-between gap-1 text-amber-600 mb-1 min-w-0">
+                <span class="ac-label text-amber-700 truncate">IAG (Inadimpl.)</span>
+                <i class="fa-solid fa-percent text-xs flex-none"></i>
             </div>
-            <div id="kpi-iag" class="text-xl sm:text-2xl font-black text-amber-600">0%</div>
-            <div class="text-[0.65rem] text-amber-700 font-bold mt-1">Índice Atraso Geral</div>
+            <div id="kpi-iag" class="text-base sm:text-2xl font-black text-amber-600 tracking-tight truncate">0%</div>
+            <div class="text-[0.65rem] text-amber-700 font-bold mt-1 truncate">Índice Atraso Geral</div>
         </div>
 
         <!-- KPI 3: Títulos Vencidos & Clientes -->
         <div class="kpi-card bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
              data-tooltip="Títulos Vencidos & Clientes Afetados|Quantidade física de boletos vencidos e contagem real de clientes únicos inadimplentes no escopo selecionado.">
-            <div class="flex items-center justify-between text-purple-600 mb-1">
-                <span class="ac-label text-purple-700 flex items-center gap-1">
-                    Títulos Vencidos <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
-                </span>
-                <i class="fa-solid fa-file-circle-xmark text-xs"></i>
+            <div class="flex items-center justify-between gap-1 text-purple-600 mb-1 min-w-0">
+                <span class="ac-label text-purple-700 truncate">Títulos Vencidos</span>
+                <i class="fa-solid fa-file-circle-xmark text-xs flex-none"></i>
             </div>
-            <div id="kpi-titulos" class="text-xl sm:text-2xl font-black text-purple-700">0</div>
+            <div id="kpi-titulos" class="text-base sm:text-2xl font-black text-purple-700 tracking-tight truncate">0</div>
             <div id="kpi-titulos-clientes" class="text-[0.65rem] text-purple-700 font-bold mt-1 truncate">0 clientes afetados</div>
         </div>
 
         <!-- KPI 4: À Vencer (Saudável) -->
         <div class="kpi-card bg-gradient-to-br from-emerald-50 to-teal-50/70 border border-emerald-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
              data-tooltip="Carteira À Vencer|Saldo de títulos a vencer no prazo regular somado aos títulos com até 3 dias de atraso (dentro do prazo de tolerância).">
-            <div class="flex items-center justify-between text-emerald-600 mb-1">
-                <span class="ac-label text-emerald-700 flex items-center gap-1">
-                    Carteira À Vencer <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
-                </span>
-                <i class="fa-solid fa-calendar-check text-xs"></i>
+            <div class="flex items-center justify-between gap-1 text-emerald-600 mb-1 min-w-0">
+                <span class="ac-label text-emerald-700 truncate">Carteira À Vencer</span>
+                <i class="fa-solid fa-calendar-check text-xs flex-none"></i>
             </div>
-            <div id="kpi-a-vencer" class="text-xl sm:text-2xl font-black text-emerald-700">R$ 0,00</div>
+            <div id="kpi-a-vencer" class="text-base sm:text-2xl font-black text-emerald-700 tracking-tight truncate">R$ 0,00</div>
             <div id="kpi-a-vencer-sub" class="text-[0.65rem] text-emerald-700 font-bold mt-1 truncate" title="Janela dos próximos 30 dias">Próx. 30 dias</div>
         </div>
 
         <!-- KPI 5: Carteira Total -->
-        <div class="kpi-card bg-gradient-to-br from-blue-50 to-slate-100 border border-blue-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
+        <div class="kpi-card col-span-2 lg:col-span-1 bg-gradient-to-br from-blue-50 to-slate-100 border border-blue-200 shadow-sm hover:scale-[1.02] transition-all cursor-pointer"
              data-tooltip="Carteira Total|Volume total sob custódia de crédito a receber (Vencidos + À Vencer) de todos os clientes do escopo selecionado.">
-            <div class="flex items-center justify-between text-blue-600 mb-1">
-                <span class="ac-label text-blue-700 flex items-center gap-1">
-                    Carteira Total <i class="fa-solid fa-circle-question text-[10px] opacity-75"></i>
-                </span>
-                <i class="fa-solid fa-wallet text-xs"></i>
+            <div class="flex items-center justify-between gap-1 text-blue-600 mb-1 min-w-0">
+                <span class="ac-label text-blue-700 truncate">Carteira Total</span>
+                <i class="fa-solid fa-wallet text-xs flex-none"></i>
             </div>
-            <div id="kpi-carteira" class="text-xl sm:text-2xl font-black text-slate-800">R$ 0,00</div>
+            <div id="kpi-carteira" class="text-base sm:text-2xl font-black text-slate-800 tracking-tight truncate">R$ 0,00</div>
             <div id="kpi-carteira-info" class="text-[0.65rem] text-slate-500 font-bold mt-1 truncate">0 títulos | 0 clientes</div>
-        </div>
-    </div>
         </div>
     </div>
 
     <!-- GRÁFICOS (DISTRIBUIÇÃO POR FAIXA & RANKING) -->
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-5">
         <!-- Pizza - Faixas de Atraso -->
-        <div class="ac-card p-4 sm:p-5">
+        <div class="ac-card p-4 sm:p-5 min-w-0">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                     <i class="fa-solid fa-chart-pie text-rose-500"></i> Distribuição do Vencido
                 </h3>
             </div>
-            <p class="text-[0.7rem] text-slate-400 font-semibold mb-3">Clique em uma fatia para ver representantes</p>
+            <p class="text-[0.7rem] text-slate-400 font-semibold mb-3">Toque ou clique em uma fatia para ver representantes</p>
             <div id="chart-pizza" style="height: 260px;"></div>
-            <div class="grid grid-cols-3 gap-2 mt-2 text-center text-xs">
-                <div class="bg-blue-50 border border-blue-100 rounded-xl p-2 hover:bg-blue-100/70 transition cursor-help"
+            <div class="grid grid-cols-3 gap-1.5 sm:gap-2 mt-2 text-center text-xs">
+                <div class="bg-blue-50 border border-blue-100 rounded-xl p-1.5 sm:p-2 hover:bg-blue-100/70 transition cursor-help min-w-0"
                      data-tooltip="Faixa 30 Dias|Títulos vencidos entre 4 e 33 dias atrás (atraso inicial recente). Contato amigável e reenvio de boleto.">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
-                        30 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
-                    </span>
-                    <span class="font-black text-blue-700" id="pizza-30d">R$ 0</span>
-                    <span class="text-[0.65rem] text-slate-400 block" id="pizza-30d-perc">0%</span>
+                    <span class="text-slate-500 block text-[0.62rem] font-bold truncate">30 Dias</span>
+                    <span class="font-black text-blue-700 text-[11px] sm:text-xs block truncate" id="pizza-30d">R$ 0</span>
+                    <span class="text-[0.62rem] text-slate-400 block" id="pizza-30d-perc">0%</span>
                 </div>
-                <div class="bg-amber-50 border border-amber-100 rounded-xl p-2 hover:bg-amber-100/70 transition cursor-help"
+                <div class="bg-amber-50 border border-amber-100 rounded-xl p-1.5 sm:p-2 hover:bg-amber-100/70 transition cursor-help min-w-0"
                      data-tooltip="Faixa 60 Dias|Títulos vencidos entre 34 e 63 dias atrás (faixa de atenção / cobrança ativa e bloqueio preventivo de novos pedidos).">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
-                        60 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
-                    </span>
-                    <span class="font-black text-amber-700" id="pizza-60d">R$ 0</span>
-                    <span class="text-[0.65rem] text-slate-400 block" id="pizza-60d-perc">0%</span>
+                    <span class="text-slate-500 block text-[0.62rem] font-bold truncate">60 Dias</span>
+                    <span class="font-black text-amber-700 text-[11px] sm:text-xs block truncate" id="pizza-60d">R$ 0</span>
+                    <span class="text-[0.62rem] text-slate-400 block" id="pizza-60d-perc">0%</span>
                 </div>
-                <div class="bg-rose-50 border border-rose-100 rounded-xl p-2 hover:bg-rose-100/70 transition cursor-help"
+                <div class="bg-rose-50 border border-rose-100 rounded-xl p-1.5 sm:p-2 hover:bg-rose-100/70 transition cursor-help min-w-0"
                      data-tooltip="Faixa +60 Dias|Títulos vencidos há mais de 63 dias atrás (risco elevado / encaminhamento para assessoria de cobrança jurídica).">
-                    <span class="text-slate-500 block text-[0.65rem] font-bold flex items-center justify-center gap-1">
-                        +60 Dias <i class="fa-solid fa-circle-question text-[9px] opacity-75"></i>
-                    </span>
-                    <span class="font-black text-rose-700" id="pizza-90d">R$ 0</span>
-                    <span class="text-[0.65rem] text-slate-400 block" id="pizza-90d-perc">0%</span>
+                    <span class="text-slate-500 block text-[0.62rem] font-bold truncate">+60 Dias</span>
+                    <span class="font-black text-rose-700 text-[11px] sm:text-xs block truncate" id="pizza-90d">R$ 0</span>
+                    <span class="text-[0.62rem] text-slate-400 block" id="pizza-90d-perc">0%</span>
                 </div>
             </div>
         </div>
 
         <!-- Ranking Representantes -->
-        <div class="ac-card p-4 sm:p-5 lg:col-span-2">
+        <div class="ac-card p-4 sm:p-5 lg:col-span-2 min-w-0">
             <div class="flex justify-between items-center mb-1">
                 <h3 class="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                     <i class="fa-solid fa-ranking-star text-amber-500"></i> Top 10 Representantes em Inadimplência
@@ -321,19 +308,19 @@ require_once __DIR__ . '/../estrutura/header.php';
             </h3>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-xs" id="tabela-resumo-gestor">
+            <table class="w-full text-xs min-w-[780px]" id="tabela-resumo-gestor">
                 <thead class="bg-slate-100/70 border-b border-slate-200 text-[0.65rem] uppercase tracking-wider text-slate-500 font-black">
                     <tr>
-                        <th class="px-4 py-3 text-left">Gestor</th>
-                        <th class="px-4 py-3 text-right">Vencidos</th>
-                        <th class="px-4 py-3 text-right">30 Dias</th>
-                        <th class="px-4 py-3 text-center">% 30</th>
-                        <th class="px-4 py-3 text-right">60 Dias</th>
-                        <th class="px-4 py-3 text-center">% 60</th>
-                        <th class="px-4 py-3 text-right">+60 Dias</th>
-                        <th class="px-4 py-3 text-center">% +60</th>
-                        <th class="px-4 py-3 text-center">Performance</th>
-                        <th class="px-4 py-3 text-right">À Vencer</th>
+                        <th class="px-4 py-3 text-left whitespace-nowrap">Gestor</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap">Vencidos</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap">30 Dias</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap">% 30</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap">60 Dias</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap">% 60</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap">+60 Dias</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap">% +60</th>
+                        <th class="px-4 py-3 text-center whitespace-nowrap">Performance</th>
+                        <th class="px-4 py-3 text-right whitespace-nowrap">À Vencer</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-resumo-gestor-body"></tbody>
@@ -348,27 +335,27 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <h3 class="font-extrabold text-slate-800 text-sm flex items-center gap-2">
                     <i class="fa-solid fa-users text-blue-600"></i> Inadimplência por Representante
                 </h3>
-                <p class="text-xs text-slate-400 mt-0.5">Clique em um representante para detalhar seus títulos e clientes</p>
+                <p class="text-xs text-slate-400 mt-0.5">Toque ou clique em um representante para detalhar seus títulos e clientes</p>
             </div>
             <span class="text-xs font-bold text-slate-500" id="tabela-rep-info"></span>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-xs table-hover" id="tabela-rep">
+            <table class="w-full text-xs table-hover min-w-[920px]" id="tabela-rep">
                 <thead class="bg-slate-50 border-b border-slate-200 text-[0.65rem] uppercase tracking-wider text-slate-500 font-black">
                     <tr>
-                        <th class="px-3 py-3 text-left">Representante</th>
-                        <th class="px-3 py-3 text-right">Vencidos</th>
-                        <th class="px-3 py-3 text-right">30 Dias</th>
-                        <th class="px-3 py-3 text-center">%30</th>
-                        <th class="px-3 py-3 text-right">60 Dias</th>
-                        <th class="px-3 py-3 text-center">%60</th>
-                        <th class="px-3 py-3 text-right">+60 Dias</th>
-                        <th class="px-3 py-3 text-center">%+60</th>
-                        <th class="px-3 py-3 text-center">% Total</th>
-                        <th class="px-3 py-3 text-center">Títulos</th>
-                        <th class="px-3 py-3 text-center">Clientes</th>
-                        <th class="px-3 py-3 text-center">Performance</th>
-                        <th class="px-3 py-3 text-right">À Vencer</th>
+                        <th class="px-3 py-3 text-left whitespace-nowrap">Representante</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">Vencidos</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">30 Dias</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">%30</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">60 Dias</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">%60</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">+60 Dias</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">%+60</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">% Total</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Títulos</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Clientes</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Performance</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">À Vencer</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-rep-body">
@@ -394,24 +381,24 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
             <div class="flex items-center gap-2">
                 <span class="text-xs font-bold text-slate-500" id="tabela-titulos-info"></span>
-                <button onclick="exportarExcelTitulos()" class="py-2 px-3.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-sm">
+                <button onclick="exportarExcelTitulos()" class="py-2 px-3.5 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 transition flex items-center gap-1.5 shadow-sm whitespace-nowrap">
                     <i class="fa-solid fa-file-excel"></i> Exportar Títulos
                 </button>
             </div>
         </div>
         <div class="overflow-x-auto">
-            <table class="w-full text-xs table-hover" id="tabela-titulos">
+            <table class="w-full text-xs table-hover min-w-[860px]" id="tabela-titulos">
                 <thead class="bg-slate-50 border-b border-slate-200 text-[0.65rem] uppercase tracking-wider text-slate-500 font-black">
                     <tr>
-                        <th class="px-3 py-3 text-left">Cliente / Razão</th>
-                        <th class="px-3 py-3 text-left">Documento</th>
-                        <th class="px-3 py-3 text-center">Vencimento</th>
-                        <th class="px-3 py-3 text-right">Saldo Devedor</th>
-                        <th class="px-3 py-3 text-center">Atraso</th>
-                        <th class="px-3 py-3 text-center">Último Evento</th>
-                        <th class="px-3 py-3 text-left">Operador</th>
-                        <th class="px-3 py-3 text-left">Apontamento / Histórico</th>
-                        <th class="px-3 py-3 text-center">Ações</th>
+                        <th class="px-3 py-3 text-left whitespace-nowrap">Cliente / Razão</th>
+                        <th class="px-3 py-3 text-left whitespace-nowrap">Documento</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Vencimento</th>
+                        <th class="px-3 py-3 text-right whitespace-nowrap">Saldo Devedor</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Atraso</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Último Evento</th>
+                        <th class="px-3 py-3 text-left whitespace-nowrap">Operador</th>
+                        <th class="px-3 py-3 text-left whitespace-nowrap">Apontamento / Histórico</th>
+                        <th class="px-3 py-3 text-center whitespace-nowrap">Ações</th>
                     </tr>
                 </thead>
                 <tbody id="tabela-titulos-body" class="divide-y divide-slate-100">

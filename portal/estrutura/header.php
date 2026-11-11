@@ -18,6 +18,16 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title><?= htmlspecialchars($pageTitle) ?></title>
     
+    <!-- PWA Manifest & Meta Tags (Mobile Android/iOS) -->
+    <link rel="manifest" href="<?= $portalBase ?>/portal/manifest.json">
+    <meta name="theme-color" content="#274036">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Portal Nutricional">
+    <link rel="apple-touch-icon" href="<?= $portalBase ?>/portal/assets/icons/apple-touch-icon.png">
+    <link rel="icon" type="image/png" sizes="192x192" href="<?= $portalBase ?>/portal/assets/icons/android-chrome-192x192.png">
+    
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
@@ -462,5 +472,103 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
             if (el) el.classList.remove('hidden');
         }
     } catch (e) { /* silencioso */ }
+})();
+</script>
+
+<!-- ======================================================================
+     PWA SERVICE WORKER & BOTÃO DE INSTALAÇÃO TOUCH-FRIENDLY
+     Permite aos gestores (Tiago, Michel, Tales) instalar o Portal no celular
+     ====================================================================== -->
+<div id="pwaInstallToast" class="pwa-install-toast hidden">
+    <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white text-xl flex-none shadow-sm">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+    </div>
+    <div class="flex-1 min-w-0">
+        <div class="font-extrabold text-sm leading-tight">Instalar Aplicativo</div>
+        <div class="text-[11px] text-emerald-200 mt-0.5 leading-snug">Acesse o Portal com 1 toque na tela do seu celular</div>
+    </div>
+    <div class="flex items-center gap-2 flex-none">
+        <button type="button" id="btnInstalarPwa" class="px-3.5 py-1.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-xl font-black text-xs shadow-md transition-all">
+            Instalar
+        </button>
+        <button type="button" id="btnFecharPwaToast" class="text-white/60 hover:text-white text-base px-1">
+            &times;
+        </button>
+    </div>
+</div>
+
+<script>
+(function() {
+    // 1. Registro do Service Worker
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('<?= $portalBase ?>/portal/sw.js')
+                .then(function(reg) {
+                    console.log('[PWA] Service Worker registrado no escopo:', reg.scope);
+                })
+                .catch(function(err) {
+                    console.warn('[PWA] Falha ao registrar Service Worker:', err);
+                });
+        });
+    }
+
+    // 2. Gerenciador de Instalação (Prompt de PWA)
+    let deferredPrompt = null;
+    const toast = document.getElementById('pwaInstallToast');
+    const btnInstalar = document.getElementById('btnInstalarPwa');
+    const btnFechar = document.getElementById('btnFecharPwaToast');
+
+    // Se já estiver rodando como standalone (já instalado), nunca mostra o toast
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (isStandalone) return;
+
+    // Se o usuário dispensou o toast nas últimas 48h, respeita
+    const dispensadoEm = localStorage.getItem('pwa_toast_dispensado');
+    const agora = Date.now();
+    if (dispensadoEm && (agora - Number(dispensadoEm)) < 48 * 3600 * 1000) {
+        return;
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        if (toast) toast.classList.remove('hidden');
+    });
+
+    if (btnInstalar) {
+        btnInstalar.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                if (outcome === 'accepted') {
+                    console.log('[PWA] Usuário aceitou instalar o app');
+                }
+                deferredPrompt = null;
+                if (toast) toast.classList.add('hidden');
+            } else {
+                // Dispositivo iOS Safari
+                const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                if (isIos) {
+                    Swal.fire({
+                        title: 'Como Instalar no iPhone / iPad',
+                        html: '<div class="text-left text-sm space-y-2 text-slate-600">' +
+                              '<p>1. Toque no botão de <b>Compartilhar</b> <i class="fa-solid fa-arrow-up-from-bracket text-blue-600 mx-1"></i> na barra inferior do Safari.</p>' +
+                              '<p>2. Role as opções e toque em <b>"Adicionar à Tela de Início"</b> <i class="fa-regular fa-square-plus text-slate-800 mx-1"></i>.</p>' +
+                              '<p>3. Toque em <b>Adicionar</b> no canto superior direito.</p></div>',
+                        icon: 'info',
+                        confirmButtonText: 'Entendi',
+                        confirmButtonColor: '#274036'
+                    });
+                }
+            }
+        });
+    }
+
+    if (btnFechar) {
+        btnFechar.addEventListener('click', () => {
+            if (toast) toast.classList.add('hidden');
+            localStorage.setItem('pwa_toast_dispensado', Date.now());
+        });
+    }
 })();
 </script>

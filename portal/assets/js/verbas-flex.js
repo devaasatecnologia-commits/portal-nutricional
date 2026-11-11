@@ -281,8 +281,8 @@ async function carregarPainel() {
                     <span>Empréstimos Concedidos</span>
                     <i class="fa-solid fa-hand-holding-dollar text-base"></i>
                 </div>
-                <div class="text-2xl font-black mt-1">${brl(cred)}</div>
-                <div class="text-xs opacity-90 mt-1 font-semibold">
+                <div class="text-xl sm:text-2xl font-black mt-1 tracking-tight truncate">${brl(cred)}</div>
+                <div class="text-xs opacity-90 mt-1 font-semibold truncate">
                     <span>${stats.qtd_creditos || 0} lançamento(s)</span>
                     ${variacao(cred, r.anterior?.creditos)}
                 </div>
@@ -297,8 +297,8 @@ async function carregarPainel() {
                     <span>Consumo Bonificações</span>
                     <i class="fa-solid fa-receipt text-base"></i>
                 </div>
-                <div class="text-2xl font-black mt-1">${brl(deb)}</div>
-                <div class="text-xs opacity-90 mt-1 font-semibold">
+                <div class="text-xl sm:text-2xl font-black mt-1 tracking-tight truncate">${brl(deb)}</div>
+                <div class="text-xs opacity-90 mt-1 font-semibold truncate">
                     <span>${stats.qtd_debitos || 0} nota(s) fiscais</span>
                     ${variacao(deb, r.anterior?.debitos)}
                 </div>
@@ -313,8 +313,8 @@ async function carregarPainel() {
                     <span>Saldo Líquido / Resultado</span>
                     <i class="fa-solid fa-scale-balanced text-base"></i>
                 </div>
-                <div class="text-2xl font-black mt-1">${brl(resultado)}</div>
-                <div class="text-xs opacity-90 mt-1 font-semibold">
+                <div class="text-xl sm:text-2xl font-black mt-1 tracking-tight truncate">${brl(resultado)}</div>
+                <div class="text-xs opacity-90 mt-1 font-semibold truncate">
                     <span>${resultado >= 0 ? 'Saldo Positivo de Verba' : 'Déficit no Período'}</span>
                 </div>
             </div>

@@ -37,55 +37,55 @@ require_once __DIR__ . '/../estrutura/header.php';
 
 <div class="tf-wrap max-w-7xl mx-auto px-3 sm:px-6 pt-3 pb-8">
 
-    <!-- HERO HEADER -->
+    <!-- HERO HEADER (MOBILE RESPONSIVO) -->
     <div class="tf-hero rounded-3xl p-5 sm:p-7 text-white shadow-xl mb-5">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div class="flex items-center gap-3">
-                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white no-underline transition shadow-sm" title="Voltar ao Portal">
+                <a href="<?= $appBase ?>/portal/" class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white no-underline transition shadow-sm flex-none" title="Voltar ao Portal">
                     <i class="fa-solid fa-arrow-left"></i>
                 </a>
-                <div>
-                    <div class="flex items-center gap-2">
-                        <span class="tf-chip bg-white/20 text-white backdrop-blur-sm"><i class="fa-solid fa-right-left"></i> Gestão de Verbas</span>
-                        <span id="badgeApi" class="tf-chip bg-emerald-500/25 text-emerald-200 border border-emerald-400/30">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                        <span class="tf-chip bg-white/20 text-white backdrop-blur-sm text-[10px] sm:text-xs"><i class="fa-solid fa-right-left"></i> Gestão de Verbas</span>
+                        <span id="badgeApi" class="tf-chip bg-emerald-500/25 text-emerald-200 border border-emerald-400/30 text-[10px] sm:text-xs">
                             <span class="pulse-dot"></span> Mercos Online
                         </span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-black tracking-tight mt-1">Transferência de Verba Flex</h1>
-                    <p class="text-xs sm:text-sm text-purple-100 opacity-90 mt-0.5">Manejo seguro e transparente de saldo flex entre representantes (ERP + Mercos)</p>
+                    <h1 class="text-lg sm:text-2xl font-black tracking-tight mt-1 truncate">Transferência de Verba Flex</h1>
+                    <p class="text-xs sm:text-sm text-purple-100 opacity-90 mt-0.5 line-clamp-2">Manejo seguro e transparente de saldo flex entre representantes (ERP + Mercos)</p>
                 </div>
             </div>
 
-            <!-- FILIAL & ATALHOS -->
-            <div class="flex flex-wrap items-center gap-2.5">
-                <div class="bg-white/15 backdrop-blur-md rounded-2xl p-2 px-3.5 border border-white/20 flex items-center gap-2">
+            <!-- FILIAL & ATALHOS EM CARROSSEL TOUCH -->
+            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar w-full md:w-auto pb-1 flex-nowrap">
+                <div class="bg-white/15 backdrop-blur-md rounded-2xl p-2 px-3 border border-white/20 flex items-center gap-2 flex-none">
                     <i class="fa-solid fa-building text-violet-200 text-sm"></i>
                     <div>
-                        <div class="text-[0.65rem] uppercase tracking-wider text-violet-200 font-bold">Filial Selecionada</div>
-                        <select id="selFilial" class="bg-transparent text-white font-extrabold text-sm focus:outline-none cursor-pointer pr-2">
-                            <option value="1" class="text-slate-800 font-bold">Matriz 1</option>
+                        <div class="text-[0.65rem] uppercase tracking-wider text-violet-200 font-bold">Filial</div>
+                        <select id="selFilial" class="bg-transparent text-white font-extrabold text-xs sm:text-sm focus:outline-none cursor-pointer pr-1">
+                            <option value="1" class="text-slate-800 font-bold">Matriz 1 (SC)</option>
                             <option value="6" class="text-slate-800 font-bold">Filial 6 (PR)</option>
                         </select>
                     </div>
                 </div>
 
-                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=transferencia-flex" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm border border-white/20">
-                    <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=transferencia-flex" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs py-2 px-3 rounded-2xl transition flex items-center gap-1.5 no-underline shadow-sm border border-white/20 flex-none whitespace-nowrap">
+                    <i class="fa-solid fa-graduation-cap"></i> <span>Treinamento</span>
                 </a>
 
-                <a href="<?= $appBase ?>/portal/modules/verbas-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm">
-                    <i class="fa-solid fa-chart-pie"></i> Verbas Flex
+                <a href="<?= $appBase ?>/portal/modules/verbas-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs py-2 px-3 rounded-2xl transition flex items-center gap-1.5 no-underline shadow-sm flex-none whitespace-nowrap">
+                    <i class="fa-solid fa-chart-pie"></i> <span>Verbas Flex</span>
                 </a>
 
-                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline shadow-sm">
-                    <i class="fa-solid fa-money-bill-transfer"></i> Movimentação
+                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" class="bg-white/20 hover:bg-white/30 text-white font-bold text-xs py-2 px-3 rounded-2xl transition flex items-center gap-1.5 no-underline shadow-sm flex-none whitespace-nowrap">
+                    <i class="fa-solid fa-money-bill-transfer"></i> <span>Movimentação</span>
                 </a>
             </div>
         </div>
     </div>
 
-    <!-- 4 KPI CARDS -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
+    <!-- 4 KPI CARDS (RESPONSIVO MOBILE-FIRST) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-5">
         <!-- KPI 1: Transferido no Mês -->
         <div class="tf-kpi bg-gradient-to-br from-violet-50 to-indigo-50/70 border border-violet-100 shadow-sm cursor-pointer relative group hover:shadow-md hover:border-violet-300 transition-all"
              id="cardKpiTotalMes"

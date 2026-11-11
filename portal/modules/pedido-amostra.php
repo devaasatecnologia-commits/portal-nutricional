@@ -14,7 +14,10 @@ $extraCss = '
   .pa-label { font-size: 0.7rem; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; color: #64748b; }
   .pa-input { width: 100%; margin-top: 0.35rem; border: 2px solid #e2e8f0; border-radius: 1rem; padding: 0.75rem 1rem; font-size: 0.95rem; background: #f8fafc; transition: all 0.2s ease; font-weight: 600; color: #1e293b; }
   .pa-input:focus { outline: none; border-color: #10b981; background: #ffffff; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.12); }
-  .pa-tab-btn { padding: 0.65rem 1.4rem; border-radius: 1rem; font-weight: 800; font-size: 0.85rem; transition: all 0.2s ease; display: flex; items-center; gap: 0.5rem; }
+  .pa-tab-btn { padding: 0.6rem 0.85rem; border-radius: 0.9rem; font-weight: 800; font-size: 0.78rem; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 0.4rem; }
+  @media (min-width: 640px) {
+    .pa-tab-btn { padding: 0.65rem 1.4rem; border-radius: 1rem; font-size: 0.85rem; gap: 0.5rem; }
+  }
   .pa-tab-btn.active { background: #047857; color: #ffffff; box-shadow: 0 4px 15px rgba(4, 120, 87, 0.3); }
   .pa-tab-btn:not(.active) { background: #f1f5f9; color: #64748b; }
   .pa-tab-btn:not(.active):hover { background: #e2e8f0; color: #1e293b; }
@@ -33,43 +36,43 @@ require_once __DIR__ . '/../estrutura/header.php';
 
 <div class="pa-wrap max-w-6xl mx-auto px-3 sm:px-6 pt-4 pb-12">
     <!-- HERO BANNER -->
-    <div class="pa-hero rounded-3xl p-5 sm:p-7 text-white shadow-xl mb-6 relative overflow-hidden">
+    <div class="pa-hero rounded-2xl sm:rounded-3xl p-4 sm:p-7 text-white shadow-xl mb-5 relative overflow-hidden">
         <div class="absolute -right-6 -bottom-8 opacity-10 pointer-events-none">
             <i class="fa-solid fa-gift text-[160px]"></i>
         </div>
-        <div class="relative z-10 flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-4">
-                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition no-underline">
-                    <i class="fa-solid fa-arrow-left text-lg"></i>
+        <div class="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-3.5">
+            <div class="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
+                <a href="<?= $appBase ?>/portal/" class="w-10 h-10 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition no-underline flex-none">
+                    <i class="fa-solid fa-arrow-left text-base sm:text-lg"></i>
                 </a>
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="px-2.5 py-0.5 rounded-lg bg-emerald-400/30 text-emerald-200 text-xs font-black uppercase tracking-wider">Gestão Comercial</span>
-                        <span id="badgeRegraEstoque" class="px-2.5 py-0.5 rounded-lg bg-emerald-950/40 text-emerald-100 text-xs font-bold border border-emerald-400/30">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5 mb-1">
+                        <span class="px-2 py-0.5 rounded-lg bg-emerald-400/30 text-emerald-200 text-[10px] sm:text-xs font-black uppercase tracking-wider">Gestão Comercial</span>
+                        <span id="badgeRegraEstoque" class="px-2 py-0.5 rounded-lg bg-emerald-950/40 text-emerald-100 text-[10px] sm:text-xs font-bold border border-emerald-400/30">
                             <i class="fa-solid fa-boxes-stacked mr-1"></i>Material de Apoio
                         </span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-black tracking-tight leading-tight">Material de Apoio & Amostras</h1>
-                    <p class="text-xs sm:text-sm text-emerald-100/90 font-medium mt-0.5">Criação ágil para gestores e representantes com controle inteligente de saldo</p>
+                    <h1 class="text-lg sm:text-2xl font-black tracking-tight leading-tight">Material de Apoio & Amostras</h1>
+                    <p class="text-[11px] sm:text-sm text-emerald-100/90 font-medium mt-0.5">Criação ágil para gestores e representantes com controle inteligente de saldo</p>
                 </div>
             </div>
 
             <!-- TAB CONTROLS & TREINAMENTO -->
-            <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex flex-col sm:flex-row sm:items-center gap-2 w-full lg:w-auto">
                 <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=pedido-amostra" 
-                   class="px-3.5 py-2 rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm no-underline"
+                   class="px-3.5 py-2 rounded-xl sm:rounded-2xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm transition flex items-center justify-center gap-2 shadow-sm no-underline w-full sm:w-auto"
                    title="Treinamento e Manual Operacional do Módulo">
                     <i class="fa-solid fa-graduation-cap"></i>
                     <span>Treinamento & Manual</span>
                 </a>
-                <div class="flex items-center gap-1.5 bg-emerald-950/40 p-1.5 rounded-2xl border border-emerald-400/20">
+                <div class="grid grid-cols-2 sm:flex items-center gap-1.5 bg-emerald-950/40 p-1.5 rounded-2xl border border-emerald-400/20 w-full sm:w-auto">
                     <button type="button" id="tabBtnSolicitar" class="pa-tab-btn active" onclick="trocarAba('solicitar')">
                         <i class="fa-solid fa-cart-plus"></i>
-                        <span>Nova Solicitação</span>
+                        <span class="truncate">Nova Solicitação</span>
                     </button>
                     <button type="button" id="tabBtnHistorico" class="pa-tab-btn" onclick="trocarAba('historico')">
                         <i class="fa-solid fa-clock-rotate-left"></i>
-                        <span>Histórico & Rastreamento</span>
+                        <span class="truncate">Histórico & Rastreio</span>
                     </button>
                 </div>
             </div>
@@ -187,44 +190,44 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ========================================== -->
     <div id="abaHistorico" class="hidden space-y-5">
         <!-- 4 KPI CARDS -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
-            <div class="pa-card p-4 flex items-center gap-3.5 border-l-4 border-l-emerald-600">
-                <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg flex-none">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+            <div class="pa-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3.5 border-l-4 border-l-emerald-600 min-w-0">
+                <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-sm sm:text-lg flex-none">
                     <i class="fa-solid fa-receipt"></i>
                 </div>
-                <div>
-                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Pedidos</div>
-                    <div id="kpiTotalPedidos" class="text-xl font-black text-slate-800">0</div>
+                <div class="min-w-0">
+                    <div class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Total Pedidos</div>
+                    <div id="kpiTotalPedidos" class="text-lg sm:text-xl font-black text-slate-800 truncate">0</div>
                 </div>
             </div>
 
-            <div class="pa-card p-4 flex items-center gap-3.5 border-l-4 border-l-amber-500">
-                <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center text-lg flex-none">
+            <div class="pa-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3.5 border-l-4 border-l-amber-500 min-w-0">
+                <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-amber-50 text-amber-700 flex items-center justify-center text-sm sm:text-lg flex-none">
                     <i class="fa-solid fa-clock-rotate-left"></i>
                 </div>
-                <div>
-                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Aguardando ERP</div>
-                    <div id="kpiPendentesErp" class="text-xl font-black text-amber-700">0</div>
+                <div class="min-w-0">
+                    <div class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Aguardando ERP</div>
+                    <div id="kpiPendentesErp" class="text-lg sm:text-xl font-black text-amber-700 truncate">0</div>
                 </div>
             </div>
 
-            <div class="pa-card p-4 flex items-center gap-3.5 border-l-4 border-l-emerald-500">
-                <div class="w-11 h-11 rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-lg flex-none">
+            <div class="pa-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3.5 border-l-4 border-l-emerald-500 min-w-0">
+                <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-emerald-50 text-emerald-700 flex items-center justify-center text-sm sm:text-lg flex-none">
                     <i class="fa-solid fa-folder-open"></i>
                 </div>
-                <div>
-                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Em Aberto</div>
-                    <div id="kpiAbertos" class="text-xl font-black text-emerald-800">0</div>
+                <div class="min-w-0">
+                    <div class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Em Aberto</div>
+                    <div id="kpiAbertos" class="text-lg sm:text-xl font-black text-emerald-800 truncate">0</div>
                 </div>
             </div>
 
-            <div class="pa-card p-4 flex items-center gap-3.5 border-l-4 border-l-blue-600">
-                <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-lg flex-none">
+            <div class="pa-card p-3 sm:p-4 flex items-center gap-2.5 sm:gap-3.5 border-l-4 border-l-blue-600 min-w-0">
+                <div class="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-blue-50 text-blue-700 flex items-center justify-center text-sm sm:text-lg flex-none">
                     <i class="fa-solid fa-circle-check"></i>
                 </div>
-                <div>
-                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Faturados</div>
-                    <div id="kpiFaturados" class="text-xl font-black text-blue-700">0</div>
+                <div class="min-w-0">
+                    <div class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider truncate">Faturados</div>
+                    <div id="kpiFaturados" class="text-lg sm:text-xl font-black text-blue-700 truncate">0</div>
                 </div>
             </div>
         </div>
@@ -267,9 +270,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <!-- TABELA DE PEDIDOS -->
-            <div class="overflow-x-auto">
-                <table class="w-full text-left text-xs border-collapse">
+            <!-- CARDS MOBILE DE PEDIDOS -->
+            <div id="pedidosMobileCards" class="md:hidden space-y-2.5"></div>
+
+            <!-- TABELA DE PEDIDOS (DESKTOP/TABLET) -->
+            <div class="hidden md:block overflow-x-auto">
+                <table class="w-full min-w-[760px] text-left text-xs border-collapse whitespace-nowrap">
                     <thead>
                         <tr class="border-b border-slate-200 text-slate-400 uppercase font-black tracking-wider">
                             <th class="py-3 px-3"># Pedido</th>

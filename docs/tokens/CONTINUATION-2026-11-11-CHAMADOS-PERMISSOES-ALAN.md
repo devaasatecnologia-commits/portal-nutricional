@@ -40,6 +40,15 @@
 v1/src/Controllers/ChamadosController.php
 v1/src/Controllers/CronRotinasController.php
 v1/routes/api.php
+portal/manifest.json (NOVO - PWA)
+portal/sw.js (NOVO - Service Worker PWA)
+portal/assets/icons/ (NOVO - Ícones PWA 192/512/apple-touch)
+portal/estrutura/header.php
+portal/assets/css/style.css
+portal/modules/verbas-flex.php
+portal/assets/js/verbas-flex.js
+portal/modules/transferencia-flex.php
+portal/assets/js/transferencia-flex.js
 portal/assets/js/chamados.js
 portal/modules/chamados.php
 portal/modules/admin/crons.php
@@ -48,6 +57,22 @@ portal/modules/admin/components/footer.php
 docs/tokens/CONTINUATION-2026-11-11-CHAMADOS-PERMISSOES-ALAN.md
 docs/CONTINUATION_TOKEN.md
 ```
+
+---
+
+## 3. PWA & Otimizações Mobile-First para Gestores (Tiago, Michel e Tales) [CONCLUÍDO]
+
+- **Diagnóstico da Causa Raiz das Quebras no Celular:**
+  1. *Tooltips flutuantes fixos:* A função `initModernTooltips` ativava no toque (`mouseover`) e travava na tela permanentemente com `position: fixed` cobrindo números, botões e selects. Desativada de forma absoluta no mobile via CSS `@media (hover: none) and (pointer: coarse), (max-width: 1024px)`.
+  2. *Auto-zoom involuntário no iOS Safari:* Inputs com tamanho de fonte menor que 16px provocavam zoom forçado na tela, quebrando o alinhamento lateral. Normalizado para `16px` em dispositivos móveis.
+  3. *Hero Banners com quebras desalinhadas:* Os botões e atalhos foram reorganizados com carrossel horizontal suave (`flex flex-nowrap overflow-x-auto no-scrollbar`), evitando esmagamento do título e quebras caóticas.
+  4. *Grid de KPIs Adaptativo:* `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3` com tipografia truncada e números legíveis no celular (`text-xl sm:text-2xl font-black truncate`).
+- **PWA (Progressive Web App):**
+  - Manifesto `portal/manifest.json` com atalhos de Verbas Flex, Transferências, Chamados e Dashboard de Vendas.
+  - Service Worker `portal/sw.js` com cache de assets e modo offline resiliente.
+  - Toast interativo touch-friendly de instalação no celular e instruções passo a passo para iOS ("Adicionar à Tela de Início").
+- **Filial Inteligente dos Gestores:**
+  - `transferencia-flex.js` e `verbas-flex.js` agora inicializam diretamente com a filial padrão do gestor (`vf_filial_pref` ou `dash_filiais`, Filial 6 para Tales, Filial 1 para Tiago e Michel).
 
 ---
 
@@ -92,3 +117,18 @@ docs/CONTINUATION_TOKEN.md
 - **Criação e Direcionamento:** Chamado criado com atendente `ALAN` e status `0`.
 - **Assumir Chamado:** Rota `/v1/chamados/assumir` testada com sucesso (moveu para status 1 e gravou timeline).
 - **Timeline Chamado #35:** Operação #3 registrada no banco com sucesso.
+
+
+---
+
+## 5. Refatoração Responsiva Mobile App-First v2.0 (6 Módulos dos Gestores — Chamado #41)
+- **Causa Raiz Global Corrigida (`portal/assets/css/style.css` & `portal/assets/css/module-base.css`):**
+  - Substituído `repeat(2, 1fr)` por `repeat(2, minmax(0, 1fr)) !important` e adicionado `.grid > * { min-width: 0; }`, impedindo o vazamento lateral da 2ª coluna de cards no celular.
+  - Desativado `#nutri-tooltip` em telas touch/mobile (`@media (hover: none) and (pointer: coarse), (max-width: 1024px)`).
+- **Módulos Refatorados:**
+  1. **Estoque com Previsão (`portal/modules/estoque-previsao.php` & `portal/assets/js/estoque-previsao.js`):** Cards de KPI com `min-w-0`/`truncate`, barra de busca sem `sticky` no mobile (`lg:sticky`), **Cards Interativos Mobile de Produtos** (`#mobile-cards-body`) e modal de detalhes com `pr-7` no header e **Cards Mobile de OCs** (eliminando a quebra vertical letra por letra).
+  2. **Cubo de Vendas (`portal/modules/cubo-vendas.php` & `portal/assets/css/cubo-vendas.css`):** Removido `position: sticky; top: 56px;` de `#cuboFiltros` no celular (que cobria a tela inteira), ocultado o header desktop duplicado (`hidden lg:flex`), adicionado seletor rápido **"Agrupar por"** em 1 toque e painel de filtros recolhível (`expandirFiltrosMobile`).
+  3. **Dashboard Executivo de Vendas (`portal/modules/dashboard-vendas.php` & `portal/assets/js/dashboard-vendas.js`):** Ocultado header desktop duplicado no mobile, painel de filtros recolhível (`expandirFiltrosMobile`), barras de botões com scroll horizontal e ajuste responsivo do gráfico `chartEvolucao` no celular.
+  4. **CRM Clientes (`portal/modules/marketing/clientes.php`):** Hero Header e 6 KPIs sem corte lateral, **Barra Rápida de Campo (Modo App Gestor)**, **Cards Mobile de Clientes** (`#clientesMobileCards`) com 4 ações diretas (**💬 WhatsApp**, **📅 Agendar**, **🛒 Mercos**, **👁️ Ficha**), função `abrirPedidoMercos()` (copia CNPJ/Nome e abre `https://app.mercos.com/`) e coluna de **Próximos Compromissos + Novo Compromisso** priorizada no topo no celular (`order-1 lg:order-2`).
+  5. **Análise de Carteira (`portal/modules/analise-carteira.php` & `portal/assets/js/analise-carteira.js`):** Removidas 2 tags `</div>` órfãs que quebravam o escopo Alpine, KPIs truncados (`min-w-0`), tabelas com `min-w` e modal de cobrança responsivo.
+  6. **Material de Apoio & Amostras (`portal/modules/pedido-amostra.php` & `portal/assets/js/pedido-amostra.js`):** Abas do Hero Header em `grid-cols-2` no mobile (sem corte lateral), KPIs ajustados e **Cards Mobile no Histórico de Pedidos** (`#pedidosMobileCards`).

@@ -1,18 +1,14 @@
 /* ==========================================================================
-   CUBO VENDAS CSS - Mesmo padrão do Financeiro
+   CUBO VENDAS CSS - Responsivo Mobile & Desktop
    ========================================================================== */
 
-/* Filtro fixo (sticky): permanece visível no topo enquanto a página rola,
-   permitindo alterar período/filtros sem voltar ao topo.
-   - Mobile: abaixo da .mobile-toolbar fixa (56px = h-14).
-   - Desktop (lg >= 1024px): pequena folga do topo da viewport.
-   - z-index 40: abaixo dos modais (z-50) e da toolbar mobile (z-50). */
+/* No mobile o painel de filtros rola normalmente (e possui modo recolhível).
+   No Desktop (lg >= 1024px) permanece sticky no topo. */
 #cuboFiltros {
-    position: sticky;
-    top: 56px;
-    z-index: 40;
+    position: relative;
+    z-index: 30;
     background: #fff;
-    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+    box-shadow: 0 4px 16px rgba(15, 23, 42, 0.06);
 }
 
 #cuboFiltros input[type="date"] {
@@ -23,7 +19,9 @@
 
 @media (min-width: 1024px) {
     #cuboFiltros {
+        position: sticky;
         top: 12px;
+        z-index: 40;
     }
 }
 
@@ -61,16 +59,10 @@ tbody tr:hover {
 /* Responsivo */
 @media (max-width: 768px) {
     .grid-cols-2 {
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     
     #graficoEvolucao {
         height: 200px !important;
-    }
-}
-
-@media (max-width: 640px) {
-    input, select, button {
-        font-size: 16px !important;
     }
 }

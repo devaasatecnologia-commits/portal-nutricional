@@ -421,6 +421,7 @@ const estoquePrevisaoApp = {
     // ==========================================================================
     async carregarProdutos() {
         const tbody = document.getElementById('table-body');
+        const mobileBody = document.getElementById('mobile-cards-body');
         if (!tbody) return;
 
         tbody.innerHTML = `
@@ -431,6 +432,14 @@ const estoquePrevisaoApp = {
                 </td>
             </tr>
         `;
+        if (mobileBody) {
+            mobileBody.innerHTML = `
+                <div class="py-10 text-center text-slate-400 text-xs">
+                    <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600 block"></i>
+                    Carregando estoque com previsão...
+                </div>
+            `;
+        }
 
         try {
             const payload = {
@@ -459,11 +468,20 @@ const estoquePrevisaoApp = {
                     </td>
                 </tr>
             `;
+            if (mobileBody) {
+                mobileBody.innerHTML = `
+                    <div class="py-8 px-4 text-center text-red-500 font-bold text-xs">
+                        <i class="fa-solid fa-triangle-exclamation mb-1 text-base block"></i>
+                        ${this.escapeHtml(e.message)}
+                    </div>
+                `;
+            }
         }
     },
 
     renderTabela(produtos) {
         const tbody = document.getElementById('table-body');
+        const mobileBody = document.getElementById('mobile-cards-body');
         if (!tbody) return;
 
         if (!produtos || !produtos.length) {
@@ -475,10 +493,99 @@ const estoquePrevisaoApp = {
                     </td>
                 </tr>
             `;
+            if (mobileBody) {
+                mobileBody.innerHTML = `
+                    <div class="py-10 px-4 text-center text-slate-400 text-xs">
+                        <i class="fa-solid fa-box-open text-2xl mb-2 text-slate-300 block"></i>
+                        Nenhum produto encontrado com os filtros atuais.
+                    </div>
+                `;
+            }
             return;
         }
 
         const isPeso = this.modoExibicao === 'peso';
+
+        if (mobileBody) {
+            mobileBody.innerHTML = produtos.map((p) => {
+                const idItem = p.id_item || p['ID Item'];
+                const ref = p.referencia || p['Referência'] || '-';
+                const nome = p.produto || p['Produto'] || '-';
+                const marca = p.marca || p['Marca'] || '-';
+                const fotoUrl = this.formatarUrlImagem(p.foto || p['Foto']);
+                const pesoLiq = Number(p.peso_liquido || 0);
+
+                const estMatriz = Number(p.estoque_matriz || 0);
+                const estFilial = Number(p.estoque_filial || 0);
+                const estTotal = Number(p.estoque_total || p['Estoque Disponível'] || 0);
+                const cartReservado = Number(p.qtd_reservada || p['Quantidade em Carteira'] || 0);
+                const estLivre = Number(p.estoque_livre || p['Estoque Líquido (s/ Previsão)'] || 0);
+                const prevChegada = Number(p.qtd_previsao || p['Previsão de Compra Total'] || 0);
+                const estFuturo = Number(p.estoque_futuro || p['Estoque Líquido (c/ Previsão)'] || 0);
+
+                let statusPill = '';
+                if (estLivre <= 0) {
+                    statusPill = '<span class="ep-chip bg-rose-50 text-rose-700 border border-rose-200 font-extrabold whitespace-nowrap">❌ Zerado</span>';
+                } else if (estLivre <= 10) {
+                    statusPill = '<span class="ep-chip bg-rose-50 text-rose-700 border border-rose-200 font-extrabold whitespace-nowrap">⚠️ Crítico</span>';
+                } else if (estLivre <= 50) {
+                    statusPill = '<span class="ep-chip bg-amber-50 text-amber-700 border border-amber-200 font-extrabold whitespace-nowrap">📉 Baixo</span>';
+                } else {
+                    statusPill = '<span class="ep-chip bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold whitespace-nowrap">✅ Ok</span>';
+                }
+
+                return `
+                    <div class="p-3.5 hover:bg-slate-50 active:bg-emerald-50/40 transition cursor-pointer" onclick="estoquePrevisaoApp.abrirModalDetalhe(${idItem})">
+                        <div class="flex items-start gap-3">
+                            ${fotoUrl ? `
+                                <img src="${fotoUrl}" class="w-12 h-12 rounded-xl object-contain bg-slate-50 border p-0.5 flex-none" onerror="this.src='/portal/assets/img/sem-foto.png'">
+                            ` : `
+                                <div class="w-12 h-12 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center flex-none">
+                                    <i class="fa-solid fa-box text-base"></i>
+                                </div>
+                            `}
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-start justify-between gap-2">
+                                    <div class="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug line-clamp-2">${this.escapeHtml(nome)}</div>
+                                    ${statusPill}
+                                </div>
+                                <div class="flex flex-wrap items-center gap-1.5 mt-1">
+                                    <span class="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">${this.escapeHtml(marca)}</span>
+                                    <span class="text-[10px] font-bold text-slate-400">Ref: <b class="text-slate-600">${this.escapeHtml(ref)}</b></span>
+                                    <span class="text-[10px] font-bold text-slate-400">ID: <b class="text-slate-600">${idItem}</b></span>
+                                    ${pesoLiq > 0 ? `<span class="text-[10px] font-extrabold text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">${pesoLiq.toLocaleString('pt-BR')} kg</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-slate-100 text-center">
+                            <div class="bg-slate-50 rounded-xl p-1.5 border border-slate-200/70 min-w-0">
+                                <div class="text-[9px] font-extrabold uppercase text-slate-400 truncate">Físico (1+6)</div>
+                                <div class="text-xs font-black text-slate-800 truncate">${this.formatNumber(estTotal)}</div>
+                                <div class="text-[9px] text-slate-400 font-bold truncate">M:${this.formatNumber(estMatriz)} PR:${this.formatNumber(estFilial)}</div>
+                            </div>
+                            <div class="bg-amber-50/60 rounded-xl p-1.5 border border-amber-200/70 min-w-0" ${cartReservado > 0 ? `onclick="event.stopPropagation(); estoquePrevisaoApp.abrirRastreioReservado(${idItem}, 0, '${this.escapeHtml(nome)}')"` : ''}>
+                                <div class="text-[9px] font-extrabold uppercase text-amber-700 truncate">Reservado</div>
+                                <div class="text-xs font-black ${cartReservado > 0 ? 'text-amber-600 underline' : 'text-slate-300'} truncate">
+                                    ${this.formatNumber(cartReservado)}${cartReservado > 0 ? ' <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>' : ''}
+                                </div>
+                                <div class="text-[9px] text-amber-700/70 font-bold truncate">${cartReservado > 0 ? 'Ver pedidos' : 'Sem reserva'}</div>
+                            </div>
+                            <div class="bg-emerald-50/70 rounded-xl p-1.5 border border-emerald-200/80 min-w-0">
+                                <div class="text-[9px] font-extrabold uppercase text-emerald-700 truncate">Livre</div>
+                                <div class="text-xs font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'} truncate">${this.formatNumber(estLivre)}</div>
+                                <div class="text-[9px] text-emerald-700/70 font-bold truncate">Disponível</div>
+                            </div>
+                            <div class="${prevChegada > 0 ? 'bg-blue-50/80 border-blue-200' : 'bg-purple-50/50 border-purple-200/60'} rounded-xl p-1.5 border min-w-0">
+                                <div class="text-[9px] font-extrabold uppercase ${prevChegada > 0 ? 'text-blue-700' : 'text-purple-700'} truncate">${prevChegada > 0 ? 'A Chegar' : 'Futuro'}</div>
+                                <div class="text-xs font-black ${prevChegada > 0 ? 'text-blue-700' : 'text-purple-700'} truncate">${prevChegada > 0 ? '+' + this.formatNumber(prevChegada) : this.formatNumber(estFuturo)}</div>
+                                <div class="text-[9px] ${prevChegada > 0 ? 'text-blue-600' : 'text-purple-600/70'} font-bold truncate">Fut: ${this.formatNumber(estFuturo)}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
 
         tbody.innerHTML = produtos.map((p) => {
             const idItem = p.id_item || p['ID Item'];
@@ -714,58 +821,90 @@ const estoquePrevisaoApp = {
             const historico = res.data.historico || [];
             const fotoUrl = this.formatarUrlImagem(item.foto);
 
-            // Montar Tabela de Previsão de Entregas (OCs Matriz + Filial PR)
+            // Montar Tabela / Cards de Previsão de Entregas (OCs Matriz + Filial PR)
             let htmlPrevisoes = '';
             if (!previsoes.length) {
                 htmlPrevisoes = '<div class="text-center py-6 text-slate-400 text-xs font-semibold">Nenhuma ordem de compra pendente para este item nas filiais.</div>';
             } else {
+                const renderOcRows = previsoes.map((oc) => {
+                    const dias = Number(oc.dias_para_chegada ?? oc['Dias para Chegada'] ?? 0);
+                    let corPrazo = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    let txtPrazo = `${dias} dias`;
+                    if (dias < 0) {
+                        corPrazo = 'bg-rose-50 text-rose-700 border-rose-200';
+                        txtPrazo = `${Math.abs(dias)}d atrasado`;
+                    } else if (dias === 0) {
+                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
+                        txtPrazo = 'Hoje';
+                    } else if (dias <= 7) {
+                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
+                    }
+
+                    const isMatriz = (Number(oc.idfilial) === 1);
+                    const numOc = oc.numero_oc || oc['Número OC'];
+                    const forn = this.escapeHtml(oc.fornecedor || oc['Fornecedor']);
+                    const qtdSaldo = this.formatNumber(oc.quantidade_saldo || oc['Quantidade Saldo']);
+                    const dtPrev = this.formatarDataBR(oc.data_prevista || oc['Data Prevista']);
+
+                    return {
+                        card: `
+                            <div class="bg-white rounded-xl p-2.5 border border-slate-200 shadow-xs space-y-1.5">
+                                <div class="flex items-center justify-between gap-2">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="font-black text-slate-800 text-xs">#${numOc}</span>
+                                        <span class="ep-chip ${isMatriz ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700'} whitespace-nowrap">
+                                            ${isMatriz ? 'Matriz 1' : 'Filial PR 6'}
+                                        </span>
+                                    </div>
+                                    <span class="ep-chip border ${corPrazo} whitespace-nowrap">${txtPrazo}</span>
+                                </div>
+                                <div class="text-xs font-bold text-slate-700 truncate">${forn}</div>
+                                <div class="flex items-center justify-between pt-1 border-t border-slate-100 text-[11px]">
+                                    <span class="text-slate-500">Prev: <b class="text-slate-700">${dtPrev}</b></span>
+                                    <span class="text-blue-700 font-black">Saldo: ${qtdSaldo} un</span>
+                                </div>
+                            </div>
+                        `,
+                        row: `
+                            <tr class="hover:bg-slate-50">
+                                <td class="py-2 px-2.5 font-black text-slate-800 whitespace-nowrap">#${numOc}</td>
+                                <td class="py-2 px-2.5 whitespace-nowrap">
+                                    <span class="ep-chip ${isMatriz ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700'} whitespace-nowrap">
+                                        ${isMatriz ? 'Matriz 1' : 'Filial PR 6'}
+                                    </span>
+                                </td>
+                                <td class="py-2 px-2.5 font-bold text-slate-700 truncate max-w-[200px]">${forn}</td>
+                                <td class="py-2 px-2.5 text-right font-black text-blue-700 whitespace-nowrap">${qtdSaldo}</td>
+                                <td class="py-2 px-2.5 text-center font-bold text-slate-600 whitespace-nowrap">${dtPrev}</td>
+                                <td class="py-2 px-2.5 text-center whitespace-nowrap">
+                                    <span class="ep-chip border ${corPrazo} whitespace-nowrap">${txtPrazo}</span>
+                                </td>
+                            </tr>
+                        `
+                    };
+                });
+
                 htmlPrevisoes = `
-                    <div class="overflow-x-auto max-h-56 overflow-y-auto">
-                        <table class="w-full text-left text-xs">
+                    <!-- Mobile Cards de OCs -->
+                    <div class="sm:hidden space-y-2 max-h-60 overflow-y-auto pr-0.5">
+                        ${renderOcRows.map(r => r.card).join('')}
+                    </div>
+
+                    <!-- Desktop Table de OCs -->
+                    <div class="hidden sm:block overflow-x-auto max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-white">
+                        <table class="w-full text-left text-xs min-w-[520px]">
                             <thead class="bg-slate-100 text-[0.65rem] uppercase tracking-wider text-slate-500 font-black sticky top-0">
                                 <tr>
-                                    <th class="py-2 px-2.5">OC #</th>
-                                    <th class="py-2 px-2.5">Destino</th>
+                                    <th class="py-2 px-2.5 whitespace-nowrap">OC #</th>
+                                    <th class="py-2 px-2.5 whitespace-nowrap">Destino</th>
                                     <th class="py-2 px-2.5">Fornecedor</th>
-                                    <th class="py-2 px-2.5 text-right">Qtd Saldo</th>
-                                    <th class="py-2 px-2.5 text-center">Previsão</th>
-                                    <th class="py-2 px-2.5 text-center">Prazo</th>
+                                    <th class="py-2 px-2.5 text-right whitespace-nowrap">Qtd Saldo</th>
+                                    <th class="py-2 px-2.5 text-center whitespace-nowrap">Previsão</th>
+                                    <th class="py-2 px-2.5 text-center whitespace-nowrap">Prazo</th>
                                 </tr>
                             </thead>
                             <tbody class="divide-y divide-slate-100">
-                                ${previsoes.map((oc) => {
-                                    const dias = Number(oc.dias_para_chegada ?? oc['Dias para Chegada'] ?? 0);
-                                    let corPrazo = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-                                    let txtPrazo = `${dias} dias`;
-                                    if (dias < 0) {
-                                        corPrazo = 'bg-rose-50 text-rose-700 border-rose-200';
-                                        txtPrazo = `${Math.abs(dias)}d atrasado`;
-                                    } else if (dias === 0) {
-                                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
-                                        txtPrazo = 'Hoje';
-                                    } else if (dias <= 7) {
-                                        corPrazo = 'bg-amber-50 text-amber-700 border-amber-200';
-                                    }
-
-                                    const isMatriz = (Number(oc.idfilial) === 1);
-
-                                    return `
-                                        <tr class="hover:bg-slate-50">
-                                            <td class="py-2 px-2.5 font-black text-slate-800">#${oc.numero_oc || oc['Número OC']}</td>
-                                            <td class="py-2 px-2.5">
-                                                <span class="ep-chip ${isMatriz ? 'bg-slate-100 text-slate-700' : 'bg-emerald-50 text-emerald-700'}">
-                                                    ${isMatriz ? 'Matriz 1' : 'Filial PR 6'}
-                                                </span>
-                                            </td>
-                                            <td class="py-2 px-2.5 font-bold text-slate-700 truncate max-w-xs">${this.escapeHtml(oc.fornecedor || oc['Fornecedor'])}</td>
-                                            <td class="py-2 px-2.5 text-right font-black text-blue-700">${this.formatNumber(oc.quantidade_saldo || oc['Quantidade Saldo'])}</td>
-                                            <td class="py-2 px-2.5 text-center font-bold text-slate-600">${this.formatarDataBR(oc.data_prevista || oc['Data Prevista'])}</td>
-                                            <td class="py-2 px-2.5 text-center">
-                                                <span class="ep-chip border ${corPrazo}">${txtPrazo}</span>
-                                            </td>
-                                        </tr>
-                                    `;
-                                }).join('')}
+                                ${renderOcRows.map(r => r.row).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -776,30 +915,30 @@ const estoquePrevisaoApp = {
                 showConfirmButton: false,
                 showCloseButton: true,
                 width: '850px',
-                customClass: { popup: 'rounded-3xl p-5' },
+                customClass: { popup: 'rounded-3xl p-4 sm:p-5 max-w-[96vw]' },
                 html: `
                     <div class="text-left space-y-4">
-                        <!-- HEADER DO ITEM -->
-                        <div class="flex items-start gap-4 pb-3 border-b border-slate-100">
+                        <!-- HEADER DO ITEM (pr-7 para não colidir com o botão X do modal) -->
+                        <div class="flex items-start gap-3 sm:gap-4 pb-3 pr-7 border-b border-slate-100">
                             ${fotoUrl ? `
-                                <img src="${fotoUrl}" class="w-16 h-16 rounded-2xl object-contain bg-slate-50 border p-1 shadow-sm flex-none">
+                                <img src="${fotoUrl}" class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl object-contain bg-slate-50 border p-1 shadow-sm flex-none">
                             ` : `
-                                <div class="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none">
-                                    <i class="fa-solid fa-boxes-packing text-2xl"></i>
+                                <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none">
+                                    <i class="fa-solid fa-boxes-packing text-xl sm:text-2xl"></i>
                                 </div>
                             `}
                             <div class="flex-1 min-w-0">
-                                <div class="flex flex-wrap items-center gap-2">
-                                    <span class="ep-chip bg-slate-100 text-slate-700 font-black">ID: ${item.id}</span>
-                                    <span class="ep-chip bg-slate-100 text-slate-700 font-bold">Ref: ${this.escapeHtml(item.referencia)}</span>
-                                    <span class="ep-chip bg-emerald-100 text-emerald-800 font-bold">${this.escapeHtml(item.marca || 'SEM MARCA')}</span>
+                                <div class="flex flex-wrap items-center gap-1.5">
+                                    <span class="ep-chip bg-slate-100 text-slate-700 font-black whitespace-nowrap">ID: ${item.id}</span>
+                                    <span class="ep-chip bg-slate-100 text-slate-700 font-bold whitespace-nowrap">Ref: ${this.escapeHtml(item.referencia)}</span>
+                                    <span class="ep-chip bg-emerald-100 text-emerald-800 font-bold whitespace-nowrap">${this.escapeHtml(item.marca || 'SEM MARCA')}</span>
                                     ${Number(item.peso_liquido || 0) > 0 ? `
-                                        <span class="ep-chip bg-emerald-50 text-emerald-800 border border-emerald-200 font-black">
+                                        <span class="ep-chip bg-emerald-50 text-emerald-800 border border-emerald-200 font-black whitespace-nowrap">
                                             <i class="fa-solid fa-scale-balanced mr-1"></i>${Number(item.peso_liquido).toLocaleString('pt-BR')} kg
                                         </span>
                                     ` : ''}
                                 </div>
-                                <h3 class="text-base sm:text-lg font-black text-slate-800 mt-1 leading-snug">${this.escapeHtml(item.nome)}</h3>
+                                <h3 class="text-sm sm:text-lg font-black text-slate-800 mt-1.5 leading-snug break-words">${this.escapeHtml(item.nome)}</h3>
                                 <div class="text-xs text-slate-500 font-semibold mt-0.5">
                                     <i class="fa-solid fa-location-dot text-rose-500 mr-1"></i> Endereço Depósito: <b>${this.escapeHtml(item.enderecos || 'Nenhum')}</b>
                                 </div>
@@ -810,13 +949,13 @@ const estoquePrevisaoApp = {
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <!-- Matriz 1 (SC) -->
                             <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
-                                <div class="text-[0.7rem] font-black uppercase text-slate-600 tracking-wider mb-2 flex items-center justify-between">
+                                <div class="text-[0.7rem] font-black uppercase text-slate-600 tracking-wider mb-2 flex items-center justify-between gap-2">
                                     <span><i class="fa-solid fa-building mr-1 text-slate-400"></i> Matriz 1 (SC)</span>
                                 </div>
                                 <div class="flex justify-between text-xs py-1"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_matriz)} un</b></div>
                                 <div class="flex justify-between text-xs py-1 items-center">
                                     <span>Reservado (Pedidos):</span>
-                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 1, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer" title="Rastrear pedidos reservados na Matriz 1">
+                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 1, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear pedidos reservados na Matriz 1">
                                         ${this.formatNumber(item.reservado_matriz)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                                     </button>
                                 </div>
@@ -826,14 +965,14 @@ const estoquePrevisaoApp = {
 
                             <!-- Matriz + Filial PR (1 + 6) -->
                             <div class="p-3.5 rounded-2xl bg-gradient-to-br from-emerald-50/60 to-teal-50/60 border border-emerald-200">
-                                <div class="text-[0.7rem] font-black uppercase text-emerald-800 tracking-wider mb-2 flex items-center justify-between">
+                                <div class="text-[0.7rem] font-black uppercase text-emerald-800 tracking-wider mb-2 flex items-center justify-between gap-2">
                                     <span><i class="fa-solid fa-cubes mr-1 text-emerald-600"></i> Matriz + Filial PR (1 + 6)</span>
-                                    <span class="text-[0.65rem] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">Total</span>
+                                    <span class="text-[0.65rem] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 whitespace-nowrap flex-none">Total</span>
                                 </div>
                                 <div class="flex justify-between text-xs py-1"><span>Total Físico:</span><b class="text-slate-900">${this.formatNumber(item.estoque_total)} un</b></div>
                                 <div class="flex justify-between text-xs py-1 items-center">
                                     <span>Total Reservado:</span>
-                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 0, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer" title="Rastrear todos os pedidos reservados (1 + 6)">
+                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 0, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear todos os pedidos reservados (1 + 6)">
                                         ${this.formatNumber(item.reservado_total)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
                                     </button>
                                 </div>
@@ -843,12 +982,13 @@ const estoquePrevisaoApp = {
                         </div>
 
                         <!-- TABELA DE ORDENS DE COMPRA / PREVISÃO -->
-                        <div class="bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                            <div class="flex justify-between items-center mb-2">
+                        <div class="bg-slate-50 p-3 sm:p-3.5 rounded-2xl border border-slate-200">
+                            <div class="flex flex-wrap justify-between items-center gap-2 mb-2.5">
                                 <div class="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-truck-fast text-blue-600"></i> Ordens de Compra com Saldo a Chegar (Matriz + Filial PR)
+                                    <i class="fa-solid fa-truck-fast text-blue-600 flex-none"></i>
+                                    <span>Ordens de Compra com Saldo a Chegar (Matriz + Filial PR)</span>
                                 </div>
-                                <span class="ep-chip bg-blue-100 text-blue-800 font-bold">${this.formatNumber(item.previsao_total)} un. a caminho</span>
+                                <span class="ep-chip bg-blue-100 text-blue-800 font-bold whitespace-nowrap flex-none">${this.formatNumber(item.previsao_total)} un. a caminho</span>
                             </div>
                             ${htmlPrevisoes}
                         </div>

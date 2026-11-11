@@ -282,29 +282,29 @@ $extraCss = '
 require_once __DIR__ . '/../../estrutura/header.php';
 ?>
 
-<div class="max-w-full mx-auto px-4 lg:px-6 py-4" x-data="crmProfissional()" x-init="init()" x-cloak>
+<div class="max-w-full mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4" x-data="crmProfissional()" x-init="init()" x-cloak>
 
     <!-- HEADER PROFISSIONAL -->
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-6 mb-8 shadow-2xl">
+    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-2xl">
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div class="flex items-center gap-4">
-               <a href="/portal/" class="btn-voltar flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline bg-slate-100 hover:bg-slate-200" title="Voltar ao Portal">
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+               <a href="/portal/" class="btn-voltar flex-none flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-slate-100 hover:bg-slate-200" title="Voltar ao Portal">
                 <i class="fa-solid fa-arrow-left text-slate-600"></i>
             </a>
-            <div class="w-14 h-14 bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg">
-                <i class="fa-solid fa-crown text-white text-2xl"></i>
+            <div class="w-12 h-12 sm:w-14 sm:h-14 flex-none bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg">
+                <i class="fa-solid fa-crown text-white text-xl sm:text-2xl"></i>
             </div>
-            <div>
-                <h1 class="text-2xl font-black text-white tracking-tight">CRM Clientes</h1>
-                <p class="text-slate-300 text-sm">Gestão inteligente de relacionamento com clientes</p>
+            <div class="min-w-0">
+                <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight truncate">CRM Clientes</h1>
+                <p class="text-slate-300 text-xs sm:text-sm leading-snug">Gestão inteligente de relacionamento, visitas e pedidos</p>
             </div>
         </div>
 
-        <div class="flex gap-3 items-center">
+        <div class="flex flex-wrap gap-2 sm:gap-2.5 items-center w-full lg:w-auto">
             <!-- SINO DE NOTIFICAÇÕES CRM -->
             <div class="relative" x-data="notificacoesCRM()" x-init="init()" @click.outside="aberto = false">
                 <button @click="toggleAbrir()" class="notification-bell-crm relative p-2.5 bg-white/10 backdrop-blur rounded-xl hover:bg-white/20 transition-all">
-                    <i class="fa-regular fa-bell text-white text-xl"></i>
+                    <i class="fa-regular fa-bell text-white text-lg sm:text-xl"></i>
                     <span x-show="naoLidas > 0" x-text="naoLidas > 99 ? '99+' : naoLidas" 
                       class="notification-badge-crm" style="display: none;"></span>
                   </button>
@@ -343,80 +343,131 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 </div>
             </div>
 
-            
             <a href="/portal/modules/treinamentos.php?modulo=marketing-clientes" 
-               class="px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-xl font-extrabold text-xs transition-all shadow-md flex items-center gap-2 no-underline">
-                <i class="fa-solid fa-graduation-cap"></i> Treinamento &amp; Manual
+               class="px-3 sm:px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-xl font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 no-underline whitespace-nowrap">
+                <i class="fa-solid fa-graduation-cap"></i> <span>Treinamento</span>
             </a>
-            <button onclick="abrirModalCliente()" class="px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold hover:bg-emerald-600 transition-all shadow-lg flex items-center gap-2">
-                <i class="fa-solid fa-plus-circle"></i> Novo Cliente
+            <button onclick="abrirModalCliente()" class="flex-1 sm:flex-none px-3.5 sm:px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-emerald-600 transition-all shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-plus-circle"></i> <span>Novo Cliente</span>
             </button>
-            <button onclick="exportarCSV()" class="px-4 py-2.5 bg-slate-600 text-white rounded-xl font-bold hover:bg-slate-700 transition-all flex items-center gap-2">
-                <i class="fa-solid fa-download"></i> Exportar
+            <button onclick="abrirModalAgendamento()" class="px-3.5 py-2.5 bg-indigo-500 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-600 transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-regular fa-calendar-plus"></i> <span>Agendar</span>
+            </button>
+            <button onclick="exportarCSV()" class="px-3.5 py-2.5 bg-slate-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-slate-700 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-download"></i> <span class="hidden sm:inline">Exportar</span>
             </button>
         </div>
     </div>
 
     <!-- Stats Row (Visão Executiva & Especialista em CRM) -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 mt-8">
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5 mt-5 sm:mt-6">
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
              data-tooltip="Total Carteira CRM|Total de clientes e parceiros mapeados na carteira sob alçada da filial e gestores selecionados.">
-            <div class="text-2xl font-black text-white" x-text="stats.total">0</div>
-            <div class="text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Total Carteira</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-slate-400 group-hover:text-white transition-colors"></i>
+            <div class="text-lg sm:text-2xl font-black text-white truncate" x-text="stats.total">0</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Total Carteira</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-slate-400 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
              data-tooltip="Clientes Fechados|Contas que converteram pedidos faturados no período de análise ou propostas ganhas no funil.">
-            <div class="text-2xl font-black text-emerald-400" x-text="stats.fechados">0</div>
-            <div class="text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Fechados</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-emerald-300 group-hover:text-white transition-colors"></i>
+            <div class="text-lg sm:text-2xl font-black text-emerald-400 truncate" x-text="stats.fechados">0</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Fechados</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-emerald-300 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
              data-tooltip="Em Negociação|Contas ativas com cotações abertas, pedidos pendentes ou em fase de prospecção comercial.">
-            <div class="text-2xl font-black text-amber-400" x-text="stats.emNegociacao">0</div>
-            <div class="text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Em Negociação</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-amber-300 group-hover:text-white transition-colors"></i>
+            <div class="text-lg sm:text-2xl font-black text-amber-400 truncate" x-text="stats.emNegociacao">0</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Negociação</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-amber-300 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
              data-tooltip="Pipeline Financeiro|Valor financeiro estimado de propostas e oportunidades em aberto no funil comercial.">
-            <div class="text-2xl font-black text-blue-400" x-text="stats.pipelineValue">R$ 0</div>
-            <div class="text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Pipeline (R$)</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-blue-300 group-hover:text-white transition-colors"></i>
+            <div class="text-lg sm:text-2xl font-black text-blue-400 truncate" x-text="stats.pipelineValue">R$ 0</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Pipeline (R$)</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-blue-300 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
              data-tooltip="Taxa de Conversão|Percentual de conversão de oportunidades e propostas em vendas faturadas no período.">
-            <div class="text-2xl font-black text-purple-400" x-text="stats.conversao + '%'">0%</div>
-            <div class="text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Conversão</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-purple-300 group-hover:text-white transition-colors"></i>
+            <div class="text-lg sm:text-2xl font-black text-purple-400 truncate" x-text="stats.conversao + '%'">0%</div>
+            <div class="text-[10px] sm:text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Conversão</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-purple-300 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
-        <div class="bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
+             onclick="document.getElementById('secaoAgendaCompromissos')?.scrollIntoView({behavior: 'smooth'})"
              data-tooltip="Agenda & Disciplina Comercial|Acompanhamento de metas: contatos e visitas concluídos versus total agendado no mês corrente.">
-            <div class="text-2xl font-black text-teal-300 flex items-center justify-center gap-1">
+            <div class="text-lg sm:text-2xl font-black text-teal-300 flex items-center justify-center gap-1 truncate">
                 <span x-text="stats.concluidosMes || 0">0</span>
-                <span class="text-sm font-semibold text-slate-400">/</span>
-                <span class="text-base font-bold text-slate-300" x-text="stats.totalCompromissosMes || 0">0</span>
+                <span class="text-xs sm:text-sm font-semibold text-slate-400">/</span>
+                <span class="text-sm sm:text-base font-bold text-slate-300" x-text="stats.totalCompromissosMes || 0">0</span>
             </div>
-            <div class="text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span>Agenda no Mês</span>
-                <i class="fa-solid fa-circle-question text-[10px] text-teal-300 group-hover:text-white transition-colors"></i>
+            <div class="text-[10px] sm:text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
+                <span class="truncate">Agenda Mês</span>
+                <i class="fa-solid fa-circle-question text-[9px] text-teal-300 group-hover:text-white transition-colors flex-none"></i>
             </div>
         </div>
     </div>
 </div>
 
+<!-- BARRA RÁPIDA DE CAMPO (MODO APP GESTOR / CELULAR) -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5">
+    <button type="button" onclick="document.getElementById('secaoCarteiraClientes')?.scrollIntoView({behavior: 'smooth'})"
+        class="bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
+        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none">
+            <i class="fa-solid fa-users text-sm"></i>
+        </div>
+        <div class="min-w-0">
+            <div class="text-xs font-extrabold text-slate-800 truncate">Carteira CRM</div>
+            <div class="text-[10px] text-slate-500 font-semibold truncate" x-text="pagination.total + ' clientes ativos'">Clientes</div>
+        </div>
+    </button>
 
-<!-- VIEW TABELA -->
-<div>
+    <button type="button" onclick="document.getElementById('secaoAgendaCompromissos')?.scrollIntoView({behavior: 'smooth'})"
+        class="bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
+        <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center flex-none relative">
+            <i class="fa-regular fa-calendar-check text-sm"></i>
+            <span x-show="proximosCompromissos.length > 0" x-text="proximosCompromissos.length" class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center"></span>
+        </div>
+        <div class="min-w-0">
+            <div class="text-xs font-extrabold text-slate-800 truncate">Minha Agenda</div>
+            <div class="text-[10px] text-indigo-600 font-bold truncate" x-text="proximosCompromissos.length + ' próximo(s)'">Ver visitas</div>
+        </div>
+    </button>
+
+    <button type="button" onclick="abrirModalAgendamento()"
+        class="bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
+        <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center flex-none">
+            <i class="fa-solid fa-calendar-plus text-sm"></i>
+        </div>
+        <div class="min-w-0">
+            <div class="text-xs font-extrabold text-slate-800 truncate">Agendar Visita</div>
+            <div class="text-[10px] text-purple-600 font-bold truncate">Novo compromisso</div>
+        </div>
+    </button>
+
+    <button type="button" onclick="window.abrirPedidoMercos()"
+        class="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl p-3 shadow-sm flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
+        <div class="w-9 h-9 rounded-xl bg-white/20 text-white flex items-center justify-center flex-none">
+            <i class="fa-solid fa-cart-plus text-sm"></i>
+        </div>
+        <div class="min-w-0">
+            <div class="text-xs font-extrabold text-white truncate">Pedido Mercos</div>
+            <div class="text-[10px] text-blue-100 font-semibold truncate">Abrir App / Web</div>
+        </div>
+    </button>
+</div>
+
+
+<!-- VIEW TABELA / CARDS -->
+<div id="secaoCarteiraClientes">
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
       <!-- FILTROS AVANÇADOS MODERNOS -->
 <!-- FILTROS AVANÇADOS MODERNOS -->
@@ -988,8 +1039,14 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
     </div>
 </div>
 
-<div class="overflow-x-auto">
-    <table class="w-full text-sm" id="tabelaClientes">
+<!-- VISÃO MOBILE (MODO APP DE CAMPO PARA O GESTOR) -->
+<div id="clientesMobileCards" class="md:hidden divide-y divide-slate-100">
+    <div class="text-center py-8 text-slate-400 text-xs">Carregando carteira de clientes...</div>
+</div>
+
+<!-- VISÃO DESKTOP (TABELA COMPLETA) -->
+<div class="hidden md:block overflow-x-auto">
+    <table class="w-full text-sm min-w-[920px]" id="tabelaClientes">
         <thead class="bg-slate-50 border-b">
             <tr>
                 <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Cliente</th>
@@ -1007,45 +1064,45 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
         </tbody>
     </table>
 </div>
-<div class="p-4 border-t border-slate-100 flex justify-between items-center">
-    <span class="text-sm text-slate-400" x-text="`${pagination.total} clientes • Página ${pagination.atual} de ${pagination.totalPaginas}`"></span>
-    <div class="flex gap-2">
-        <button @click="mudarPagina(pagination.atual - 1)" :disabled="pagination.atual === 1" class="px-3 py-1 border rounded-lg disabled:opacity-50">Anterior</button>
-        <button @click="mudarPagina(pagination.atual + 1)" :disabled="pagination.atual === pagination.totalPaginas" class="px-3 py-1 border rounded-lg">Próximo</button>
+<div class="p-3.5 sm:p-4 border-t border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-3">
+    <span class="text-xs sm:text-sm text-slate-500 font-semibold" x-text="`${pagination.total} clientes • Página ${pagination.atual} de ${pagination.totalPaginas}`"></span>
+    <div class="flex gap-2 w-full sm:w-auto justify-center">
+        <button @click="mudarPagina(pagination.atual - 1)" :disabled="pagination.atual === 1" class="flex-1 sm:flex-none px-4 py-1.5 border rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Anterior</button>
+        <button @click="mudarPagina(pagination.atual + 1)" :disabled="pagination.atual === pagination.totalPaginas" class="flex-1 sm:flex-none px-4 py-1.5 border rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50">Próximo</button>
     </div>
 </div>
 </div>
 </div>
 
 <!-- SEÇÃO DE AGENDA PREMIUM -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-8">
-    <div class="lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
-        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-5 py-4 flex justify-between items-center">
+<div id="secaoAgendaCompromissos" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 sm:mt-8">
+    <div class="order-2 lg:order-1 lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+        <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
-                <h3 class="font-bold text-white text-lg">
+                <h3 class="font-bold text-white text-base sm:text-lg">
                     <i class="fa-regular fa-calendar-alt mr-2"></i>Agenda de Compromissos
                 </h3>
-                <p class="text-blue-100 text-xs mt-0.5">Clique em qualquer horário para agendar</p>
+                <p class="text-blue-100 text-xs mt-0.5">Toque ou clique em qualquer horário para agendar</p>
             </div>
-            <div class="flex gap-2">
-                <button onclick="filtrarAgenda('todos')" class="filter-agenda-btn active px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-filter="todos">
+            <div class="flex flex-wrap gap-1.5 w-full sm:w-auto">
+                <button onclick="filtrarAgenda('todos')" class="filter-agenda-btn active flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap" data-filter="todos">
                     <i class="fa-solid fa-list mr-1"></i>Todos
                 </button>
-                <button onclick="filtrarAgenda('reuniao')" class="filter-agenda-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-filter="reuniao">
+                <button onclick="filtrarAgenda('reuniao')" class="filter-agenda-btn flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap" data-filter="reuniao">
                     <i class="fa-solid fa-users mr-1"></i>Reunião
                 </button>
-                <button onclick="filtrarAgenda('ligacao')" class="filter-agenda-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-filter="ligacao">
+                <button onclick="filtrarAgenda('ligacao')" class="filter-agenda-btn flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap" data-filter="ligacao">
                     <i class="fa-solid fa-phone mr-1"></i>Ligação
                 </button>
-                <button onclick="filtrarAgenda('visita')" class="filter-agenda-btn px-3 py-1.5 rounded-lg text-xs font-bold transition-all" data-filter="visita">
+                <button onclick="filtrarAgenda('visita')" class="filter-agenda-btn flex-1 sm:flex-none px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap" data-filter="visita">
                     <i class="fa-solid fa-building mr-1"></i>Visita
                 </button>
             </div>
         </div>
-        <div id="calendarioAgenda" class="p-4" style="min-height: 550px;"></div>
+        <div id="calendarioAgenda" class="p-2.5 sm:p-4" style="min-height: 500px;"></div>
     </div>
 
-    <div class="space-y-4">
+    <div class="order-1 lg:order-2 space-y-4">
         <div class="bg-gradient-to-r from-emerald-500 to-teal-600 rounded-2xl p-4 shadow-lg cursor-pointer hover:shadow-xl transition-all" onclick="abrirModalAgendamento()">
             <div class="flex items-center justify-between">
                 <div>
@@ -3211,12 +3268,14 @@ abrirAgendamentoRapido(start, end) {
     },
     renderizarTabela() {
         const tbody = document.getElementById('clientesTableBody');
+        const mobileCards = document.getElementById('clientesMobileCards');
         if (!this.clientesTabela.length) {
-            tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-400">Nenhum cliente encontrado</td></tr>';
+            if (tbody) tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-400">Nenhum cliente encontrado</td></tr>';
+            if (mobileCards) mobileCards.innerHTML = '<div class="text-center py-8 px-4 text-slate-400 text-xs">Nenhum cliente encontrado para os filtros atuais.</div>';
             return;
         }
 
-        tbody.innerHTML = this.clientesTabela.map(c => {
+        const rendered = this.clientesTabela.map(c => {
             const statusClass = {
                 'Novo': 'bg-blue-100 text-blue-700',
                 'Qualificado': 'bg-amber-100 text-amber-700',
@@ -3228,16 +3287,15 @@ abrirAgendamentoRapido(start, end) {
             const termoIcon = { 'Frio': '🥶', 'Morno': '🌤️', 'Quente': '🔥' }[c.termometro] || '';
 
             let origemBadge = '';
-            if (c.origem_dados === 'APENAS_CRM') origemBadge = '<span class="ml-2 text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">💾 CRM</span>';
-            else if (c.origem_dados === 'APENAS_ERP') origemBadge = '<span class="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">🏭 ERP</span>';
-            else if (c.origem_dados === 'AMBOS') origemBadge = '<span class="ml-2 text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">🔄 Ambos</span>';
+            if (c.origem_dados === 'APENAS_CRM') origemBadge = '<span class="text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">💾 CRM</span>';
+            else if (c.origem_dados === 'APENAS_ERP') origemBadge = '<span class="text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">🏭 ERP</span>';
+            else if (c.origem_dados === 'AMBOS') origemBadge = '<span class="text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">🔄 Ambos</span>';
 
-        // 🔥 VALOR DO PERÍODO - PRIORIDADE
+            // 🔥 VALOR DO PERÍODO - PRIORIDADE
             let valorExibir = '—';
             let tooltipTexto = '';
 
             if (c.total_compras_periodo !== undefined && c.total_compras_periodo > 0) {
-            // Tem período selecionado e cliente comprou no período
                 valorExibir = MarketingUtils.formatarValor(c.total_compras_periodo, 'moeda');
                 tooltipTexto = `Compras no período: ${valorExibir}`;
                 if (c.total_compras > 0 && c.total_compras !== c.total_compras_periodo) {
@@ -3251,13 +3309,12 @@ abrirAgendamentoRapido(start, end) {
                 tooltipTexto = `Total de compras: ${valorExibir}`;
             }
 
-        // Status de compra
+            // Status de compra
             let statusCompra = '';
             let statusCompraClass = '';
             let ultimoValor = '';
 
             if (c.total_pedidos_periodo !== undefined && c.total_pedidos_periodo > 0) {
-            // Comprou no período
                 statusCompra = '✅ Comprou no período';
                 statusCompraClass = 'bg-emerald-100 text-emerald-700';
                 ultimoValor = c.total_compras_periodo ? MarketingUtils.formatarValor(c.total_compras_periodo, 'moeda') : 'R$ 0,00';
@@ -3271,77 +3328,139 @@ abrirAgendamentoRapido(start, end) {
                 ultimoValor = '—';
             }
 
+            const nomeSafe = this.escapeHtml(c.nome).replace(/'/g, "\\'");
+            const cnpjSafe = this.escapeHtml(c.cnpj_cpf || '').replace(/'/g, "\\'");
+            const clienteId = c.id_crm || c.id_erp || c.id;
+            const acaoFicha = c.id_crm ? `window.editarCliente(${c.id_crm}, 'CRM')` : `window.visualizarClienteUnificado(${c.id_erp}, '${c.origem_dados}')`;
+
+            const btnMercosDesktop = `<button onclick="window.abrirPedidoMercos(${clienteId}, '${nomeSafe}', '${cnpjSafe}', ${c.id_erp || 0}, ${c.idfilial || 1})" class="text-blue-600 hover:text-blue-800 mr-2 transition-colors" title="Criar Pedido no Mercos"><i class="fa-solid fa-cart-plus"></i></button>`;
+            const btnAgendarDesktop = `<button onclick="window.abrirAgendamentoClienteRapido(${clienteId}, '${nomeSafe}')" class="text-indigo-500 hover:text-indigo-700 mr-2 transition-colors" title="Agendar Visita / Contato"><i class="fa-regular fa-calendar-plus"></i></button>`;
             const btnImportar = (c.origem_dados === 'APENAS_ERP') ?
-        `<button onclick="window.importarClienteERP(${c.id_erp}, '${this.escapeHtml(c.nome).replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-indigo-500 mr-2 transition-colors" title="Importar para CRM"><i class="fa-solid fa-cloud-arrow-down"></i></button>` :
-        '';
-        const btnEditar = c.id_crm ? `<button onclick="window.editarCliente(${c.id_crm}, 'CRM')" class="text-slate-400 hover:text-emerald-600 mr-2 transition-colors"><i class="fa-solid fa-pen"></i></button>` : '';
-        const btnDeletar = c.id_crm ? `<button onclick="window.deletarCliente(${c.id_crm}, '${this.escapeHtml(c.nome).replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-trash"></i></button>` : '';
+                `<button onclick="window.importarClienteERP(${c.id_erp}, '${nomeSafe}')" class="text-slate-400 hover:text-indigo-500 mr-2 transition-colors" title="Importar para CRM"><i class="fa-solid fa-cloud-arrow-down"></i></button>` : '';
+            const btnEditar = c.id_crm ? `<button onclick="window.editarCliente(${c.id_crm}, 'CRM')" class="text-slate-400 hover:text-emerald-600 mr-2 transition-colors" title="Editar Cliente"><i class="fa-solid fa-pen"></i></button>` : '';
+            const btnDeletar = c.id_crm ? `<button onclick="window.deletarCliente(${c.id_crm}, '${nomeSafe}')" class="text-slate-400 hover:text-rose-500 transition-colors" title="Excluir"><i class="fa-solid fa-trash"></i></button>` : '';
 
-        const clienteId = c.id_crm || c.id_erp || c.id;
+            const filialBadge = c.idfilial == 6 ? 
+                '<span class="text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-300 shadow-xs whitespace-nowrap"><i class="fa-solid fa-location-dot mr-1 text-sky-600"></i>PR (6)</span>' : 
+                '<span class="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300 shadow-xs whitespace-nowrap"><i class="fa-solid fa-location-dot mr-1 text-emerald-600"></i>SC (1)</span>';
 
-        const filialBadge = c.idfilial == 6 ? 
-            '<span class="ml-2 text-[10px] bg-sky-100 text-sky-800 font-bold px-2 py-0.5 rounded-full border border-sky-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-sky-600"></i>PR (Filial 6)</span>' : 
-            '<span class="ml-2 text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full border border-emerald-300 shadow-xs"><i class="fa-solid fa-location-dot mr-1 text-emerald-600"></i>SC (Filial 1)</span>';
+            let erpBadge = '';
+            if (c.id_erp) {
+                erpBadge = `<span class="text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded-full border border-emerald-200 inline-flex items-center gap-1 whitespace-nowrap"><i class="fa-solid fa-check text-emerald-600 text-[8px]"></i>ERP #${c.id_erp}</span>`;
+            }
 
-        let erpBadge = '';
-        if (c.id_erp) {
-            erpBadge = `<span class="ml-1 text-[9px] bg-emerald-50 text-emerald-700 font-semibold px-1.5 py-0.5 rounded-full border border-emerald-200 inline-flex items-center gap-1"><i class="fa-solid fa-check text-emerald-600 text-[8px]"></i>ERP: ${c.status_erp || 'Ativo'}</span>`;
-        }
+            let gestorRepreInfo = '';
+            if (c.nome_gestor) {
+                gestorRepreInfo += `<span class="inline-flex items-center text-[10px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded mr-1.5 mt-1"><i class="fa-solid fa-user-tie text-blue-600 mr-1"></i>Gestor: ${this.escapeHtml(c.nome_gestor)}</span>`;
+            }
+            if (c.nome_vendedor) {
+                gestorRepreInfo += `<span class="inline-flex items-center text-[10px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded mt-1"><i class="fa-solid fa-id-badge text-purple-600 mr-1"></i>Rep: ${this.escapeHtml(c.nome_vendedor)}</span>`;
+            }
 
-        let gestorRepreInfo = '';
-        if (c.nome_gestor) {
-            gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded mr-2 mt-1"><i class="fa-solid fa-user-tie text-blue-600 mr-1"></i>Gestor: ${this.escapeHtml(c.nome_gestor)}</span>`;
-        }
-        if (c.nome_vendedor) {
-            gestorRepreInfo += `<span class="inline-flex items-center text-[11px] font-medium text-slate-600 bg-slate-100 px-2 py-0.5 rounded mt-1"><i class="fa-solid fa-id-badge text-purple-600 mr-1"></i>Rep: ${this.escapeHtml(c.nome_vendedor)}</span>`;
-        }
+            let badgesPedidosStatus = '';
+            if (c.qtd_pedidos_abertos > 0) {
+                badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-xs"><i class="fa-solid fa-box-open mr-1"></i>${c.qtd_pedidos_abertos} Aberto(s)</span>`;
+            }
+            if (c.qtd_pedidos_faturados > 0) {
+                badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs"><i class="fa-solid fa-receipt mr-1"></i>${c.qtd_pedidos_faturados} Faturado(s)</span>`;
+            }
 
-        let badgesPedidosStatus = '';
-        if (c.qtd_pedidos_abertos > 0) {
-            badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-300 shadow-xs"><i class="fa-solid fa-box-open mr-1"></i>${c.qtd_pedidos_abertos} Aberto(s)</span>`;
-        }
-        if (c.qtd_pedidos_faturados > 0) {
-            badgesPedidosStatus += `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-xs"><i class="fa-solid fa-receipt mr-1"></i>${c.qtd_pedidos_faturados} Faturado(s)</span>`;
-        }
+            const foneDigitos = String(c.telefone || '').replace(/\D/g, '');
+            const whatsUrl = foneDigitos.length >= 10 ? `https://wa.me/55${foneDigitos}` : '';
 
-        return `
-            <tr class="border-b hover:bg-slate-50 cursor-pointer transition-colors" 
-                data-cliente-id="${clienteId}"
-            onclick="${c.id_crm ? `window.editarCliente(${c.id_crm}, 'CRM')` : `window.visualizarClienteUnificado(${c.id_erp}, '${c.origem_dados}')`}">
-                <td class="px-4 py-3">
-                    <div class="font-bold text-slate-800 flex items-center flex-wrap gap-1">
-                        ${this.escapeHtml(c.nome)}
-                        ${filialBadge}
-                        ${erpBadge}
-                        ${origemBadge}
-                        ${!c.id_crm ? '<span class="ml-1 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
+            const cardHtml = `
+                <div class="p-3.5 hover:bg-slate-50 transition-colors" data-cliente-id="${clienteId}">
+                    <div class="flex items-start justify-between gap-2 cursor-pointer" onclick="${acaoFicha}">
+                        <div class="min-w-0 flex-1">
+                            <div class="font-extrabold text-slate-800 text-xs sm:text-sm leading-snug break-words">${this.escapeHtml(c.nome)}</div>
+                            <div class="flex flex-wrap items-center gap-1 mt-1">
+                                ${filialBadge}
+                                ${erpBadge}
+                                ${origemBadge}
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusClass}">${c.status} ${termoIcon}</span>
+                            </div>
+                        </div>
+                        <div class="text-right flex-none">
+                            <div class="text-xs sm:text-sm font-black text-emerald-600">${valorExibir}</div>
+                            <span class="inline-block mt-0.5 px-2 py-0.5 rounded-full text-[9px] font-bold ${statusCompraClass}">${statusCompra}</span>
+                        </div>
                     </div>
-                    <div class="text-xs text-slate-400 mt-0.5">
-                        ${c.empresa || ''} ${c.telefone ? '• ' + c.telefone : ''}
+
+                    <div class="mt-1.5 text-[11px] text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-1">
+                        ${c.cnpj_cpf ? `<span><i class="fa-regular fa-id-card mr-1 text-slate-400"></i>${this.escapeHtml(c.cnpj_cpf)}</span>` : ''}
+                        ${c.telefone ? `<span><i class="fa-solid fa-phone mr-1 text-slate-400"></i>${this.escapeHtml(c.telefone)}</span>` : ''}
+                        ${c.cidade ? `<span><i class="fa-solid fa-location-dot mr-1 text-slate-400"></i>${this.escapeHtml(c.cidade)}${c.uf ? '/' + this.escapeHtml(c.uf) : ''}</span>` : ''}
                     </div>
                     ${gestorRepreInfo ? `<div class="mt-1">${gestorRepreInfo}</div>` : ''}
-                </td>
-                <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded-lg text-xs font-bold ${statusClass}">${c.status}</span></td>
-                <td class="px-4 py-3 text-center text-xl">${termoIcon}</td>
-                <td class="px-4 py-3 text-center text-xs">${c.origem}</td>
-                <td class="px-4 py-3 text-right font-bold text-emerald-600" title="${tooltipTexto}">
-                    ${valorExibir}
-            ${c.total_compras_periodo > 0 && c.total_compras > 0 && c.total_compras !== c.total_compras_periodo ? `<span class="text-[9px] text-slate-400 block">Vida: ${MarketingUtils.formatarValor(c.total_compras, 'moeda')}</span>` : ''}
-                </td>
-                <td class="px-4 py-3 text-center text-xs">${this.formatarDataRelativa(c.ultima_interacao || c.data_ultima_compra || c.data_cadastro)}</td>
-                <td class="px-4 py-3 text-center">
-                    <div class="flex flex-col items-center gap-1">
-                        <div class="flex flex-wrap justify-center gap-1">${badgesPedidosStatus}</div>
-                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCompraClass}">${statusCompra}</span>
-            ${(c.total_pedidos_periodo > 0 || c.total_pedidos > 0) ? `<span class="text-[9px] text-slate-400">Último: ${ultimoValor}</span>` : ''}
-            ${c.total_pedidos_periodo > 0 && c.total_pedidos > 0 ? `<span class="text-[8px] text-slate-400">(${c.total_pedidos_periodo} de ${c.total_pedidos} pedidos no período)</span>` : ''}
+                    ${badgesPedidosStatus ? `<div class="flex flex-wrap gap-1 mt-1.5">${badgesPedidosStatus}</div>` : ''}
+
+                    <!-- BARRA DE AÇÕES RÁPIDAS DO GESTOR NO CELULAR -->
+                    <div class="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
+                        ${whatsUrl ? `
+                            <a href="${whatsUrl}" target="_blank" onclick="event.stopPropagation()" class="py-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold flex items-center justify-center gap-1 no-underline">
+                                <i class="fa-brands fa-whatsapp text-xs"></i> WhatsApp
+                            </a>
+                        ` : `
+                            <button type="button" onclick="event.stopPropagation(); ${acaoFicha}" class="py-1.5 px-2 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-phone-slash text-[10px]"></i> Sem Tel
+                            </button>
+                        `}
+                        <button type="button" onclick="event.stopPropagation(); window.abrirAgendamentoClienteRapido(${clienteId}, '${nomeSafe}')" class="py-1.5 px-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold flex items-center justify-center gap-1">
+                            <i class="fa-regular fa-calendar-plus text-xs"></i> Agendar
+                        </button>
+                        <button type="button" onclick="event.stopPropagation(); window.abrirPedidoMercos(${clienteId}, '${nomeSafe}', '${cnpjSafe}', ${c.id_erp || 0}, ${c.idfilial || 1})" class="py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold flex items-center justify-center gap-1 shadow-xs">
+                            <i class="fa-solid fa-cart-plus text-[10px]"></i> Mercos
+                        </button>
+                        <button type="button" onclick="event.stopPropagation(); ${acaoFicha}" class="py-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-extrabold flex items-center justify-center gap-1">
+                            <i class="fa-regular fa-eye text-xs"></i> Ficha
+                        </button>
                     </div>
-                </td>
-                <td class="px-4 py-3 text-center" onclick="event.stopPropagation()">${btnImportar}${btnEditar}${btnDeletar}</td>
-            </tr>
-        `;
-    }).join('');
-},
+                </div>
+            `;
+
+            const rowHtml = `
+                <tr class="border-b hover:bg-slate-50 cursor-pointer transition-colors" 
+                    data-cliente-id="${clienteId}"
+                    onclick="${acaoFicha}">
+                    <td class="px-4 py-3">
+                        <div class="font-bold text-slate-800 flex items-center flex-wrap gap-1">
+                            ${this.escapeHtml(c.nome)}
+                            ${filialBadge}
+                            ${erpBadge}
+                            ${origemBadge}
+                            ${!c.id_crm ? '<span class="ml-1 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
+                        </div>
+                        <div class="text-xs text-slate-400 mt-0.5">
+                            ${c.empresa || ''} ${c.telefone ? '• ' + c.telefone : ''}
+                        </div>
+                        ${gestorRepreInfo ? `<div class="mt-1">${gestorRepreInfo}</div>` : ''}
+                    </td>
+                    <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded-lg text-xs font-bold ${statusClass}">${c.status}</span></td>
+                    <td class="px-4 py-3 text-center text-xl">${termoIcon}</td>
+                    <td class="px-4 py-3 text-center text-xs">${c.origem}</td>
+                    <td class="px-4 py-3 text-right font-bold text-emerald-600 whitespace-nowrap" title="${tooltipTexto}">
+                        ${valorExibir}
+                        ${c.total_compras_periodo > 0 && c.total_compras > 0 && c.total_compras !== c.total_compras_periodo ? `<span class="text-[9px] text-slate-400 block">Vida: ${MarketingUtils.formatarValor(c.total_compras, 'moeda')}</span>` : ''}
+                    </td>
+                    <td class="px-4 py-3 text-center text-xs whitespace-nowrap">${this.formatarDataRelativa(c.ultima_interacao || c.data_ultima_compra || c.data_cadastro)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <div class="flex flex-col items-center gap-1">
+                            <div class="flex flex-wrap justify-center gap-1">${badgesPedidosStatus}</div>
+                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${statusCompraClass}">${statusCompra}</span>
+                            ${(c.total_pedidos_periodo > 0 || c.total_pedidos > 0) ? `<span class="text-[9px] text-slate-400">Último: ${ultimoValor}</span>` : ''}
+                            ${c.total_pedidos_periodo > 0 && c.total_pedidos > 0 ? `<span class="text-[8px] text-slate-400">(${c.total_pedidos_periodo} de ${c.total_pedidos} pedidos no período)</span>` : ''}
+                        </div>
+                    </td>
+                    <td class="px-4 py-3 text-center whitespace-nowrap" onclick="event.stopPropagation()">${btnMercosDesktop}${btnAgendarDesktop}${btnImportar}${btnEditar}${btnDeletar}</td>
+                </tr>
+            `;
+
+            return { cardHtml, rowHtml };
+        });
+
+        if (tbody) tbody.innerHTML = rendered.map(r => r.rowHtml).join('');
+        if (mobileCards) mobileCards.innerHTML = rendered.map(r => r.cardHtml).join('');
+    },
 
 buscarComDebounce() {
     if (this.timeoutBusca) clearTimeout(this.timeoutBusca);
@@ -5573,35 +5692,147 @@ window.visualizarClienteUnificado = async function(id, origem) {
         document.getElementById('compromissoDescricao').value = '';
     }
 
-    function abrirModalAgendamento() {
-        carregarClientesParaSelect();
-        document.getElementById('agendamentoDataHora').value = '';
+    function abrirModalAgendamento(preselectedId = null, preselectedNome = '') {
+        carregarClientesParaSelect(preselectedId, preselectedNome);
+        const agora = new Date();
+        agora.setHours(agora.getHours() + 1, 0, 0, 0);
+        const pad = (n) => String(n).padStart(2, '0');
+        const dtSugerida = `${agora.getFullYear()}-${pad(agora.getMonth() + 1)}-${pad(agora.getDate())}T${pad(agora.getHours())}:00`;
+        document.getElementById('agendamentoDataHora').value = preselectedId ? dtSugerida : '';
         document.getElementById('agendamentoDataHoraFim').value = '';
         document.getElementById('agendamentoDuracao').value = '30';
-        document.getElementById('agendamentoTitulo').value = '';
+        document.getElementById('agendamentoTitulo').value = preselectedNome ? `Visita / Contato - ${preselectedNome}` : '';
         document.getElementById('agendamentoDescricao').value = '';
         document.getElementById('modalAgendamento').classList.remove('hidden');
     }
+
+    window.abrirAgendamentoClienteRapido = function(clienteId, nomeCliente = '') {
+        abrirModalAgendamento(clienteId, nomeCliente);
+    };
+
+    window.abrirPedidoMercos = async function(clienteId = null, nomeCliente = '', cnpjCliente = '', idErp = 0, idFilial = 1) {
+        // Se foi chamado de dentro do modalCliente sem parâmetros explícitos, tenta ler os campos do modal aberto
+        if (!nomeCliente) {
+            const elNome = document.getElementById('clienteNome');
+            const elCnpj = document.getElementById('clienteCnpj');
+            const elErp = document.getElementById('clienteIdErp');
+            if (elNome && elNome.value && !document.getElementById('modalCliente')?.classList.contains('hidden')) {
+                nomeCliente = elNome.value;
+                cnpjCliente = elCnpj ? elCnpj.value : '';
+                idErp = elErp ? elErp.value : 0;
+            }
+        }
+
+        const chaveBusca = (cnpjCliente || nomeCliente || '').trim();
+        let copiado = false;
+        if (chaveBusca && navigator.clipboard) {
+            try {
+                await navigator.clipboard.writeText(chaveBusca);
+                copiado = true;
+            } catch (_) {}
+        }
+
+        const filialNome = Number(idFilial) === 6 ? 'Filial 6 - Paraná (PR)' : 'Filial 1 - Matriz (SC)';
+        const mercosUrl = 'https://app.mercos.com/';
+
+        Swal.fire({
+            title: '',
+            width: '480px',
+            showConfirmButton: false,
+            showCloseButton: true,
+            customClass: { popup: 'rounded-3xl p-5 max-w-[95vw]' },
+            html: `
+                <div class="text-left space-y-4">
+                    <div class="flex items-center gap-3 pb-3 pr-6 border-b border-slate-100">
+                        <div class="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md flex-none">
+                            <i class="fa-solid fa-cart-plus text-xl"></i>
+                        </div>
+                        <div class="min-w-0">
+                            <span class="text-[10px] font-black uppercase tracking-wider text-blue-700 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">Força de Vendas • Mercos</span>
+                            <h3 class="text-base font-black text-slate-800 mt-0.5 leading-snug">Criar Pedido no Mercos</h3>
+                        </div>
+                    </div>
+
+                    ${nomeCliente ? `
+                        <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                            <div class="text-[10px] font-extrabold uppercase text-slate-400">Cliente Selecionado</div>
+                            <div class="text-sm font-black text-slate-800 leading-snug">${nomeCliente}</div>
+                            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-600 pt-1">
+                                ${cnpjCliente ? `<span class="bg-white px-2 py-0.5 rounded-lg border border-slate-200 font-mono font-bold text-[11px]">CNPJ/CPF: ${cnpjCliente}</span>` : ''}
+                                ${idErp ? `<span class="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded-lg border border-emerald-200 font-bold text-[11px]">ERP #${idErp}</span>` : ''}
+                                <span class="bg-slate-100 text-slate-600 px-2 py-0.5 rounded-lg font-bold text-[11px]">${filialNome}</span>
+                            </div>
+                            ${copiado ? `
+                                <div class="mt-2 pt-2 border-t border-slate-200/80 text-[11px] font-bold text-emerald-700 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-circle-check text-emerald-600"></i>
+                                    <span><b>${chaveBusca}</b> copiado! Basta colar na busca de clientes do Mercos.</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                    ` : `
+                        <div class="p-3.5 rounded-2xl bg-blue-50/60 border border-blue-200 text-xs text-slate-700 leading-relaxed">
+                            Acesse rapidamente o aplicativo ou portal web do <b>Mercos</b> para digitar pedidos de venda, consultar tabelas de preço e políticas comerciais.
+                        </div>
+                    `}
+
+                    <div class="space-y-2.5 pt-1">
+                        <a href="${mercosUrl}" target="_blank" rel="noopener" onclick="Swal.close()"
+                           class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-extrabold text-xs sm:text-sm shadow-lg flex items-center justify-center gap-2 no-underline transition-all">
+                            <i class="fa-solid fa-up-right-from-square"></i>
+                            <span>Abrir Aplicativo / Portal Mercos</span>
+                        </a>
+                        ${chaveBusca ? `
+                            <button type="button" onclick="navigator.clipboard?.writeText('${chaveBusca.replace(/'/g, "\\'")}'); this.innerHTML='<i class=\\'fa-solid fa-check text-emerald-600\\'></i> Copiado para área de transferência!'"
+                                class="w-full py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all">
+                                <i class="fa-regular fa-copy"></i>
+                                <span>Copiar ${cnpjCliente ? 'CNPJ/CPF' : 'Nome do Cliente'} (${chaveBusca})</span>
+                            </button>
+                        ` : ''}
+                    </div>
+
+                    <div class="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[10px] text-amber-800 flex items-start gap-2">
+                        <i class="fa-solid fa-wand-magic-sparkles text-amber-600 mt-0.5 flex-none"></i>
+                        <span><b>Roadmap Integrador API Mercos:</b> Quando o integrador nativo estiver ativo, este botão abrirá o rascunho de pedido diretamente vinculado ao cliente via API.</span>
+                    </div>
+                </div>
+            `
+        });
+    };
 
     function fecharModalAgendamento() {
         document.getElementById('modalAgendamento').classList.add('hidden');
     }
 
-    async function carregarClientesParaSelect() {
-     try {
-        const token = localStorage.getItem('authToken');
-        const resp = await fetch('/v1/marketing/clientes/consulta-otimizado?limite=200', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await resp.json();
-        const select = document.getElementById('agendamentoCliente');
-        const clientes = data.clientes || [];
-        select.innerHTML = '<option value="">Selecione um cliente...</option>' +
-        clientes.map(c => `<option value="${c.id_crm || c.id_erp}">${c.nome || c.empresa || 'Cliente'}</option>`).join('');
-    } catch (e) {
-        console.error(e);
+    async function carregarClientesParaSelect(preselectedId = null, preselectedNome = '') {
+        try {
+            const select = document.getElementById('agendamentoCliente');
+            if (!select) return;
+            if (preselectedId && preselectedNome) {
+                select.innerHTML = `<option value="${preselectedId}" selected>${preselectedNome}</option>`;
+            }
+            const token = localStorage.getItem('authToken');
+            const resp = await fetch('/v1/marketing/clientes/consulta-otimizado?limite=200', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await resp.json();
+            const clientes = data.clientes || [];
+            let html = '<option value="">Selecione um cliente...</option>';
+            let achouPre = false;
+            clientes.forEach(c => {
+                const cid = c.id_crm || c.id_erp;
+                const sel = (preselectedId && String(cid) === String(preselectedId)) ? 'selected' : '';
+                if (sel) achouPre = true;
+                html += `<option value="${cid}" ${sel}>${c.nome || c.empresa || 'Cliente'}</option>`;
+            });
+            if (preselectedId && !achouPre) {
+                html = `<option value="${preselectedId}" selected>${preselectedNome || ('Cliente #' + preselectedId)}</option>` + html;
+            }
+            select.innerHTML = html;
+            if (preselectedId) select.value = String(preselectedId);
+        } catch (e) {
+            console.error(e);
+        }
     }
-}
 
 async function salvarAgendamentoGlobal() {
     const clienteId = document.getElementById('agendamentoCliente').value;

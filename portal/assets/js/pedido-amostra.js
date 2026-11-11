@@ -459,6 +459,7 @@ async function carregarPedidos() {
 
 function renderPedidos() {
     const corpo = $('tabelaPedidosCorpo');
+    const mobileCorpo = $('pedidosMobileCards');
     const vazio = $('pedidosVazio');
     const fStatus = $('filtroStatus').value;
     const fOrigem = $('filtroOrigem').value;
@@ -494,11 +495,67 @@ function renderPedidos() {
 
     if (!filtrados.length) {
         corpo.innerHTML = '';
+        if (mobileCorpo) mobileCorpo.innerHTML = '';
         vazio.classList.remove('hidden');
         return;
     }
 
     vazio.classList.add('hidden');
+
+    if (mobileCorpo) {
+        mobileCorpo.innerHTML = filtrados.map((p) => {
+            const isPortal = p.origem === 'PORTAL';
+            const badgeOrigem = isPortal
+                ? `<span class="px-2 py-0.5 rounded-lg bg-purple-100 text-purple-800 font-extrabold text-[10px] inline-flex items-center gap-1"><i class="fa-solid fa-laptop text-[9px]"></i>PORTAL</span>`
+                : `<span class="px-2 py-0.5 rounded-lg bg-sky-100 text-sky-800 font-extrabold text-[10px] inline-flex items-center gap-1"><i class="fa-solid fa-server text-[9px]"></i>ERP</span>`;
+
+            let badgeStatus = '';
+            if (p.pendente) {
+                badgeStatus = `<span class="px-2 py-0.5 rounded-lg bg-amber-100 text-amber-800 font-bold text-[10px]"><i class="fa-solid fa-clock mr-1"></i>Aguardando ERP</span>`;
+            } else if (Number(p.status_pedido) === 5) {
+                badgeStatus = `<span class="px-2 py-0.5 rounded-lg bg-blue-100 text-blue-800 font-bold text-[10px]"><i class="fa-solid fa-circle-check mr-1"></i>Faturado</span>`;
+            } else {
+                badgeStatus = `<span class="px-2 py-0.5 rounded-lg bg-emerald-100 text-emerald-800 font-bold text-[10px]"><i class="fa-solid fa-folder-open mr-1"></i>Em Aberto</span>`;
+            }
+
+            const filialBadge = Number(p.idfilial) === 6
+                ? `<span class="px-2 py-0.5 rounded-md bg-amber-50 text-amber-900 border border-amber-200 font-bold text-[10px]">Filial 6 (PR)</span>`
+                : `<span class="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">Matriz 1</span>`;
+
+            return `
+                <div class="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 shadow-xs space-y-2" onclick="verDetalhesPedido(${p.idpedido})">
+                    <div class="flex items-center justify-between gap-2">
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="font-black text-slate-900 text-xs">#${esc(p.idpedido)}</span>
+                            ${p.pendente ? '<span class="px-1.5 py-0.2 rounded bg-amber-500 text-white text-[9px] font-black">NOVO</span>' : ''}
+                            ${badgeOrigem}
+                            ${filialBadge}
+                        </div>
+                        ${badgeStatus}
+                    </div>
+                    <div>
+                        <div class="font-extrabold text-slate-800 text-xs leading-snug break-words">${esc(p.fantasia || 'Cliente')}</div>
+                        <div class="text-[11px] text-slate-500 font-semibold mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+                            <span><i class="fa-regular fa-calendar mr-1 text-slate-400"></i>${dataBR(p.data)}</span>
+                            <span><i class="fa-solid fa-user mr-1 text-slate-400"></i>${esc(p.solicitante || '—')}</span>
+                        </div>
+                    </div>
+                    <div class="pt-2 border-t border-slate-200/70 flex items-center justify-between">
+                        <div>
+                            <span class="font-black text-emerald-800 text-xs">${num(p.total_unidades || 0)} un.</span>
+                            <span class="text-[10px] text-slate-400 font-bold ml-1">(${p.total_itens || 0} item/ns)</span>
+                        </div>
+                        <button type="button" onclick="event.stopPropagation(); verDetalhesPedido(${p.idpedido})" 
+                                class="px-3 py-1.5 rounded-xl bg-emerald-600 text-white text-xs font-extrabold flex items-center gap-1.5 shadow-xs">
+                            <i class="fa-solid fa-eye"></i>
+                            <span>Ver Detalhes</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
     corpo.innerHTML = filtrados.map((p) => {
         const isPortal = p.origem === 'PORTAL';
         const badgeOrigem = isPortal

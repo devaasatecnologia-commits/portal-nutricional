@@ -36,7 +36,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div class="mobile-spacer block lg:hidden h-14"></div>
 
     <!-- HEADER DESKTOP PREMIUM -->
-    <div class="glass rounded-3xl p-5 mb-6 flex flex-wrap justify-between items-center gap-4 shadow-sm bg-white border border-slate-100">
+    <div class="glass rounded-3xl p-5 mb-6 hidden lg:flex flex-wrap justify-between items-center gap-4 shadow-sm bg-white border border-slate-100">
         <div class="flex items-center gap-3">
             <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-1 no-underline">
                 <i class="fa-solid fa-arrow-left"></i>
@@ -65,58 +65,64 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <div class="max-w-full mx-auto px-4 lg:px-6">
+    <div class="max-w-full mx-auto px-3 sm:px-4 lg:px-6 pt-2 lg:pt-0">
         
         <!-- PAINEL DE FILTROS EXECUTIVO -->
-        <div class="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 mb-5">
+        <div x-data="{ expandirFiltrosMobile: false }" class="bg-white p-3.5 sm:p-5 rounded-2xl shadow-sm border border-slate-100 mb-5">
             <!-- Barra Superior: Atalhos Rápidos de Período + Botões de Ação -->
-            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
-                <div class="flex flex-wrap items-center gap-1.5">
-                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">
-                        <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>Período rápido:
+            <div class="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center justify-between gap-2.5 pb-3 mb-3 border-b border-slate-100">
+                <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+                    <span class="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-0.5 whitespace-nowrap flex-none">
+                        <i class="fa-solid fa-bolt text-amber-500 mr-1"></i>Período:
                     </span>
                     <button type="button" @click="definirPeriodoRapido('hoje')" data-tooltip="Filtro Hoje|Filtra apenas as vendas faturadas na data corrente."
                         :class="periodoRapidoAtivo === 'hoje' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Hoje</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Hoje</button>
                     <button type="button" @click="definirPeriodoRapido('mes_atual')" data-tooltip="Este Mês|Filtra do primeiro até o último dia do mês corrente."
                         :class="periodoRapidoAtivo === 'mes_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Mês</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Este Mês</button>
                     <button type="button" @click="definirPeriodoRapido('mes_passado')" data-tooltip="Mês Passado|Filtra o mês civil imediatamente anterior por completo."
                         :class="periodoRapidoAtivo === 'mes_passado' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Mês Passado</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Mês Passado</button>
                     <button type="button" @click="definirPeriodoRapido('ultimos_30')" data-tooltip="Últimos 30 Dias|Filtra o intervalo de 30 dias retroativos a partir de hoje."
                         :class="periodoRapidoAtivo === 'ultimos_30' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Últimos 30 dias</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">30 dias</button>
                     <button type="button" @click="definirPeriodoRapido('ultimos_90')" data-tooltip="Últimos 90 Dias|Filtra o trimestre retroativo para análise de tendência média."
                         :class="periodoRapidoAtivo === 'ultimos_90' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Últimos 90 dias</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">90 dias</button>
                     <button type="button" @click="definirPeriodoRapido('ano_atual')" data-tooltip="Este Ano|Filtra desde 01 de janeiro até 31 de dezembro do ano corrente."
                         :class="periodoRapidoAtivo === 'ano_atual' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'"
-                        class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all">Este Ano</button>
+                        class="px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">Este Ano</button>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-2">
-                    <button @click="abrirModalProjecao('representantes')" data-tooltip="Projeção Detalhada|Abre o simulador e detalhamento de metas e projeções por representante e região." class="px-3.5 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-all">
-                        <i class="fa-solid fa-bullseye mr-1.5"></i>Projeção Detalhada
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                    <button type="button" @click="expandirFiltrosMobile = !expandirFiltrosMobile"
+                        class="lg:hidden flex-1 px-3 py-2 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-extrabold flex items-center justify-center gap-1.5 transition-all">
+                        <i class="fa-solid fa-sliders text-emerald-600"></i>
+                        <span x-text="expandirFiltrosMobile ? 'Ocultar Filtros' : 'Filial, Gestor & Datas'"></span>
+                        <i class="fa-solid text-[10px]" :class="expandirFiltrosMobile ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
                     </button>
-                    <button @click="carregarDados()" data-tooltip="Atualizar Dados|Recarrega todos os KPIs, gráficos e tabelas com os filtros selecionados." class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all">
-                        <i class="fa-solid fa-rotate-right mr-1.5" :class="loading ? 'fa-spin' : ''"></i>Atualizar
+                    <button @click="abrirModalProjecao('representantes')" data-tooltip="Projeção Detalhada|Abre o simulador e detalhamento de metas e projeções por representante e região." class="px-3 py-2 bg-purple-50 text-purple-700 border border-purple-200 rounded-xl text-xs font-bold hover:bg-purple-100 transition-all whitespace-nowrap">
+                        <i class="fa-solid fa-bullseye mr-1"></i>Projeção
                     </button>
-                    <button @click="exportarDados()" data-tooltip="Exportar CSV|Baixa uma planilha completa com todos os dados executivos do dashboard." class="px-4 py-2 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-50 transition-all">
-                        <i class="fa-regular fa-file-excel mr-1.5"></i>Exportar Excel (.CSV)
+                    <button @click="carregarDados()" data-tooltip="Atualizar Dados|Recarrega todos os KPIs, gráficos e tabelas com os filtros selecionados." class="px-3.5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold hover:bg-emerald-700 shadow-sm transition-all whitespace-nowrap">
+                        <i class="fa-solid fa-rotate-right mr-1" :class="loading ? 'fa-spin' : ''"></i>Atualizar
+                    </button>
+                    <button @click="exportarDados()" data-tooltip="Exportar CSV|Baixa uma planilha completa com todos os dados executivos do dashboard." class="px-3 py-2 border border-emerald-200 text-emerald-700 rounded-xl text-xs font-bold hover:bg-emerald-50 transition-all whitespace-nowrap">
+                        <i class="fa-regular fa-file-excel mr-1"></i>CSV
                     </button>
                 </div>
             </div>
 
-            <!-- Grade Simétrica de Filtros Principais -->
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <!-- Grade Simétrica de Filtros Principais (Colapsável no mobile para economizar tela) -->
+            <div :class="expandirFiltrosMobile ? 'grid mt-2' : 'hidden lg:grid'" class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
                 <div class="sm:col-span-2 lg:col-span-2">
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                         <i class="fa-regular fa-calendar mr-1"></i> Período Personalizado
                     </label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <input type="date" x-model="filters.data_inicio" @change="mudarPeriodo()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-sm font-medium focus:border-emerald-500 outline-none">
-                        <input type="date" x-model="filters.data_fim" @change="mudarPeriodo()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-sm font-medium focus:border-emerald-500 outline-none">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <input type="date" x-model="filters.data_inicio" @change="mudarPeriodo()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:border-emerald-500 outline-none">
+                        <input type="date" x-model="filters.data_fim" @change="mudarPeriodo()" class="w-full min-w-0 p-2.5 border-2 border-slate-200 rounded-xl text-xs sm:text-sm font-medium focus:border-emerald-500 outline-none">
                     </div>
                 </div>
                 <div>
@@ -443,41 +449,41 @@ require_once __DIR__ . '/../estrutura/header.php';
         <!-- ================================================================== -->
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
             <!-- Evolução de Vendas -->
-            <div class="lg:col-span-2 bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col">
-                <div class="flex flex-wrap justify-between items-start gap-3 mb-3">
+            <div class="lg:col-span-2 bg-white rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 flex flex-col min-w-0">
+                <div class="flex flex-col sm:flex-row sm:flex-wrap justify-between items-start gap-2.5 mb-3">
                     <div>
-                        <h3 class="text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2">
+                        <h3 class="text-xs sm:text-sm font-extrabold text-slate-800 uppercase flex items-center gap-2">
                             <i class="fa-solid fa-chart-area text-emerald-600"></i>
                             <span>EVOLUÇÃO DE VENDAS — VALOR, PESO E VOLUME</span>
                         </h3>
                         <p class="text-[11px] text-slate-400 mt-0.5">Alterne entre visão combinada (R$ + Kg), apenas Valor, Peso Líquido, Quantidade ou NFs e agrupe por Dia, Semana ou Mês.</p>
                     </div>
                     <!-- Seletor de Agrupamento de Período -->
-                    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                        <span class="text-[10px] font-bold text-slate-400 px-2 uppercase">Período:</span>
-                        <button type="button" @click="mudarPeriodoEvolucao('auto')" :class="periodoEvolucao === 'auto' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all">Auto</button>
-                        <button type="button" @click="mudarPeriodoEvolucao('dia')" :class="periodoEvolucao === 'dia' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all">Diário</button>
-                        <button type="button" @click="mudarPeriodoEvolucao('semana')" :class="periodoEvolucao === 'semana' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all">Semanal</button>
-                        <button type="button" @click="mudarPeriodoEvolucao('mes')" :class="periodoEvolucao === 'mes' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all">Mensal</button>
+                    <div class="flex items-center gap-1 bg-slate-100 p-1 rounded-xl overflow-x-auto max-w-full no-scrollbar">
+                        <span class="text-[10px] font-bold text-slate-400 px-1.5 uppercase whitespace-nowrap">Período:</span>
+                        <button type="button" @click="mudarPeriodoEvolucao('auto')" :class="periodoEvolucao === 'auto' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap">Auto</button>
+                        <button type="button" @click="mudarPeriodoEvolucao('dia')" :class="periodoEvolucao === 'dia' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap">Diário</button>
+                        <button type="button" @click="mudarPeriodoEvolucao('semana')" :class="periodoEvolucao === 'semana' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap">Semanal</button>
+                        <button type="button" @click="mudarPeriodoEvolucao('mes')" :class="periodoEvolucao === 'mes' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'" class="px-2 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap">Mensal</button>
                     </div>
                 </div>
 
                 <!-- Botões de Métrica do Gráfico -->
                 <div class="flex flex-wrap items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-100">
-                    <div class="flex flex-wrap gap-1.5">
-                        <button type="button" @click="mudarTipoGrafico('combinado')" :class="tipoGrafico === 'combinado' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+                    <div class="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 max-w-full no-scrollbar">
+                        <button type="button" @click="mudarTipoGrafico('combinado')" :class="tipoGrafico === 'combinado' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">
                             <i class="fa-solid fa-layer-group mr-1"></i>Combinado (R$ + Kg)
                         </button>
-                        <button type="button" @click="mudarTipoGrafico('valor')" :class="tipoGrafico === 'valor' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+                        <button type="button" @click="mudarTipoGrafico('valor')" :class="tipoGrafico === 'valor' ? 'bg-emerald-100 text-emerald-800 border border-emerald-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">
                             Valor (R$)
                         </button>
-                        <button type="button" @click="mudarTipoGrafico('peso')" :class="tipoGrafico === 'peso' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
-                            Peso Líquido (Kg)
+                        <button type="button" @click="mudarTipoGrafico('peso')" :class="tipoGrafico === 'peso' ? 'bg-amber-100 text-amber-800 border border-amber-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">
+                            Peso (Kg)
                         </button>
-                        <button type="button" @click="mudarTipoGrafico('quantidade')" :class="tipoGrafico === 'quantidade' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
-                            Quantidade (Un)
+                        <button type="button" @click="mudarTipoGrafico('quantidade')" :class="tipoGrafico === 'quantidade' ? 'bg-blue-100 text-blue-800 border border-blue-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">
+                            Qtd (Un)
                         </button>
-                        <button type="button" @click="mudarTipoGrafico('notas')" :class="tipoGrafico === 'notas' ? 'bg-purple-100 text-purple-800 border border-purple-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-3 py-1 rounded-lg text-xs font-bold transition-all">
+                        <button type="button" @click="mudarTipoGrafico('notas')" :class="tipoGrafico === 'notas' ? 'bg-purple-100 text-purple-800 border border-purple-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap flex-none">
                             Nº de NFs
                         </button>
                     </div>
@@ -1110,18 +1116,18 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                 <!-- Tabela Executiva de Clientes Sem Compras -->
                 <div class="overflow-x-auto border border-slate-200 rounded-xl max-h-[460px]">
-                    <table class="w-full text-sm">
+                    <table class="w-full text-sm min-w-[820px]">
                         <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
                             <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase">Cliente</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-slate-500 uppercase">Representante</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase">Região / Cidade</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase">Última Compra</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase">NFs Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase">Peso Hist. (Kg)</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase">Qtd. Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase">Faturamento Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase">Inatividade</th>
+                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Cliente</th>
+                                <th class="px-3 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Representante</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Região / Cidade</th>
+                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Última Compra</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">NFs Hist.</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Peso Hist. (Kg)</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Qtd. Hist.</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Faturamento Hist.</th>
+                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Inatividade</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100" x-show="clientesRiscoFiltrados().length > 0">
@@ -1131,18 +1137,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <p class="text-xs font-bold text-slate-800 leading-snug" x-text="c.nome"></p>
                                         <span class="text-[10px] text-slate-400 font-mono" x-text="'Cód. #' + c.id"></span>
                                     </td>
-                                    <td class="px-3 py-2.5 text-xs text-slate-600 font-medium" x-text="c.representante"></td>
-                                    <td class="px-3 py-2.5 text-center">
+                                    <td class="px-3 py-2.5 text-xs text-slate-600 font-medium whitespace-nowrap" x-text="c.representante"></td>
+                                    <td class="px-3 py-2.5 text-center whitespace-nowrap">
                                         <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-extrabold mr-1" x-text="c.regiao || 'SUL'"></span>
                                         <span class="text-xs text-slate-500" x-text="c.cidade_uf || '—'"></span>
                                     </td>
-                                    <td class="px-3 py-2.5 text-center text-xs font-semibold text-slate-700" x-text="c.ultima_fmt || '—'"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-blue-700" x-text="formatNumber(c.compras_anteriores || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-amber-700" x-text="formatPeso(c.peso_historico || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs text-slate-600" x-text="formatNumber(c.quantidade_historico || 0) + ' un'"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-black text-emerald-600" x-text="formatMoney(c.valor_historico || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right">
-                                        <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold"
+                                    <td class="px-3 py-2.5 text-center text-xs font-semibold text-slate-700 whitespace-nowrap" x-text="c.ultima_fmt || '—'"></td>
+                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-blue-700 whitespace-nowrap" x-text="formatNumber(c.compras_anteriores || 0)"></td>
+                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-amber-700 whitespace-nowrap" x-text="formatPeso(c.peso_historico || 0)"></td>
+                                    <td class="px-3 py-2.5 text-right text-xs text-slate-600 whitespace-nowrap" x-text="formatNumber(c.quantidade_historico || 0) + ' un'"></td>
+                                    <td class="px-3 py-2.5 text-right text-xs font-black text-emerald-600 whitespace-nowrap" x-text="formatMoney(c.valor_historico || 0)"></td>
+                                    <td class="px-3 py-2.5 text-right whitespace-nowrap">
+                                        <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold whitespace-nowrap"
                                               :class="c.dias_sem_comprar > 90 ? 'bg-red-100 text-red-800' : (c.dias_sem_comprar > 60 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800')"
                                               x-text="c.dias_sem_comprar + ' dias'"></span>
                                     </td>

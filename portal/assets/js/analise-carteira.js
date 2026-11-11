@@ -598,13 +598,13 @@ const analiseCarteiraApp = {
         <div class="text-left font-sans -mt-2">
             <!-- Header do Cliente -->
             <div class="border-b border-slate-200 pb-3 mb-4">
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div>
-                        <div class="flex items-center gap-2">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pr-7">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-1.5">
                             <span class="px-2 py-0.5 bg-slate-100 text-slate-700 rounded-md font-mono text-xs font-bold">#${this.esc(c.idcliforemp)}</span>
                             <span class="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-md text-xs font-bold">Filial ${this.esc(c.idfilial)}</span>
                         </div>
-                        <h2 class="text-lg font-black text-slate-900 leading-tight mt-1">${this.esc(c.razao || c.fantasia)}</h2>
+                        <h2 class="text-base sm:text-lg font-black text-slate-900 leading-tight mt-1 break-words">${this.esc(c.razao || c.fantasia)}</h2>
                         <div class="text-xs font-semibold text-slate-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                             ${c.fantasia && c.fantasia !== c.razao ? `<span><i class="fa-solid fa-store mr-1 text-slate-400"></i>${this.esc(c.fantasia)}</span>` : ''}
                             ${c.cnpj_cpf ? `<span><i class="fa-solid fa-id-card mr-1 text-slate-400"></i>${this.esc(c.cnpj_cpf)}</span>` : ''}
@@ -615,18 +615,18 @@ const analiseCarteiraApp = {
                 </div>
 
                 <!-- Mini Cards de Saldo -->
-                <div class="grid grid-cols-3 gap-2 mt-3 text-center">
-                    <div class="bg-rose-50 border border-rose-200 rounded-xl p-2">
-                        <span class="text-[0.68rem] text-rose-600 font-bold block uppercase tracking-wider">Vencido</span>
-                        <span class="text-sm sm:text-base font-black text-rose-700">${this.fmtMoeda(c.total_vencido)}</span>
+                <div class="grid grid-cols-3 gap-1.5 sm:gap-2 mt-3 text-center">
+                    <div class="bg-rose-50 border border-rose-200 rounded-xl p-2 min-w-0">
+                        <span class="text-[0.65rem] text-rose-600 font-bold block uppercase tracking-wider truncate">Vencido</span>
+                        <span class="text-xs sm:text-base font-black text-rose-700 block truncate">${this.fmtMoeda(c.total_vencido)}</span>
                     </div>
-                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2">
-                        <span class="text-[0.68rem] text-emerald-600 font-bold block uppercase tracking-wider">À Vencer</span>
-                        <span class="text-sm sm:text-base font-black text-emerald-700">${this.fmtMoeda(c.total_a_vencer)}</span>
+                    <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-2 min-w-0">
+                        <span class="text-[0.65rem] text-emerald-600 font-bold block uppercase tracking-wider truncate">À Vencer</span>
+                        <span class="text-xs sm:text-base font-black text-emerald-700 block truncate">${this.fmtMoeda(c.total_a_vencer)}</span>
                     </div>
-                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-2">
-                        <span class="text-[0.68rem] text-blue-600 font-bold block uppercase tracking-wider">Carteira Total</span>
-                        <span class="text-sm sm:text-base font-black text-blue-800">${this.fmtMoeda(c.total_carteira)}</span>
+                    <div class="bg-blue-50 border border-blue-200 rounded-xl p-2 min-w-0">
+                        <span class="text-[0.65rem] text-blue-600 font-bold block uppercase tracking-wider truncate">Carteira Total</span>
+                        <span class="text-xs sm:text-base font-black text-blue-800 block truncate">${this.fmtMoeda(c.total_carteira)}</span>
                     </div>
                 </div>
             </div>
@@ -712,13 +712,13 @@ const analiseCarteiraApp = {
                             ` : ''}
                         </div>
                         
-                        <div class="border border-slate-200 rounded-xl overflow-hidden max-h-[160px] overflow-y-auto">
+                        <div class="border border-slate-200 rounded-xl overflow-x-auto max-h-[160px] overflow-y-auto">
                             ${!tits.length ? `
                                 <div class="p-3 text-center text-xs text-slate-400 bg-slate-50">
                                     Nenhum título em aberto localizado para este cliente.
                                 </div>
                             ` : `
-                                <table class="w-full text-xs text-left" id="modal-tabela-titulos">
+                                <table class="w-full min-w-[480px] text-xs text-left whitespace-nowrap" id="modal-tabela-titulos">
                                     <thead class="bg-slate-100 text-[10px] uppercase font-black text-slate-500 sticky top-0">
                                         <tr>
                                             <th class="p-2 w-8 text-center">Sel</th>
@@ -783,7 +783,7 @@ const analiseCarteiraApp = {
             showCloseButton: true,
             focusConfirm: false,
             customClass: {
-                popup: 'rounded-2xl p-4 sm:p-6'
+                popup: 'rounded-2xl p-3.5 sm:p-6 max-w-[96vw]'
             },
             didOpen: (popup) => {
                 const tabBtnHist = popup.querySelector('#tab-btn-historico');

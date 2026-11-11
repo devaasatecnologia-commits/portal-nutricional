@@ -41,34 +41,34 @@ require_once __DIR__ . '/../estrutura/header.php';
         <div class="absolute -right-6 -bottom-10 opacity-10 pointer-events-none">
             <i class="fa-solid fa-sack-dollar text-[180px]"></i>
         </div>
-        <div class="relative z-10 flex flex-wrap items-center justify-between gap-4">
-            <div class="flex items-center gap-4">
-                <a href="<?= $appBase ?>/portal/" class="w-11 h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition no-underline">
-                    <i class="fa-solid fa-arrow-left text-lg"></i>
+        <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div class="flex items-center gap-3 sm:gap-4">
+                <a href="<?= $appBase ?>/portal/" class="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-white/15 hover:bg-white/25 flex items-center justify-center text-white transition no-underline flex-none">
+                    <i class="fa-solid fa-arrow-left text-base sm:text-lg"></i>
                 </a>
-                <div>
-                    <div class="flex items-center gap-2 mb-1">
-                        <span class="px-2.5 py-0.5 rounded-lg bg-white/20 text-purple-100 text-xs font-black uppercase tracking-wider">Módulo Comercial</span>
-                        <span class="px-2.5 py-0.5 rounded-lg bg-emerald-400/20 text-emerald-200 text-xs font-bold border border-emerald-300/20">
+                <div class="min-w-0">
+                    <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
+                        <span class="px-2 py-0.5 rounded-lg bg-white/20 text-purple-100 text-[10px] sm:text-xs font-black uppercase tracking-wider">Módulo Comercial</span>
+                        <span class="px-2 py-0.5 rounded-lg bg-emerald-400/20 text-emerald-200 text-[10px] sm:text-xs font-bold border border-emerald-300/20">
                             <i class="fa-solid fa-bolt mr-1"></i>Sincronizado Mercos
                         </span>
                     </div>
-                    <h1 class="text-xl sm:text-2xl font-black tracking-tight leading-tight">Gestão de Verbas Flex</h1>
-                    <p class="text-xs sm:text-sm text-purple-200 font-medium mt-0.5">Painel analítico, ranking de consumo por representante e conciliação de empréstimos</p>
+                    <h1 class="text-lg sm:text-2xl font-black tracking-tight leading-tight truncate">Gestão de Verbas Flex</h1>
+                    <p class="text-xs sm:text-sm text-purple-200 font-medium mt-0.5 line-clamp-2">Painel analítico, ranking de consumo por representante e conciliação de empréstimos</p>
                 </div>
             </div>
-            <div class="flex items-center gap-2">
-                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" id="heroBtnMovimentacao" class="px-3 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition no-underline shadow-sm border border-white/20" title="Ajuste manual de saldo Flex de representantes">
+            <div class="flex items-center gap-2 overflow-x-auto no-scrollbar w-full md:w-auto pb-1 flex-nowrap">
+                <a href="<?= $appBase ?>/portal/modules/movimentacao-flex.php" id="heroBtnMovimentacao" class="px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition no-underline shadow-sm border border-white/20 flex-none whitespace-nowrap" title="Ajuste manual de saldo Flex de representantes">
                     <i class="fa-solid fa-money-bill-transfer"></i>
                     <span>Movimentação</span>
                 </a>
-                <button type="button" onclick="ativarAba('api')" id="heroBtnApi" class="px-3 py-2.5 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition shadow-sm border border-white/20" title="Status técnico e latência de sincronização Mercos">
+                <button type="button" onclick="ativarAba('api')" id="heroBtnApi" class="px-3 py-2 rounded-2xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold flex items-center gap-2 transition shadow-sm border border-white/20 flex-none whitespace-nowrap" title="Status técnico e latência de sincronização Mercos">
                     <i class="fa-solid fa-heart-pulse"></i>
                     <span>Status Mercos</span>
                 </button>
-                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=verbas-flex" class="px-4 py-2.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-black flex items-center gap-2 transition no-underline shadow-sm border border-white/20">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=verbas-flex" class="px-3.5 py-2 rounded-2xl bg-white/20 hover:bg-white/30 text-white text-xs font-black flex items-center gap-2 transition no-underline shadow-sm border border-white/20 flex-none whitespace-nowrap">
                     <i class="fa-solid fa-graduation-cap text-sm"></i>
-                    <span>Treinamento & Manual</span>
+                    <span>Treinamento</span>
                 </a>
             </div>
         </div>
@@ -120,8 +120,8 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ABA 1: PAINEL & DASHBOARD                  -->
     <!-- ========================================== -->
     <section id="aba-painel" class="space-y-4">
-        <!-- 6 KPIS PRINCIPAIS -->
-        <div class="grid grid-cols-2 lg:grid-cols-3 gap-3.5" id="kpis">
+        <!-- 6 KPIS PRINCIPAIS (MOBILE RESPONSIVO) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-3.5" id="kpis">
             <!-- Preenchido via JS -->
         </div>
 

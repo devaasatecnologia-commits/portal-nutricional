@@ -1,0 +1,68 @@
+{
+  "name": "Portal Nutricional",
+  "short_name": "Nutricional",
+  "description": "Portal Corporativo de Gestão Operacional, Comercial e Logística da Nutricional Distribuidora",
+  "start_url": "/portal/index.php",
+  "scope": "/portal/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#274036",
+  "lang": "pt-BR",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/portal/assets/icons/android-chrome-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/portal/assets/icons/android-chrome-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/portal/assets/icons/android-chrome-512x512-maskable.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/portal/assets/icons/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Verbas Flex",
+      "short_name": "Flex",
+      "description": "Painel e ranking de Verbas Flex",
+      "url": "/portal/modules/verbas-flex.php",
+      "icons": [{ "src": "/portal/assets/icons/android-chrome-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Transferência de Flex",
+      "short_name": "Transferir",
+      "description": "Transferência de saldo flex entre equipe",
+      "url": "/portal/modules/transferencia-flex.php",
+      "icons": [{ "src": "/portal/assets/icons/android-chrome-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Central de Chamados",
+      "short_name": "Chamados",
+      "description": "Abrir e acompanhar chamados de TI",
+      "url": "/portal/modules/chamados.php",
+      "icons": [{ "src": "/portal/assets/icons/android-chrome-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Dashboard Vendas",
+      "short_name": "Vendas",
+      "description": "Acompanhamento diário de metas e vendas",
+      "url": "/portal/modules/dashboard-vendas.php",
+      "icons": [{ "src": "/portal/assets/icons/android-chrome-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}
