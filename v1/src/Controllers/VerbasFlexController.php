@@ -66,6 +66,9 @@ class VerbasFlexController
     {
         $q = $request->getQueryParams();
         $filial = (int)($q['filial'] ?? 0);
+        if ($filial === 0 && count($usuario['filiais']) === 1) {
+            $filial = (int)$usuario['filiais'][0];
+        }
         if ($filial !== 0 && !in_array($filial, $usuario['filiais'], true)) {
             throw new \DomainException('Filial nao liberada para o seu usuario.');
         }
@@ -151,15 +154,21 @@ class VerbasFlexController
         try {
             $usuario = $this->usuario($request);
             $filiais = [];
+            $filialPadrao = 1;
             if ($usuario['filiais'] !== []) {
                 $in = implode(',', $usuario['filiais']);
                 $filiais = $this->pdo->query("SELECT idfilial, razao FROM filial WHERE idfilial IN ($in) ORDER BY idfilial")
                     ->fetchAll(PDO::FETCH_ASSOC);
+                $filialPadrao = (int)$usuario['filiais'][0];
                 if (count($filiais) > 1) {
                     array_unshift($filiais, ['idfilial' => 0, 'razao' => 'Todas as Filiais Liberadas']);
                 }
             }
-            return $this->json($response, ['success' => true, 'filiais' => $filiais]);
+            return $this->json($response, [
+                'success' => true,
+                'filiais' => $filiais,
+                'filial_padrao' => $filialPadrao
+            ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro ao carregar contexto: ' . $e->getMessage(), 500);
         }

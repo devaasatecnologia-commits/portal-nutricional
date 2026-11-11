@@ -76,11 +76,13 @@ class ChamadosController
         $podeVerTodos = $isAdmin;
         $tiposPermitidos = 'TODOS';
         $permissoesModulos = (array)($user['permissoes'] ?? []);
+        $idFilialPadrao = 1;
+        $filiaisArr = [];
 
         if ($idusuario > 0 || $idcliforemp > 0) {
             try {
                 $stmtPol = $this->pdo->prepare("
-                    SELECT idusuario, chamados_ver_todos, chamados_tipos_permitidos 
+                    SELECT idusuario, chamados_ver_todos, chamados_tipos_permitidos, dash_filiais 
                     FROM usuario 
                     WHERE idusuario = :id OR idcliforemp = :idcliforemp 
                     LIMIT 1
@@ -97,6 +99,13 @@ class ChamadosController
                     }
                     if (!$isAdmin && !empty($pol['chamados_tipos_permitidos'])) {
                         $tiposPermitidos = trim($pol['chamados_tipos_permitidos']);
+                    }
+
+                    if (!empty($pol['dash_filiais'])) {
+                        $filiaisArr = array_values(array_filter(array_map('intval', explode(',', (string)$pol['dash_filiais'])), fn($f) => $f > 0));
+                        if (!empty($filiaisArr)) {
+                            $idFilialPadrao = $filiaisArr[0];
+                        }
                     }
 
                     // Se não for admin, obtém os módulos exatos liberados em usuario_permissoes
@@ -126,7 +135,9 @@ class ChamadosController
             'is_admin' => $isAdmin,
             'pode_ver_todos' => $podeVerTodos,
             'tipos_permitidos' => $tiposPermitidos,
-            'permissoes' => $permissoesModulos
+            'permissoes' => $permissoesModulos,
+            'idfilial' => $idFilialPadrao,
+            'filiais' => $filiaisArr
         ];
     }
 
@@ -270,17 +281,19 @@ class ChamadosController
 
             // Sistemas corporativos suportados
             $sistemas = [
-                ['id' => 'PORTAL',      'nome' => 'Portal Nutricional (Módulos Web)', 'icon' => 'fa-globe', 'badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200'],
-                ['id' => 'ERP_EMA',     'nome' => 'ERP Ema Desktop',                 'icon' => 'fa-database', 'badge' => 'bg-blue-50 text-blue-700 border-blue-200'],
-                ['id' => 'MERCOS',      'nome' => 'Mercos (Força de Vendas)',        'icon' => 'fa-handshake', 'badge' => 'bg-emerald-50 text-emerald-700 border-emerald-200'],
-                ['id' => 'COBLI',       'nome' => 'Cobli (Telemetria & Frotas)',     'icon' => 'fa-truck', 'badge' => 'bg-amber-50 text-amber-700 border-amber-200'],
-                ['id' => 'LOGISOFT',    'nome' => 'Logisoft (CTe / MDFe / CIOT)',    'icon' => 'fa-file-invoice', 'badge' => 'bg-teal-50 text-teal-700 border-teal-200'],
-                ['id' => 'EMAIL',       'nome' => 'Email Corporativo / Webmail',     'icon' => 'fa-envelope', 'badge' => 'bg-purple-50 text-purple-700 border-purple-200'],
-                ['id' => 'SITE',        'nome' => 'Site Institucional / E-commerce', 'icon' => 'fa-cart-shopping', 'badge' => 'bg-rose-50 text-rose-700 border-rose-200'],
-                ['id' => 'EQUIPAMENTO', 'nome' => 'Equipamentos (Impressora, Ramal, PC)', 'icon' => 'fa-print', 'badge' => 'bg-cyan-50 text-cyan-700 border-cyan-200'],
-                ['id' => 'PLANILHAS',   'nome' => 'Planilhas Excel / Relatórios',    'icon' => 'fa-file-excel', 'badge' => 'bg-green-50 text-green-700 border-green-200'],
-                ['id' => 'SERVIDOR',    'nome' => 'Servidores, Rede & VPN',          'icon' => 'fa-server', 'badge' => 'bg-slate-100 text-slate-700 border-slate-300'],
-                ['id' => 'OUTROS',      'nome' => 'Outros Assuntos',                 'icon' => 'fa-circle-question', 'badge' => 'bg-gray-50 text-gray-700 border-gray-200']
+                ['id' => 'PORTAL',            'nome' => 'Portal Nutricional (Módulos Web)', 'icon' => 'fa-globe', 'badge' => 'bg-indigo-50 text-indigo-700 border-indigo-200'],
+                ['id' => 'SUPORTE_COMERCIAL', 'nome' => 'Suporte Comercial & Vendas',       'icon' => 'fa-headset', 'badge' => 'bg-amber-50 text-amber-700 border-amber-200'],
+                ['id' => 'MERCOS',            'nome' => 'Mercos (Força de Vendas / App)',   'icon' => 'fa-handshake', 'badge' => 'bg-emerald-50 text-emerald-700 border-emerald-200'],
+                ['id' => 'ERP_EMA',           'nome' => 'ERP Ema Desktop',                 'icon' => 'fa-database', 'badge' => 'bg-blue-50 text-blue-700 border-blue-200'],
+                ['id' => 'RELATORIOS',        'nome' => 'Relatórios Gerenciais & Cubos',   'icon' => 'fa-chart-pie', 'badge' => 'bg-violet-50 text-violet-700 border-violet-200'],
+                ['id' => 'EMAIL',             'nome' => 'Email Corporativo / Webmail',     'icon' => 'fa-envelope', 'badge' => 'bg-purple-50 text-purple-700 border-purple-200'],
+                ['id' => 'COBLI',             'nome' => 'Cobli (Telemetria & Frotas)',     'icon' => 'fa-truck', 'badge' => 'bg-yellow-50 text-yellow-700 border-yellow-200'],
+                ['id' => 'LOGISOFT',          'nome' => 'Logisoft (CTe / MDFe / CIOT)',    'icon' => 'fa-file-invoice', 'badge' => 'bg-teal-50 text-teal-700 border-teal-200'],
+                ['id' => 'EQUIPAMENTO',       'nome' => 'Equipamentos (Impressora, Ramal, PC)', 'icon' => 'fa-print', 'badge' => 'bg-cyan-50 text-cyan-700 border-cyan-200'],
+                ['id' => 'PLANILHAS',         'nome' => 'Planilhas Excel / Dados',         'icon' => 'fa-file-excel', 'badge' => 'bg-green-50 text-green-700 border-green-200'],
+                ['id' => 'SITE',              'nome' => 'Site Institucional / E-commerce', 'icon' => 'fa-cart-shopping', 'badge' => 'bg-rose-50 text-rose-700 border-rose-200'],
+                ['id' => 'SERVIDOR',          'nome' => 'Servidores, Rede & VPN',          'icon' => 'fa-server', 'badge' => 'bg-slate-100 text-slate-700 border-slate-300'],
+                ['id' => 'OUTROS',            'nome' => 'Outros Assuntos / Geral',         'icon' => 'fa-circle-question', 'badge' => 'bg-gray-50 text-gray-700 border-gray-200']
             ];
 
             // Filtragem de sistemas pelo perfil de abertura permitido

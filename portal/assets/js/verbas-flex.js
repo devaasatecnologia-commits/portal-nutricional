@@ -547,7 +547,7 @@ async function abrirHistoricoColaborador(id, nome) {
     modal.classList.remove('hidden');
 
     try {
-        const filial = Number($('selFilial')?.value || 1);
+        const filial = Number($('selFilial')?.value || localStorage.getItem('vf_filial_pref') || 1);
         const r = await apiFetch('flex/movimentacoes', 'GET', {
             filial,
             colaborador: id,
@@ -1167,7 +1167,7 @@ async function carregarApi() {
 async function carregarColaboradoresAuditoria() {
     const sel = $('fAuditColab');
     if (!sel) return;
-    const fil = $('selFilial')?.value || '1';
+    const fil = $('selFilial')?.value || localStorage.getItem('vf_filial_pref') || '1';
     try {
         const res = await apiFetch(`verbas-flex/colaboradores-auditoria?filial=${fil}`);
         if (res.success && Array.isArray(res.colaboradores)) {
@@ -1521,6 +1521,9 @@ function vincularEventosUI() {
         b.addEventListener('click', () => atalho(b.dataset.p));
     });
     $('selFilial')?.addEventListener('change', () => {
+        if ($('selFilial')?.value) {
+            localStorage.setItem('vf_filial_pref', $('selFilial').value);
+        }
         carregarColaboradoresAuditoria();
         recarregarAbaAtiva();
     });
@@ -1685,6 +1688,14 @@ async function carregarContextoFiliais() {
         const ctx = await apiFetch('verbas-flex/contexto');
         if ($('selFilial') && ctx.filiais && ctx.filiais.length) {
             $('selFilial').innerHTML = ctx.filiais.map((f) => `<option value="${f.idfilial}">${esc(f.idfilial)} - ${esc(f.razao)}</option>`).join('');
+
+            // Seleciona a filial do usuário (prioridade: localStorage salvo ou filial_padrao retornada pelo backend)
+            const filialSalva = localStorage.getItem('vf_filial_pref');
+            if (filialSalva && ctx.filiais.some(f => String(f.idfilial) === String(filialSalva))) {
+                $('selFilial').value = String(filialSalva);
+            } else if (ctx.filial_padrao && ctx.filiais.some(f => String(f.idfilial) === String(ctx.filial_padrao))) {
+                $('selFilial').value = String(ctx.filial_padrao);
+            }
         }
     } catch (e) {
         console.warn('Aviso ao carregar contexto de filiais:', e.message);

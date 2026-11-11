@@ -216,13 +216,15 @@ function chamadosApp() {
                 ? 'PORTAL' 
                 : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL');
 
+            const filialPadrao = (this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1;
+
             this.novoForm = {
                 tipo_sistema: sistemaPadrao,
                 subtipo_item: '',
                 equipamento_detalhe: '',
                 relato: '',
                 modulo_slug: '',
-                idfilial: 1,
+                idfilial: filialPadrao,
                 titulo: '',
                 categoria: 'bug',
                 criticidade: 'media',
