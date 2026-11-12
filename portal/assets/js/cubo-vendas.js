@@ -7,7 +7,7 @@ function cuboVendasHandler() {
     const hoje = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-    const FILTROS_AVANCADOS = ['cliente', 'regiao', 'estado', 'cidade', 'grupo', 'subgrupo', 'tipo_produto', 'marca', 'produto', 'tipo_de_pedido'];
+    const FILTROS_AVANCADOS = ['cliente', 'regiao', 'estado', 'cidade', 'grupo', 'subgrupo', 'marca', 'produto'];
 
     return {
         // Estado
@@ -19,6 +19,7 @@ function cuboVendasHandler() {
         erro: '',
         aviso: '',
         reqSeq: 0,
+        ultimaChaveFiltrosAvancados: '',
 
         // Listas
         filiaisPermitidas: [],
@@ -41,14 +42,14 @@ function cuboVendasHandler() {
             data_inicio: iso(new Date(hoje.getFullYear(), hoje.getMonth(), 1)),
             data_fim: iso(hoje),
             cliente: '', regiao: '', estado: '', cidade: '',
-            grupo: '', subgrupo: '', tipo_produto: '',
-            marca: '', produto: '', tipo_de_pedido: ''
+            grupo: '', subgrupo: '',
+            marca: '', produto: ''
         },
 
         filterOptions: {
             cliente: [], regiao: [], estado: [], cidade: [],
-            grupo: [], subgrupo: [], tipo_produto: [],
-            marca: [], produto: [], tipo_de_pedido: []
+            grupo: [], subgrupo: [],
+            marca: [], produto: []
         },
         opcoesCarregadas: false,
 
@@ -250,6 +251,7 @@ function cuboVendasHandler() {
             this.representanteSelecionado = '';
             this.representantesDisponiveis = [];
             this.gestoresDisponiveis = [];
+            this.opcoesCarregadas = false;
             await this.carregarGestores();
             await this.atualizar();
         },
@@ -258,12 +260,14 @@ function cuboVendasHandler() {
             if (this.carregamentoInicial) return;
             this.representanteSelecionado = '';
             this.representantesDisponiveis = [];
+            this.opcoesCarregadas = false;
             await this.carregarRepresentantes();
             await this.atualizar();
         },
 
         async mudarRepresentante() {
             if (this.carregamentoInicial) return;
+            this.opcoesCarregadas = false;
             await this.atualizar();
         },
 
@@ -289,8 +293,18 @@ function cuboVendasHandler() {
         // ================================================================
         async abrirModalFiltrosAvancados() {
             this.modalFiltrosOpen = true;
-            if (this.opcoesCarregadas) return;
-            const qs = `?data_inicio=${encodeURIComponent(this.filters.data_inicio)}&data_fim=${encodeURIComponent(this.filters.data_fim)}`;
+            const chaveAtual = `${this.filters.data_inicio}_${this.filters.data_fim}_${this.filialSelecionada}_${this.gestorSelecionado}_${this.representanteSelecionado}`;
+            if (this.opcoesCarregadas && this.ultimaChaveFiltrosAvancados === chaveAtual) return;
+
+            const params = new URLSearchParams({
+                data_inicio: this.filters.data_inicio || '',
+                data_fim: this.filters.data_fim || '',
+            });
+            if (this.filialSelecionada) params.append('filial', this.filialSelecionada);
+            if (this.gestorSelecionado) params.append('supervisor', this.gestorSelecionado);
+            if (this.representanteSelecionado) params.append('representante', this.representanteSelecionado);
+            const qs = `?${params.toString()}`;
+
             await Promise.all(FILTROS_AVANCADOS.map(async (campo) => {
                 try {
                     const data = await this.apiFetch(`filters/${campo}${qs}`);
@@ -300,6 +314,7 @@ function cuboVendasHandler() {
                 }
             }));
             this.opcoesCarregadas = true;
+            this.ultimaChaveFiltrosAvancados = chaveAtual;
         },
 
         aplicarFiltroAvancado() { /* aplicado em lote pelo botão "Aplicar Filtros" */ },

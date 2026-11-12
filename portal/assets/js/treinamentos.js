@@ -330,6 +330,8 @@ async function selecionarManual(slug) {
             'cubo-vendas': '/portal/modules/cubo-vendas.php',
             'dashboard_vendas': '/portal/modules/dashboard-vendas.php',
             'dashboard-vendas': '/portal/modules/dashboard-vendas.php',
+            'recompra_clientes': '/portal/modules/recompra-clientes.php',
+            'recompra-clientes': '/portal/modules/recompra-clientes.php',
             'crons': '/portal/modules/admin/crons.php',
             'admin': '/portal/modules/admin/index.php'
         };

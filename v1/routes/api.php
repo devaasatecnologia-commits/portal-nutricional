@@ -1165,6 +1165,8 @@ $protected->group('/vendas', function ($group) {
     });
 
     $dash = new VendasDashboardController();
+    $group->post('/dashboard/filiais-permitidas', [$cubo, 'getFiliais']);
+    $group->get('/dashboard/filiais-permitidas', [$cubo, 'getFiliais']);
     $group->post('/dashboard/kpis-detalhes', [$dash, 'getKpisDetalhes']);
     $group->post('/dashboard/kpis', [$dash, 'getKpis']);
     $group->post('/dashboard/produto-detalhes', [$dash, 'getProdutoDetalhes']);
@@ -1173,7 +1175,7 @@ $protected->group('/vendas', function ($group) {
     $group->post('/dashboard/detalhes-card', [$dash, 'getDetalhesCard']);
     $group->post('/dashboard/detalhes-representante', [$dash, 'getDetalhesRepresentante']);
     $group->post('/dashboard/detalhes-funil', [$dash, 'getDetalhesFunil']);
-})->add(new ModulePermissionMiddleware(['cubo_vendas', 'dashboard_vendas']));
+})->add(new ModulePermissionMiddleware(['cubo_vendas', 'dashboard_vendas', 'recompra_clientes']));
 
         // ======================================================================
         // ANÁLISE DE CARTEIRA (INADIMPLÊNCIA)

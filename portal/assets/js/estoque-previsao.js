@@ -523,6 +523,14 @@ const estoquePrevisaoApp = {
                 const prevChegada = Number(p.qtd_previsao || p['Previsão de Compra Total'] || 0);
                 const estFuturo = Number(p.estoque_futuro || p['Estoque Líquido (c/ Previsão)'] || 0);
 
+                const pesoMatriz = estMatriz * pesoLiq;
+                const pesoFilial = estFilial * pesoLiq;
+                const pesoTotal = Number(p.peso_estoque_total || (estTotal * pesoLiq));
+                const pesoReservado = Number(p.peso_reservado || (cartReservado * pesoLiq));
+                const pesoLivre = Number(p.peso_livre || (estLivre * pesoLiq));
+                const pesoPrev = Number(p.peso_previsao || (prevChegada * pesoLiq));
+                const pesoFuturo = Number(p.peso_futuro || (estFuturo * pesoLiq));
+
                 let statusPill = '';
                 if (estLivre <= 0) {
                     statusPill = '<span class="ep-chip bg-rose-50 text-rose-700 border border-rose-200 font-extrabold whitespace-nowrap">❌ Zerado</span>';

@@ -1,6 +1,7 @@
 <?php
 $pageTitle = 'Cubo Vendas | Nutricional';
 $moduleJs = 'cubo-vendas.js';
+$appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $version = max(
     (int)@filemtime(__DIR__ . '/../assets/css/module-base.css'),
     (int)@filemtime(__DIR__ . '/../assets/css/cubo-vendas.css'),
@@ -11,8 +12,23 @@ $extraCss = '
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/assets/css/cubo-vendas.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/cubo-vendas.css?v=' . $version . '">
+<style>
+    @media (max-width: 1023px) {
+        .cubo-header-desktop { display: none !important; }
+        .cubo-mobile-toolbar { display: block !important; }
+        .cubo-mobile-spacer { display: block !important; }
+        .cubo-filtros-desktop:not(.expandido-mobile) { display: none !important; }
+        .cubo-filtros-desktop.expandido-mobile { display: grid !important; }
+    }
+    @media (min-width: 1024px) {
+        .cubo-header-desktop { display: flex !important; }
+        .cubo-mobile-toolbar { display: none !important; }
+        .cubo-mobile-spacer { display: none !important; }
+        .cubo-filtros-desktop { display: grid !important; }
+    }
+</style>
 ';
 
 require_once __DIR__ . '/../estrutura/header.php';
@@ -21,26 +37,26 @@ require_once __DIR__ . '/../estrutura/header.php';
 <div class="min-h-screen bg-slate-50" x-data="cuboVendasHandler()" x-init="init()">
     
     <!-- HEADER MOBILE -->
-    <div class="mobile-toolbar block lg:hidden fixed top-0 left-0 right-0 z-50 shadow-lg">
+    <div class="mobile-toolbar cubo-mobile-toolbar fixed top-0 left-0 right-0 z-50 shadow-lg">
         <div class="flex items-center justify-between gap-3 px-4 py-3">
-            <a href="/portal/" class="flex items-center gap-1.5 no-underline flex-none">
+            <a href="<?= $appBase ?>/portal/" class="flex items-center gap-1.5 no-underline flex-none text-white hover:text-emerald-200 transition">
                 <i class="fa-solid fa-arrow-left text-base"></i>
                 <span class="text-xs font-extrabold tracking-wide">VOLTAR</span>
             </a>
             <div class="text-center flex-1 min-w-0 truncate">
                 <span class="text-xs sm:text-sm font-black modulo-nome tracking-wide">CUBO DE VENDAS</span>
             </div>
-            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" class="w-8 h-8 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center no-underline flex-none" title="Treinamento e Manual">
+            <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=cubo_vendas" class="w-8 h-8 rounded-lg bg-amber-400/20 text-amber-300 flex items-center justify-center no-underline flex-none hover:bg-amber-400/30 transition" title="Treinamento e Manual">
                 <i class="fa-solid fa-graduation-cap text-sm"></i>
             </a>
         </div>
     </div>
-    <div class="mobile-spacer block lg:hidden h-14"></div>
+    <div class="mobile-spacer cubo-mobile-spacer h-14"></div>
 
     <!-- HEADER DESKTOP -->
-    <div class="glass rounded-3xl p-5 mb-6 hidden lg:flex justify-between items-center shadow-sm bg-white">
+    <div class="glass rounded-3xl p-5 mb-6 cubo-header-desktop justify-between items-center shadow-sm bg-white">
         <div class="flex items-center gap-3">
-            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline" >
+            <a href="<?= $appBase ?>/portal/" class="btn-voltar flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-2 no-underline text-slate-600 hover:text-slate-900 hover:bg-slate-100" title="Voltar ao Portal">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
             <div class="w-12 h-12 bg-emerald-100 text-emerald-700 rounded-2xl flex items-center justify-center">
@@ -52,7 +68,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <a href="/portal/modules/treinamentos.php?modulo=cubo_vendas" 
+            <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=cubo_vendas" 
                class="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-2xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-sm no-underline"
                title="Treinamento e Manual Operacional do Cubo OLAP">
                 <i class="fa-solid fa-graduation-cap"></i> Treinamento & Manual
@@ -125,7 +141,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <!-- Grade Simétrica de Filtros Principais (Sempre visível no Desktop; colapsável no Mobile) -->
-            <div :class="expandirFiltrosMobile ? 'grid mt-3 pt-3 border-t border-slate-100' : 'hidden lg:grid'" class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
+            <div :class="expandirFiltrosMobile ? 'expandido-mobile mt-3 pt-3 border-t border-slate-100' : ''" class="cubo-filtros-desktop grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end">
                 
                 <!-- Período (ocupa 2 colunas no desktop e empilha no celular estreito para nunca cortar o ano) -->
                 <div class="sm:col-span-2 lg:col-span-2">
@@ -520,15 +536,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Tipo Produto</label>
-                        <select x-model="filters.tipo_produto" @change="aplicarFiltroAvancado()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm">
-                            <option value="">Todos</option>
-                            <template x-for="opt in filterOptions.tipo_produto" :key="opt.value">
-                                <option :value="opt.value" x-text="opt.label"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div>
                         <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Marca</label>
                         <select x-model="filters.marca" @change="aplicarFiltroAvancado()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm">
                             <option value="">Todas</option>
@@ -542,15 +549,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <select x-model="filters.produto" @change="aplicarFiltroAvancado()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm">
                             <option value="">Todos</option>
                             <template x-for="opt in filterOptions.produto" :key="opt.value">
-                                <option :value="opt.value" x-text="opt.label"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Tipo Pedido</label>
-                        <select x-model="filters.tipo_de_pedido" @change="aplicarFiltroAvancado()" class="w-full p-3 border-2 border-slate-200 rounded-xl text-sm">
-                            <option value="">Todos</option>
-                            <template x-for="opt in filterOptions.tipo_de_pedido" :key="opt.value">
                                 <option :value="opt.value" x-text="opt.label"></option>
                             </template>
                         </select>

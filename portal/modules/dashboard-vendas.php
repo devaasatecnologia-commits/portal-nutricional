@@ -1,13 +1,29 @@
 <?php
 $pageTitle = 'Dashboard Executivo de Vendas | Nutricional';
 $moduleJs = 'dashboard-vendas.js';
+$appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $version = @filemtime(__DIR__ . '/../assets/js/dashboard-vendas.js') ?: 1;
 $extraCss = '
 <link href="https://fonts.googleapis.com/css2?family=Chivo+Mono:wght@700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js"></script>
-<link rel="stylesheet" href="/portal/assets/css/module-base.css?v=' . $version . '">
-<link rel="stylesheet" href="/portal/assets/css/dashboard-vendas.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
+<link rel="stylesheet" href="' . $appBase . '/portal/assets/css/dashboard-vendas.css?v=' . $version . '">
+<style>
+    @media (max-width: 1023px) {
+        .dv-header-desktop { display: none !important; }
+        .dv-mobile-toolbar { display: block !important; }
+        .dv-mobile-spacer { display: block !important; }
+        .dv-filtros-desktop:not(.expandido-mobile) { display: none !important; }
+        .dv-filtros-desktop.expandido-mobile { display: grid !important; }
+    }
+    @media (min-width: 1024px) {
+        .dv-header-desktop { display: flex !important; }
+        .dv-mobile-toolbar { display: none !important; }
+        .dv-mobile-spacer { display: none !important; }
+        .dv-filtros-desktop { display: grid !important; }
+    }
+</style>
 ';
 
 require_once __DIR__ . '/../estrutura/header.php';
@@ -16,29 +32,29 @@ require_once __DIR__ . '/../estrutura/header.php';
 <div class="min-h-screen bg-slate-50 pb-12" x-data="dashboardVendasHandler()" x-init="init()">
     
     <!-- HEADER MOBILE -->
-    <div class="mobile-toolbar block lg:hidden fixed top-0 left-0 right-0 z-50 shadow-lg">
+    <div class="mobile-toolbar dv-mobile-toolbar fixed top-0 left-0 right-0 z-50 shadow-lg">
         <div class="flex items-center justify-between px-4 py-3">
-            <a href="/portal/" class="flex items-center gap-2 no-underline">
-                <i class="fa-solid fa-arrow-left text-lg"></i>
-                <span class="text-sm font-bold">VOLTAR</span>
+            <a href="<?= $appBase ?>/portal/" class="flex items-center gap-1.5 no-underline text-white hover:text-emerald-200 transition">
+                <i class="fa-solid fa-arrow-left text-base"></i>
+                <span class="text-xs font-extrabold tracking-wide">VOLTAR</span>
             </a>
             <div class="text-center">
-                <span class="text-sm font-bold modulo-nome">DASHBOARD VENDAS</span>
+                <span class="text-xs sm:text-sm font-black modulo-nome tracking-wide">DASHBOARD VENDAS</span>
             </div>
             <div class="flex items-center gap-2">
-                <a href="/portal/modules/treinamentos.php?modulo=dashboard-vendas" class="px-2 py-1 rounded-lg bg-amber-400 text-slate-900 text-[10px] font-extrabold no-underline">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=dashboard-vendas" class="px-2 py-1 rounded-lg bg-amber-400 text-slate-900 text-[10px] font-extrabold no-underline">
                     <i class="fa-solid fa-graduation-cap"></i>
                 </a>
                 <div class="clock font-mono text-sm font-bold" id="relogioMobile">00:00</div>
             </div>
         </div>
     </div>
-    <div class="mobile-spacer block lg:hidden h-14"></div>
+    <div class="mobile-spacer dv-mobile-spacer h-14"></div>
 
     <!-- HEADER DESKTOP PREMIUM -->
-    <div class="glass rounded-3xl p-5 mb-6 hidden lg:flex flex-wrap justify-between items-center gap-4 shadow-sm bg-white border border-slate-100">
+    <div class="glass rounded-3xl p-5 mb-6 dv-header-desktop flex-wrap justify-between items-center gap-4 shadow-sm bg-white border border-slate-100">
         <div class="flex items-center gap-3">
-            <a href="/portal/" class="btn-voltar hidden sm:flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-1 no-underline">
+            <a href="<?= $appBase ?>/portal/" class="btn-voltar flex w-10 h-10 rounded-xl items-center justify-center transition-colors mr-1 no-underline text-slate-600 hover:text-slate-900 hover:bg-slate-100" title="Voltar ao Portal">
                 <i class="fa-solid fa-arrow-left"></i>
             </a>
             <div class="w-12 h-12 bg-gradient-to-br from-emerald-600 to-teal-700 text-white rounded-2xl flex items-center justify-center shadow-md">
@@ -53,7 +69,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
         <div class="flex items-center gap-3">
-            <a href="/portal/modules/treinamentos.php?modulo=dashboard-vendas"
+            <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=dashboard-vendas"
                class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-500 text-slate-900 text-xs font-extrabold shadow-sm transition-all no-underline">
                 <i class="fa-solid fa-graduation-cap"></i>
                 <span>Treinamento &amp; Manual</span>
@@ -115,7 +131,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <!-- Grade Simétrica de Filtros Principais (Colapsável no mobile para economizar tela) -->
-            <div :class="expandirFiltrosMobile ? 'grid mt-2' : 'hidden lg:grid'" class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+            <div :class="expandirFiltrosMobile ? 'expandido-mobile mt-2' : ''" class="dv-filtros-desktop grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
                 <div class="sm:col-span-2 lg:col-span-2">
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">
                         <i class="fa-regular fa-calendar mr-1"></i> Período Personalizado
@@ -241,7 +257,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <span :class="variacaoPositiva(kpis.variacao_notas) ? 'text-blue-200' : 'text-rose-200'" class="font-bold">
                         <i x-show="kpis.variacao_notas !== null" :class="variacaoPositiva(kpis.variacao_notas) ? 'fa-solid fa-arrow-trend-up' : 'fa-solid fa-arrow-trend-down'"></i>
                         <span x-text="variacaoTexto(kpis.variacao_notas)"></span>
-                        <span class="font-normal text-blue-100/80 ml-0.5">em nº de NFs</span>
+                        <span class="font-normal text-blue-100/80 ml-0.5">em NFs vs mês anterior</span>
                     </span>
                     <span class="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">Rastrear <i class="fa-solid fa-arrow-up-right-from-square ml-0.5 text-[9px]"></i></span>
                 </div>
@@ -277,7 +293,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <span :class="variacaoPositiva(kpis.variacao_ticket) ? 'text-amber-100' : 'text-rose-200'" class="font-bold">
                         <i x-show="kpis.variacao_ticket !== null" :class="variacaoPositiva(kpis.variacao_ticket) ? 'fa-solid fa-arrow-trend-up' : 'fa-solid fa-arrow-trend-down'"></i>
                         <span x-text="variacaoTexto(kpis.variacao_ticket)"></span>
-                        <span class="font-normal text-amber-100/80 ml-0.5">vs anterior</span>
+                        <span class="font-normal text-amber-100/80 ml-0.5">vs mês anterior</span>
                     </span>
                     <span class="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full">Rastrear <i class="fa-solid fa-arrow-up-right-from-square ml-0.5 text-[9px]"></i></span>
                 </div>
@@ -500,14 +516,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div id="chartEvolucao" x-show="itensEvolucaoAtiva().length > 0" style="height: 320px; width: 100%;"></div>
             </div>
 
-            <!-- Projeção Histórica & Fechamento (M-3 a M+1) -->
+            <!-- Projeção Histórica & Fechamento (Últimos 3 meses + Mês Atual) -->
             <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex flex-col">
                 <div class="flex items-start justify-between gap-2 mb-2">
                     <div>
                         <h3 class="text-sm font-extrabold text-slate-800 uppercase">
-                            <i class="fa-solid fa-chart-line mr-1.5 text-indigo-600"></i> HISTÓRICO &amp; TENDÊNCIA MULTIMENSAL (M-3 A M+1)
+                            <i class="fa-solid fa-chart-line mr-1.5 text-indigo-600"></i> HISTÓRICO &amp; DESEMPENHO MULTIMENSAL (M-3 A MÊS ATUAL)
                         </h3>
-                        <p class="text-[10px] text-slate-400 mt-0.5">Histórico comparativo de 3 meses + Mês Atual e Tendência estimada M+1</p>
+                        <p class="text-[10px] text-slate-400 mt-0.5">Histórico comparativo de 3 meses + Mês Atual com ritmo diário e meta estimada</p>
                     </div>
                     <div class="flex items-center gap-1 shrink-0">
                         <button type="button" @click="abrirModalProjecao('representantes')" title="Expandir Projeção por Representante e Região"
@@ -528,32 +544,39 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                     <div x-show="projecao.length > 0" class="space-y-2">
                         <template x-for="(item, idx) in projecao" :key="idx">
-                            <div class="rounded-xl p-3 border transition-all cursor-pointer hover:shadow-sm"
+                            <div class="rounded-xl p-3 border transition-all cursor-pointer hover:shadow-md"
                                  @click="abrirModalProjecao(item.atual ? 'representantes' : 'historico')"
-                                 :class="item.atual ? 'bg-indigo-50/80 border-indigo-200' : (item.realizado ? 'bg-slate-50 border-slate-100' : 'bg-amber-50/60 border-amber-200')">
+                                 :class="item.atual ? 'bg-indigo-50/90 border-indigo-300 ring-1 ring-indigo-200' : (item.realizado ? 'bg-slate-50 border-slate-100' : 'bg-amber-50/60 border-amber-200')">
                                 <div class="flex justify-between items-center mb-1">
-                                    <div class="flex items-center gap-1.5">
-                                        <span class="text-xs font-extrabold text-slate-800" x-text="item.mes_label"></span>
-                                        <span x-show="item.atual" class="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-bold uppercase">Mês Atual</span>
-                                        <span x-show="item.tendencia" class="px-1.5 py-0.5 rounded bg-amber-500 text-white text-[9px] font-bold uppercase">Tendência M+1</span>
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <span class="text-xs font-black text-slate-800" x-text="item.mes_label"></span>
+                                        <span x-show="item.atual" class="px-1.5 py-0.5 rounded bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wide">Mês Atual</span>
+                                        <span x-show="item.atual" class="px-1.5 py-0.5 rounded bg-purple-200 text-purple-900 text-[9px] font-black uppercase tracking-wide">Projeção (Média 3M)</span>
                                     </div>
-                                    <span :class="item.atual ? 'text-indigo-700' : (item.realizado ? 'text-emerald-600' : 'text-amber-700')" class="text-sm font-black">
-                                        <span x-text="formatMoney(item.atual ? item.valor_projetado : item.valor)"></span>
-                                    </span>
+                                    <div class="text-right">
+                                        <span :class="item.atual ? 'text-indigo-800' : (item.realizado ? 'text-emerald-600' : 'text-amber-700')" class="text-sm font-black">
+                                            <span x-text="formatMoney(item.atual ? item.valor_projetado : item.valor)"></span>
+                                        </span>
+                                    </div>
                                 </div>
-                                <div class="w-full bg-slate-200 rounded-full h-1.5 mb-1.5">
-                                    <div class="h-1.5 rounded-full"
+                                <div class="w-full bg-slate-200 rounded-full h-2 mb-1.5 overflow-hidden">
+                                    <div class="h-2 rounded-full transition-all"
                                          :class="item.atual ? 'bg-indigo-600' : (item.realizado ? 'bg-emerald-500' : 'bg-amber-500')"
-                                         :style="'width: ' + Math.min(((item.atual ? item.valor_projetado : item.valor) / maxProjecao * 100), 100) + '%'"></div>
+                                         :style="'width: ' + Math.min(((item.atual ? (item.valor / (item.valor_projetado || 1)) : (item.valor / maxProjecao)) * 100), 100) + '%'"></div>
                                 </div>
                                 <div class="flex flex-wrap items-center justify-between gap-1 text-[10px] text-slate-600">
-                                    <span class="font-semibold text-amber-700">
-                                        <i class="fa-solid fa-weight-hanging mr-0.5"></i>
+                                    <span class="font-bold text-amber-700 flex items-center gap-1">
+                                        <i class="fa-solid fa-weight-hanging"></i>
                                         <span x-text="formatPeso(item.atual ? item.peso_projetado : item.peso)"></span>
+                                        <span x-show="item.atual" class="text-[9px] text-slate-400 font-normal">(média 3m)</span>
                                     </span>
-                                    <span x-show="item.realizado" x-text="formatNumber(item.quantidade) + ' un • ' + item.notas + ' NFs'"></span>
-                                    <span x-show="item.atual" class="text-indigo-700 font-bold" x-text="'Realizado: ' + formatMoney(item.valor) + ' (' + formatPesoTon(item.peso) + ')' + (item.carteira_aberta > 0 ? ' • Cart: ' + formatMoney(item.carteira_aberta) : '')"></span>
-                                    <span x-show="item.tendencia" x-text="'Média ponderada (' + item.dias_uteis + 'd úteis)'"></span>
+                                    <span x-show="item.realizado" class="text-slate-500" x-text="formatNumber(item.quantidade) + ' un • ' + item.notas + ' NFs'"></span>
+                                    <div x-show="item.atual" class="flex items-center gap-2">
+                                        <span class="text-indigo-800 font-bold" x-text="'Realizado: ' + formatMoney(item.valor) + ' (' + formatPesoTon(item.peso) + ')' + (item.carteira_aberta > 0 ? ' • Cart: ' + formatMoney(item.carteira_aberta) : '')"></span>
+                                        <span class="text-[9px] text-indigo-500 font-bold bg-white/80 px-1.5 py-0.5 rounded border border-indigo-200">
+                                            <i class="fa-solid fa-up-right-from-square mr-0.5 text-[8px]"></i>Mais detalhes
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </template>
@@ -779,10 +802,10 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- ================================================================== -->
-        <!-- TOP 10 REPRESENTANTES + FUNIL DE PEDIDOS + PROJEÇÃO DE FECHAMENTO  -->
+        <!-- TOP 10 REPRESENTANTES + FUNIL DE PEDIDOS (LAYOUT AMPLO 2 COLUNAS)  -->
         <!-- ================================================================== -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-            <div x-show="erroInsights" x-cloak class="lg:col-span-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm" x-text="erroInsights"></div>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+            <div x-show="erroInsights" x-cloak class="lg:col-span-2 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm" x-text="erroInsights"></div>
             
             <!-- Top 10 Representantes -->
             <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
@@ -860,321 +883,42 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <p class="text-sm">Nenhum dado disponível</p>
                 </div>
             </div>
+        </div>
 
-            <!-- Card Executivo de Projeção de Fechamento do Mês + Botões Expandir & Excel -->
-            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden flex flex-col">
-                <div class="bg-gradient-to-r from-purple-700 to-indigo-700 px-5 py-3.5 flex items-center justify-between text-white">
-                    <div>
-                        <h3 class="text-sm font-extrabold uppercase flex items-center gap-1.5">
-                            <i class="fa-solid fa-rocket text-amber-300"></i> PROJEÇÃO DO MÊS ATUAL (FECHAMENTO ESTIMADO)
-                        </h3>
-                        <p class="text-[10px] text-purple-100 mt-0.5">Cálculo matemático por ritmo/dia útil decorrido + Carteira Aberta do mês vigente</p>
+        <!-- ================================================================== -->
+        <!-- BANNER DE DESTAQUE: MÓDULO EXCLUSIVO DE RECOMPRA DE CLIENTES      -->
+        <!-- ================================================================== -->
+        <div class="bg-gradient-to-r from-rose-700 via-rose-600 to-orange-600 rounded-2xl shadow-md p-5 sm:p-6 mb-6 text-white relative overflow-hidden">
+            <div class="absolute -right-8 -bottom-8 w-44 h-44 bg-white/10 rounded-full blur-2xl pointer-events-none"></div>
+            <div class="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div class="space-y-1.5 max-w-2xl">
+                    <div class="flex items-center gap-2">
+                        <span class="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase tracking-wide">
+                            <i class="fa-solid fa-sparkles mr-1"></i>Novo Módulo Especializado
+                        </span>
+                        <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-extrabold uppercase">
+                            Média Base 12 Meses
+                        </span>
                     </div>
-                    <div class="flex items-center gap-1.5">
-                        <button type="button" @click="abrirModalProjecao('representantes')"
-                                class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-[11px] font-bold transition-all">
-                            <i class="fa-solid fa-up-right-from-square mr-1"></i>Expandir
-                        </button>
-                        <button type="button" @click="exportarProjecaoExcel()" title="Exportar Projeção Completa para Excel"
-                                class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold shadow-sm transition-all">
-                            <i class="fa-regular fa-file-excel mr-1"></i>Excel
-                        </button>
-                    </div>
+                    <h3 class="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-2">
+                        <i class="fa-solid fa-user-clock text-amber-300"></i>
+                        INTELIGÊNCIA DE RECOMPRA &amp; CLIENTES ATIVOS SEM COMPRAS
+                    </h3>
+                    <p class="text-xs sm:text-sm text-rose-100 leading-relaxed">
+                        A inteligência avançada de recompra (+30, +45, +60 e +90 dias) agora possui um <strong>módulo dedicado</strong> com controle completo de hierarquia (Filial, Gestor e Representante), filtros por região e cálculo automático da média com base nos últimos 12 meses.
+                    </p>
                 </div>
-
-                <div class="p-4 flex-1 flex flex-col justify-between space-y-3" x-show="projecaoFechamento.carregado">
-                    <!-- Destaque Principal da Projeção -->
-                    <div class="bg-gradient-to-br from-purple-50 to-indigo-50/70 border border-purple-200/80 rounded-2xl p-3.5 text-center">
-                        <div class="flex items-center justify-between text-[10px] font-bold text-purple-700 uppercase mb-1">
-                            <span>Projeção Linear Fim do Mês</span>
-                            <span class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800" x-text="projecaoFechamento.dias_uteis_decorridos + '/' + projecaoFechamento.dias_uteis_totais + ' dias úteis (' + projecaoFechamento.pct_tempo_decorrido + '%)'"></span>
-                        </div>
-                        <p class="text-2xl lg:text-3xl font-black text-purple-800" x-text="formatMoney(projecaoFechamento.projecao)">R$ 0,00</p>
-                        <div class="mt-1.5 flex items-center justify-center gap-3 text-xs font-bold">
-                            <span class="text-amber-700"><i class="fa-solid fa-weight-hanging mr-1"></i><span x-text="formatPeso(projecaoFechamento.peso_projetado)"></span></span>
-                            <span class="text-slate-300">•</span>
-                            <span class="text-blue-700"><span x-text="formatNumber(projecaoFechamento.quantidade_projetada) + ' un'"></span></span>
-                            <span class="text-slate-300">•</span>
-                            <span class="text-slate-600"><span x-text="(projecaoFechamento.notas_projetadas || 0) + ' NFs'"></span></span>
-                        </div>
-                    </div>
-
-                    <!-- Decomposição Matemática da Projeção -->
-                    <div class="grid grid-cols-2 gap-2 text-xs">
-                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase">Realizado até Hoje</p>
-                            <p class="font-black text-emerald-700 text-sm mt-0.5" x-text="formatMoney(projecaoFechamento.realizado)"></p>
-                            <p class="text-[10px] text-amber-700 font-semibold" x-text="formatPeso(projecaoFechamento.peso_realizado)"></p>
-                        </div>
-                        <div class="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                            <p class="text-[10px] font-bold text-slate-400 uppercase">Ritmo / Dia Útil</p>
-                            <p class="font-black text-purple-700 text-sm mt-0.5" x-text="formatMoney(projecaoFechamento.media_dia_util)"></p>
-                            <p class="text-[10px] text-amber-700 font-semibold" x-text="formatPeso(projecaoFechamento.media_peso_dia_util) + '/dia'"></p>
-                        </div>
-                        <div class="p-2.5 rounded-xl bg-sky-50/70 border border-sky-100">
-                            <p class="text-[10px] font-bold text-sky-700 uppercase">Carteira Aberta Mês</p>
-                            <p class="font-black text-sky-800 text-sm mt-0.5" x-text="formatMoney(projecaoFechamento.carteira_valor)"></p>
-                            <p class="text-[10px] text-sky-600 font-semibold" x-text="formatPeso(projecaoFechamento.carteira_peso) + ' (' + (projecaoFechamento.carteira_pedidos || 0) + ' ped)'"></p>
-                        </div>
-                        <div class="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200">
-                            <p class="text-[10px] font-bold text-emerald-700 uppercase">Potencial c/ Carteira</p>
-                            <p class="font-black text-emerald-800 text-sm mt-0.5" x-text="formatMoney(projecaoFechamento.projecao_com_carteira)"></p>
-                            <p class="text-[10px] text-emerald-600 font-semibold" x-text="'Mês Ant: ' + formatMoney(projecaoFechamento.mes_anterior_valor)"></p>
-                        </div>
-                    </div>
-
-                    <button type="button" @click="abrirModalProjecao('representantes')"
-                            class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-extrabold shadow-sm transition-all flex items-center justify-center gap-2">
-                        <i class="fa-solid fa-table-list"></i>
-                        <span>Ver Projeção por Representante &amp; Região (Exportar Excel)</span>
-                    </button>
+                <div class="flex flex-wrap items-center gap-3">
+                    <a href="<?= $appBase ?>/portal/modules/recompra-clientes.php" 
+                       class="inline-flex items-center gap-2 px-5 py-3 rounded-xl bg-white text-rose-700 hover:bg-rose-50 text-xs sm:text-sm font-black shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all">
+                        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+                        <span>Acessar Módulo Recompra</span>
+                    </a>
                 </div>
             </div>
         </div>
 
         <!-- ================================================================== -->
-        <!-- NOVO PAINEL EXECUTIVO: INTELIGÊNCIA DE RECOMPRA & CLIENTES SEM COMPRAS -->
-        <!-- (Substitui o antigo relatório de Margem por Produto)               -->
-        <!-- ================================================================== -->
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 mb-6 overflow-hidden">
-            <div class="bg-gradient-to-r from-rose-700 via-rose-600 to-orange-600 px-5 py-4 flex flex-wrap items-center justify-between gap-3 text-white">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <h3 class="text-sm lg:text-base font-extrabold uppercase">
-                            <i class="fa-solid fa-user-clock mr-1.5"></i> INTELIGÊNCIA DE RECOMPRA &amp; CLIENTES ATIVOS SEM COMPRAS (+30 / +60 / +90 DIAS)
-                        </h3>
-                        <span class="px-2.5 py-0.5 rounded-full bg-white/20 text-white text-[10px] font-extrabold uppercase">Ação Comercial Imediata</span>
-                    </div>
-                    <p class="text-[11px] text-rose-100 mt-0.5">Mapeamento completo da carteira ativa sem faturamento há 30+ dias, com Histórico de NFs, Peso Líquido (Kg), Quantidade e Faturamento dos últimos 12 meses.</p>
-                </div>
-                <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" @click="exportarClientesRiscoExcel()"
-                            class="px-3.5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-extrabold shadow-sm transition-all">
-                        <i class="fa-regular fa-file-excel mr-1.5"></i>Exportar Clientes (.CSV)
-                    </button>
-                    <button type="button" @click="modalRiscoOpen = true"
-                            class="px-3.5 py-2 rounded-xl bg-white text-rose-700 hover:bg-rose-50 text-xs font-extrabold shadow-sm transition-all">
-                        <i class="fa-solid fa-up-right-from-square mr-1.5"></i>Expandir Tela Cheia (<span x-text="clientesRiscoFiltrados().length"></span>)
-                    </button>
-                </div>
-            </div>
-
-            <div class="p-5 space-y-4">
-                <!-- 4 Cards de Faixas de Inatividade (Clicáveis para filtrar e dinâmicos ao passar o mouse) -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <div @click="alternarFaixaRisco('30_45')"
-                         :title="tooltipFaixaRisco('30_45')"
-                         :class="filtroRiscoFaixa === '30_45' ? 'ring-2 ring-amber-500 bg-amber-50 shadow-sm' : 'bg-slate-50 hover:bg-amber-50/50 hover:shadow-md hover:-translate-y-0.5'"
-                         class="p-3.5 rounded-xl border border-amber-200/80 cursor-pointer transition-all flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-extrabold text-amber-800 uppercase flex items-center gap-1">
-                                    <span>⚠️ Alerta Inicial</span>
-                                    <span class="text-[9.5px] font-semibold text-amber-600">(30-45d)</span>
-                                </span>
-                                <span class="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-xs font-black"
-                                      x-text="dadosFaixaRisco('30_45').clientes + ' cli'"></span>
-                            </div>
-                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('30_45').valor)"></p>
-                            <p class="text-[11px] font-bold text-amber-700 mt-0.5">
-                                <i class="fa-solid fa-weight-hanging mr-1"></i>
-                                <span x-text="formatPeso(dadosFaixaRisco('30_45').peso) + ' hist.'"></span>
-                            </p>
-                        </div>
-                        <div class="mt-2 pt-1.5 border-t border-amber-200/60 flex items-center justify-between text-[9.5px]">
-                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('30_45').ticketMedio)"></strong></span>
-                            <span :class="filtroRiscoFaixa === '30_45' ? 'text-amber-700 font-extrabold' : 'text-slate-400 group-hover:text-amber-700 font-semibold'"
-                                  x-text="filtroRiscoFaixa === '30_45' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
-                        </div>
-                    </div>
-
-                    <div @click="alternarFaixaRisco('46_60')"
-                         :title="tooltipFaixaRisco('46_60')"
-                         :class="filtroRiscoFaixa === '46_60' ? 'ring-2 ring-orange-500 bg-orange-50 shadow-sm' : 'bg-slate-50 hover:bg-orange-50/50 hover:shadow-md hover:-translate-y-0.5'"
-                         class="p-3.5 rounded-xl border border-orange-200/80 cursor-pointer transition-all flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-extrabold text-orange-800 uppercase flex items-center gap-1">
-                                    <span>🔶 Atenção</span>
-                                    <span class="text-[9.5px] font-semibold text-orange-600">(46-60d)</span>
-                                </span>
-                                <span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 text-xs font-black"
-                                      x-text="dadosFaixaRisco('46_60').clientes + ' cli'"></span>
-                            </div>
-                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('46_60').valor)"></p>
-                            <p class="text-[11px] font-bold text-orange-700 mt-0.5">
-                                <i class="fa-solid fa-weight-hanging mr-1"></i>
-                                <span x-text="formatPeso(dadosFaixaRisco('46_60').peso) + ' hist.'"></span>
-                            </p>
-                        </div>
-                        <div class="mt-2 pt-1.5 border-t border-orange-200/60 flex items-center justify-between text-[9.5px]">
-                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('46_60').ticketMedio)"></strong></span>
-                            <span :class="filtroRiscoFaixa === '46_60' ? 'text-orange-700 font-extrabold' : 'text-slate-400 group-hover:text-orange-700 font-semibold'"
-                                  x-text="filtroRiscoFaixa === '46_60' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
-                        </div>
-                    </div>
-
-                    <div @click="alternarFaixaRisco('61_90')"
-                         :title="tooltipFaixaRisco('61_90')"
-                         :class="filtroRiscoFaixa === '61_90' ? 'ring-2 ring-rose-500 bg-rose-50 shadow-sm' : 'bg-slate-50 hover:bg-rose-50/50 hover:shadow-md hover:-translate-y-0.5'"
-                         class="p-3.5 rounded-xl border border-rose-200/80 cursor-pointer transition-all flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-extrabold text-rose-800 uppercase flex items-center gap-1">
-                                    <span>🚨 Risco Elevado</span>
-                                    <span class="text-[9.5px] font-semibold text-rose-600">(61-90d)</span>
-                                </span>
-                                <span class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-xs font-black"
-                                      x-text="dadosFaixaRisco('61_90').clientes + ' cli'"></span>
-                            </div>
-                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('61_90').valor)"></p>
-                            <p class="text-[11px] font-bold text-rose-700 mt-0.5">
-                                <i class="fa-solid fa-weight-hanging mr-1"></i>
-                                <span x-text="formatPeso(dadosFaixaRisco('61_90').peso) + ' hist.'"></span>
-                            </p>
-                        </div>
-                        <div class="mt-2 pt-1.5 border-t border-rose-200/60 flex items-center justify-between text-[9.5px]">
-                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('61_90').ticketMedio)"></strong></span>
-                            <span :class="filtroRiscoFaixa === '61_90' ? 'text-rose-700 font-extrabold' : 'text-slate-400 group-hover:text-rose-700 font-semibold'"
-                                  x-text="filtroRiscoFaixa === '61_90' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
-                        </div>
-                    </div>
-
-                    <div @click="alternarFaixaRisco('90_mais')"
-                         :title="tooltipFaixaRisco('90_mais')"
-                         :class="filtroRiscoFaixa === '90_mais' ? 'ring-2 ring-red-700 bg-red-50 shadow-sm' : 'bg-slate-50 hover:bg-red-50/50 hover:shadow-md hover:-translate-y-0.5'"
-                         class="p-3.5 rounded-xl border border-red-200/80 cursor-pointer transition-all flex flex-col justify-between group">
-                        <div>
-                            <div class="flex items-center justify-between">
-                                <span class="text-[11px] font-extrabold text-red-900 uppercase flex items-center gap-1">
-                                    <span>🛑 Inativos Críticos</span>
-                                    <span class="text-[9.5px] font-semibold text-red-700">(+90d)</span>
-                                </span>
-                                <span class="px-2 py-0.5 rounded-full bg-red-100 text-red-900 text-xs font-black"
-                                      x-text="dadosFaixaRisco('90_mais').clientes + ' cli'"></span>
-                            </div>
-                            <p class="text-base font-black text-slate-800 mt-1.5" x-text="formatMoney(dadosFaixaRisco('90_mais').valor)"></p>
-                            <p class="text-[11px] font-bold text-red-700 mt-0.5">
-                                <i class="fa-solid fa-weight-hanging mr-1"></i>
-                                <span x-text="formatPeso(dadosFaixaRisco('90_mais').peso) + ' hist.'"></span>
-                            </p>
-                        </div>
-                        <div class="mt-2 pt-1.5 border-t border-red-200/60 flex items-center justify-between text-[9.5px]">
-                            <span class="text-slate-500 font-medium">Méd/cli: <strong class="text-slate-700" x-text="formatMoney(dadosFaixaRisco('90_mais').ticketMedio)"></strong></span>
-                            <span :class="filtroRiscoFaixa === '90_mais' ? 'text-red-800 font-extrabold' : 'text-slate-400 group-hover:text-red-700 font-semibold'"
-                                  x-text="filtroRiscoFaixa === '90_mais' ? 'Filtrado ✓' : 'Clique p/ filtrar'"></span>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Barra de Filtros do Painel de Clientes Sem Compras -->
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end bg-slate-50 p-3.5 rounded-xl border border-slate-200/70">
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Representante</label>
-                        <select x-model="filtroRiscoRep" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700">
-                            <option value="">Todos os Representantes (<span x-text="clientesRisco.length"></span>)</option>
-                            <template x-for="rep in representantesRisco()" :key="rep.id">
-                                <option :value="rep.id" x-text="rep.nome + ' (' + rep.qtd + ' cli)'"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Filtrar Região</label>
-                        <select x-model="filtroRiscoRegiao" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700">
-                            <option value="">Todas as Regiões do Escopo</option>
-                            <template x-for="reg in distribuicaoRegiao" :key="reg.regiao">
-                                <option :value="reg.regiao" x-text="reg.regiao + ' — ' + reg.nome"></option>
-                            </template>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Faixa de Inatividade</label>
-                        <select x-model="filtroRiscoFaixa" class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs font-semibold text-slate-700">
-                            <option value="">Todas (+30 dias)</option>
-                            <option value="30_45">30 a 45 dias</option>
-                            <option value="46_60">46 a 60 dias</option>
-                            <option value="61_90">61 a 90 dias</option>
-                            <option value="90_mais">+90 dias</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="block text-[10px] font-bold text-slate-500 uppercase mb-1">Buscar Cliente ou Cidade</label>
-                        <input type="text" x-model="buscaRiscoCliente" placeholder="Nome, código ou cidade..."
-                               class="w-full px-3 py-2 rounded-lg border border-slate-200 bg-white text-xs focus:outline-none focus:ring-2 focus:ring-rose-500">
-                    </div>
-                    <div class="bg-white border border-rose-200 rounded-lg px-3 py-1.5 flex items-center justify-between">
-                        <div>
-                            <p class="text-[9px] font-bold text-rose-600 uppercase">Filtro Atual (<span x-text="resumoRiscoFiltrado().clientes"></span> cli)</p>
-                            <p class="text-xs font-black text-slate-800" x-text="formatMoney(resumoRiscoFiltrado().valor)"></p>
-                            <p class="text-[10px] font-bold text-amber-700" x-text="formatPesoTon(resumoRiscoFiltrado().peso) + ' • ' + formatNumber(resumoRiscoFiltrado().nfs) + ' NFs'"></p>
-                        </div>
-                        <button x-show="filtroRiscoRep || filtroRiscoRegiao || filtroRiscoFaixa || buscaRiscoCliente"
-                                @click="filtroRiscoRep=''; filtroRiscoRegiao=''; filtroRiscoFaixa=''; buscaRiscoCliente=''"
-                                class="text-[10px] font-bold text-rose-600 hover:underline">Limpar</button>
-                    </div>
-                </div>
-
-                <!-- Tabela Executiva de Clientes Sem Compras -->
-                <div class="overflow-x-auto border border-slate-200 rounded-xl max-h-[460px]">
-                    <table class="w-full text-sm min-w-[820px]">
-                        <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10">
-                            <tr>
-                                <th class="px-4 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Cliente</th>
-                                <th class="px-3 py-3 text-left text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Representante</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Região / Cidade</th>
-                                <th class="px-3 py-3 text-center text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Última Compra</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">NFs Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Peso Hist. (Kg)</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Qtd. Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Faturamento Hist.</th>
-                                <th class="px-3 py-3 text-right text-xs font-bold text-slate-500 uppercase whitespace-nowrap">Inatividade</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-slate-100" x-show="clientesRiscoFiltrados().length > 0">
-                            <template x-for="c in clientesRiscoFiltrados().slice(0, limiteRiscoPainel)" :key="c.id + '-' + (c.idrepresentante || 0)">
-                                <tr class="hover:bg-rose-50/40 cursor-pointer transition-colors" @click="verDetalhesCliente(c.id, c.nome)">
-                                    <td class="px-4 py-2.5">
-                                        <p class="text-xs font-bold text-slate-800 leading-snug" x-text="c.nome"></p>
-                                        <span class="text-[10px] text-slate-400 font-mono" x-text="'Cód. #' + c.id"></span>
-                                    </td>
-                                    <td class="px-3 py-2.5 text-xs text-slate-600 font-medium whitespace-nowrap" x-text="c.representante"></td>
-                                    <td class="px-3 py-2.5 text-center whitespace-nowrap">
-                                        <span class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-extrabold mr-1" x-text="c.regiao || 'SUL'"></span>
-                                        <span class="text-xs text-slate-500" x-text="c.cidade_uf || '—'"></span>
-                                    </td>
-                                    <td class="px-3 py-2.5 text-center text-xs font-semibold text-slate-700 whitespace-nowrap" x-text="c.ultima_fmt || '—'"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-blue-700 whitespace-nowrap" x-text="formatNumber(c.compras_anteriores || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-bold text-amber-700 whitespace-nowrap" x-text="formatPeso(c.peso_historico || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs text-slate-600 whitespace-nowrap" x-text="formatNumber(c.quantidade_historico || 0) + ' un'"></td>
-                                    <td class="px-3 py-2.5 text-right text-xs font-black text-emerald-600 whitespace-nowrap" x-text="formatMoney(c.valor_historico || 0)"></td>
-                                    <td class="px-3 py-2.5 text-right whitespace-nowrap">
-                                        <span class="px-2.5 py-0.5 rounded-full text-xs font-extrabold whitespace-nowrap"
-                                              :class="c.dias_sem_comprar > 90 ? 'bg-red-100 text-red-800' : (c.dias_sem_comprar > 60 ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-800')"
-                                              x-text="c.dias_sem_comprar + ' dias'"></span>
-                                    </td>
-                                </tr>
-                            </template>
-                        </tbody>
-                        <tbody x-show="!loadingInsights && clientesRiscoFiltrados().length === 0">
-                            <tr>
-                                <td colspan="9" class="text-center py-8 text-slate-400 text-sm">Nenhum cliente sem compras encontrado para os filtros selecionados.</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-
-                <!-- Rodapé de paginação rápida do painel -->
-                <div class="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-500" x-show="clientesRiscoFiltrados().length > limiteRiscoPainel">
-                    <span>Exibindo <strong x-text="Math.min(limiteRiscoPainel, clientesRiscoFiltrados().length)"></strong> de <strong x-text="clientesRiscoFiltrados().length"></strong> clientes filtrados.</span>
-                    <div class="flex items-center gap-2">
-                        <button type="button" @click="limiteRiscoPainel += 50" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold">Mostrar +50 linhas</button>
-                        <button type="button" @click="modalRiscoOpen = true" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold">Ver Todos em Tela Cheia</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-    <!-- ================================================================== -->
     <!-- MODAL EXECUTIVO: PROJEÇÃO DE FECHAMENTO EXPANDIDA + EXPORTAR EXCEL -->
     <!-- ================================================================== -->
     <div x-show="modalProjecaoOpen" x-cloak @click.self="modalProjecaoOpen = false" class="fixed inset-0 z-[65] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -1201,11 +945,16 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <div class="p-6 overflow-y-auto max-h-[calc(92vh-80px)] space-y-4">
                 <!-- KPIs Globais da Projeção -->
-                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 text-center">
+                <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3 text-center">
                     <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
                         <p class="text-[10px] font-bold text-emerald-700 uppercase">Realizado Faturado</p>
                         <p class="text-base font-black text-emerald-800 mt-0.5" x-text="formatMoney(projecaoFechamento.realizado)"></p>
                         <p class="text-[10px] font-bold text-amber-700" x-text="formatPeso(projecaoFechamento.peso_realizado)"></p>
+                    </div>
+                    <div class="bg-purple-100/80 border border-purple-300 rounded-xl p-3 ring-1 ring-purple-200">
+                        <p class="text-[10px] font-extrabold text-purple-900 uppercase">Média 3M (Projeção)</p>
+                        <p class="text-base font-black text-purple-900 mt-0.5" x-text="formatMoney((projecao.find(p => p.atual) || {}).media_3m || 0)"></p>
+                        <p class="text-[10px] font-bold text-amber-700" x-text="formatPeso((projecao.find(p => p.atual) || {}).media_3m_peso || 0) + ' méd/mês'"></p>
                     </div>
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                         <p class="text-[10px] font-bold text-slate-600 uppercase">Média / Dia Útil</p>

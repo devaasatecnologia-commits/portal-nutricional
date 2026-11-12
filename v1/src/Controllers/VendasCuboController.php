@@ -343,8 +343,16 @@ class VendasCuboController
 
             [$di, $df] = $this->periodoLookup($qs);
             $f = $this->filtrosVazios($di, $df);
-            $f['filiais'] = $scope->resolverFiliais(null);
-            $f['gestores'] = $scope->resolverGestores(null);
+
+            $filialParam = $qs['filial'] ?? ($qs['filial_id'] ?? ($qs['idfilial'] ?? null));
+            $gestorParam = $qs['supervisor'] ?? ($qs['gestor'] ?? ($qs['gestor_id'] ?? ($qs['idsupervisor'] ?? null)));
+            $repParam = $qs['representante'] ?? ($qs['representante_id'] ?? ($qs['idrepresentante'] ?? null));
+
+            $f['filiais'] = $scope->resolverFiliais($filialParam ? $this->ids($filialParam, 'filial') : null);
+            $f['gestores'] = $scope->resolverGestores($gestorParam ? $this->ids($gestorParam, 'supervisor') : null);
+            if ($repParam) {
+                $f['representantes'] = $this->ids($repParam, 'representante');
+            }
 
             $dim = self::DIMENSOES[$field];
             $params = [];

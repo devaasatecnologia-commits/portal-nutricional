@@ -1,8 +1,5 @@
-# CONTINUATION TOKEN ATUAL
+# CONTINUATION TOKEN ATIVO
 
-> **Última atualização:** 11/11/2026
-> **Token ativo:** [CONTINUATION-2026-11-11-CHAMADOS-PERMISSOES-ALAN.md](tokens/CONTINUATION-2026-11-11-CHAMADOS-PERMISSOES-ALAN.md)
-> **Módulos:** Central de Chamados & Permissões Granulares (#35, #36) + Refatoração Responsiva Mobile App-First v2.0 dos 6 Módulos dos Gestores (#41)
-> **Status:** Concluído, validado (`php -l` sem erros) e pronto para deploy FTP.
-
-Consulte o arquivo apontado acima para o resumo detalhado da entrega, arquitetura e arquivos para deploy FTP.
+Último token gerado: [CONTINUATION-2026-11-12-DASHBOARD-VENDAS-RECOMPRA.md](file:///c:/xampp/htdocs/API/docs/tokens/CONTINUATION-2026-11-12-DASHBOARD-VENDAS-RECOMPRA.md)
+Data de atualização: 12/11/2026 16:00
+Módulos: Dashboard de Vendas, Novo Módulo Recompra & Clientes, Treinamentos e Chamados.

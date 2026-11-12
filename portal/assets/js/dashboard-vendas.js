@@ -5,6 +5,12 @@
 // 6 Macro-Regiões Unificadas: SUL, GRF, AVI, NOR, PLN e RMC
 // ==========================================================================
 
+window.formatDate = window.formatDate || function(iso) {
+    if (!iso) return '';
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso);
+};
+
 function dashboardVendasHandler() {
     const MAX_DIAS_PESADO = 90;
     const MESES = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
@@ -481,7 +487,13 @@ function dashboardVendasHandler() {
                 const dados = await this.apiFetch('/v1/vendas/dashboard/insights', this.corpoFiltros(), signal);
                 if (!this.atual('insights', id)) return;
                 this.rankingRepresentantes = dados.ranking_representantes || [];
-                this.funilPedidos = dados.funil_pedidos?.etapas || [];
+                const etapasCruas = dados.funil_pedidos?.etapas || [];
+                const ordemFunil = [1, 3, 4, 5];
+                this.funilPedidos = etapasCruas.sort((a, b) => {
+                    const idxA = ordemFunil.indexOf(parseInt(a.status, 10));
+                    const idxB = ordemFunil.indexOf(parseInt(b.status, 10));
+                    return (idxA !== -1 ? idxA : 99) - (idxB !== -1 ? idxB : 99);
+                });
                 this.funilTaxas = {
                     conversao: dados.funil_pedidos?.taxa_conversao ?? null,
                     conversao_valor: dados.funil_pedidos?.taxa_conversao_valor ?? null,
@@ -1214,30 +1226,50 @@ function dashboardVendasHandler() {
         },
 
         formatarProjecao(projecao) {
-            return (projecao || [])
-                .filter(item => item?.mes)
-                .map(item => {
-                    const [ano, mes] = String(item.mes).split('-');
-                    return {
-                        mes_label: `${MESES[parseInt(mes, 10) - 1]}/${ano}`,
-                        valor: parseFloat(item.valor || 0),
-                        valor_projetado: parseFloat(item.valor_projetado || item.valor || 0),
-                        carteira_aberta: parseFloat(item.carteira_aberta || 0),
-                        projecao_com_carteira: parseFloat(item.projecao_com_carteira || item.valor_projetado || item.valor || 0),
-                        peso: parseFloat(item.peso || 0),
-                        peso_projetado: parseFloat(item.peso_projetado || item.peso || 0),
-                        quantidade: parseFloat(item.quantidade || 0),
-                        quantidade_projetada: parseFloat(item.quantidade_projetada || item.quantidade || 0),
-                        notas: parseInt(item.notas || 0, 10),
-                        clientes: parseInt(item.clientes || 0, 10),
-                        dias_uteis: parseInt(item.dias_uteis || 0, 10),
-                        media_diaria: parseFloat(item.media_diaria || 0),
-                        tipo: item.tipo || 'projecao',
-                        realizado: item.tipo === 'realizado',
-                        atual: item.tipo === 'atual',
-                        tendencia: item.tipo === 'projecao'
-                    };
-                });
+            const itensValidos = (projecao || []).filter(item => item?.mes && item.tipo !== 'projecao');
+
+            // Separa estritamente os meses anteriores já fechados (M-3, M-2, M-1).
+            // Regra de Negócio: O Mês Atual NÃO entra no cálculo da média dos 3 meses!
+            const mesesAnteriores = itensValidos.filter(item => item.tipo === 'realizado');
+            const qtdAnt = mesesAnteriores.length || 1;
+            const soma3mValor = mesesAnteriores.reduce((acc, m) => acc + (parseFloat(m.valor) || 0), 0);
+            const soma3mPeso = mesesAnteriores.reduce((acc, m) => acc + (parseFloat(m.peso) || 0), 0);
+            const soma3mQtd = mesesAnteriores.reduce((acc, m) => acc + (parseFloat(m.quantidade) || 0), 0);
+            const media3mValor = soma3mValor / qtdAnt; // Ex: (3.746.453,68 + 4.371.032,67 + 4.194.943,29) / 3 = 4.104.106,55
+            const media3mPeso = soma3mPeso / qtdAnt;
+            const media3mQtd = soma3mQtd / qtdAnt;
+
+            return itensValidos.map(item => {
+                const [ano, mes] = String(item.mes).split('-');
+                const eAtual = item.tipo === 'atual';
+                const valorReal = parseFloat(item.valor || 0);
+                const valorProj = eAtual ? media3mValor : valorReal;
+                const pesoProj = eAtual ? media3mPeso : parseFloat(item.peso || 0);
+                const qtdProj = eAtual ? media3mQtd : parseFloat(item.quantidade || 0);
+
+                return {
+                    mes_label: `${MESES[parseInt(mes, 10) - 1]}/${ano}`,
+                    valor: valorReal,
+                    valor_projetado: valorProj,
+                    media_3m: media3mValor,
+                    media_3m_peso: media3mPeso,
+                    media_3m_qtd: media3mQtd,
+                    carteira_aberta: parseFloat(item.carteira_aberta || 0),
+                    projecao_com_carteira: parseFloat(item.projecao_com_carteira || (valorReal + parseFloat(item.carteira_aberta || 0))),
+                    peso: parseFloat(item.peso || 0),
+                    peso_projetado: pesoProj,
+                    quantidade: parseFloat(item.quantidade || 0),
+                    quantidade_projetada: qtdProj,
+                    notas: parseInt(item.notas || 0, 10),
+                    clientes: parseInt(item.clientes || 0, 10),
+                    dias_uteis: parseInt(item.dias_uteis || 0, 10),
+                    media_diaria: parseFloat(item.media_diaria || 0),
+                    tipo: item.tipo || 'realizado',
+                    realizado: item.tipo === 'realizado',
+                    atual: eAtual,
+                    tendencia: false
+                };
+            });
         },
 
         variacaoTexto(v) {
@@ -1248,9 +1280,12 @@ function dashboardVendasHandler() {
         },
         variacaoRotulo() {
             const p = this.periodoAnterior;
-            if (!p) return 'vs período anterior';
+            if (!p) return 'vs mês anterior';
             const f = (s) => this.formatarDataBR(s);
-            return `vs ${f(p.inicio)} a ${f(p.fim)}${p.parcial ? ' (mesmo nº dias)' : ''}`;
+            return `vs mês anterior (${f(p.inicio)} a ${f(p.fim)}${p.parcial ? ' - mesmo nº dias' : ''})`;
+        },
+        formatDate(iso) {
+            return this.formatarDataBR(iso);
         },
         formatarDataBR(iso) {
             const d = this.parseISO(iso);

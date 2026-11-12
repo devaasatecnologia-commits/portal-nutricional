@@ -26,6 +26,14 @@ $extraCss = '
     .table-row-hover:hover { background-color: #f0fdf4 !important; }
     .pulse-dot { width: 8px; height: 8px; border-radius: 999px; background: #10b981; animation: pulseDot 2s infinite; }
     @keyframes pulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(1.2); } }
+    @media (max-width: 767px) {
+        .ep-desktop-table-wrap { display: none !important; }
+        .ep-mobile-cards-wrap { display: block !important; }
+    }
+    @media (min-width: 768px) {
+        .ep-desktop-table-wrap { display: block !important; }
+        .ep-mobile-cards-wrap { display: none !important; }
+    }
 </style>
 ';
 require_once __DIR__ . '/../estrutura/header.php';
@@ -255,7 +263,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- VISÃO MOBILE: CARDS DE PRODUTOS (APP-FIRST) -->
-        <div id="mobile-cards-body" class="md:hidden divide-y divide-slate-100">
+        <div id="mobile-cards-body" class="ep-mobile-cards-wrap divide-y divide-slate-100">
             <div class="py-10 text-center text-slate-400 text-xs">
                 <i class="fa-solid fa-spinner fa-spin text-2xl mb-2 text-emerald-600 block"></i>
                 Carregando estoque com previsão...
@@ -263,7 +271,7 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- VISÃO DESKTOP: TABELA COMPLETA -->
-        <div class="hidden md:block overflow-x-auto">
+        <div class="ep-desktop-table-wrap overflow-x-auto">
             <table class="w-full text-left text-xs sm:text-sm min-w-[900px]">
                 <thead class="bg-slate-50 border-b border-slate-200">
                     <tr class="bg-slate-50 text-[0.7rem] uppercase tracking-wider text-slate-500 font-extrabold select-none">

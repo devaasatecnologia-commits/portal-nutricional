@@ -40,9 +40,10 @@ class VendasDashboardController
 
     private const ETAPAS_FUNIL = [
         'Abertos' => 1,
-        'Faturados Parcial' => 4,
-        'Faturados' => 5,
         'Cancelados' => 3,
+        'Faturados Parcial' => 4,
+        'Faturados Total' => 5,
+        'Faturados' => 5,
     ];
 
     /** Catálogo das 7 Macro-Regiões Oficiais (incluindo Região RED separada para acesso irrestrito) */
@@ -1712,16 +1713,39 @@ class VendasDashboardController
         $pesoProjetadoAtual = round($pesoAtual + ($taxaProjecaoPeso * $restantes), 2);
         $qtdProjetadaAtual = round($qtdAtual + ($taxaProjecaoQtd * $restantes), 2);
 
+        // Média Aritmética dos 3 Últimos Meses Fechados (M-3, M-2, M-1)
+        // Regra de Negócio: O mês atual NÃO entra na conta da projeção; a projeção oficial é a média dos 3 meses
+        $somaValores3M = 0;
+        $somaPesos3M = 0;
+        $somaQtd3M = 0;
+        $somaNotas3M = 0;
+        $qtdMesesAnt = count($out);
+        foreach ($out as $mAnt) {
+            $somaValores3M += (float)($mAnt['valor'] ?? 0);
+            $somaPesos3M += (float)($mAnt['peso'] ?? 0);
+            $somaQtd3M += (float)($mAnt['quantidade'] ?? 0);
+            $somaNotas3M += (int)($mAnt['notas'] ?? 0);
+        }
+        $media3MValor = $qtdMesesAnt > 0 ? round($somaValores3M / $qtdMesesAnt, 2) : 0;
+        $media3MPeso = $qtdMesesAnt > 0 ? round($somaPesos3M / $qtdMesesAnt, 2) : 0;
+        $media3MQtd = $qtdMesesAnt > 0 ? round($somaQtd3M / $qtdMesesAnt, 2) : 0;
+        $media3MNotas = $qtdMesesAnt > 0 ? (int)round($somaNotas3M / $qtdMesesAnt) : 0;
+
         $out[] = [
             'mes' => $mesAtualIni->format('Y-m-01'),
             'valor' => $realizadoAtual,
-            'valor_projetado' => $fechamentoEstimadoAtual,
+            'valor_projetado' => $media3MValor,
+            'media_3m' => $media3MValor,
+            'media_3m_peso' => $media3MPeso,
+            'media_3m_qtd' => $media3MQtd,
+            'media_3m_notas' => $media3MNotas,
+            'fechamento_ritmo_diario' => $fechamentoEstimadoAtual,
             'carteira_aberta' => $carteiraMes['valor'],
-            'projecao_com_carteira' => round($fechamentoEstimadoAtual + $carteiraMes['valor'], 2),
+            'projecao_com_carteira' => round($realizadoAtual + $carteiraMes['valor'], 2),
             'peso' => $pesoAtual,
-            'peso_projetado' => $pesoProjetadoAtual,
+            'peso_projetado' => $media3MPeso,
             'quantidade' => $qtdAtual,
-            'quantidade_projetada' => $qtdProjetadaAtual,
+            'quantidade_projetada' => $media3MQtd,
             'notas' => $notasAtual,
             'clientes' => (int)$dAtual['clientes'],
             'dias_uteis' => $totaisUteis,
@@ -1806,7 +1830,13 @@ class VendasDashboardController
             $porStatus[(int)$r['status']] = $r;
         }
         $etapas = [];
-        foreach (self::ETAPAS_FUNIL as $nome => $st) {
+        $ordemEtapas = [
+            'Abertos' => 1,
+            'Cancelados' => 3,
+            'Faturados Parcial' => 4,
+            'Faturados Total' => 5,
+        ];
+        foreach ($ordemEtapas as $nome => $st) {
             $etapas[] = [
                 'etapa' => $nome,
                 'status' => $st,
@@ -2060,6 +2090,18 @@ class VendasDashboardController
         if (!empty($e['rep']) && (int)$e['rep'] > 0) {
             $repFiltroSql = ' AND COALESCE(cl.idvendedor, u.ult_rep) = :rep_escopo ';
             $params['rep_escopo'] = (int)$e['rep'];
+        } elseif (!empty($e['gestores'])) {
+            $gestoresList = implode(',', array_map('intval', $e['gestores']));
+            $repFiltroSql .= " AND EXISTS (
+                SELECT 1 FROM vw_gestor_repre gr 
+                WHERE gr.idrepresentante = COALESCE(cl.idvendedor, u.ult_rep)
+                  AND gr.idgestor IN ($gestoresList)
+            ) ";
+        }
+
+        if (!empty($e['filiais'])) {
+            $filiaisList = implode(',', array_map('intval', $e['filiais']));
+            $repFiltroSql .= " AND (cl.idfilial IS NULL OR cl.idfilial IN ($filiaisList)) ";
         }
 
         $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cl');
