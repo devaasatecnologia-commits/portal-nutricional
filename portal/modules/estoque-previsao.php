@@ -78,10 +78,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <i class="fa-solid fa-sliders text-emerald-600"></i> Exibir Cards por:
             </span>
             <div class="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-bold shadow-inner">
-                <button type="button" id="btn-modo-peso" class="py-1.5 px-2.5 sm:px-3 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5 whitespace-nowrap" onclick="estoquePrevisaoApp.setModoExibicao('peso')" data-tooltip="Cards por Peso|Exibe os 6 cards do topo em Toneladas (t) ou Quilos (kg).">
+                <button type="button" id="btn-modo-peso" class="py-1.5 px-2.5 sm:px-3 rounded-lg bg-emerald-600 text-white shadow-sm transition flex items-center gap-1.5 whitespace-nowrap" onclick="estoquePrevisaoApp.setModoExibicao('peso')" data-tooltip="Cards por Peso|Exibe os 6 cards do topo em Toneladas (t) ou Quilos (kg).">
                     <i class="fa-solid fa-weight-hanging text-[10px]"></i> Peso (KG / Ton)
                 </button>
-                <button type="button" id="btn-modo-unidade" class="py-1.5 px-2.5 sm:px-3 rounded-lg bg-emerald-600 text-white shadow-sm transition flex items-center gap-1.5 whitespace-nowrap" onclick="estoquePrevisaoApp.setModoExibicao('unidade')" data-tooltip="Cards por Unidades|Exibe os 6 cards do topo em quantidade de embalagens/peças.">
+                <button type="button" id="btn-modo-unidade" class="py-1.5 px-2.5 sm:px-3 rounded-lg text-slate-600 hover:text-slate-900 transition flex items-center gap-1.5 whitespace-nowrap" onclick="estoquePrevisaoApp.setModoExibicao('unidade')" data-tooltip="Cards por Unidades|Exibe os 6 cards do topo em quantidade de embalagens/peças.">
                     <i class="fa-solid fa-boxes-stacked text-[10px]"></i> Unidades (Peças)
                 </button>
             </div>

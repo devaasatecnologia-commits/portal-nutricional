@@ -14,7 +14,7 @@ const estoquePrevisaoApp = {
     totalPages: 0,
     chartDetalhe: null,
     debounceTimer: null,
-    modoExibicao: localStorage.getItem('ep_modo_exibicao') || 'unidade', // 'peso' ou 'unidade'
+    modoExibicao: localStorage.getItem('ep_modo_exibicao') || 'peso', // 'peso' ou 'unidade' (Padrão: sempre carregar peso)
     kpiFiltroAtivo: null, // 'fisico', 'reservado', 'livre', 'previsao', 'futuro', 'critico'
     resumoData: null,
     produtosData: [],
@@ -562,24 +562,24 @@ const estoquePrevisaoApp = {
                             <div class="bg-slate-50 rounded-xl p-1.5 border border-slate-200/70 min-w-0">
                                 <div class="text-[9px] font-extrabold uppercase text-slate-400 truncate">Físico (1+6)</div>
                                 <div class="text-xs font-black text-slate-800 truncate">${this.formatNumber(estTotal)}</div>
-                                <div class="text-[9px] text-slate-400 font-bold truncate">M:${this.formatNumber(estMatriz)} PR:${this.formatNumber(estFilial)}</div>
+                                <div class="text-[9px] text-slate-500 font-bold truncate">${pesoLiq > 0 && estTotal > 0 ? this.formatarPeso(pesoTotal) : `M:${this.formatNumber(estMatriz)} PR:${this.formatNumber(estFilial)}`}</div>
                             </div>
                             <div class="bg-amber-50/60 rounded-xl p-1.5 border border-amber-200/70 min-w-0" ${cartReservado > 0 ? `onclick="event.stopPropagation(); estoquePrevisaoApp.abrirRastreioReservado(${idItem}, 0, '${this.escapeHtml(nome)}')"` : ''}>
                                 <div class="text-[9px] font-extrabold uppercase text-amber-700 truncate">Reservado</div>
                                 <div class="text-xs font-black ${cartReservado > 0 ? 'text-amber-600 underline' : 'text-slate-300'} truncate">
                                     ${this.formatNumber(cartReservado)}${cartReservado > 0 ? ' <i class="fa-solid fa-arrow-up-right-from-square text-[8px]"></i>' : ''}
                                 </div>
-                                <div class="text-[9px] text-amber-700/70 font-bold truncate">${cartReservado > 0 ? 'Ver pedidos' : 'Sem reserva'}</div>
+                                <div class="text-[9px] text-amber-700/80 font-bold truncate">${cartReservado > 0 && pesoLiq > 0 ? this.formatarPeso(pesoReservado) : (cartReservado > 0 ? 'Ver pedidos' : 'Sem reserva')}</div>
                             </div>
                             <div class="bg-emerald-50/70 rounded-xl p-1.5 border border-emerald-200/80 min-w-0">
                                 <div class="text-[9px] font-extrabold uppercase text-emerald-700 truncate">Livre</div>
                                 <div class="text-xs font-black ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-600'} truncate">${this.formatNumber(estLivre)}</div>
-                                <div class="text-[9px] text-emerald-700/70 font-bold truncate">Disponível</div>
+                                <div class="text-[9px] ${estLivre > 0 ? 'text-emerald-700' : 'text-rose-500'} font-bold truncate">${pesoLiq > 0 ? this.formatarPeso(pesoLivre) : 'Disponível'}</div>
                             </div>
                             <div class="${prevChegada > 0 ? 'bg-blue-50/80 border-blue-200' : 'bg-purple-50/50 border-purple-200/60'} rounded-xl p-1.5 border min-w-0">
                                 <div class="text-[9px] font-extrabold uppercase ${prevChegada > 0 ? 'text-blue-700' : 'text-purple-700'} truncate">${prevChegada > 0 ? 'A Chegar' : 'Futuro'}</div>
                                 <div class="text-xs font-black ${prevChegada > 0 ? 'text-blue-700' : 'text-purple-700'} truncate">${prevChegada > 0 ? '+' + this.formatNumber(prevChegada) : this.formatNumber(estFuturo)}</div>
-                                <div class="text-[9px] ${prevChegada > 0 ? 'text-blue-600' : 'text-purple-600/70'} font-bold truncate">Fut: ${this.formatNumber(estFuturo)}</div>
+                                <div class="text-[9px] ${prevChegada > 0 ? 'text-blue-600' : 'text-purple-600/70'} font-bold truncate">${pesoLiq > 0 ? (prevChegada > 0 ? this.formatarPeso(pesoPrev) : this.formatarPeso(pesoFuturo)) : `Fut: ${this.formatNumber(estFuturo)}`}</div>
                             </div>
                         </div>
                     </div>
@@ -952,15 +952,36 @@ const estoquePrevisaoApp = {
                                 <div class="text-[0.7rem] font-black uppercase text-slate-600 tracking-wider mb-2 flex items-center justify-between gap-2">
                                     <span><i class="fa-solid fa-building mr-1 text-slate-400"></i> Matriz 1 (SC)</span>
                                 </div>
-                                <div class="flex justify-between text-xs py-1"><span>Físico:</span><b class="text-slate-800">${this.formatNumber(item.estoque_matriz)} un</b></div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span>Físico:</span>
+                                    <div class="text-right">
+                                        <b class="text-slate-800">${this.formatNumber(item.estoque_matriz)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.estoque_matriz || 0) > 0 ? `<div class="text-[0.65rem] text-slate-400 font-bold">${this.formatarPeso(Number(item.estoque_matriz) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
                                 <div class="flex justify-between text-xs py-1 items-center">
                                     <span>Reservado (Pedidos):</span>
-                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 1, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear pedidos reservados na Matriz 1">
-                                        ${this.formatNumber(item.reservado_matriz)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
-                                    </button>
+                                    <div class="text-right">
+                                        <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 1, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear pedidos reservados na Matriz 1">
+                                            ${this.formatNumber(item.reservado_matriz)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                                        </button>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.reservado_matriz || 0) > 0 ? `<div class="text-[0.65rem] text-amber-600/80 font-bold">${this.formatarPeso(Number(item.reservado_matriz) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
                                 </div>
-                                <div class="flex justify-between text-xs py-1"><span>Livre para Venda:</span><b class="text-emerald-700 font-black">${this.formatNumber(item.livre_matriz)} un</b></div>
-                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-slate-200"><span>A Chegar (OCs):</span><b class="text-blue-700">${this.formatNumber(item.previsao_matriz)} un</b></div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span>Livre para Venda:</span>
+                                    <div class="text-right">
+                                        <b class="text-emerald-700 font-black">${this.formatNumber(item.livre_matriz)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 ? `<div class="text-[0.65rem] text-emerald-600 font-bold">${this.formatarPeso(Number(item.livre_matriz) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-slate-200">
+                                    <span>A Chegar (OCs):</span>
+                                    <div class="text-right">
+                                        <b class="text-blue-700 font-black">${this.formatNumber(item.previsao_matriz)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.previsao_matriz || 0) > 0 ? `<div class="text-[0.65rem] text-blue-600 font-bold">${this.formatarPeso(Number(item.previsao_matriz) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
                             </div>
 
                             <!-- Matriz + Filial PR (1 + 6) -->
@@ -969,15 +990,36 @@ const estoquePrevisaoApp = {
                                     <span><i class="fa-solid fa-cubes mr-1 text-emerald-600"></i> Matriz + Filial PR (1 + 6)</span>
                                     <span class="text-[0.65rem] font-black px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 whitespace-nowrap flex-none">Total</span>
                                 </div>
-                                <div class="flex justify-between text-xs py-1"><span>Total Físico:</span><b class="text-slate-900">${this.formatNumber(item.estoque_total)} un</b></div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span>Total Físico:</span>
+                                    <div class="text-right">
+                                        <b class="text-slate-900 font-black">${this.formatNumber(item.estoque_total)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.estoque_total || 0) > 0 ? `<div class="text-[0.65rem] text-slate-500 font-bold">${this.formatarPeso(Number(item.estoque_total) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
                                 <div class="flex justify-between text-xs py-1 items-center">
                                     <span>Total Reservado:</span>
-                                    <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 0, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear todos os pedidos reservados (1 + 6)">
-                                        ${this.formatNumber(item.reservado_total)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
-                                    </button>
+                                    <div class="text-right">
+                                        <button type="button" onclick="estoquePrevisaoApp.abrirRastreioReservado(${item.id}, 0, '${this.escapeHtml(item.nome)}')" class="inline-flex items-center gap-1 font-black text-amber-600 hover:text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-0.5 rounded-lg border border-amber-200 transition-colors cursor-pointer whitespace-nowrap" title="Rastrear todos os pedidos reservados (1 + 6)">
+                                            ${this.formatNumber(item.reservado_total)} un <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                                        </button>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.reservado_total || 0) > 0 ? `<div class="text-[0.65rem] text-amber-600/80 font-bold">${this.formatarPeso(Number(item.reservado_total) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
                                 </div>
-                                <div class="flex justify-between text-xs py-1"><span>Total Livre:</span><b class="text-emerald-700 font-black">${this.formatNumber(item.livre_total)} un</b></div>
-                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-emerald-200"><span class="font-extrabold text-emerald-950">Estoque Futuro:</span><b class="text-emerald-800 font-black text-sm">${this.formatNumber(item.estoque_futuro)} un</b></div>
+                                <div class="flex justify-between text-xs py-1">
+                                    <span>Total Livre:</span>
+                                    <div class="text-right">
+                                        <b class="text-emerald-700 font-black">${this.formatNumber(item.livre_total)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 ? `<div class="text-[0.65rem] text-emerald-600 font-bold">${this.formatarPeso(Number(item.livre_total) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
+                                <div class="flex justify-between text-xs py-1 pt-1.5 border-t border-emerald-200">
+                                    <span class="font-extrabold text-emerald-950">Estoque Futuro:</span>
+                                    <div class="text-right">
+                                        <b class="text-emerald-800 font-black text-sm">${this.formatNumber(item.estoque_futuro)} un</b>
+                                        ${Number(item.peso_liquido || 0) > 0 && Number(item.estoque_futuro || 0) > 0 ? `<div class="text-[0.65rem] text-emerald-700 font-bold">${this.formatarPeso(Number(item.estoque_futuro) * Number(item.peso_liquido))}</div>` : ''}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
