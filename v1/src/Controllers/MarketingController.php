@@ -4593,16 +4593,72 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
     public function getCRMDashboard(Request $request, Response $response): Response
     {
         try {
-            $sqlCards = "
-                SELECT 
-                    COUNT(*) FILTER (WHERE status IN ('Novo', 'Qualificado', 'Proposta')) as em_negociacao,
-                    COUNT(*) FILTER (WHERE status = 'Fechado') as fechados,
-                    COUNT(*) FILTER (WHERE data_cadastro >= CURRENT_DATE - INTERVAL '30 days') as novos_30dias,
-                    COUNT(*) as total_clientes,
-                    COALESCE(SUM(CASE WHEN status = 'Fechado' THEN valor_negocio ELSE 0 END), 0)::float as total_faturado
-                FROM mkt_clientes
-            ";
-            $cards = $this->pdo->query($sqlCards)->fetch(PDO::FETCH_ASSOC);
+            $scope = UserScope::fromRequest($request, $this->pdo);
+            $params = $request->getQueryParams();
+            $filial = isset($params['filial']) && (int)$params['filial'] > 0 ? (int)$params['filial'] : null;
+            $gestor = isset($params['gestor']) && (int)$params['gestor'] > 0 ? (int)$params['gestor'] : null;
+            $vendedor = isset($params['representante']) && (int)$params['representante'] > 0 ? (int)$params['representante'] : null;
+
+            $filiais = $scope->resolverFiliais($filial);
+            $gestores = $scope->resolverGestores($gestor);
+
+            // Mês corrente padrão para todos os indicadores de vendas e metas
+            $inicioMes = date('Y-m-01');
+            $fimMes = date('Y-m-d');
+
+            // 1. Filtro de escopo para cliforemp / clientes
+            $whereCli = "WHERE e.inativo = 'N' AND e.tipocliforemp = 0";
+            if (!empty($filiais)) {
+                $whereCli .= " AND (e.idfilial IN (" . implode(',', array_map('intval', $filiais)) . ") OR e.idfilial = 0 OR e.idfilial IS NULL)";
+            }
+            if ($vendedor) {
+                $whereCli .= " AND e.idvendedor = " . (int)$vendedor;
+            } elseif (!empty($gestores)) {
+                $whereCli .= " AND EXISTS (SELECT 1 FROM usuarios_mercos um WHERE um.idcolaborador = e.idvendedor AND um.cdgestor IN (" . implode(',', array_map('intval', $gestores)) . "))";
+            }
+
+            // Total de clientes na carteira
+            $totalCarteira = (int)$this->pdo->query("SELECT COUNT(*) FROM cliforemp e $whereCli")->fetchColumn();
+
+            // Clientes positivados no mês corrente
+            $whereNfs = "WHERE n.status = 2 AND n.idtransacao = 1 AND n.dataemissao >= '$inicioMes'";
+            if (!empty($filiais)) {
+                $whereNfs .= " AND n.idfilial IN (" . implode(',', array_map('intval', $filiais)) . ")";
+            }
+            if ($vendedor) {
+                $whereNfs .= " AND n.idvendrepre = " . (int)$vendedor;
+            } elseif (!empty($gestores)) {
+                $whereNfs .= " AND n.idsupervisor IN (" . implode(',', array_map('intval', $gestores)) . ")";
+            }
+            $positivadosMes = (int)$this->pdo->query("SELECT COUNT(DISTINCT n.idcliforemp) FROM nfs n $whereNfs")->fetchColumn();
+            $faturadoMes = (float)$this->pdo->query("SELECT COALESCE(SUM(n.valortotalnota), 0) FROM nfs n $whereNfs")->fetchColumn();
+
+            $semComprasMes = max(0, $totalCarteira - $positivadosMes);
+
+            // Compromissos do mês corrente
+            $stmtComp = $this->pdo->query("SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'concluido') as concluidos
+            FROM mkt_compromissos 
+            WHERE data_hora >= '$inicioMes' AND data_hora <= '$fimMes 23:59:59'");
+            $comp = $stmtComp->fetch(PDO::FETCH_ASSOC);
+
+            // Oportunidades em negociação
+            $crm = $this->pdo->query("SELECT 
+                COUNT(*) FILTER (WHERE status IN ('Novo', 'Qualificado', 'Proposta')) as em_negociacao,
+                COALESCE(SUM(CASE WHEN status IN ('Novo', 'Qualificado', 'Proposta') THEN valor_negocio ELSE 0 END), 0)::float as pipeline_valor
+            FROM mkt_clientes")->fetch(PDO::FETCH_ASSOC);
+
+            $cards = [
+                'total_clientes' => $totalCarteira,
+                'fechados' => $positivadosMes,
+                'sem_compras_mes' => $semComprasMes,
+                'em_negociacao' => (int)($crm['em_negociacao'] ?? 0),
+                'total_faturado' => $faturadoMes,
+                'pipeline_valor' => (float)($crm['pipeline_valor'] ?? 0),
+                'total_compromissos_mes' => (int)($comp['total'] ?? 0),
+                'concluidos_mes' => (int)($comp['concluidos'] ?? 0),
+            ];
             
             $sqlAlertas = "
                 SELECT c.* FROM mkt_clientes c

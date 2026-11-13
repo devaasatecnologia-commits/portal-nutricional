@@ -1,5 +1,5 @@
 # CONTINUATION TOKEN ATIVO
 
-Último token gerado: [CONTINUATION-2026-11-12-DASHBOARD-VENDAS-RECOMPRA.md](file:///c:/xampp/htdocs/API/docs/tokens/CONTINUATION-2026-11-12-DASHBOARD-VENDAS-RECOMPRA.md)
-Data de atualização: 12/11/2026 16:00
-Módulos: Dashboard de Vendas, Novo Módulo Recompra & Clientes, Treinamentos e Chamados.
+Último token gerado: [CONTINUATION-2026-11-13-CRM-CLIENTES-PERFORMANCE-PADRONIZACAO.md](file:///c:/xampp/htdocs/API/docs/tokens/CONTINUATION-2026-11-13-CRM-CLIENTES-PERFORMANCE-PADRONIZACAO.md)
+Data de atualização: 13/11/2026 09:55
+Módulos: CRM Clientes (Otimização Extrema de Performance, Padronização Visual Topo Executivo + Mobile Toolbar, Cards Mês Corrente, Alternância Grade/Agenda e Correção de Ações & Botões nos Treinamentos).

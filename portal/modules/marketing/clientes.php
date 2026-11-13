@@ -19,6 +19,17 @@ $extraCss = '
 
 * { font-family: "Inter", sans-serif; }
 
+@media (max-width: 1023px) {
+    .crm-header-desktop { display: none !important; }
+    .crm-mobile-toolbar { display: block !important; }
+    .crm-mobile-spacer { display: block !important; }
+}
+@media (min-width: 1024px) {
+    .crm-header-desktop { display: flex !important; }
+    .crm-mobile-toolbar { display: none !important; }
+    .crm-mobile-spacer { display: none !important; }
+}
+
 
 
 /* Timeline de Interações */
@@ -284,32 +295,83 @@ require_once __DIR__ . '/../../estrutura/header.php';
 
 <div class="max-w-full mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4" x-data="crmProfissional()" x-init="init()" x-cloak>
 
-    <!-- HEADER PROFISSIONAL -->
-    <div class="bg-gradient-to-r from-slate-900 to-slate-800 rounded-3xl p-4 sm:p-6 mb-4 sm:mb-6 shadow-2xl">
-        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
-            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
-               <a href="/portal/" class="btn-voltar flex-none flex w-10 h-10 rounded-xl items-center justify-center transition-colors no-underline bg-slate-100 hover:bg-slate-200" title="Voltar ao Portal">
-                <i class="fa-solid fa-arrow-left text-slate-600"></i>
+    <!-- HEADER MOBILE FIXO -->
+    <div class="crm-mobile-toolbar fixed top-0 left-0 right-0 z-50 shadow-lg bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 text-white">
+        <div class="flex items-center justify-between px-4 py-3">
+            <a href="/portal/" class="flex items-center gap-1.5 no-underline text-white hover:text-emerald-300 transition">
+                <i class="fa-solid fa-arrow-left text-base"></i>
+                <span class="text-xs font-extrabold tracking-wide">VOLTAR</span>
             </a>
-            <div class="w-12 h-12 sm:w-14 sm:h-14 flex-none bg-gradient-to-br from-emerald-400 to-teal-500 rounded-2xl flex items-center justify-center shadow-lg">
-                <i class="fa-solid fa-crown text-white text-xl sm:text-2xl"></i>
+            <div class="text-center">
+                <span class="text-xs sm:text-sm font-black tracking-wide text-emerald-400">CRM CLIENTES 360°</span>
             </div>
-            <div class="min-w-0">
-                <h1 class="text-xl sm:text-2xl font-black text-white tracking-tight truncate">CRM Clientes</h1>
-                <p class="text-slate-300 text-xs sm:text-sm leading-snug">Gestão inteligente de relacionamento, visitas e pedidos</p>
+            <div class="flex items-center gap-2">
+                <a href="/portal/modules/treinamentos.php?modulo=marketing-clientes" class="px-2 py-1 rounded-lg bg-amber-400 text-slate-900 text-[10px] font-extrabold no-underline">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </a>
+                <div class="clock font-mono text-sm font-bold text-slate-200" id="relogioMobile">00:00</div>
             </div>
         </div>
 
-        <div class="flex flex-wrap gap-2 sm:gap-2.5 items-center w-full lg:w-auto">
+        <div class="flex items-center justify-between px-4 py-2 border-t border-white/10 text-xs">
+            <div class="flex items-center gap-1.5">
+                <button type="button" @click="viewMode = 'tabela'"
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                    :class="viewMode === 'tabela' ? 'bg-emerald-500 text-white shadow-xs' : 'bg-white/10 text-slate-300'">
+                    <i class="fa-solid fa-users mr-1"></i>Carteira
+                </button>
+                <button type="button" @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
+                    class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
+                    :class="viewMode === 'agenda' ? 'bg-indigo-500 text-white shadow-xs' : 'bg-white/10 text-slate-300'">
+                    <i class="fa-regular fa-calendar mr-1"></i>Agenda
+                </button>
+            </div>
+            <div class="flex items-center gap-2">
+                <button @click="carregarClientes(); carregarDashboard();" class="px-2.5 py-1.5 rounded-lg bg-white/15 text-white text-xs font-bold">
+                    <i class="fa-solid fa-rotate" :class="{ 'fa-spin': _carregando }"></i>
+                </button>
+                <button onclick="abrirModalCliente()" class="px-2.5 py-1.5 rounded-lg bg-emerald-500 text-white text-xs font-extrabold">
+                    <i class="fa-solid fa-user-plus"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="crm-mobile-spacer h-24"></div>
+
+    <!-- HEADER DESKTOP EXECUTIVO -->
+    <div class="crm-header-desktop bg-gradient-to-r from-slate-900 via-slate-800 to-emerald-950 rounded-3xl p-5 mb-5 shadow-2xl flex-col lg:flex-row justify-between items-start lg:items-center gap-4 text-white">
+        <div class="flex items-center gap-4 min-w-0">
+            <a href="/portal/" class="flex-none flex w-10 h-10 rounded-2xl items-center justify-center transition-all no-underline bg-white/10 hover:bg-white/20 text-white shadow-sm" title="Voltar ao Portal">
+                <i class="fa-solid fa-arrow-left text-base"></i>
+            </a>
+            <div class="w-13 h-13 flex-none bg-gradient-to-br from-emerald-500 to-teal-600 rounded-2xl flex items-center justify-center shadow-lg">
+                <i class="fa-solid fa-crown text-white text-2xl"></i>
+            </div>
+            <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                    <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wide">
+                        <i class="fa-solid fa-users-viewfinder mr-1"></i>Visão 360° Carteira
+                    </span>
+                    <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-extrabold uppercase tracking-wide">
+                        Mês Corrente
+                    </span>
+                </div>
+                <h1 class="text-2xl font-black text-white tracking-tight truncate">CRM Clientes & Relacionamento Comercial</h1>
+                <p class="text-slate-300 text-xs leading-snug">Gestão inteligente de relacionamento, histórico de pedidos, visitas e disciplina comercial</p>
+            </div>
+        </div>
+
+        <div class="flex flex-wrap gap-2.5 items-center w-full lg:w-auto">
             <!-- SINO DE NOTIFICAÇÕES CRM -->
             <div class="relative" x-data="notificacoesCRM()" x-init="init()" @click.outside="aberto = false">
                 <button @click="toggleAbrir()" class="notification-bell-crm relative p-2.5 bg-white/10 backdrop-blur rounded-xl hover:bg-white/20 transition-all">
-                    <i class="fa-regular fa-bell text-white text-lg sm:text-xl"></i>
+                    <i class="fa-regular fa-bell text-white text-lg"></i>
                     <span x-show="naoLidas > 0" x-text="naoLidas > 99 ? '99+' : naoLidas" 
-                      class="notification-badge-crm" style="display: none;"></span>
-                  </button>
+                          class="notification-badge-crm" style="display: none;"></span>
+                </button>
 
-                  <div x-show="aberto" x-transition.duration.200ms class="notification-dropdown-crm" style="display: none;">
+                <div x-show="aberto" x-transition.duration.200ms class="notification-dropdown-crm" style="display: none;">
                     <div class="notification-header-crm">
                         <span class="font-bold text-sm"><i class="fa-regular fa-bell mr-2"></i>Notificações</span>
                         <button @click="marcarTodasLidas()" class="mark-all-read-crm">
@@ -343,131 +405,138 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 </div>
             </div>
 
+            <!-- TREINAMENTO & MANUAL (AMARELO DE DESTAQUE) -->
             <a href="/portal/modules/treinamentos.php?modulo=marketing-clientes" 
-               class="px-3 sm:px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-slate-900 rounded-xl font-extrabold text-xs transition-all shadow-md flex items-center justify-center gap-1.5 no-underline whitespace-nowrap">
-                <i class="fa-solid fa-graduation-cap"></i> <span>Treinamento</span>
+               class="px-4 py-2.5 bg-amber-400 hover:bg-amber-300 text-slate-900 rounded-xl font-black text-xs transition-all shadow-md flex items-center justify-center gap-1.5 no-underline whitespace-nowrap">
+                <i class="fa-solid fa-graduation-cap text-sm"></i>
+                <span>Treinamento &amp; Manual</span>
             </a>
-            <button onclick="abrirModalCliente()" class="flex-1 sm:flex-none px-3.5 sm:px-5 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-emerald-600 transition-all shadow-lg flex items-center justify-center gap-1.5 whitespace-nowrap">
-                <i class="fa-solid fa-plus-circle"></i> <span>Novo Cliente</span>
+
+            <button onclick="abrirModalCliente()" class="px-4 py-2.5 bg-emerald-500 text-white rounded-xl font-bold text-xs hover:bg-emerald-600 transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-user-plus"></i> <span>Novo Cliente</span>
             </button>
-            <button onclick="abrirModalAgendamento()" class="px-3.5 py-2.5 bg-indigo-500 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-indigo-600 transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
-                <i class="fa-regular fa-calendar-plus"></i> <span>Agendar</span>
+            <button onclick="abrirModalAgendamento()" class="px-3.5 py-2.5 bg-indigo-500 text-white rounded-xl font-bold text-xs hover:bg-indigo-600 transition-all shadow-md flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-regular fa-calendar-plus"></i> <span>Agendar Visita</span>
             </button>
-            <button onclick="exportarCSV()" class="px-3.5 py-2.5 bg-slate-600 text-white rounded-xl font-bold text-xs sm:text-sm hover:bg-slate-700 transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
-                <i class="fa-solid fa-download"></i> <span class="hidden sm:inline">Exportar</span>
+            <button onclick="exportarCSV()" class="px-3.5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center gap-1.5 whitespace-nowrap">
+                <i class="fa-solid fa-download"></i> <span>Exportar</span>
+            </button>
+            <button @click="carregarClientes(); carregarDashboard();" class="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl font-bold text-xs transition-all flex items-center justify-center" title="Atualizar Indicadores">
+                <i class="fa-solid fa-rotate" :class="{ 'fa-spin': _carregando }"></i>
             </button>
         </div>
     </div>
 
-    <!-- Stats Row (Visão Executiva & Especialista em CRM) -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 sm:gap-3.5 mt-5 sm:mt-6">
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             data-tooltip="Total Carteira CRM|Total de clientes e parceiros mapeados na carteira sob alçada da filial e gestores selecionados.">
-            <div class="text-lg sm:text-2xl font-black text-white truncate" x-text="stats.total">0</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-slate-300 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Total Carteira</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-slate-400 group-hover:text-white transition-colors flex-none"></i>
+    <!-- CARDS DE INDICADORES (MÊS CORRENTE - PADRÃO EXECUTIVO 6 CARDS) -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+        <!-- 1. Total Carteira -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Total Carteira CRM|Total de clientes sob alçada das filiais e gestores selecionados.">
+            <div class="flex items-center justify-between text-slate-400 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Carteira</span>
+                <i class="fa-solid fa-users text-slate-400 group-hover:text-slate-700 transition-colors text-xs"></i>
             </div>
+            <div class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight truncate" x-text="stats.total">0</div>
+            <div class="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">Clientes ativos no escopo</div>
         </div>
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             data-tooltip="Clientes Fechados|Contas que converteram pedidos faturados no período de análise ou propostas ganhas no funil.">
-            <div class="text-lg sm:text-2xl font-black text-emerald-400 truncate" x-text="stats.fechados">0</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-emerald-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Fechados</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-emerald-300 group-hover:text-white transition-colors flex-none"></i>
+
+        <!-- 2. Positivados Mês -->
+        <div class="bg-white rounded-2xl p-4 border border-emerald-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Positivados no Mês|Clientes com pedidos faturados (NFs confirmadas) no mês corrente.">
+            <div class="flex items-center justify-between text-emerald-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Positivados Mês</span>
+                <i class="fa-solid fa-circle-check text-emerald-500 group-hover:scale-110 transition-transform text-xs"></i>
             </div>
+            <div class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight truncate" x-text="stats.fechados">0</div>
+            <div class="text-[10px] text-emerald-700 font-bold mt-0.5 truncate" x-text="stats.conversao + '% da carteira'">0% da carteira</div>
         </div>
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             data-tooltip="Em Negociação|Contas ativas com cotações abertas, pedidos pendentes ou em fase de prospecção comercial.">
-            <div class="text-lg sm:text-2xl font-black text-amber-400 truncate" x-text="stats.emNegociacao">0</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-amber-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Negociação</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-amber-300 group-hover:text-white transition-colors flex-none"></i>
+
+        <!-- 3. Sem Compras Mês -->
+        <div class="bg-white rounded-2xl p-4 border border-rose-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Sem Compras no Mês|Clientes ativos da carteira que ainda não realizaram compras faturadas neste mês.">
+            <div class="flex items-center justify-between text-rose-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-700">Sem Compras Mês</span>
+                <i class="fa-solid fa-user-xmark text-rose-500 group-hover:scale-110 transition-transform text-xs"></i>
             </div>
+            <div class="text-xl sm:text-2xl font-black text-rose-600 tracking-tight truncate" x-text="stats.sem_compras_mes">0</div>
+            <div class="text-[10px] text-rose-600 font-bold mt-0.5 truncate">Pendente positivação</div>
         </div>
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             data-tooltip="Pipeline Financeiro|Valor financeiro estimado de propostas e oportunidades em aberto no funil comercial.">
-            <div class="text-lg sm:text-2xl font-black text-blue-400 truncate" x-text="stats.pipelineValue">R$ 0</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-blue-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Pipeline (R$)</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-blue-300 group-hover:text-white transition-colors flex-none"></i>
+
+        <!-- 4. Em Negociação -->
+        <div class="bg-white rounded-2xl p-4 border border-amber-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Em Negociação|Contas e oportunidades ativas no funil (Novo, Qualificado ou Proposta).">
+            <div class="flex items-center justify-between text-amber-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Em Negociação</span>
+                <i class="fa-solid fa-handshake text-amber-500 group-hover:scale-110 transition-transform text-xs"></i>
             </div>
+            <div class="text-xl sm:text-2xl font-black text-amber-600 tracking-tight truncate" x-text="stats.emNegociacao">0</div>
+            <div class="text-[10px] text-amber-700 font-bold mt-0.5 truncate" x-text="'Pipeline: ' + (typeof stats.pipelineValue === 'number' ? formatarMoeda(stats.pipelineValue) : stats.pipelineValue)">R$ 0</div>
         </div>
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             data-tooltip="Taxa de Conversão|Percentual de conversão de oportunidades e propostas em vendas faturadas no período.">
-            <div class="text-lg sm:text-2xl font-black text-purple-400 truncate" x-text="stats.conversao + '%'">0%</div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-purple-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Conversão</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-purple-300 group-hover:text-white transition-colors flex-none"></i>
+
+        <!-- 5. Faturamento Mês -->
+        <div class="bg-white rounded-2xl p-4 border border-blue-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Faturamento Líquido Mês|Volume financeiro total faturado das notas fiscais emitidas no mês corrente sob o escopo.">
+            <div class="flex items-center justify-between text-blue-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Faturado Mês</span>
+                <i class="fa-solid fa-sack-dollar text-blue-500 group-hover:scale-110 transition-transform text-xs"></i>
             </div>
+            <div class="text-xl sm:text-2xl font-black text-blue-600 tracking-tight truncate" x-text="formatarMoeda(stats.total_faturado || 0)">R$ 0</div>
+            <div class="text-[10px] text-blue-600 font-bold mt-0.5 truncate">Total NFs mês atual</div>
         </div>
-        <div class="min-w-0 bg-white/10 hover:bg-white/15 backdrop-blur rounded-2xl p-3 sm:p-3.5 text-center transition-all hover:scale-[1.02] cursor-pointer border border-white/10 shadow-sm group"
-             onclick="document.getElementById('secaoAgendaCompromissos')?.scrollIntoView({behavior: 'smooth'})"
-             data-tooltip="Agenda & Disciplina Comercial|Acompanhamento de metas: contatos e visitas concluídos versus total agendado no mês corrente.">
-            <div class="text-lg sm:text-2xl font-black text-teal-300 flex items-center justify-center gap-1 truncate">
+
+        <!-- 6. Agenda & Disciplina Mês -->
+        <div class="bg-white rounded-2xl p-4 border border-indigo-200/80 shadow-xs hover:shadow-md transition-all group cursor-pointer"
+             @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
+             data-tooltip="Agenda & Disciplina Comercial|Visitas e contatos concluídos versus total agendado no mês corrente. Clique para alternar para a agenda.">
+            <div class="flex items-center justify-between text-indigo-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Agenda Mês</span>
+                <i class="fa-regular fa-calendar-check text-indigo-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-indigo-600 tracking-tight flex items-baseline gap-1 truncate">
                 <span x-text="stats.concluidosMes || 0">0</span>
-                <span class="text-xs sm:text-sm font-semibold text-slate-400">/</span>
-                <span class="text-sm sm:text-base font-bold text-slate-300" x-text="stats.totalCompromissosMes || 0">0</span>
+                <span class="text-xs text-slate-400 font-semibold">/</span>
+                <span class="text-sm font-bold text-slate-500" x-text="stats.totalCompromissosMes || 0">0</span>
             </div>
-            <div class="text-[10px] sm:text-[11px] font-bold text-teal-200 uppercase tracking-wider mt-0.5 flex items-center justify-center gap-1">
-                <span class="truncate">Agenda Mês</span>
-                <i class="fa-solid fa-circle-question text-[9px] text-teal-300 group-hover:text-white transition-colors flex-none"></i>
-            </div>
+            <div class="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">Concluídos / Total</div>
         </div>
     </div>
-</div>
 
-<!-- BARRA RÁPIDA DE CAMPO (MODO APP GESTOR / CELULAR) -->
-<div class="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 mb-5">
-    <button type="button" onclick="document.getElementById('secaoCarteiraClientes')?.scrollIntoView({behavior: 'smooth'})"
-        class="bg-white hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
-        <div class="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-none">
-            <i class="fa-solid fa-users text-sm"></i>
+    <!-- BARRA RÁPIDA DE NAVEGAÇÃO & ATALHOS -->
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5 p-2 bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div class="flex items-center gap-1.5">
+            <button type="button" @click="viewMode = 'tabela'"
+                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
+                :class="viewMode === 'tabela' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-solid fa-users"></i>
+                <span>Carteira de Clientes (Grade)</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-black" :class="viewMode === 'tabela' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700'" x-text="pagination.total">0</span>
+            </button>
+            <button type="button" @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
+                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
+                :class="viewMode === 'agenda' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-regular fa-calendar-alt"></i>
+                <span>Agenda de Visitas &amp; Compromissos</span>
+                <span x-show="proximosCompromissos.length > 0" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white" x-text="proximosCompromissos.length">0</span>
+            </button>
         </div>
-        <div class="min-w-0">
-            <div class="text-xs font-extrabold text-slate-800 truncate">Carteira CRM</div>
-            <div class="text-[10px] text-slate-500 font-semibold truncate" x-text="pagination.total + ' clientes ativos'">Clientes</div>
-        </div>
-    </button>
 
-    <button type="button" onclick="document.getElementById('secaoAgendaCompromissos')?.scrollIntoView({behavior: 'smooth'})"
-        class="bg-white hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
-        <div class="w-9 h-9 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center flex-none relative">
-            <i class="fa-regular fa-calendar-check text-sm"></i>
-            <span x-show="proximosCompromissos.length > 0" x-text="proximosCompromissos.length" class="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center"></span>
+        <div class="flex items-center gap-2">
+            <button type="button" onclick="abrirModalAgendamento()"
+                class="px-3 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-plus"></i>
+                <span>Novo Agendamento</span>
+            </button>
+            <button type="button" onclick="window.abrirPedidoMercos()"
+                class="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-cart-plus"></i>
+                <span>Pedido Mercos</span>
+            </button>
         </div>
-        <div class="min-w-0">
-            <div class="text-xs font-extrabold text-slate-800 truncate">Minha Agenda</div>
-            <div class="text-[10px] text-indigo-600 font-bold truncate" x-text="proximosCompromissos.length + ' próximo(s)'">Ver visitas</div>
-        </div>
-    </button>
-
-    <button type="button" onclick="abrirModalAgendamento()"
-        class="bg-white hover:bg-purple-50 border border-slate-200 hover:border-purple-300 rounded-2xl p-3 shadow-xs flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
-        <div class="w-9 h-9 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center flex-none">
-            <i class="fa-solid fa-calendar-plus text-sm"></i>
-        </div>
-        <div class="min-w-0">
-            <div class="text-xs font-extrabold text-slate-800 truncate">Agendar Visita</div>
-            <div class="text-[10px] text-purple-600 font-bold truncate">Novo compromisso</div>
-        </div>
-    </button>
-
-    <button type="button" onclick="window.abrirPedidoMercos()"
-        class="bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white rounded-2xl p-3 shadow-sm flex items-center gap-2.5 text-left transition-all active:scale-[0.98]">
-        <div class="w-9 h-9 rounded-xl bg-white/20 text-white flex items-center justify-center flex-none">
-            <i class="fa-solid fa-cart-plus text-sm"></i>
-        </div>
-        <div class="min-w-0">
-            <div class="text-xs font-extrabold text-white truncate">Pedido Mercos</div>
-            <div class="text-[10px] text-blue-100 font-semibold truncate">Abrir App / Web</div>
-        </div>
-    </button>
-</div>
+    </div>
 
 
 <!-- VIEW TABELA / CARDS -->
-<div id="secaoCarteiraClientes">
+<div id="secaoCarteiraClientes" x-show="viewMode === 'tabela'">
     <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
       <!-- FILTROS AVANÇADOS MODERNOS -->
 <!-- FILTROS AVANÇADOS MODERNOS -->
@@ -1075,7 +1144,7 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
 </div>
 
 <!-- SEÇÃO DE AGENDA PREMIUM -->
-<div id="secaoAgendaCompromissos" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 sm:mt-8">
+<div id="secaoAgendaCompromissos" x-show="viewMode === 'agenda'" class="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-6 sm:mt-8">
     <div class="order-2 lg:order-1 lg:col-span-2 bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
         <div class="bg-gradient-to-r from-blue-600 to-indigo-600 px-4 sm:px-5 py-3.5 sm:py-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
             <div>
@@ -1248,7 +1317,9 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             stats: {
                 total: 0,
                 fechados: 0,
+                sem_compras_mes: 0,
                 emNegociacao: 0,
+                total_faturado: 0,
                 pipelineValue: 0,
                 conversao: 0,
                 totalCompromissosMes: 0,
@@ -2849,6 +2920,16 @@ abrirAgendamentoRapido(start, end) {
         // AUTO REFRESH
         // ====================================================================
     iniciarAutoRefresh() {
+        const updateRelogio = () => {
+            const relogio = document.getElementById('relogioMobile');
+            if (relogio) {
+                const agora = new Date();
+                relogio.innerText = String(agora.getHours()).padStart(2, '0') + ':' + String(agora.getMinutes()).padStart(2, '0');
+            }
+        };
+        updateRelogio();
+        setInterval(updateRelogio, 1000);
+
         setInterval(() => {
             this.carregarAlertas();
             this.carregarProximosCompromissos();
@@ -3064,6 +3145,7 @@ abrirAgendamentoRapido(start, end) {
             this.filtros.representante = '';
             await this.carregarGestores();
             await this.carregarRepresentantes();
+            await this.carregarDashboard();
             this.pagination.atual = 1;
             this.carregarClientes();
         },
@@ -3071,6 +3153,7 @@ abrirAgendamentoRapido(start, end) {
         async onGestorChange() {
             this.filtros.representante = '';
             await this.carregarRepresentantes();
+            await this.carregarDashboard();
             this.pagination.atual = 1;
             this.carregarClientes();
         },
@@ -3080,13 +3163,22 @@ abrirAgendamentoRapido(start, end) {
         // ====================================================================
         async carregarDashboard() {
             try {
-                const resp = await this.fetchWithAuth('/v1/marketing/crm-dashboard');
+                const params = new URLSearchParams();
+                if (this.filtros.filial) params.append('filial', this.filtros.filial);
+                if (this.filtros.gestor) params.append('gestor', this.filtros.gestor);
+                if (this.filtros.representante) params.append('representante', this.filtros.representante);
+
+                const resp = await this.fetchWithAuth(`/v1/marketing/crm-dashboard?${params.toString()}`);
                 const data = await resp.json();
                 this.stats.total = data.cards?.total_clientes || 0;
                 this.stats.fechados = data.cards?.fechados || 0;
+                this.stats.sem_compras_mes = data.cards?.sem_compras_mes || 0;
                 this.stats.emNegociacao = data.cards?.em_negociacao || 0;
-                this.stats.pipelineValue = data.cards?.total_faturado || 0;
+                this.stats.total_faturado = data.cards?.total_faturado || 0;
+                this.stats.pipelineValue = data.cards?.pipeline_valor || 0;
                 this.stats.conversao = this.stats.total > 0 ? ((this.stats.fechados / this.stats.total) * 100).toFixed(1) : 0;
+                this.stats.totalCompromissosMes = data.cards?.total_compromissos_mes || 0;
+                this.stats.concluidosMes = data.cards?.concluidos_mes || 0;
             } catch (e) {
                 console.error('Erro ao carregar dashboard:', e);
             }

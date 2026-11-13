@@ -448,8 +448,8 @@ function renderizarAbaAcoes(acoes) {
     };
 
     box.innerHTML = acoes.map((a, idx) => {
-        const elemento = a.botao || a.elemento || `Ação #${idx + 1}`;
-        const fluxo = a.funcao || a.fluxo || '';
+        const elemento = a.botao || a.elemento || a.nome || a.titulo || `Ação #${idx + 1}`;
+        const fluxo = a.funcao || a.fluxo || a.descricao || a.acao || '';
         const cor = coresBtn[a.cor] || 'bg-slate-800 text-white';
 
         return `
