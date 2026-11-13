@@ -32,16 +32,23 @@ window.apiFetch = async function(endpoint, options) {
     options = options || {};
     var token = localStorage.getItem('authToken');
     
-    // Remove /v1/ do início se existir (evita duplicação)
-    var cleanEndpoint = endpoint;
+    // Remove /v1/ e barras redundantes do início
+    var cleanEndpoint = endpoint || '';
     if (cleanEndpoint.startsWith('/v1/')) {
         cleanEndpoint = cleanEndpoint.substring(4);
     }
     if (cleanEndpoint.startsWith('v1/')) {
         cleanEndpoint = cleanEndpoint.substring(3);
     }
+    cleanEndpoint = cleanEndpoint.replace(/^\/+/, '');
     
-    var url = window.API_URL + '/' + cleanEndpoint;
+    var baseUrl = window.API_URL || '/v1';
+    var url;
+    if (baseUrl.endsWith('=')) {
+        url = baseUrl + '/' + cleanEndpoint;
+    } else {
+        url = baseUrl.replace(/\/+$/, '') + '/' + cleanEndpoint;
+    }
     var defaultHeaders = {
         'Content-Type': 'application/json'
     };

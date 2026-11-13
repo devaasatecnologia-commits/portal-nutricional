@@ -91,14 +91,32 @@
     a[href="/portal/"].hidden.sm\:flex, .glass a[href="/portal/"].hidden.sm\:flex { display: flex !important; }
     .text-right.hidden.sm\:block { display: block !important; }
     span.hidden.sm\:inline { display: inline !important; }
+    .hidden.sm\:block { display: block !important; }
+    .hidden.sm\:flex { display: flex !important; }
+}
+@media (min-width: 768px) {
+    .hidden.md\:block { display: block !important; }
+    .hidden.md\:flex { display: flex !important; }
+    .hidden.md\:grid { display: grid !important; }
+    .hidden.md\:table { display: table !important; }
+    .hidden.md\:inline-block { display: inline-block !important; }
+    .crm-desktop-table { display: block !important; }
+    .crm-mobile-cards { display: none !important; }
+}
+@media (max-width: 767px) {
+    .crm-desktop-table { display: none !important; }
+    .crm-mobile-cards { display: block !important; }
+}
+@media (min-width: 1024px) {
+    .hidden.lg\:block { display: block !important; }
+    .hidden.lg\:flex { display: flex !important; }
+    .hidden.lg\:grid { display: grid !important; }
+    .mobile-toolbar.block.lg\:hidden { display: none !important; }
+    .mobile-spacer.block.lg\:hidden { display: none !important; }
 }
 @media (max-width: 1023px) {
     .mobile-toolbar.block.lg\:hidden { display: flex !important; }
     .mobile-spacer.block.lg\:hidden { display: block !important; }
-}
-@media (min-width: 1024px) {
-    .mobile-toolbar.block.lg\:hidden { display: none !important; }
-    .mobile-spacer.block.lg\:hidden { display: none !important; }
 }
 
 /* ==========================================================================

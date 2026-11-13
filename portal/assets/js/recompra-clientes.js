@@ -41,7 +41,18 @@ function recompraClientesHandler() {
         // Modal Raio-X
         modalClienteOpen: false,
         clienteSelecionadoNome: '',
-        clienteDetalhes: null,
+        clienteDetalhes: {
+            id: null,
+            nome: '',
+            representante: '',
+            regiao: '',
+            cidade_uf: '',
+            ultima_compra: '',
+            dias_sem_comprar: 0,
+            valor_historico: 0,
+            peso_historico: 0,
+            notas: []
+        },
 
         async init() {
             await this.carregarFiliais();
@@ -377,29 +388,43 @@ function recompraClientesHandler() {
         async verDetalhesCliente(idcliente, nome) {
             this.modalClienteOpen = true;
             this.clienteSelecionadoNome = nome || `Cliente #${idcliente}`;
-            this.clienteDetalhes = null;
+            
+            // Pré-popula imediatamente com os dados locais já carregados na tabela
+            const itemLocal = this.clientes.find(c => c.id == idcliente);
+            this.clienteDetalhes = {
+                id: idcliente,
+                nome: nome || (itemLocal ? itemLocal.nome : ''),
+                representante: itemLocal ? itemLocal.representante : '',
+                regiao: itemLocal ? itemLocal.regiao : '',
+                cidade_uf: itemLocal ? itemLocal.cidade_uf : '',
+                ultima_compra: itemLocal ? (itemLocal.ultima || itemLocal.ultima_fmt) : '',
+                dias_sem_comprar: itemLocal ? itemLocal.dias_sem_comprar : 0,
+                valor_historico: itemLocal ? parseFloat(itemLocal.valor_historico) : 0,
+                peso_historico: itemLocal ? parseFloat(itemLocal.peso_historico) : 0,
+                notas: []
+            };
             this.loadingCliente = true;
 
             try {
                 const dados = await this.apiFetch('/v1/vendas/dashboard/cliente-detalhes', { idcliente: parseInt(idcliente) });
-                this.clienteDetalhes = dados.cliente || null;
-            } catch (e) {
-                console.error('Erro ao carregar detalhes do cliente:', e);
-                // Fallback para os dados já existentes na lista
-                const find = this.clientes.find(c => c.id == idcliente);
-                if (find) {
+                if (dados && dados.cliente) {
+                    const c = dados.cliente;
+                    const notas = dados.notas || c.notas || [];
                     this.clienteDetalhes = {
-                        nome: find.nome,
-                        representante: find.representante,
-                        regiao: find.regiao,
-                        cidade_uf: find.cidade_uf,
-                        ultima_compra: find.ultima_compra,
-                        dias_sem_comprar: find.dias_sem_comprar,
-                        valor_historico: find.valor_historico,
-                        peso_historico: find.peso_historico,
-                        notas: []
+                        id: c.idcliforemp || idcliente,
+                        nome: c.cliente || this.clienteDetalhes.nome,
+                        representante: c.representante || this.clienteDetalhes.representante,
+                        regiao: c.regiao || this.clienteDetalhes.regiao,
+                        cidade_uf: c.cidade_uf || (c.cidade ? `${c.cidade} / ${c.estado}` : this.clienteDetalhes.cidade_uf),
+                        ultima_compra: c.ultima_compra || this.clienteDetalhes.ultima_compra,
+                        dias_sem_comprar: (c.dias_sem_comprar !== null && c.dias_sem_comprar !== undefined) ? c.dias_sem_comprar : this.clienteDetalhes.dias_sem_comprar,
+                        valor_historico: c.valor_historico || c.valor || this.clienteDetalhes.valor_historico,
+                        peso_historico: c.peso_historico || c.peso || this.clienteDetalhes.peso_historico,
+                        notas: notas
                     };
                 }
+            } catch (e) {
+                console.error('Erro ao carregar detalhes do cliente:', e);
             } finally {
                 this.loadingCliente = false;
             }

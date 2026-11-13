@@ -144,53 +144,127 @@ require_once __DIR__ . '/estrutura/header.php';
             <div class="text-2xl font-black text-[#375a4b] font-['Chivo_Mono'] tracking-tight tabular-nums" id="relogio-dashboard">00:00:00</div>
         </div>
     </div>
-    <!-- Sino de Notificações -->
-    <div class="relative" x-data="notificacoesHandler()" x-init="init()">
-        <button @click="abrirNotificacoes()" class="relative p-2 rounded-xl hover:bg-slate-100 transition-colors">
-            <i class="fa-solid fa-bell text-slate-500 text-lg"></i>
-            <span x-show="naoLidas > 0" x-text="naoLidas > 99 ? '99+' : naoLidas" 
-              class="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center"
+    <!-- Central de Notificações & Mensagens Separadas -->
+    <div class="relative flex items-center gap-1" x-data="notificacoesHandler()" x-init="init()">
+        <!-- Botão Notificações de Mensagens (Chat Interno) -->
+        <button @click="abrirAba('mensagens')" class="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors" title="Notificações de Mensagens (Chat)">
+            <i class="fa-solid fa-comments text-slate-600 text-lg"></i>
+            <span x-show="naoLidasChat > 0" x-text="naoLidasChat > 99 ? '99+' : naoLidasChat" 
+              class="sidebar-chat-badge absolute -top-0.5 -right-0.5 bg-emerald-600 text-white text-[10px] font-black min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 shadow-md border-2 border-white"
               style="display: none;"></span>
-          </button>
+        </button>
 
-          <!-- Dropdown -->
-          <div x-show="open" @click.outside="open = false" x-transition
-          class="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 z-50 max-h-96 overflow-y-auto"
-          style="display: none;">
-          <div class="p-4 border-b border-slate-100 flex justify-between items-center">
-            <h4 class="font-bold text-slate-800">Notificações</h4>
-            <button @click="marcarTodasLidas()" class="text-xs text-[#375a4b] font-bold hover:underline">Marcar todas lidas</button>
-        </div>
-        <div class="divide-y divide-slate-100">
-            <template x-for="n in notificacoes" :key="n.id">
-                <a :href="n.link || '#'" @click="marcarLida(n.id)" 
-                class="block p-4 hover:bg-slate-50 transition-colors cursor-pointer"
-                :class="!n.lida ? 'bg-amber-50/50' : ''">
-                <div class="flex items-start gap-3">
-                    <div class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                    :class="n.tipo === 'meta_prazo' ? 'bg-amber-100 text-amber-600' : 
-                    n.tipo === 'lead_parado' ? 'bg-rose-100 text-rose-600' : 
-                    'bg-blue-100 text-blue-600'">
-                    <i class="fa-solid text-xs" 
-                    :class="n.tipo === 'meta_prazo' ? 'fa-clock' : 
-                    n.tipo === 'lead_parado' ? 'fa-user-clock' : 'fa-bell'"></i>
+        <!-- Botão Alertas Gerais (Chamados, Agenda & Sistema) -->
+        <button @click="abrirAba('alertas')" class="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors" title="Central de Alertas, Chamados & Agenda">
+            <i class="fa-solid fa-bell text-slate-600 text-lg"></i>
+            <span x-show="naoLidas > 0" x-text="naoLidas > 99 ? '99+' : naoLidas" 
+              class="notification-badge-geral absolute -top-0.5 -right-0.5 bg-rose-600 text-white text-[10px] font-black min-w-[18px] h-[18px] rounded-full flex items-center justify-center px-1 shadow-md border-2 border-white"
+              style="display: none;"></span>
+        </button>
+
+        <!-- Dropdown Premium com Canais Separados -->
+        <div x-show="open" @click.outside="open = false" x-transition.duration.200ms
+             class="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 z-50 overflow-hidden"
+             style="display: none;">
+            <div class="p-3 bg-gradient-to-r from-slate-900 to-emerald-950 text-white flex justify-between items-center">
+                <div class="flex items-center gap-2">
+                    <i class="fa-solid text-sm" :class="abaAtiva === 'mensagens' ? 'fa-comments text-emerald-400' : 'fa-bell text-amber-400'"></i>
+                    <h4 class="font-black text-xs text-white uppercase tracking-wider" x-text="abaAtiva === 'mensagens' ? 'Mensagens Recebidas' : 'Central de Alertas'"></h4>
                 </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-bold text-slate-800" x-text="n.titulo"></p>
-                    <p class="text-xs text-slate-500 mt-0.5" x-text="n.mensagem"></p>
-                    <p class="text-[10px] text-slate-400 mt-1" x-text="new Date(n.created_at).toLocaleString('pt-BR')"></p>
+                <div class="flex items-center gap-1.5">
+                    <button type="button" @click="marcarTodasLidas()" x-show="abaAtiva === 'alertas' && naoLidas > 0" class="text-[10px] px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-emerald-300 font-bold transition" title="Marcar alertas como lidos">
+                        <i class="fa-solid fa-check-double mr-1"></i>Limpar
+                    </button>
+                    <button type="button" @click="testarAlerta()" class="text-[10px] px-2 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 font-bold transition" title="Testar som e pop-up">
+                        <i class="fa-solid fa-bell mr-1"></i>Testar
+                    </button>
+                    <button type="button" @click="solicitarPermissaoNavegador()" class="text-[10px] px-2 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white font-bold transition" title="Ativar pop-up no Windows">
+                        <i class="fa-solid fa-desktop mr-1"></i>Ativar
+                    </button>
                 </div>
-                <span x-show="!n.lida" class="w-2 h-2 bg-amber-400 rounded-full flex-shrink-0 mt-1"></span>
             </div>
-        </a>
-    </template>
-    <div x-show="notificacoes.length === 0" class="p-8 text-center">
-        <i class="fa-solid fa-bell-slash text-3xl text-slate-300 mb-2 block"></i>
-        <p class="text-sm text-slate-400">Nenhuma notificação</p>
+
+            <!-- Abas Separadas: Alertas vs Mensagens -->
+            <div class="grid grid-cols-2 bg-slate-100 p-1 border-b border-slate-200 text-xs font-bold">
+                <button type="button" @click="abaAtiva = 'alertas'"
+                        class="py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5"
+                        :class="abaAtiva === 'alertas' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'">
+                    <i class="fa-solid fa-bell text-amber-500 text-[11px]"></i>
+                    <span>Alertas</span>
+                    <span x-show="naoLidas > 0" class="px-1.5 py-0.5 bg-rose-600 text-white rounded-full text-[9px] font-black" x-text="naoLidas"></span>
+                </button>
+                <button type="button" @click="abaAtiva = 'mensagens'"
+                        class="py-1.5 px-2 rounded-xl transition flex items-center justify-center gap-1.5"
+                        :class="abaAtiva === 'mensagens' ? 'bg-white text-slate-900 shadow-xs' : 'text-slate-500 hover:text-slate-700'">
+                    <i class="fa-solid fa-comments text-emerald-600 text-[11px]"></i>
+                    <span>Mensagens</span>
+                    <span x-show="naoLidasChat > 0" class="px-1.5 py-0.5 bg-emerald-600 text-white rounded-full text-[9px] font-black" x-text="naoLidasChat"></span>
+                </button>
+            </div>
+
+            <!-- Conteúdo Aba 1: Alertas Gerais (Chamados, Agenda, Sistema) -->
+            <div x-show="abaAtiva === 'alertas'" class="divide-y divide-slate-100 max-h-96 overflow-y-auto">
+                <template x-for="n in notificacoes" :key="n.id">
+                    <div @click="clicarNotificacao(n)" class="p-3 hover:bg-slate-50 transition-colors cursor-pointer flex items-start gap-3 group relative">
+                        <div class="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 text-sm shadow-xs"
+                             :class="n.corIcone || 'bg-slate-100 text-slate-600'">
+                            <i :class="n.icone || 'fa-solid fa-bell'"></i>
+                        </div>
+                        <div class="flex-1 min-w-0 pr-6">
+                            <div class="flex items-center justify-between gap-1 mb-0.5">
+                                <span class="text-xs font-bold text-slate-800 truncate" x-text="n.titulo"></span>
+                                <span class="text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase bg-slate-100 text-slate-600 flex-shrink-0" x-text="n.badge"></span>
+                            </div>
+                            <p class="text-[11px] text-slate-500 leading-snug line-clamp-2" x-text="n.mensagem"></p>
+                            <p class="text-[10px] text-slate-400 mt-1 font-mono" x-text="formatarHora(n.created_at)"></p>
+                        </div>
+                        <button type="button" @click.stop.prevent="marcarLida(n.id)" 
+                                class="absolute top-3 right-3 text-slate-300 hover:text-rose-500 hover:bg-rose-50 p-1 rounded-lg transition" title="Dispensar alerta">
+                            <i class="fa-solid fa-times text-xs"></i>
+                        </button>
+                    </div>
+                </template>
+                <div x-show="notificacoes.length === 0" class="p-8 text-center">
+                    <i class="fa-solid fa-bell-slash text-3xl text-slate-300 mb-2 block"></i>
+                    <p class="text-xs font-bold text-slate-600">Nenhum alerta pendente</p>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Você está 100% em dia!</p>
+                </div>
+            </div>
+
+            <!-- Conteúdo Aba 2: Notificações de Mensagens do Chat (Separado) -->
+            <div x-show="abaAtiva === 'mensagens'" class="flex flex-col max-h-96">
+                <div class="divide-y divide-slate-100 overflow-y-auto flex-1">
+                    <template x-for="m in mensagensChat" :key="m.id || m.idmensagem">
+                        <div @click="clicarMensagemChat(m)" class="p-3 hover:bg-emerald-50/60 transition-colors cursor-pointer flex items-start gap-3 group relative">
+                            <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center flex-shrink-0 text-sm shadow-xs font-extrabold">
+                                <span x-text="(m.remetente_nome || 'US').substring(0, 2).toUpperCase()"></span>
+                            </div>
+                            <div class="flex-1 min-w-0 pr-6">
+                                <div class="flex items-center justify-between gap-1 mb-0.5">
+                                    <span class="text-xs font-bold text-slate-800 truncate" x-text="m.remetente_nome || 'Colaborador'"></span>
+                                    <span class="text-[9px] px-1.5 py-0.5 rounded-md font-extrabold uppercase bg-emerald-100 text-emerald-700 flex-shrink-0">CHAT</span>
+                                </div>
+                                <p class="text-[11px] text-slate-600 leading-snug line-clamp-2" x-text="m.mensagem"></p>
+                                <p class="text-[10px] text-slate-400 mt-1 font-mono" x-text="formatarHora(m.datahora)"></p>
+                            </div>
+                            <button type="button" @click.stop.prevent="marcarMensagemChatLida(m.idusuario_remetente)" 
+                                    class="absolute top-3 right-3 text-slate-300 hover:text-emerald-600 hover:bg-emerald-50 p-1 rounded-lg transition" title="Marcar conversa como lida">
+                                <i class="fa-solid fa-check text-xs"></i>
+                            </button>
+                        </div>
+                    </template>
+                    <div x-show="mensagensChat.length === 0" class="p-8 text-center">
+                        <i class="fa-regular fa-comments text-3xl text-slate-300 mb-2 block"></i>
+                        <p class="text-xs font-bold text-slate-600">Nenhuma nova mensagem</p>
+                        <p class="text-[11px] text-slate-400 mt-0.5">Suas conversas do chat estão em dia!</p>
+                    </div>
+                </div>
+                <a href="/portal/modules/minhas-mensagens.php" class="block py-2.5 px-4 bg-slate-50 hover:bg-emerald-50 text-center text-xs font-bold text-emerald-700 border-t border-slate-200 transition no-underline">
+                    <i class="fa-solid fa-arrow-up-right-from-square mr-1.5 text-[10px]"></i>Abrir Bate-Papo Completo
+                </a>
+            </div>
+        </div>
     </div>
-</div>
-</div>
-</div>
 
 <div class="header-mobile-info flex items-center gap-3" style="display:flex;">
     <div class="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-1.5">
@@ -824,51 +898,196 @@ initScrollSpy() {
 function notificacoesHandler() {
     return {
         open: false,
+        abaAtiva: 'alertas',
         notificacoes: [],
         naoLidas: 0,
+        mensagensChat: [],
+        naoLidasChat: 0,
         
         async init() {
+            // Sincroniza imediatamente com os dados do Gerenciador Global
+            if (window.PortalNotificacoes) {
+                const dados = window.PortalNotificacoes.obterDados();
+                if (dados) this.processarDados(dados);
+            }
+
+            // Escuta eventos globais de atualização
+            window.addEventListener('notificacoes-atualizadas', (e) => {
+                this.processarDados(e.detail);
+            });
+
             await this.carregar();
-            setInterval(() => this.carregar(), 60000);
+            setInterval(() => this.carregar(), 15000);
+        },
+
+        processarDados(data) {
+            if (!data) return;
+            this.notificacoes = data.lista_unificada || [];
+            this.naoLidas = Math.max(0, parseInt(data.total_geral) || 0);
+            this.mensagensChat = (data.chat && Array.isArray(data.chat.mensagens)) ? data.chat.mensagens : [];
+            this.naoLidasChat = (data.chat && typeof data.chat.total !== 'undefined') ? Math.max(0, parseInt(data.chat.total) || 0) : 0;
         },
         
         async carregar() {
             try {
-                const token = localStorage.getItem('authToken');
-                const resp = await fetch(`${API_URL}/notificacoes`, {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const data = await resp.json();
-                this.notificacoes = data.notificacoes || [];
-                this.naoLidas = data.nao_lidas || 0;
+                let data = null;
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    data = await window.PortalNotificacoes.requisitar('/notificacoes/resumo-geral');
+                } else {
+                    const token = localStorage.getItem('authToken');
+                    const resp = await fetch(`${API_URL}/notificacoes/resumo-geral`, {
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                    if (resp.ok) data = await resp.json();
+                }
+                if (data && data.success) {
+                    this.processarDados(data);
+                }
+            } catch(e) {
+                console.warn('[Dashboard] Falha ao sincronizar notificações:', e);
+            }
+        },
+        
+        abrirAba(aba) {
+            if (this.open && this.abaAtiva === aba) {
+                this.open = false;
+                return;
+            }
+            this.abaAtiva = aba;
+            this.open = true;
+            if (window.PortalNotificacoes && typeof window.PortalNotificacoes.atualizarAgora === 'function') {
+                window.PortalNotificacoes.atualizarAgora();
+            } else {
+                this.carregar();
+            }
+        },
+
+        clicarMensagemChat(m) {
+            if (!m) return;
+            window.location.href = `/portal/modules/minhas-mensagens.php?contato=${m.idusuario_remetente}`;
+        },
+
+        async marcarMensagemChatLida(remetenteId) {
+            if (!remetenteId) return;
+            this.mensagensChat = this.mensagensChat.filter(item => item.idusuario_remetente != remetenteId);
+            this.naoLidasChat = Math.max(0, this.mensagensChat.length);
+            if (window.PortalNotificacoes) {
+                window.PortalNotificacoes.atualizarBadges(this.naoLidas, this.naoLidasChat);
+            }
+            try {
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    await window.PortalNotificacoes.requisitar(`/chat/marcar-lida/${remetenteId}`, { method: 'POST' });
+                } else {
+                    const token = localStorage.getItem('authToken');
+                    await fetch(`${API_URL}/chat/marcar-lida/${remetenteId}`, {
+                        method: 'POST',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                }
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.atualizarAgora === 'function') {
+                    window.PortalNotificacoes.atualizarAgora();
+                }
             } catch(e) {}
         },
-        
-        abrirNotificacoes() {
-            this.open = !this.open;
-            if (this.open) this.carregar();
+
+        async clicarNotificacao(n) {
+            if (!n) return;
+            const linkDestino = n.link || '/portal/';
+            await this.marcarLida(n.id);
+            if (linkDestino && linkDestino !== '#' && linkDestino !== window.location.pathname) {
+                window.location.href = linkDestino;
+            }
         },
-        
+
         async marcarLida(id) {
+            if (!id) return;
+
+            // Remove da interface imediatamente para feedback instantâneo
+            this.notificacoes = this.notificacoes.filter(item => item.id != id);
+            this.naoLidas = Math.max(0, this.notificacoes.length);
+
+            if (window.PortalNotificacoes) {
+                window.PortalNotificacoes.atualizarBadges(this.naoLidas);
+            }
+
+            // Se for ID numérico (tabela notificacoes), persiste no backend
+            if (typeof id === 'number' || (!String(id).startsWith('comp_') && !isNaN(Number(id)))) {
+                try {
+                    const idNum = parseInt(id);
+                    if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                        await window.PortalNotificacoes.requisitar(`/notificacoes/${idNum}/ler`, { method: 'PUT' });
+                    } else {
+                        const token = localStorage.getItem('authToken');
+                        await fetch(`${API_URL}/notificacoes/${idNum}/ler`, {
+                            method: 'PUT',
+                            headers: { 'Authorization': 'Bearer ' + token }
+                        });
+                    }
+                } catch(e) {}
+            } else {
+                // Guarda em sessionStorage para compromissos dispensados
+                try {
+                    const disp = JSON.parse(sessionStorage.getItem('notif_dispensadas') || '[]');
+                    disp.push(String(id));
+                    sessionStorage.setItem('notif_dispensadas', JSON.stringify(disp));
+                } catch(_) {}
+            }
+        },
+
+        async marcarTodasLidas() {
+            this.notificacoes = [];
+            this.naoLidas = 0;
+
+            if (window.PortalNotificacoes) {
+                window.PortalNotificacoes.atualizarBadges(0);
+            }
+
             try {
-                const token = localStorage.getItem('authToken');
-                await fetch(`${API_URL}/notificacoes/${id}/ler`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                this.carregar();
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    await window.PortalNotificacoes.requisitar('/notificacoes/ler-todas', { method: 'PUT' });
+                } else {
+                    const token = localStorage.getItem('authToken');
+                    await fetch(`${API_URL}/notificacoes/ler-todas`, {
+                        method: 'PUT',
+                        headers: { 'Authorization': 'Bearer ' + token }
+                    });
+                }
             } catch(e) {}
         },
-        
-        async marcarTodasLidas() {
-            try {
-                const token = localStorage.getItem('authToken');
-                await fetch(`${API_URL}/notificacoes/ler-todas`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': 'Bearer ' + token }
+
+        testarAlerta() {
+            if (window.PortalNotificacoes && typeof window.PortalNotificacoes.testarNotificacao === 'function') {
+                window.PortalNotificacoes.testarNotificacao();
+            } else if (window.Swal) {
+                Swal.fire({
+                    icon: 'info',
+                    title: 'Notificações Ativas',
+                    text: 'A central global de alertas está monitorando chamados, compromissos e avisos.',
+                    confirmButtonColor: '#274036'
                 });
-                this.carregar();
-            } catch(e) {}
+            }
+        },
+
+        solicitarPermissaoNavegador() {
+            if (window.PortalNotificacoes && typeof window.PortalNotificacoes.solicitarPermissao === 'function') {
+                window.PortalNotificacoes.solicitarPermissao();
+            }
+        },
+
+        formatarHora(dataStr) {
+            if (!dataStr) return '';
+            try {
+                const d = new Date(dataStr.replace(/-/g, '/'));
+                const hoje = new Date();
+                const isHoje = d.toDateString() === hoje.toDateString();
+                const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                if (isHoje) return `Hoje às ${hora}`;
+                const dia = String(d.getDate()).padStart(2, '0');
+                const mes = String(d.getMonth() + 1).padStart(2, '0');
+                return `${dia}/${mes} às ${hora}`;
+            } catch (_) {
+                return dataStr;
+            }
         }
     }
 }

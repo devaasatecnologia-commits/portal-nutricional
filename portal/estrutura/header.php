@@ -41,6 +41,7 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
     <script src="<?= asset('/portal/assets/js/config.js') ?>"></script>
     <script defer src="<?= asset('/portal/assets/js/inatividade.js') ?>"></script>
     <script defer src="<?= asset('/portal/assets/js/bipe-foco.js') ?>"></script>
+    <script defer src="<?= asset('/portal/assets/js/portal-notificacoes.js') ?>"></script>
     <script>
         (function() {
             const token = localStorage.getItem('authToken');
@@ -476,10 +477,10 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
 </script>
 
 <!-- ======================================================================
-     PWA SERVICE WORKER & BOTÃO DE INSTALAÇÃO TOUCH-FRIENDLY
+     PWA SERVICE WORKER & BOTÃO DE INSTALAÇÃO TOUCH-FRIENDLY (APENAS MOBILE)
      Permite aos gestores (Tiago, Michel, Tales) instalar o Portal no celular
      ====================================================================== -->
-<div id="pwaInstallToast" class="pwa-install-toast hidden">
+<div id="pwaInstallToast" class="pwa-install-toast hidden md:hidden">
     <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white text-xl flex-none shadow-sm">
         <i class="fa-solid fa-mobile-screen-button"></i>
     </div>
@@ -512,9 +513,15 @@ $portalBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') === 0) ? '/API' : 
         });
     }
 
-    // 2. Gerenciador de Instalação (Prompt de PWA)
-    let deferredPrompt = null;
+    // 2. Gerenciador de Instalação (Prompt de PWA) - EXCLUSIVO PARA DISPOSITIVOS MOBILE
     const toast = document.getElementById('pwaInstallToast');
+    const isMobileDevice = /Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (window.innerWidth < 768 && ('ontouchstart' in window || navigator.maxTouchPoints > 0));
+    if (!isMobileDevice) {
+        if (toast) toast.classList.add('hidden');
+        return;
+    }
+
+    let deferredPrompt = null;
     const btnInstalar = document.getElementById('btnInstalarPwa');
     const btnFechar = document.getElementById('btnFecharPwaToast');
 

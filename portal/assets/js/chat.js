@@ -37,7 +37,7 @@ function renderizarContatos(lista) {
     const el = document.getElementById('contatosLista');
     if (!el) return;
     if (!lista.length) {
-        el.innerHTML = '<p class="text-center text-slate-400 text-xs py-4">Nenhum usuário online</p>';
+        el.innerHTML = '<p class="text-center text-slate-400 text-xs py-4">Nenhum colaborador encontrado</p>';
         return;
     }
     el.innerHTML = lista.map(c => {
@@ -47,16 +47,22 @@ function renderizarContatos(lista) {
             : '';
         const fallbackHTML = `<div class="contato-avatar" style="${c.foto_url ? 'display:none;' : 'display:flex;'}">${iniciais}</div>`;
         
+        let statusCor = '#cbd5e1'; // cinza
+        if (c.status_online === 'online') statusCor = '#25D366'; // verde
+        else if (c.status_online === 'ausente') statusCor = '#f59e0b'; // âmbar
+
+        const statusHTML = `<span style="position:absolute; bottom:0; right:0; width:13px; height:13px; background:${statusCor}; border:2px solid white; border-radius:50%;"></span>`;
+        
         return `
         <div class="contato-item" onclick="abrirConversa(${c.idusuario}, '${c.username.replace(/'/g, "\\'")}')">
             <div style="position:relative; flex-shrink:0;">
                 ${avatarHTML}
                 ${fallbackHTML}
-                ${c.nao_lidas > 0 ? `<span style="position:absolute; bottom:0; right:0; width:14px; height:14px; background:#25D366; border:2px solid white; border-radius:50%;"></span>` : ''}
+                ${statusHTML}
             </div>
             <div class="contato-info">
                 <div class="contato-nome">${c.username}</div>
-                <div class="contato-status">${c.nao_lidas > 0 ? c.nao_lidas + ' novas mensagens' : 'Clique para conversar'}</div>
+                <div class="contato-status" style="${c.status_online === 'online' ? 'color:#15803d; font-weight:600;' : ''}">${c.nao_lidas > 0 ? c.nao_lidas + ' nova(s) mensagem(ns)' : (c.status_texto || 'Clique para conversar')}</div>
             </div>
             ${c.nao_lidas > 0 ? `<span class="contato-naolidas">${c.nao_lidas}</span>` : ''}
         </div>`;
@@ -185,7 +191,13 @@ function renderizarConversaAtiva() {
                     ${iniciais}
                 </div>
             </div>
-            <span style="font-weight:600; font-size:14px; flex:1;">${conv.nome}</span>
+            <div style="flex:1; min-w:0;">
+                <span style="font-weight:700; font-size:14px; display:block; line-height:1.2;">${conv.nome}</span>
+                <span style="font-size:11px; color:#a7f3d0; display:block;">${contato?.status_online === 'online' ? '🟢 Online agora' : (contato?.status_texto || 'Offline')}</span>
+            </div>
+            <a href="/portal/modules/minhas-mensagens.php" style="color:white; opacity:0.85; padding:4px; text-decoration:none;" title="Expandir em Tela Cheia">
+                <i class="fa-solid fa-up-right-from-square" style="font-size:12px;"></i>
+            </a>
         </div>
         
         <div class="mensagens-container" id="msgContainer_${conversaAtivaId}">
@@ -209,32 +221,40 @@ function renderizarMensagem(m) {
     const meuId = userData.idusuario;
     const ehMinha = m.idusuario_remetente == meuId;
     const hora = new Date(m.datahora).toLocaleTimeString('pt-BR', {hour:'2-digit', minute:'2-digit'});
+    const checksHTML = ehMinha ? (m.lida 
+        ? '<i class="fa-solid fa-check-double" style="color:#53bdeb; font-size:11px; margin-left:4px;" title="Visualizado"></i>' 
+        : '<i class="fa-solid fa-check" style="color:#94a3b8; font-size:11px; margin-left:4px;" title="Entregue"></i>') : '';
     return `
         <div class="msg-bubble ${ehMinha ? 'msg-enviada' : 'msg-recebida'}">
             ${m.mensagem}
-            <div class="msg-hora">${hora}</div>
+            <div class="msg-hora" style="display:flex; align-items:center; justify-content:flex-end;">${hora} ${checksHTML}</div>
         </div>
     `;
 }
 
 // ======================================================================
-// MENSAGENS
+// MENSAGENS (Sem Flicker / Sem Piscar)
 // ======================================================================
-async function carregarMensagens(idusuario) {
+async function carregarMensagens(idusuario, forcarScroll = false) {
     try {
         const resp = await fetch(`${API_URL}/chat/mensagens/${idusuario}`, {
             headers: { 'Authorization': 'Bearer ' + localStorage.getItem('authToken') }
         });
         const mensagens = await resp.json();
         if (conversasAbertas[idusuario]) {
-            conversasAbertas[idusuario].mensagens = mensagens;
-            if (conversaAtivaId == idusuario) {
-                const el = document.getElementById('msgContainer_' + idusuario);
-                if (el) {
-                    el.innerHTML = mensagens.length === 0 
-                        ? '<p class="text-center text-slate-400 text-xs py-8">Nenhuma mensagem ainda. Diga olá! 👋</p>'
-                        : mensagens.map(m => renderizarMensagem(m)).join('');
-                    el.scrollTop = el.scrollHeight;
+            const msgsAnteriores = conversasAbertas[idusuario].mensagens || [];
+            const mudou = JSON.stringify(mensagens) !== JSON.stringify(msgsAnteriores);
+
+            if (mudou || forcarScroll) {
+                conversasAbertas[idusuario].mensagens = mensagens;
+                if (conversaAtivaId == idusuario) {
+                    const el = document.getElementById('msgContainer_' + idusuario);
+                    if (el) {
+                        el.innerHTML = mensagens.length === 0 
+                            ? '<p class="text-center text-slate-400 text-xs py-8">Nenhuma mensagem ainda. Diga olá! 👋</p>'
+                            : mensagens.map(m => renderizarMensagem(m)).join('');
+                        el.scrollTop = el.scrollHeight;
+                    }
                 }
             }
         }
@@ -257,7 +277,7 @@ async function enviarMensagem(idusuario) {
             body: JSON.stringify({ destinatario: idusuario, mensagem: msg })
         });
         input.value = '';
-        await carregarMensagens(idusuario);
+        await carregarMensagens(idusuario, true);
     } catch(e) {}
 }
 

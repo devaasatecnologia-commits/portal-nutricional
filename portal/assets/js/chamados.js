@@ -1,25 +1,35 @@
 /**
  * Central de Chamados & Suporte Inteligente — Portal Nutricional
- * Gerenciamento reativo com Alpine.js, Kanban, Modo Lista, Filtro de Período,
- * Upload e Colagem de Prints (Ctrl+V) com Lightbox e Triagem de IA.
+ * Service Desk completo com Alpine.js, Kanban Drag-and-Drop (colunas e prioridade),
+ * Abertura Expressa, Edição Total (título, texto, criticidade, prioridade, categoria, sistema, atendente),
+ * Galeria de Prints/Anexos com Ctrl+V, Lightbox, Filtros Avançados e Notificações Integradas.
  */
 function chamadosApp() {
     return {
-        modoExibicao: 'kanban', // 'kanban' ou 'lista'
+        modoExibicao: 'kanban', // 'kanban' | 'lista' | 'dashboard'
         carregando: false,
         analisandoIa: false,
         salvandoChamado: false,
+        salvandoEdicao: false,
+        salvandoOrdem: false,
         anexoUploadando: false,
 
-        // Modais
+        // Modais & Painéis
         modalNovoAberto: false,
         modalDetalhesAberto: false,
         triagemFeita: false,
+        painelAvisosAberto: false,
+        editandoChamado: false,
 
         // Lightbox de Prints/Anexos
         lightboxAberto: false,
         lightboxUrl: '',
         lightboxTitulo: '',
+
+        // Drag and Drop Kanban
+        draggingId: null,
+        dragOverStatus: null,
+        dragOverCardId: null,
 
         // Dados
         kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0, taxa_resolucao: 0 },
@@ -32,26 +42,44 @@ function chamadosApp() {
         modulos: [],
         sistemas: [],
         filiais: [],
+        solicitantes: [],
+        atendentes: [],
+        avisosRecentes: [],
+        notificacoesNaoLidas: 0,
         usuario: null,
         chamados: [],
         chamadoAtual: null,
         timeline: [],
+        anexos: [],
+        timelineFiltro: 'todos',
 
         // Filtros
-        filtroPeriodoAtivo: 'todos', // 'hoje', '7dias', 'mes', 'todos'
-        filtroAtendente: 'todos', // 'todos', 'mim', 'sem_atendente'
+        filtroPeriodoAtivo: 'todos',
+        filtroAtendente: 'todos',
         filtros: {
             status: '',
             tipo_sistema: 'todos',
             modulo: 'todos',
             criticidade: 'todas',
             categoria: 'todas',
+            solicitante: 'todos',
+            ordenacao: 'prioridade',
             busca: '',
             data_inicio: '',
             data_fim: ''
         },
 
-        // Formulário de Novo Chamado
+        // Barra de Abertura Expressa (Quick Ticket)
+        quickForm: {
+            relato: '',
+            tipo_sistema: 'PORTAL',
+            criticidade: 'media',
+            categoria: 'bug',
+            anexo_url: '',
+            salvando: false
+        },
+
+        // Formulário Completo de Novo Chamado
         novoForm: {
             tipo_sistema: 'PORTAL',
             subtipo_item: '',
@@ -66,7 +94,23 @@ function chamadosApp() {
             anexo_url: ''
         },
 
-        // Nova Interação
+        // Formulário de Edição do Chamado no Modal
+        editForm: {
+            titulo: '',
+            motivo: '',
+            categoria: 'bug',
+            tipo_sistema: 'PORTAL',
+            subtipo_item: '',
+            equipamento_detalhe: '',
+            modulo_slug: '',
+            modulo_nome: '',
+            atendente: 'ALAN',
+            criticidade: 'media',
+            prioridade: 10
+        },
+        complementoTexto: '',
+
+        // Nova Interação / Comentário
         novaInteracao: {
             mensagem: '',
             tipo: 'comentario',
@@ -76,18 +120,31 @@ function chamadosApp() {
         },
 
         async init() {
-            await this.carregarDashboard();
-            await this.carregarChamados();
+            await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
+            try {
+                const params = new URLSearchParams(window.location.search);
+                const idUrl = parseInt(params.get('id') || '0', 10);
+                if (idUrl > 0) {
+                    await this.abrirDetalhes(idUrl);
+                }
+            } catch (_) {}
         },
 
-        // Chamada à API com suporte a multipart ou json
+        toast(icon, title, timer = 2200) {
+            if (typeof Swal === 'undefined') return;
+            Swal.mixin({
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer,
+                timerProgressBar: true
+            }).fire({ icon, title });
+        },
+
         async api(endpoint, options = {}) {
             const url = endpoint.startsWith('/') ? `/v1${endpoint}` : `/v1/${endpoint}`;
             const isFormData = options.body instanceof FormData;
-
-            const opts = {
-                ...options
-            };
+            const opts = { ...options };
 
             if (!isFormData) {
                 opts.headers = {
@@ -104,7 +161,7 @@ function chamadosApp() {
             let data = null;
             try {
                 data = await resp.json();
-            } catch (e) {
+            } catch (_) {
                 data = null;
             }
             if (!resp.ok) {
@@ -127,6 +184,10 @@ function chamadosApp() {
                     this.modulos = res.modulos || [];
                     this.sistemas = res.sistemas || [];
                     this.filiais = res.filiais || [];
+                    this.solicitantes = res.solicitantes || [];
+                    this.atendentes = res.atendentes || [];
+                    this.avisosRecentes = res.avisos_recentes || [];
+                    this.notificacoesNaoLidas = Number(res.notificacoes_nao_lidas || 0);
                     this.usuario = res.usuario || {};
                 }
             } catch (e) {
@@ -143,6 +204,8 @@ function chamadosApp() {
                 if (this.filtros.modulo !== 'todos') params.append('modulo', this.filtros.modulo);
                 if (this.filtros.criticidade !== 'todas') params.append('criticidade', this.filtros.criticidade);
                 if (this.filtros.categoria !== 'todas') params.append('categoria', this.filtros.categoria);
+                if (this.filtros.solicitante && this.filtros.solicitante !== 'todos') params.append('solicitante', this.filtros.solicitante);
+                if (this.filtros.ordenacao) params.append('ordenacao', this.filtros.ordenacao);
                 if (this.filtros.busca) params.append('busca', this.filtros.busca);
                 if (this.filtros.data_inicio) params.append('data_inicio', this.filtros.data_inicio);
                 if (this.filtros.data_fim) params.append('data_fim', this.filtros.data_fim);
@@ -157,6 +220,24 @@ function chamadosApp() {
             } finally {
                 this.carregando = false;
             }
+        },
+
+        limparFiltros() {
+            this.filtroPeriodoAtivo = 'todos';
+            this.filtroAtendente = 'todos';
+            this.filtros = {
+                status: '',
+                tipo_sistema: 'todos',
+                modulo: 'todos',
+                criticidade: 'todas',
+                categoria: 'todas',
+                solicitante: 'todos',
+                ordenacao: 'prioridade',
+                busca: '',
+                data_inicio: '',
+                data_fim: ''
+            };
+            this.carregarChamados();
         },
 
         definirPeriodo(tipo) {
@@ -186,20 +267,43 @@ function chamadosApp() {
         },
 
         colunaChamados(statusNum) {
-            return this.chamados.filter(c => parseInt(c.status, 10) === statusNum);
+            return this.chamados
+                .filter(c => parseInt(c.status, 10) === statusNum)
+                .sort((a, b) => (Number(a.prioridade) || 10) - (Number(b.prioridade) || 10));
+        },
+
+        statusInfoMapa(st) {
+            const mapa = {
+                0: { label: 'Aberto', cor: 'bg-amber-100 text-amber-800 border-amber-300' },
+                1: { label: 'Em Análise', cor: 'bg-blue-100 text-blue-800 border-blue-300' },
+                2: { label: 'Em Correção', cor: 'bg-purple-100 text-purple-800 border-purple-300' },
+                3: { label: 'Concluído', cor: 'bg-emerald-100 text-emerald-800 border-emerald-300' },
+                4: { label: 'Cancelado', cor: 'bg-slate-100 text-slate-700 border-slate-300' }
+            };
+            return mapa[Number(st)] || { label: 'Desconhecido', cor: 'bg-gray-100 text-gray-700 border-gray-300' };
         },
 
         badgeCriticidade(crit) {
-            switch (String(crit).toLowerCase()) {
+            switch (String(crit || 'media').toLowerCase()) {
                 case 'critica':
-                    return 'bg-rose-100 text-rose-700 border border-rose-200';
+                    return 'bg-rose-100 text-rose-700 border border-rose-300';
                 case 'alta':
-                    return 'bg-amber-100 text-amber-700 border border-amber-200';
+                    return 'bg-amber-100 text-amber-800 border border-amber-300';
                 case 'media':
                     return 'bg-blue-100 text-blue-700 border border-blue-200';
                 case 'baixa':
                 default:
                     return 'bg-emerald-100 text-emerald-700 border border-emerald-200';
+            }
+        },
+
+        bordaEsquerdaCriticidade(crit) {
+            switch (String(crit || 'media').toLowerCase()) {
+                case 'critica': return 'border-l-4 border-l-rose-500';
+                case 'alta':    return 'border-l-4 border-l-amber-500';
+                case 'media':   return 'border-l-4 border-l-blue-500';
+                case 'baixa':
+                default:        return 'border-l-4 border-l-emerald-500';
             }
         },
 
@@ -213,10 +317,235 @@ function chamadosApp() {
             return sis ? sis.nome : sistemaId;
         },
 
-        abrirModalNovo() {
-            const sistemaPadrao = (this.sistemas || []).some(s => s.id === 'PORTAL') 
-                ? 'PORTAL' 
-                : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL');
+        // ======================== KANBAN DRAG & DROP ========================
+
+        onDragStart(e, chamado) {
+            this.draggingId = Number(chamado.idchamado);
+            if (e.dataTransfer) {
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', String(chamado.idchamado));
+            }
+        },
+
+        onDragEnd() {
+            this.draggingId = null;
+            this.dragOverStatus = null;
+            this.dragOverCardId = null;
+        },
+
+        onDragOverCol(e, statusNum) {
+            e.preventDefault();
+            this.dragOverStatus = Number(statusNum);
+        },
+
+        onDragLeaveCol(e, statusNum) {
+            if (e.currentTarget && !e.currentTarget.contains(e.relatedTarget) && this.dragOverStatus === Number(statusNum)) {
+                this.dragOverStatus = null;
+            }
+        },
+
+        onDragOverCard(e, targetCard) {
+            e.preventDefault();
+            this.dragOverStatus = Number(targetCard.status);
+            if (Number(targetCard.idchamado) !== this.draggingId) {
+                this.dragOverCardId = Number(targetCard.idchamado);
+            }
+        },
+
+        async onDropCol(e, targetStatus) {
+            e.preventDefault();
+            const draggedId = this.draggingId || parseInt(e.dataTransfer?.getData('text/plain') || '0', 10);
+            this.onDragEnd();
+            if (!draggedId) return;
+            await this.aplicarReordenacaoKanban(draggedId, Number(targetStatus), null);
+        },
+
+        async onDropCard(e, targetCard) {
+            e.preventDefault();
+            const draggedId = this.draggingId || parseInt(e.dataTransfer?.getData('text/plain') || '0', 10);
+            const targetId = Number(targetCard.idchamado);
+            const targetStatus = Number(targetCard.status);
+            this.onDragEnd();
+            if (!draggedId || draggedId === targetId) return;
+            await this.aplicarReordenacaoKanban(draggedId, targetStatus, targetId);
+        },
+
+        async aplicarReordenacaoKanban(draggedId, targetStatus, targetCardId = null) {
+            const dragged = this.chamados.find(c => Number(c.idchamado) === Number(draggedId));
+            if (!dragged) return;
+
+            const statusAnterior = Number(dragged.status);
+            const colLista = this.colunaChamados(targetStatus).filter(c => Number(c.idchamado) !== Number(draggedId));
+
+            dragged.status = targetStatus;
+            dragged.status_info = this.statusInfoMapa(targetStatus);
+
+            if (targetCardId) {
+                const idx = colLista.findIndex(c => Number(c.idchamado) === Number(targetCardId));
+                if (idx >= 0) {
+                    colLista.splice(idx, 0, dragged);
+                } else {
+                    colLista.push(dragged);
+                }
+            } else {
+                colLista.push(dragged);
+            }
+
+            colLista.forEach((item, index) => {
+                item.prioridade = index + 1;
+            });
+
+            // Dispara reatividade do Alpine preservando os demais itens
+            this.chamados = [...this.chamados];
+
+            this.salvandoOrdem = true;
+            try {
+                const ordem = colLista.map((c, idx) => ({
+                    idchamado: Number(c.idchamado),
+                    status: Number(targetStatus),
+                    prioridade: idx + 1
+                }));
+                const res = await this.api('/chamados/ordenar', {
+                    method: 'POST',
+                    body: { ordem }
+                });
+                if (res.success) {
+                    const msg = statusAnterior !== targetStatus
+                        ? `Chamado #${draggedId} movido para ${dragged.status_info.label}!`
+                        : `Prioridade na fila atualizada!`;
+                    this.toast('success', msg, 1800);
+                    this.carregarDashboard();
+                }
+            } catch (err) {
+                this.toast('error', err.message || 'Erro ao salvar ordem no Kanban');
+                await this.carregarChamados();
+            } finally {
+                this.salvandoOrdem = false;
+            }
+        },
+
+        // ======================== PRIORIDADE & CRITICIDADE ========================
+
+        async moverParaTopo(chamado) {
+            try {
+                const res = await this.api('/chamados/atualizar-prioridade', {
+                    method: 'POST',
+                    body: {
+                        idchamado: chamado.idchamado,
+                        topo: true,
+                        observacao: 'Movido para o topo da prioridade (#1)'
+                    }
+                });
+                if (res.success) {
+                    this.toast('success', `Chamado #${chamado.idchamado} enviado para o topo (#1)!`);
+                    await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
+                    if (this.modalDetalhesAberto && this.chamadoAtual?.idchamado == chamado.idchamado) {
+                        await this.abrirDetalhes(chamado.idchamado);
+                    }
+                }
+            } catch (e) {
+                this.toast('error', e.message);
+            }
+        },
+
+        async alterarCriticidadeRapida(chamado, novaCrit) {
+            if (!chamado || chamado.criticidade === novaCrit) return;
+            const anterior = chamado.criticidade;
+            chamado.criticidade = novaCrit;
+            try {
+                const res = await this.api('/chamados/atualizar-prioridade', {
+                    method: 'POST',
+                    body: {
+                        idchamado: chamado.idchamado,
+                        criticidade: novaCrit,
+                        observacao: `Criticidade alterada para ${String(novaCrit).toUpperCase()}`
+                    }
+                });
+                if (res.success) {
+                    this.toast('success', `Criticidade do #${chamado.idchamado}: ${novaCrit.toUpperCase()}`);
+                    await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
+                    if (this.modalDetalhesAberto && this.chamadoAtual?.idchamado == chamado.idchamado) {
+                        await this.abrirDetalhes(chamado.idchamado);
+                    }
+                }
+            } catch (e) {
+                chamado.criticidade = anterior;
+                this.toast('error', e.message);
+            }
+        },
+
+        async alterarPrioridadeModal(novaPrio) {
+            if (!this.chamadoAtual) return;
+            const prioNum = parseInt(novaPrio, 10);
+            if (!prioNum || prioNum <= 0) return;
+            try {
+                const res = await this.api('/chamados/atualizar-prioridade', {
+                    method: 'POST',
+                    body: {
+                        idchamado: this.chamadoAtual.idchamado,
+                        prioridade: prioNum,
+                        observacao: `Ordem na fila ajustada para #${prioNum}`
+                    }
+                });
+                if (res.success) {
+                    this.toast('success', `Prioridade ajustada para #${prioNum}`);
+                    await Promise.all([
+                        this.carregarDashboard(),
+                        this.carregarChamados(),
+                        this.abrirDetalhes(this.chamadoAtual.idchamado)
+                    ]);
+                }
+            } catch (e) {
+                this.toast('error', e.message);
+            }
+        },
+
+        // ======================== ABERTURA EXPRESSA & MODAL NOVO ========================
+
+        async criarChamadoRapido() {
+            if (!this.quickForm.relato || this.quickForm.relato.trim().length < 4) {
+                this.toast('warning', 'Descreva brevemente o chamado antes de enviar.');
+                return;
+            }
+            this.quickForm.salvando = true;
+            try {
+                const filialPadrao = (this.filiais && this.filiais.length > 0)
+                    ? Number(this.filiais[0].idfilial)
+                    : ((this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1);
+
+                const res = await this.api('/chamados/criar', {
+                    method: 'POST',
+                    body: {
+                        relato: this.quickForm.relato.trim(),
+                        tipo_sistema: this.quickForm.tipo_sistema || 'PORTAL',
+                        criticidade: this.quickForm.criticidade || 'media',
+                        categoria: this.quickForm.categoria || 'bug',
+                        criticidade_manual: true,
+                        idfilial: filialPadrao,
+                        anexo_url: this.quickForm.anexo_url || ''
+                    }
+                });
+                if (res.success) {
+                    this.quickForm.relato = '';
+                    this.quickForm.anexo_url = '';
+                    this.toast('success', res.message || 'Chamado aberto com sucesso!', 2800);
+                    await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
+                }
+            } catch (e) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Erro ao Abrir Chamado', text: e.message });
+                }
+            } finally {
+                this.quickForm.salvando = false;
+            }
+        },
+
+        abrirModalNovo(preencherDoQuick = false) {
+            const sistemaPadrao = preencherDoQuick && this.quickForm.tipo_sistema
+                ? this.quickForm.tipo_sistema
+                : ((this.sistemas || []).some(s => s.id === 'PORTAL')
+                    ? 'PORTAL'
+                    : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL'));
 
             const filialPadrao = (this.filiais && this.filiais.length > 0)
                 ? Number(this.filiais[0].idfilial)
@@ -226,23 +555,23 @@ function chamadosApp() {
                 tipo_sistema: sistemaPadrao,
                 subtipo_item: '',
                 equipamento_detalhe: '',
-                relato: '',
+                relato: preencherDoQuick ? (this.quickForm.relato || '') : '',
                 modulo_slug: '',
                 idfilial: filialPadrao,
                 titulo: '',
-                categoria: 'bug',
-                criticidade: 'media',
+                categoria: preencherDoQuick ? (this.quickForm.categoria || 'bug') : 'bug',
+                criticidade: preencherDoQuick ? (this.quickForm.criticidade || 'media') : 'media',
                 diagnostico_ia: '',
-                anexo_url: ''
+                anexo_url: preencherDoQuick ? (this.quickForm.anexo_url || '') : ''
             };
             this.triagemFeita = false;
             this.modalNovoAberto = true;
         },
 
-        // Upload de Print Screen / Colar via Clipboard (Ctrl+V)
+        // ======================== UPLOADS & PRINTS (CTRL+V) ========================
+
         tratarColagemPrint(e, destino = 'novo') {
             if (!e.clipboardData || !e.clipboardData.items) return;
-
             for (let i = 0; i < e.clipboardData.items.length; i++) {
                 const item = e.clipboardData.items[i];
                 if (item.type.indexOf('image') !== -1) {
@@ -256,47 +585,64 @@ function chamadosApp() {
             }
         },
 
+        async atribuirUrlAnexo(destino, url, msgSucesso = 'Print anexado com sucesso!') {
+            if (destino === 'novo') {
+                this.novoForm.anexo_url = url;
+            } else if (destino === 'quick') {
+                this.quickForm.anexo_url = url;
+            } else if (destino === 'modal_anexo' && this.chamadoAtual) {
+                await this.registrarAnexoDiretoNoChamado(url);
+                return;
+            } else {
+                this.novaInteracao.anexo_url = url;
+            }
+            this.toast('success', msgSucesso);
+        },
+
+        async registrarAnexoDiretoNoChamado(url) {
+            if (!this.chamadoAtual || !url) return;
+            const res = await this.api('/chamados/adicionar-interacao', {
+                method: 'POST',
+                body: {
+                    idchamado: this.chamadoAtual.idchamado,
+                    mensagem: 'Print / evidência anexado diretamente ao chamado.',
+                    tipo: 'evidencia',
+                    anexo_url: url
+                }
+            });
+            if (res.success) {
+                this.toast('success', '📸 Print adicionado à galeria do chamado!');
+                await Promise.all([
+                    this.abrirDetalhes(this.chamadoAtual.idchamado),
+                    this.carregarChamados(),
+                    this.carregarDashboard()
+                ]);
+            }
+        },
+
         async enviarBlobComoPrint(blob, destino = 'novo') {
             this.anexoUploadando = true;
             try {
-                const reader = new FileReader();
-                reader.onload = async (event) => {
-                    const base64Data = event.target.result;
-                    const res = await this.api('/chamados/upload-anexo', {
-                        method: 'POST',
-                        body: { imagem_base64: base64Data }
-                    });
-
-                    if (res.success && res.url) {
-                        if (destino === 'novo') {
-                            this.novoForm.anexo_url = res.url;
-                        } else {
-                            this.novaInteracao.anexo_url = res.url;
-                        }
-
-                        if (typeof Swal !== 'undefined') {
-                            const Toast = Swal.mixin({
-                                toast: true,
-                                position: 'top-end',
-                                showConfirmButton: false,
-                                timer: 2500,
-                                timerProgressBar: true
-                            });
-                            Toast.fire({
-                                icon: 'success',
-                                title: '📸 Print screen anexado com sucesso!'
-                            });
-                        }
-                    }
-                    this.anexoUploadando = false;
-                };
-                reader.readAsDataURL(blob);
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => resolve(ev.target.result);
+                    reader.onerror = () => reject(new Error('Falha ao ler imagem colada.'));
+                    reader.readAsDataURL(blob);
+                });
+                const res = await this.api('/chamados/upload-anexo', {
+                    method: 'POST',
+                    body: { imagem_base64: base64Data }
+                });
+                if (res.success && res.url) {
+                    await this.atribuirUrlAnexo(destino, res.url, '📸 Print screen anexado com sucesso!');
+                }
             } catch (err) {
-                this.anexoUploadando = false;
                 console.error('Erro ao enviar print:', err);
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'error', title: 'Falha no anexo', text: err.message });
                 }
+            } finally {
+                this.anexoUploadando = false;
             }
         },
 
@@ -313,27 +659,8 @@ function chamadosApp() {
                     method: 'POST',
                     body: formData
                 });
-
                 if (res.success && res.url) {
-                    if (destino === 'novo') {
-                        this.novoForm.anexo_url = res.url;
-                    } else {
-                        this.novaInteracao.anexo_url = res.url;
-                    }
-
-                    if (typeof Swal !== 'undefined') {
-                        const Toast = Swal.mixin({
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 2500,
-                            timerProgressBar: true
-                        });
-                        Toast.fire({
-                            icon: 'success',
-                            title: 'Arquivo anexado com sucesso!'
-                        });
-                    }
+                    await this.atribuirUrlAnexo(destino, res.url, 'Arquivo anexado com sucesso!');
                 }
             } catch (err) {
                 console.error('Erro no upload de arquivo:', err);
@@ -349,6 +676,8 @@ function chamadosApp() {
         removerAnexo(destino = 'novo') {
             if (destino === 'novo') {
                 this.novoForm.anexo_url = '';
+            } else if (destino === 'quick') {
+                this.quickForm.anexo_url = '';
             } else {
                 this.novaInteracao.anexo_url = '';
             }
@@ -371,6 +700,8 @@ function chamadosApp() {
             if (!url) return false;
             return /\.(png|jpe?g|gif|webp)(\?.*)?$/i.test(url);
         },
+
+        // ======================== IA & CRIAÇÃO COMPLETA ========================
 
         async analisarComIa() {
             if (!this.novoForm.relato || this.novoForm.relato.trim().length < 4) {
@@ -426,13 +757,15 @@ function chamadosApp() {
             try {
                 const res = await this.api('/chamados/criar', {
                     method: 'POST',
-                    body: this.novoForm
+                    body: {
+                        ...this.novoForm,
+                        criticidade_manual: true
+                    }
                 });
 
                 if (res.success) {
                     this.modalNovoAberto = false;
-                    await this.carregarDashboard();
-                    await this.carregarChamados();
+                    await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
 
                     Swal.fire({
                         icon: 'success',
@@ -447,12 +780,18 @@ function chamadosApp() {
             }
         },
 
+        // ======================== DETALHES & EDIÇÃO TOTAL ========================
+
         async abrirDetalhes(id) {
             try {
                 const res = await this.api(`/chamados/detalhes/${id}`);
                 if (res.success) {
                     this.chamadoAtual = res.chamado;
                     this.timeline = res.timeline || [];
+                    this.anexos = res.anexos || [];
+                    this.editandoChamado = false;
+                    this.complementoTexto = '';
+                    this.timelineFiltro = 'todos';
                     this.novaInteracao = {
                         mensagem: '',
                         tipo: 'comentario',
@@ -461,10 +800,138 @@ function chamadosApp() {
                         anexo_url: ''
                     };
                     this.modalDetalhesAberto = true;
+
+                    this.avisosRecentes = this.avisosRecentes.filter(a => Number(a.idchamado) !== Number(id));
+                    this.notificacoesNaoLidas = this.avisosRecentes.length;
+
+                    if (window.PortalNotificacoes && typeof window.PortalNotificacoes.atualizarAgora === 'function') {
+                        window.PortalNotificacoes.atualizarAgora();
+                    }
+                    this.carregarDashboard();
                 }
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'Erro', text: e.message });
             }
+        },
+
+        async limparNotificacoesChamados(idnotificacao = null, idchamado = null) {
+            const limparTodas = !idnotificacao && !idchamado;
+            const prevAvisos = [...this.avisosRecentes];
+            const prevNaoLidas = this.notificacoesNaoLidas;
+
+            if (limparTodas) {
+                this.avisosRecentes = [];
+                this.notificacoesNaoLidas = 0;
+            } else {
+                this.avisosRecentes = this.avisosRecentes.filter((a) => {
+                    if (idnotificacao && Number(a.idnotificacao) === Number(idnotificacao)) return false;
+                    if (idchamado && !idnotificacao && Number(a.idchamado) === Number(idchamado)) return false;
+                    return true;
+                });
+                this.notificacoesNaoLidas = this.avisosRecentes.length;
+            }
+
+            try {
+                const res = await this.api('/chamados/limpar-notificacoes', {
+                    method: 'POST',
+                    body: {
+                        idnotificacao: idnotificacao ? Number(idnotificacao) : 0,
+                        idchamado: idchamado ? Number(idchamado) : 0
+                    }
+                });
+                if (res.success) {
+                    if (limparTodas) {
+                        this.toast('success', 'Notificações limpas!');
+                    }
+                    if (window.PortalNotificacoes && typeof window.PortalNotificacoes.atualizarAgora === 'function') {
+                        window.PortalNotificacoes.atualizarAgora();
+                    }
+                    await this.carregarDashboard();
+                }
+            } catch (e) {
+                this.avisosRecentes = prevAvisos;
+                this.notificacoesNaoLidas = prevNaoLidas;
+                this.toast('error', e.message || 'Erro ao limpar notificações.');
+            }
+        },
+
+        iniciarEdicaoChamado() {
+            if (!this.chamadoAtual) return;
+            const c = this.chamadoAtual;
+            this.editForm = {
+                titulo: c.titulo || '',
+                motivo: c.motivo || c.observacao || '',
+                categoria: c.categoria || 'bug',
+                tipo_sistema: c.tipo_sistema || 'PORTAL',
+                subtipo_item: c.subtipo_item || '',
+                equipamento_detalhe: c.equipamento_detalhe || '',
+                modulo_slug: c.modulo_slug || '',
+                modulo_nome: c.modulo_nome || '',
+                atendente: c.atendente || 'ALAN',
+                criticidade: c.criticidade || 'media',
+                prioridade: parseInt(c.prioridade || 10, 10)
+            };
+            this.complementoTexto = '';
+            this.editandoChamado = true;
+        },
+
+        adicionarComplementoAoTexto() {
+            const comp = (this.complementoTexto || '').trim();
+            if (!comp) return;
+            const atual = (this.editForm.motivo || '').trim();
+            const agora = new Date();
+            const dataFmt = agora.toLocaleDateString('pt-BR') + ' ' + agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+            this.editForm.motivo = atual
+                ? `${atual}\n\n[Complemento em ${dataFmt}]: ${comp}`
+                : comp;
+            this.complementoTexto = '';
+            this.toast('info', 'Complemento inserido no texto. Clique em Salvar para confirmar.');
+        },
+
+        async salvarEdicaoChamado() {
+            if (!this.chamadoAtual) return;
+            if (!this.editForm.titulo || this.editForm.titulo.trim().length < 3) {
+                this.toast('warning', 'Informe um título válido para o chamado.');
+                return;
+            }
+            if (!this.editForm.motivo || this.editForm.motivo.trim().length < 3) {
+                this.toast('warning', 'Informe a descrição/texto do chamado.');
+                return;
+            }
+            this.salvandoEdicao = true;
+            try {
+                const payload = {
+                    idchamado: this.chamadoAtual.idchamado,
+                    ...this.editForm
+                };
+                const res = await this.api('/chamados/editar', {
+                    method: 'POST',
+                    body: payload
+                });
+                if (res.success) {
+                    this.editandoChamado = false;
+                    this.toast('success', res.message || 'Chamado atualizado com sucesso!');
+                    await Promise.all([
+                        this.carregarDashboard(),
+                        this.carregarChamados(),
+                        this.abrirDetalhes(this.chamadoAtual.idchamado)
+                    ]);
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'Erro ao Salvar Edição', text: e.message });
+            } finally {
+                this.salvandoEdicao = false;
+            }
+        },
+
+        timelineFiltrada() {
+            if (this.timelineFiltro === 'comentarios') {
+                return (this.timeline || []).filter(op => ['comentario', 'evidencia', 'duvida', 'progresso', 'resolucao'].includes(op.tipo));
+            }
+            if (this.timelineFiltro === 'mudancas') {
+                return (this.timeline || []).filter(op => ['abertura', 'atendimento', 'mudanca_status', 'mudanca_prioridade', 'edicao', 'ordem_drag'].includes(op.tipo));
+            }
+            return this.timeline || [];
         },
 
         async trocarStatus(novoStatus) {
@@ -474,14 +941,17 @@ function chamadosApp() {
                     method: 'POST',
                     body: {
                         idchamado: this.chamadoAtual.idchamado,
-                        status: novoStatus,
+                        status: Number(novoStatus),
                         observacao: 'Status alterado pelo painel'
                     }
                 });
                 if (res.success) {
-                    await this.carregarDashboard();
-                    await this.carregarChamados();
-                    await this.abrirDetalhes(this.chamadoAtual.idchamado);
+                    this.toast('success', res.message || 'Status atualizado!');
+                    await Promise.all([
+                        this.carregarDashboard(),
+                        this.carregarChamados(),
+                        this.abrirDetalhes(this.chamadoAtual.idchamado)
+                    ]);
                 }
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'Erro ao Mudar Status', text: e.message });
@@ -495,23 +965,10 @@ function chamadosApp() {
                     body: { idchamado: id }
                 });
                 if (res.success) {
-                    await this.carregarDashboard();
-                    await this.carregarChamados();
+                    this.toast('success', res.message || 'Chamado assumido com sucesso!', 2500);
+                    await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
                     if (this.modalDetalhesAberto && this.chamadoAtual && this.chamadoAtual.idchamado == id) {
                         await this.abrirDetalhes(id);
-                    }
-                    if (typeof Swal !== 'undefined') {
-                        const Toast = Swal.mixin({
-                            toast: true,
-                            position: 'top-end',
-                            showConfirmButton: false,
-                            timer: 2500,
-                            timerProgressBar: true
-                        });
-                        Toast.fire({
-                            icon: 'success',
-                            title: res.message || 'Chamado assumido com sucesso!'
-                        });
                     }
                 }
             } catch (e) {
@@ -539,17 +996,12 @@ function chamadosApp() {
                 });
 
                 if (res.success) {
-                    await this.carregarDashboard();
-                    await this.carregarChamados();
-                    await this.abrirDetalhes(this.chamadoAtual.idchamado);
-
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Sucesso!',
-                        text: res.message,
-                        timer: 1800,
-                        showConfirmButton: false
-                    });
+                    this.toast('success', res.message || 'Interação registrada!', 2000);
+                    await Promise.all([
+                        this.carregarDashboard(),
+                        this.carregarChamados(),
+                        this.abrirDetalhes(this.chamadoAtual.idchamado)
+                    ]);
                 }
             } catch (e) {
                 Swal.fire({ icon: 'error', title: 'Erro ao Registrar', text: e.message });
@@ -568,13 +1020,7 @@ function chamadosApp() {
 
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(texto).then(() => {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Dossiê Técnico Copiado!',
-                        text: 'Dossiê copiado para a área de transferência.',
-                        timer: 2000,
-                        showConfirmButton: false
-                    });
+                    this.toast('success', 'Dossiê Técnico Copiado!');
                 }).catch(() => {
                     prompt('Copie o dossiê técnico abaixo:', texto);
                 });

@@ -397,6 +397,11 @@ footer {
     gap: 14px;
     animation: pwaSlideUp 0.4s ease-out;
 }
+@media (min-width: 768px) {
+    .pwa-install-toast {
+        display: none !important;
+    }
+}
 @keyframes pwaSlideUp {
     from { transform: translateY(100px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }

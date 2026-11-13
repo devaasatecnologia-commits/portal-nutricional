@@ -31,6 +31,9 @@
     </div>
     <div class="header-actions">
         <!-- Botão Nova Conversa -->
+        <a href="/portal/modules/minhas-mensagens.php" class="chat-btn-icon flex items-center justify-center no-underline" title="Abrir Tela Cheia (Split-Screen)">
+            <i class="fa-solid fa-up-right-from-square"></i>
+        </a>
         <button onclick="mostrarContatos()" class="chat-btn-icon" title="Nova Conversa">
             <i class="fa-solid fa-plus"></i>
         </button>

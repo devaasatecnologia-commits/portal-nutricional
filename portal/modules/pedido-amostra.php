@@ -1,5 +1,5 @@
 <?php
-$pageTitle = 'Material de Apoio e Amostras | Nutricional';
+$pageTitle = 'Pedidos de Material de Apoio & Amostras | Nutricional';
 $moduleJs = 'pedido-amostra.js';
 $version = time();
 $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
@@ -47,13 +47,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </a>
                 <div class="min-w-0">
                     <div class="flex flex-wrap items-center gap-1.5 mb-1">
-                        <span class="px-2 py-0.5 rounded-lg bg-emerald-400/30 text-emerald-200 text-[10px] sm:text-xs font-black uppercase tracking-wider">Gestão Comercial</span>
+                        <span class="px-2 py-0.5 rounded-lg bg-emerald-400/30 text-emerald-200 text-[10px] sm:text-xs font-black uppercase tracking-wider">Apoio Comercial ao Gestor</span>
                         <span id="badgeRegraEstoque" class="px-2 py-0.5 rounded-lg bg-emerald-950/40 text-emerald-100 text-[10px] sm:text-xs font-bold border border-emerald-400/30">
                             <i class="fa-solid fa-boxes-stacked mr-1"></i>Material de Apoio
                         </span>
                     </div>
-                    <h1 class="text-lg sm:text-2xl font-black tracking-tight leading-tight">Material de Apoio & Amostras</h1>
-                    <p class="text-[11px] sm:text-sm text-emerald-100/90 font-medium mt-0.5">Criação ágil para gestores e representantes com controle inteligente de saldo</p>
+                    <h1 class="text-lg sm:text-2xl font-black tracking-tight leading-tight">Pedidos de Material de Apoio & Amostras</h1>
+                    <p class="text-[11px] sm:text-sm text-emerald-100/90 font-medium mt-0.5">Geração ágil de pedidos de material de apoio, brindes e amostras para apoiar o gestor e representantes com controle inteligente de saldo</p>
                 </div>
             </div>
 
@@ -68,7 +68,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="grid grid-cols-2 sm:flex items-center gap-1.5 bg-emerald-950/40 p-1.5 rounded-2xl border border-emerald-400/20 w-full sm:w-auto">
                     <button type="button" id="tabBtnSolicitar" class="pa-tab-btn active" onclick="trocarAba('solicitar')">
                         <i class="fa-solid fa-cart-plus"></i>
-                        <span class="truncate">Nova Solicitação</span>
+                        <span class="truncate">Gerar Pedido de Apoio</span>
                     </button>
                     <button type="button" id="tabBtnHistorico" class="pa-tab-btn" onclick="trocarAba('historico')">
                         <i class="fa-solid fa-clock-rotate-left"></i>
@@ -89,7 +89,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-xl bg-emerald-100 text-emerald-700 font-black text-sm flex items-center justify-center">1</div>
                     <div>
-                        <h2 class="text-sm sm:text-base font-extrabold text-slate-800">Parâmetros da Solicitação</h2>
+                        <h2 class="text-sm sm:text-base font-extrabold text-slate-800">Parâmetros do Pedido de Apoio & Amostra</h2>
                         <p class="text-xs text-slate-400">Selecione a filial operativa, o tipo de transação e o cliente destinatário</p>
                     </div>
                 </div>
@@ -180,7 +180,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <button id="btnEnviar" class="px-7 py-3.5 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-extrabold text-sm sm:text-base shadow-lg shadow-emerald-600/30 transition flex items-center gap-2 cursor-pointer w-full sm:w-auto justify-center disabled:opacity-50">
                 <i class="fa-solid fa-paper-plane"></i>
-                <span>Enviar Solicitação</span>
+                <span>Gerar Pedido de Apoio & Amostra</span>
             </button>
         </div>
     </div>

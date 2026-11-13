@@ -1290,7 +1290,7 @@ class VendasCuboController
 
     private function listarFiliais(UserScope $scope): array
     {
-        $sql = "SELECT idfilial, nome FROM filial WHERE inativo = 'N'";
+        $sql = "SELECT idfilial, nome FROM filial WHERE inativo = 'N' AND idfilial > 0 AND nome NOT ILIKE '%BAIXADA%'";
         if ($scope->filialRestrita()) {
             $sql .= ' AND idfilial IN (' . $this->inList($scope->filiais) . ')';
         }

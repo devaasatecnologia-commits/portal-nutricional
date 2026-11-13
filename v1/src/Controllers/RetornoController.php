@@ -39,9 +39,39 @@ class RetornoController
         $stmt = $this->pdo->prepare("SELECT 1 FROM pedido_item WHERE idpedido = ? AND iditem = ? AND ativo = 'S'");
         $stmt->execute([$idpedido, self::ITEM_PLACEHOLDER]);
         if (!$stmt->fetchColumn()) {
-            $dados = $this->getDadosItemCompleto(self::ITEM_PLACEHOLDER, 1);
+            $usarCustoGerencial = $this->usaCustoGerencial($idpedido);
+            $dados = $this->getDadosItemCompleto(self::ITEM_PLACEHOLDER, 1, $usarCustoGerencial);
             $this->inserirItemCompleto($idpedido, self::ITEM_PLACEHOLDER, 1, $dados);
         }
+    }
+
+    /**
+     * Verifica se o pedido ou destino deve precificar os itens pelo Último Custo Gerencial
+     * (Cliente 16595 - Misturão / Matéria-Prima, Transação 21 ou pedido_transacao.tipo_preco = 4).
+     */
+    private function usaCustoGerencial(int $idpedido = 0, int $idcliforemp = 0): bool
+    {
+        if ($idcliforemp === 16595) {
+            return true;
+        }
+        if ($idpedido <= 0) {
+            return false;
+        }
+        $stmt = $this->pdo->prepare("
+            SELECT p.idcliforemp, p.idtransacao, COALESCE(pt.tipo_preco, 1) AS tipo_preco
+            FROM pedido p
+            LEFT JOIN pedido_transacao pt ON pt.idtransacao = p.idtransacao
+            WHERE p.idpedido = ?
+            LIMIT 1
+        ");
+        $stmt->execute([$idpedido]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+        return (int)($row['idcliforemp'] ?? 0) === 16595
+            || (int)($row['idtransacao'] ?? 0) === 21
+            || (int)($row['tipo_preco'] ?? 1) === 4;
     }
 
     /**
@@ -239,7 +269,7 @@ class RetornoController
     }
     
   /**
- * Atualiza TODOS os totais do pedido (valor, peso, quantidade, etc)
+ * Atualiza TODOS os totais do pedido (valor, saldo, custos, impostos, peso, quantidade, etc)
  */
 private function atualizarTotaisPedido($idpedido)
 {
@@ -256,8 +286,58 @@ private function atualizarTotaisPedido($idpedido)
                 FROM pedido_item 
                 WHERE idpedido = ? AND ativo = 'S'
             ),
+            valortotalsaldo = (
+                SELECT COALESCE(SUM(valortotal), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
             valortotalcalculado = (
                 SELECT COALESCE(SUM(valortotal), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            quantmoedatotal = (
+                SELECT COALESCE(SUM(quantmoedatotal), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalcustogerencial = (
+                SELECT COALESCE(SUM(ROUND(qt * COALESCE(valorcustogerencial, 0), 2)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalcustoreposicao = (
+                SELECT COALESCE(SUM(ROUND(qt * COALESCE(valorcustoreposicao, 0), 2)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalbasecbsibs = (
+                SELECT COALESCE(SUM(COALESCE(valorbasecbsibs, 0)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalcbs = (
+                SELECT COALESCE(SUM(COALESCE(valorcbs, 0)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalibsuf = (
+                SELECT COALESCE(SUM(COALESCE(valoribsuf, 0)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalibs = (
+                SELECT COALESCE(SUM(COALESCE(valoribs, 0)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valortotalcbsibs = (
+                SELECT COALESCE(SUM(COALESCE(valorcbsibs, 0)), 0) 
+                FROM pedido_item 
+                WHERE idpedido = ? AND ativo = 'S'
+            ),
+            valorbaseisentoicms = (
+                SELECT COALESCE(SUM(COALESCE(valorbaseisentoicms, 0)), 0) 
                 FROM pedido_item 
                 WHERE idpedido = ? AND ativo = 'S'
             ),
@@ -279,12 +359,7 @@ private function atualizarTotaisPedido($idpedido)
             datahoraultimaatualizacao = NOW()
         WHERE idpedido = ?
     ");
-    $stmt->execute([
-        $idpedido, $idpedido, $idpedido,
-        $idpedido, $idpedido,
-        $idpedido,
-        $idpedido
-    ]);
+    $stmt->execute(array_fill(0, 17, $idpedido));
     
     $stmt = $this->pdo->prepare("
         SELECT valortotalpedido FROM pedido WHERE idpedido = ?
@@ -312,10 +387,11 @@ private function atualizarTotaisPedido($idpedido)
     }
     
    /**
- * Busca dados completos do item para inserção no pedido_item
- * IGUAL AO INSERT MANUAL QUE FUNCIONOU
+ * Busca dados completos do item para inserção/atualização no pedido_item.
+ * Quando $usarCustoGerencial = true (ex.: cliente 16595 Misturão / transação tipo_preco = 4),
+ * usa estoque_filial.custogerencial como preço unitário de venda no pedido.
  */
-private function getDadosItemCompleto($iditem, $quantidade)
+private function getDadosItemCompleto($iditem, $quantidade, bool $usarCustoGerencial = false)
 {
     $sql = "
         WITH item_base AS (
@@ -329,17 +405,23 @@ private function getDadosItemCompleto($iditem, $quantidade)
                 i.idclassfiscal,
                 i.fator_conversao,
                 i.complemento,
-                ef.valorprecovenda,
-                ef.valorcustocontabil,
-                trunc(ef.custogerencial, 2) AS custogerencial,
-                ROUND((ef.valorprecovenda - trunc(ef.custogerencial, 2)) / ef.valorprecovenda * 100, 4) AS percmargem,
+                COALESCE(ef.valorprecovenda, 0) AS valorprecovenda,
+                COALESCE(ef.valorprecominimo, ef.valorprecovenda, 0) AS valorprecominimo,
+                COALESCE(ef.valorcustocontabil, 0) AS valorcustocontabil,
+                ROUND(COALESCE(NULLIF(ef.custogerencial, 0), NULLIF(ef.custogerencialanterior, 0), ef.valorcustocontabil, ef.valorprecovenda, 0)::numeric, 4) AS custogerencial_unitario,
+                trunc(COALESCE(ef.custogerencial, 0), 2) AS custogerencial,
+                CASE
+                    WHEN COALESCE(ef.valorprecovenda, 0) > 0
+                    THEN ROUND((ef.valorprecovenda - trunc(COALESCE(ef.custogerencial, 0), 2)) / ef.valorprecovenda * 100, 4)
+                    ELSE 0
+                END AS percmargem,
                 ef.idimposto,
                 ef.idtributo,
                 (SELECT tipoenquadraformapreco FROM filial WHERE idfilial = 1) as tipo_enquadramento,
                 (SELECT uf FROM filial WHERE idfilial = 1) as uf_filial
             FROM item i
             LEFT JOIN estoque_filial ef ON ef.iditem = i.iditem AND ef.idfilial = 1
-            WHERE i.iditem = ? AND i.inativo = 'N'
+            WHERE i.iditem = ?
         ),
         imposto_data AS (
             SELECT 
@@ -381,7 +463,9 @@ private function getDadosItemCompleto($iditem, $quantidade)
             ib.fator_conversao,
             ib.complemento,
             ib.valorprecovenda,
+            ib.valorprecominimo,
             ib.valorcustocontabil,
+            ib.custogerencial_unitario,
             ib.custogerencial,
             ib.percmargem,
             ib.idimposto,
@@ -409,25 +493,37 @@ private function getDadosItemCompleto($iditem, $quantidade)
     if (!$dados) {
         throw new \Exception("Item não encontrado: {$iditem}");
     }
+
+    $precoTabela = (float)$dados['valorprecovenda'];
+    $precoMinimo = (float)($dados['valorprecominimo'] ?? $precoTabela);
+    $precoUnitario = $usarCustoGerencial ? (float)$dados['custogerencial_unitario'] : $precoTabela;
+    $custoGerencialTrunc = (float)$dados['custogerencial'];
+
+    $dados['preco_unitario_aplicado'] = $precoUnitario;
+    $dados['valorpauta'] = $precoTabela;
+    $dados['valorprecominimo'] = $precoMinimo;
+    $dados['percmargem'] = $precoUnitario > 0
+        ? round(($precoUnitario - $custoGerencialTrunc) / $precoUnitario * 100, 4)
+        : 0.0;
     
-    // Calcular todos os valores baseados na quantidade (igual ao INSERT manual)
+    // Calcular todos os valores baseados na quantidade e no preço aplicado
     $dados['qt'] = $quantidade;
-    $dados['qtpesoliquido'] = round($quantidade * $dados['pesoliquido'], 4);
-    $dados['qtpesobruto'] = round($quantidade * $dados['pesobruto'], 4);
-    $dados['valortotal'] = round($quantidade * $dados['valorprecovenda'], 2);
-    $dados['valortotalcomdesconto'] = round($quantidade * $dados['valorprecovenda'], 2);
-    $dados['valoricms'] = round($quantidade * $dados['valorprecovenda'] * $dados['perc_icms'] / 100, 2);
-    $dados['valorbasepis'] = round($quantidade * $dados['valorprecovenda'] * 0.88, 2);
-    $dados['valorpis'] = round($dados['valorbasepis'] * $dados['perc_cred_pis'] / 100, 2);
-    $dados['valorbasecofins'] = round($quantidade * $dados['valorprecovenda'] * 0.88, 2);
-    $dados['valorcofins'] = round($dados['valorbasecofins'] * $dados['perc_cred_cofins'] / 100, 2);
-    $dados['valorbasecbsibs'] = round($quantidade * $dados['valorprecovenda'] * 0.80, 2);
-    $dados['valorcbs'] = round($dados['valorbasecbsibs'] * $dados['perccbs'] / 100, 2);
-    $dados['valoribsuf'] = round($dados['valorbasecbsibs'] * $dados['percibsuf'] / 100, 2);
+    $dados['qtpesoliquido'] = round($quantidade * (float)$dados['pesoliquido'], 4);
+    $dados['qtpesobruto'] = round($quantidade * (float)$dados['pesobruto'], 4);
+    $dados['valortotal'] = round($quantidade * $precoUnitario, 2);
+    $dados['valortotalcomdesconto'] = round($quantidade * $precoUnitario, 2);
+    $dados['valoricms'] = round($quantidade * $precoUnitario * (float)$dados['perc_icms'] / 100, 2);
+    $dados['valorbasepis'] = round($quantidade * $precoUnitario * 0.88, 2);
+    $dados['valorpis'] = round($dados['valorbasepis'] * (float)$dados['perc_cred_pis'] / 100, 2);
+    $dados['valorbasecofins'] = round($quantidade * $precoUnitario * 0.88, 2);
+    $dados['valorcofins'] = round($dados['valorbasecofins'] * (float)$dados['perc_cred_cofins'] / 100, 2);
+    $dados['valorbasecbsibs'] = round($quantidade * $precoUnitario * 0.80, 2);
+    $dados['valorcbs'] = round($dados['valorbasecbsibs'] * (float)$dados['perccbs'] / 100, 2);
+    $dados['valoribsuf'] = round($dados['valorbasecbsibs'] * (float)$dados['percibsuf'] / 100, 2);
     $dados['valoribs'] = $dados['valoribsuf'];
     $dados['valorcbsibs'] = $dados['valorcbs'] + $dados['valoribsuf'];
-    $dados['quantmoedaunitario'] = round($dados['valorprecovenda'], 2);
-    $dados['quantmoedatotal'] = round($quantidade * $dados['valorprecovenda'], 2);
+    $dados['quantmoedaunitario'] = $usarCustoGerencial ? round($precoUnitario, 4) : round($precoUnitario, 2);
+    $dados['quantmoedatotal'] = round($quantidade * $precoUnitario, 4);
     
     return $dados;
 }
@@ -435,7 +531,7 @@ private function getDadosItemCompleto($iditem, $quantidade)
     /**
      * Aplica a nova quantidade a UMA linha do pedido (filtro por linha + pedido + item).
      * qt = 0 remove a linha do pedido (o histórico fica em retorno_carga); senão atualiza
-     * quantidade, saldos, reserva, pesos e impostos.
+     * quantidade, preço unitário (custo gerencial quando aplicável), saldos, reserva, pesos e impostos.
      */
     private function aplicarQuantidadePedidoItem(int $iditempedido, int $idpedido, int $iditem, float $qt): void
     {
@@ -444,20 +540,31 @@ private function getDadosItemCompleto($iditem, $quantidade)
             $stmt->execute([$iditempedido, $idpedido, $iditem]);
             return;
         }
-        $d = $this->getDadosItemCompleto($iditem, $qt);
+        $usarCg = $this->usaCustoGerencial($idpedido);
+        $d = $this->getDadosItemCompleto($iditem, $qt, $usarCg);
+        $vu = (float)($d['preco_unitario_aplicado'] ?? $d['valorprecovenda']);
         $stmt = $this->pdo->prepare("
             UPDATE pedido_item SET
                 qt = :qt, quant_impressao = :qt, qtsaldo = :qt, quant_original = :qt, quant_reserva = :qt,
                 qtsaldoconvertido = :qt, qtsaldogerouop = :qt,
+                valor = :vu, valorunitarioimpressao = :vu, valorsugerido = :vu,
+                valorprecovendadia = :vu, valorunit_comst = :vu,
+                quantmoedaunitario = :qmu, quantmoedatotal = :qmt,
+                valorcustogerencial = :cg, valorcustoreposicao = :cr,
+                perc_margem = :pm, perc_margem_cg = :pm,
                 qtpesoliquido = :pl, qtpesobruto = :pb, pesoliquidooriginal = :pl, pesobrutooriginal = :pb,
                 valortotal = :vt, valortotalcomdesconto = :vt, valor_total_com_campanha = :vt,
-                valortotal_comst = :vt, quantmoedatotal = :vt, valorbaseicms = :vt, valoricms = :vi,
+                valortotal_comst = :vt, valorbaseicms = :vt, valoricms = :vi,
                 valorbasepis = :bp, valorpis = :vp, valorbasecofins = :bc, valorcofins = :vc,
                 valorbasecbsibs = :bb, valorcbs = :vcbs, valoribsuf = :vibs, valoribs = :vibs, valorcbsibs = :vcb
             WHERE iditempedido = :id AND idpedido = :ped AND iditem = :item AND ativo = 'S'
         ");
         $stmt->execute([
-            ':qt' => $qt, ':pl' => $d['qtpesoliquido'], ':pb' => $d['qtpesobruto'], ':vt' => $d['valortotal'],
+            ':qt' => $qt, ':vu' => $vu,
+            ':qmu' => $d['quantmoedaunitario'], ':qmt' => $d['quantmoedatotal'],
+            ':cg' => (float)$d['custogerencial'], ':cr' => (float)$d['valorcustocontabil'],
+            ':pm' => (float)$d['percmargem'],
+            ':pl' => $d['qtpesoliquido'], ':pb' => $d['qtpesobruto'], ':vt' => $d['valortotal'],
             ':vi' => $d['valoricms'], ':bp' => $d['valorbasepis'], ':vp' => $d['valorpis'],
             ':bc' => $d['valorbasecofins'], ':vc' => $d['valorcofins'], ':bb' => $d['valorbasecbsibs'],
             ':vcbs' => $d['valorcbs'], ':vibs' => $d['valoribsuf'], ':vcb' => $d['valorcbsibs'],
@@ -479,8 +586,10 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
     $proximo = $stmt->fetch();
     $iditempedido = $proximo['proximo'];
     
-    // Extrair dados do item
-    $valorUnitario = (float)$dadosItem['valorprecovenda'];
+    // Extrair dados do item (usa custo gerencial quando preco_unitario_aplicado estiver definido para a transação/cliente)
+    $valorUnitario = (float)($dadosItem['preco_unitario_aplicado'] ?? $dadosItem['valorprecovenda']);
+    $valorPauta = (float)($dadosItem['valorpauta'] ?? $dadosItem['valorprecovenda']);
+    $valorPrecoMinimo = (float)($dadosItem['valorprecominimo'] ?? $valorUnitario);
     $pesoLiquidoUnitario = (float)$dadosItem['pesoliquido'];
     $pesoBrutoUnitario = (float)$dadosItem['pesobruto'];
     $percIcms = (float)$dadosItem['perc_icms'];
@@ -513,8 +622,8 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
     $valorcbs = round($valorbasecbsibs * $perccbs / 100, 2);
     $valoribsuf = round($valorbasecbsibs * $percibsuf / 100, 2);
     $valorcbsibs = $valorcbs + $valoribsuf;
-    $quantmoedaunitario = round($valorUnitario, 2);
-    $quantmoedatotal = round($qt * $valorUnitario, 2);
+    $quantmoedaunitario = (float)($dadosItem['quantmoedaunitario'] ?? round($valorUnitario, 2));
+    $quantmoedatotal = (float)($dadosItem['quantmoedatotal'] ?? round($qt * $valorUnitario, 2));
     
     // Só as colunas que a regra do ERP preenche; as demais usam o DEFAULT da tabela
     $cols = [
@@ -522,14 +631,14 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         'iditem' => $iditem, 'idclassfiscal' => $idclassfiscal, 'idsituacaotributaria' => $idsituacaotributaria,
         'qt' => $qt, 'qtsaldo' => $qt, 'qtfaturado' => 0, 'qtpesoliquido' => $qtpesoliquido, 'qtpesobruto' => $qtpesobruto,
         'valor' => $valorUnitario, 'valortotal' => $valortotal, 'valortotalcomdesconto' => $valortotalcomdesconto,
-        'valorcustoreposicao' => $valorcustocontabil, 'valorpauta' => $valorUnitario,
+        'valorcustoreposicao' => $valorcustocontabil, 'valorpauta' => $valorPauta,
         'idunidade' => (int)($dadosItem['idunidade'] ?? 1), 'idunidade_impressao' => (int)($dadosItem['idunidade'] ?? 1),
         'perc_ipi' => $percIpi, 'perc_icms' => $percIcms, 'valoricms' => $valoricms,
         'valorbaseicms' => $valortotal, 'perc_icmsuf_st' => $percIcms, 'percicmsufdestino' => $percIcms,
         'codigolido' => $referencia, 'complemento' => $complemento,
         'perc_margem' => $percmargem, 'perc_margem_cg' => $percmargem, 'perc_margem_cm' => 100,
         'valorcustogerencial' => $custogerencial,
-        'valorprecominimo' => $valorUnitario, 'quant_impressao' => $qt, 'fator_conversao' => $fatorConversao ?: 1,
+        'valorprecominimo' => $valorPrecoMinimo, 'quant_impressao' => $qt, 'fator_conversao' => $fatorConversao ?: 1,
         'valorunitarioimpressao' => $valorUnitario, 'valorsugerido' => $valorUnitario, 'valorprecovendadia' => $valorUnitario,
         'valor_total_com_campanha' => $valortotal, 'valorunit_comst' => $valorUnitario, 'valortotal_comst' => $valortotal,
         'tipo_conversao' => 1, 'quant_original' => $qt, 'quant_reserva' => $qt, 'qtsaldoconvertido' => $qt, 'qtsaldogerouop' => $qt,
@@ -728,7 +837,9 @@ private function inserirItemCompleto($idpedido, $iditem, $quantidade, $dadosItem
         $semZeros = ltrim($busca, '0');
         $base = "
             SELECT i.iditem, i.descricao, i.referencia, i.pesobruto, i.pesoliquido,
-                   ef.valorprecovenda, i.path_foto_master,
+                   ef.valorprecovenda,
+                   ROUND(COALESCE(ef.custogerencial, 0)::numeric, 4) AS custogerencial,
+                   i.path_foto_master,
                    COALESCE(
                        (SELECT cb.idbarra FROM codigo_barra cb WHERE cb.iditem = i.iditem AND cb.principal = 'S' LIMIT 1),
                        (SELECT cb.idbarra FROM codigo_barra cb WHERE cb.iditem = i.iditem LIMIT 1),
@@ -941,10 +1052,11 @@ public function movimentar(Request $request, Response $response): Response
         $quantidade_atual = $produtoPedido ? (float)$produtoPedido['qt'] : 0;
         
         // ================================================================
-        // Busca dados completos do item
+        // Busca dados completos do item (custo gerencial para cliente 16595 / tipo_preco = 4)
         // ================================================================
-        $dadosItem = $this->getDadosItemCompleto($iditem, 1);
-        $valorUnitario = (float)$dadosItem['valorprecovenda'];
+        $usarCustoGerencial = $this->usaCustoGerencial((int)$idpedido, (int)$idcliforemp_destino);
+        $dadosItem = $this->getDadosItemCompleto($iditem, 1, $usarCustoGerencial);
+        $valorUnitario = (float)($dadosItem['preco_unitario_aplicado'] ?? $dadosItem['valorprecovenda']);
         $pesoLiquidoUnitario = (float)$dadosItem['pesoliquido'];
         $pesoBrutoUnitario = (float)$dadosItem['pesobruto'];
         $descricaoItem = $dadosItem['descricao'];
@@ -1236,6 +1348,7 @@ public function movimentar(Request $request, Response $response): Response
                     ROUND(pi.qtpesoliquido / NULLIF(pi.qt, 0), 4) as peso_unitario,
                     pi.qtpesoliquido as peso_total,
                     pi.valor as valor_unitario, pi.valortotal as valor_total,
+                    pi.valorunitarioimpressao, pi.valorcustogerencial,
                     i.descricao as nome_item, i.referencia, i.pesoliquido as peso_cadastro,
                     COALESCE(cb.idbarra, 'S/COD') as cod_barras,
                     i.path_foto_master as foto
@@ -1582,7 +1695,8 @@ public function moverProduto(Request $request, Response $response): Response
             $novaQuantDestino = $produtoDestino['qt'] + $quantidade;
             $this->aplicarQuantidadePedidoItem((int)$produtoDestino['iditempedido'], (int)$idpedido_destino, $iditem, (float)$novaQuantDestino);
         } else {
-            $dadosItem = $this->getDadosItemCompleto($iditem, $quantidade);
+            $usarCustoGerencialDest = $this->usaCustoGerencial((int)$idpedido_destino, (int)$idcliforemp_destino);
+            $dadosItem = $this->getDadosItemCompleto($iditem, $quantidade, $usarCustoGerencialDest);
             $this->inserirItemCompleto($idpedido_destino, $iditem, $quantidade, $dadosItem);
         }
         

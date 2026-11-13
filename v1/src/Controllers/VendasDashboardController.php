@@ -402,6 +402,14 @@ class VendasDashboardController
                     $p, 'quantidade', 'peso', 'valor', 'preco_medio');
             }
 
+            $notasFaturadas = $this->all("SELECT COALESCE(CAST(n.numeronf AS text), '#' || n.idnfs) AS numero,
+                    to_char(n.dataemissao, 'YYYY-MM-DD') AS data,
+                    COALESCE(n.pesoliquido, 0) AS peso,
+                    COALESCE(n.valortotalnota, 0) AS valor
+                FROM nfs n
+                WHERE n.status = 2 AND n.idtransacao = 1 AND n.idcliforemp = :cl
+                ORDER BY n.dataemissao DESC, n.idnfs DESC LIMIT 20", ['cl' => $idcliente], 'peso', 'valor');
+
             return [
                 'cliente' => [
                     'idcliforemp' => $idcliente,
@@ -409,20 +417,25 @@ class VendasDashboardController
                     'cnpj' => $info['cnpj'] ?? null,
                     'cidade' => $info['cidade'] ?? null,
                     'estado' => $info['estado'] ?? null,
+                    'cidade_uf' => trim(($info['cidade'] ?? '') . (($info['cidade'] && $info['estado']) ? ' / ' : '') . ($info['estado'] ?? '')),
                     'regiao' => $info['regiao'] ?? null,
                     'subregiao' => $info['subregiao'] ?? null,
                     'representante' => $info['representante'] ?? null,
                     'valor' => round($valor, 2),
+                    'valor_historico' => round($valor, 2),
                     'quantidade' => round($qtd, 2),
                     'peso' => round($peso, 2),
+                    'peso_historico' => round($peso, 2),
                     'total_notas' => $notas,
                     'ticket_medio' => $notas > 0 ? round($valor / $notas, 2) : 0,
                     'ultima_compra' => $ultimaCompraReal,
                     'dias_sem_comprar' => $diasSemComprar,
+                    'notas' => $notasFaturadas,
                     'modo' => $modo,
                     'periodo_label' => $modo === 'historico' ? 'Histórico Geral (Últimos 12 meses)' : 'Período Selecionado',
                 ],
                 'top_produtos' => $produtos,
+                'notas' => $notasFaturadas,
             ];
         });
     }
@@ -2099,10 +2112,7 @@ class VendasDashboardController
             ) ";
         }
 
-        if (!empty($e['filiais'])) {
-            $filiaisList = implode(',', array_map('intval', $e['filiais']));
-            $repFiltroSql .= " AND (cl.idfilial IS NULL OR cl.idfilial IN ($filiaisList)) ";
-        }
+
 
         $macroSql = $this->regiaoMacroSql('rg', 'cid', 'cl');
         if (empty($e['pode_ver_redes'])) {

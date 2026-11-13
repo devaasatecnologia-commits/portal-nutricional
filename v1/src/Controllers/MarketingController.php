@@ -3738,6 +3738,104 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
     }
 
     /**
+     * Resolve o ID interno da tabela mkt_clientes para o agendamento de compromissos.
+     * Se o ID passado for de um cliente do ERP (cliforemp_id), busca ou sincroniza automaticamente
+     * para mkt_clientes, evitando erro de chave estrangeira (FK violation).
+     */
+    private function resolverOuCriarClienteCrm(int $idClienteOuErp): int
+    {
+        if ($idClienteOuErp <= 0) {
+            throw new Exception("Selecione um cliente válido para o agendamento.");
+        }
+
+        // 1. Verifica se já é o ID primário de mkt_clientes
+        $st = $this->pdo->prepare("SELECT id FROM mkt_clientes WHERE id = :id");
+        $st->execute(['id' => $idClienteOuErp]);
+        $idCrm = $st->fetchColumn();
+        if ($idCrm) {
+            return (int)$idCrm;
+        }
+
+        // 2. Verifica se existe em mkt_clientes pelo cliforemp_id (ID do ERP)
+        $stErp = $this->pdo->prepare("SELECT id FROM mkt_clientes WHERE cliforemp_id = :id");
+        $stErp->execute(['id' => $idClienteOuErp]);
+        $idCrmExistente = $stErp->fetchColumn();
+        if ($idCrmExistente) {
+            return (int)$idCrmExistente;
+        }
+
+        // 3. Se não existe em mkt_clientes, busca no ERP (tabela cliforemp)
+        $stCli = $this->pdo->prepare("
+            SELECT 
+                c.idcliforemp,
+                c.fantasia,
+                c.razao,
+                c.fone,
+                c.email,
+                c.endereco,
+                c.numero,
+                c.bairro,
+                c.cep,
+                c.complemento,
+                c.uf,
+                COALESCE(c.cnpj, c.cpf) as cnpj_cpf,
+                c.idvendedor,
+                c.idcidade,
+                cid.descricao as cidade_nome,
+                ven.fantasia as vendedor_nome
+            FROM cliforemp c
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN cliforemp ven ON ven.idcliforemp = c.idvendedor
+            WHERE c.idcliforemp = :id
+        ");
+        $stCli->execute(['id' => $idClienteOuErp]);
+        $cliErp = $stCli->fetch(PDO::FETCH_ASSOC);
+
+        if (!$cliErp) {
+            throw new Exception("Cliente #{$idClienteOuErp} não foi localizado no CRM nem no ERP.");
+        }
+
+        $nome = trim($cliErp['fantasia'] ?? '') ?: trim($cliErp['razao'] ?? '') ?: ('Cliente ERP #' . $idClienteOuErp);
+        $empresa = trim($cliErp['razao'] ?? '') ?: trim($cliErp['fantasia'] ?? '') ?: '';
+
+        // Sincroniza/cria o cliente em mkt_clientes
+        $sqlInsert = "
+            INSERT INTO mkt_clientes (
+                cliforemp_id, nome, empresa, telefone, email,
+                cidade, uf, endereco, numero, bairro, cep, complemento,
+                cnpj_cpf, nome_vendedor, id_vendedor,
+                origem, status, termometro, data_cadastro, data_atualizacao
+            ) VALUES (
+                :cliforemp_id, :nome, :empresa, :telefone, :email,
+                :cidade, :uf, :endereco, :numero, :bairro, :cep, :complemento,
+                :cnpj_cpf, :nome_vendedor, :id_vendedor,
+                'ERP', 'Novo', 'Morno', CURRENT_DATE, CURRENT_TIMESTAMP
+            ) RETURNING id
+        ";
+        $stIns = $this->pdo->prepare($sqlInsert);
+        $stIns->execute([
+            ':cliforemp_id' => $idClienteOuErp,
+            ':nome' => $nome,
+            ':empresa' => $empresa,
+            ':telefone' => $cliErp['fone'] ?? '',
+            ':email' => $cliErp['email'] ?? '',
+            ':cidade' => $cliErp['cidade_nome'] ?? '',
+            ':uf' => $cliErp['uf'] ?? '',
+            ':endereco' => $cliErp['endereco'] ?? '',
+            ':numero' => $cliErp['numero'] ?? '',
+            ':bairro' => $cliErp['bairro'] ?? '',
+            ':cep' => $cliErp['cep'] ?? '',
+            ':complemento' => $cliErp['complemento'] ?? '',
+            ':cnpj_cpf' => $cliErp['cnpj_cpf'] ?? '',
+            ':nome_vendedor' => $cliErp['vendedor_nome'] ?? '',
+            ':id_vendedor' => !empty($cliErp['idvendedor']) ? (int)$cliErp['idvendedor'] : null
+        ]);
+
+        $novoId = $stIns->fetchColumn();
+        return (int)$novoId;
+    }
+
+    /**
      * POST /v1/marketing/compromissos
      */
     public function criarCompromisso(Request $request, Response $response): Response
@@ -3745,12 +3843,15 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
         $input = json_decode($request->getBody()->getContents(), true) ?? [];
 
         try {
+            $idClienteRaw = (int)($input['id_cliente'] ?? 0);
+            $idClienteCrm = $this->resolverOuCriarClienteCrm($idClienteRaw);
+
             $sql = "INSERT INTO mkt_compromissos (id_cliente, data_hora, tipo, titulo, descricao, status, created_by) 
                     VALUES (:id_cliente, :data_hora, :tipo, :titulo, :descricao, 'agendado', :created_by)";
 
             $stmt = $this->pdo->prepare($sql);
             $stmt->execute([
-                'id_cliente' => (int)($input['id_cliente'] ?? 0),
+                'id_cliente' => $idClienteCrm,
                 'data_hora' => $input['data_hora'] ?? date('Y-m-d H:i:s'),
                 'tipo' => $input['tipo'] ?? 'reuniao',
                 'titulo' => $input['titulo'] ?? '',
@@ -4602,9 +4703,42 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             $filiais = $scope->resolverFiliais($filial);
             $gestores = $scope->resolverGestores($gestor);
 
-            // Mês corrente padrão para todos os indicadores de vendas e metas
-            $inicioMes = date('Y-m-01');
-            $fimMes = date('Y-m-d');
+            // Resolução Dinâmica de Período (Mês Corrente, Períodos Rápidos ou Intervalo Personalizado)
+            $periodo = $params['periodo'] ?? 'este_mes';
+            $dtInicio = !empty($params['data_inicio']) ? trim($params['data_inicio']) : null;
+            $dtFim = !empty($params['data_fim']) ? trim($params['data_fim']) : null;
+
+            if (!$dtInicio || !$dtFim) {
+                $hoje = date('Y-m-d');
+                $ano = date('Y');
+                switch ($periodo) {
+                    case 'hoje':
+                        $dtInicio = $hoje;
+                        $dtFim = $hoje;
+                        break;
+                    case 'mes_passado':
+                        $dtInicio = date('Y-m-01', strtotime('first day of last month'));
+                        $dtFim = date('Y-m-t', strtotime('last day of last month'));
+                        break;
+                    case '30dias':
+                        $dtInicio = date('Y-m-d', strtotime('-30 days'));
+                        $dtFim = $hoje;
+                        break;
+                    case 'este_ano':
+                        $dtInicio = "{$ano}-01-01";
+                        $dtFim = $hoje;
+                        break;
+                    case 'todos':
+                        $dtInicio = null;
+                        $dtFim = null;
+                        break;
+                    case 'este_mes':
+                    default:
+                        $dtInicio = date('Y-m-01');
+                        $dtFim = $hoje;
+                        break;
+                }
+            }
 
             // 1. Filtro de escopo para cliforemp / clientes
             $whereCli = "WHERE e.inativo = 'N' AND e.tipocliforemp = 0";
@@ -4620,8 +4754,8 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             // Total de clientes na carteira
             $totalCarteira = (int)$this->pdo->query("SELECT COUNT(*) FROM cliforemp e $whereCli")->fetchColumn();
 
-            // Clientes positivados no mês corrente
-            $whereNfs = "WHERE n.status = 2 AND n.idtransacao = 1 AND n.dataemissao >= '$inicioMes'";
+            // Clientes positivados e faturamento no período selecionado
+            $whereNfs = "WHERE n.status = 2 AND n.idtransacao = 1";
             if (!empty($filiais)) {
                 $whereNfs .= " AND n.idfilial IN (" . implode(',', array_map('intval', $filiais)) . ")";
             }
@@ -4630,17 +4764,31 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             } elseif (!empty($gestores)) {
                 $whereNfs .= " AND n.idsupervisor IN (" . implode(',', array_map('intval', $gestores)) . ")";
             }
+            if ($dtInicio) {
+                $whereNfs .= " AND n.dataemissao >= '$dtInicio'";
+            }
+            if ($dtFim) {
+                $whereNfs .= " AND n.dataemissao <= '$dtFim'";
+            }
+
             $positivadosMes = (int)$this->pdo->query("SELECT COUNT(DISTINCT n.idcliforemp) FROM nfs n $whereNfs")->fetchColumn();
             $faturadoMes = (float)$this->pdo->query("SELECT COALESCE(SUM(n.valortotalnota), 0) FROM nfs n $whereNfs")->fetchColumn();
 
             $semComprasMes = max(0, $totalCarteira - $positivadosMes);
 
-            // Compromissos do mês corrente
+            // Compromissos no período selecionado
+            $whereComp = "WHERE 1=1";
+            if ($dtInicio) {
+                $whereComp .= " AND data_hora >= '$dtInicio 00:00:00'";
+            }
+            if ($dtFim) {
+                $whereComp .= " AND data_hora <= '$dtFim 23:59:59'";
+            }
             $stmtComp = $this->pdo->query("SELECT 
                 COUNT(*) as total,
                 COUNT(*) FILTER (WHERE status = 'concluido') as concluidos
             FROM mkt_compromissos 
-            WHERE data_hora >= '$inicioMes' AND data_hora <= '$fimMes 23:59:59'");
+            $whereComp");
             $comp = $stmtComp->fetch(PDO::FETCH_ASSOC);
 
             // Oportunidades em negociação
@@ -4658,6 +4806,9 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
                 'pipeline_valor' => (float)($crm['pipeline_valor'] ?? 0),
                 'total_compromissos_mes' => (int)($comp['total'] ?? 0),
                 'concluidos_mes' => (int)($comp['concluidos'] ?? 0),
+                'periodo' => $periodo,
+                'data_inicio' => $dtInicio,
+                'data_fim' => $dtFim,
             ];
             
             $sqlAlertas = "
@@ -5442,6 +5593,265 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             'success' => true,
             'representantes' => $representantes
         ]);
+    }
+
+    /**
+     * GET /v1/notificacoes/resumo-geral
+     * Central unificada de notificações em tempo real:
+     * - Chat não lidas
+     * - Compromissos iminentes
+     * - Chamados abertos/atualizados
+     * - Notificações do sistema
+     * - Contador total para App Badge, Favicon e Desktop Action Center
+     */
+    public function getResumoGeralNotificacoes(Request $request, Response $response): Response
+    {
+        try {
+            $user = $request->getAttribute('user') ?? [];
+            $idUsuario = (int)($user['idusuario'] ?? 0);
+            $username = strtoupper((string)($user['username'] ?? 'USUARIO'));
+            $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $user['permissoes'] ?? [], true);
+            if (!$isAdmin && in_array($username, ['ALAN', 'MARCON', 'GERENTE', 'ROBSON'], true)) {
+                $isAdmin = true;
+            }
+
+            $resultado = [
+                'success' => true,
+                'total_geral' => 0,
+                'chat' => [
+                    'total' => 0,
+                    'mensagens' => []
+                ],
+                'compromissos' => [
+                    'total' => 0,
+                    'lista' => []
+                ],
+                'chamados' => [
+                    'total' => 0,
+                    'lista' => []
+                ],
+                'sistema' => [
+                    'total' => 0,
+                    'lista' => []
+                ]
+            ];
+
+            if ($idUsuario <= 0) {
+                return $this->json($response, $resultado);
+            }
+
+            // Registra presença do usuário online em tempo real
+            try {
+                $stPing = $this->pdo->prepare("
+                    INSERT INTO usuario_online (idusuario, ultimo_ping)
+                    VALUES (:uid, NOW())
+                    ON CONFLICT (idusuario) DO UPDATE SET ultimo_ping = NOW()
+                ");
+                $stPing->execute(['uid' => $idUsuario]);
+            } catch (\Throwable $e) {}
+
+            // 1. Mensagens não lidas do Chat (Canal exclusivo do Chat / Bate-Papo)
+            try {
+                $stChat = $this->pdo->prepare("
+                    SELECT cm.id, cm.id as idmensagem, cm.idusuario_remetente, cm.mensagem, cm.datahora,
+                           u.username as remetente_nome
+                    FROM chat_mensagens cm
+                    JOIN usuario u ON u.idusuario = cm.idusuario_remetente
+                    WHERE cm.idusuario_destinatario = :eu AND cm.lida = FALSE
+                    ORDER BY cm.datahora DESC
+                    LIMIT 15
+                ");
+                $stChat->execute(['eu' => $idUsuario]);
+                $msgs = $stChat->fetchAll(PDO::FETCH_ASSOC);
+                
+                $stCountChat = $this->pdo->prepare("SELECT COUNT(*) FROM chat_mensagens WHERE idusuario_destinatario = :eu AND lida = FALSE");
+                $stCountChat->execute(['eu' => $idUsuario]);
+                $totalChat = (int)$stCountChat->fetchColumn();
+
+                // Mensagens de chat alimentam EXCLUSIVAMENTE o badge e widget de chat
+                $resultado['chat']['total'] = $totalChat;
+                $resultado['chat']['mensagens'] = $msgs;
+            } catch (\Throwable $e) {}
+
+            // 2. Sincronização Inteligente de Chamados para a tabela 'notificacoes' (com persistência de leitura)
+            try {
+                if ($isAdmin) {
+                    $stChamNovos = $this->pdo->query("
+                        SELECT ch.idchamado, ch.titulo, ch.modulo_nome, ch.solicitante, ch.criticidade, ch.datahora
+                        FROM chamado ch
+                        WHERE ch.status IN (0, 1) AND ch.datahora >= NOW() - INTERVAL '72 hours'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM notificacoes n 
+                              WHERE n.tipo = 'chamado' AND n.id_referencia = ch.idchamado AND n.idusuario = {$idUsuario}
+                          )
+                        LIMIT 5
+                    ");
+                    $novos = $stChamNovos->fetchAll(PDO::FETCH_ASSOC);
+                    $ins = $this->pdo->prepare("
+                        INSERT INTO notificacoes (idusuario, tipo, id_referencia, titulo, mensagem, link, lida, created_at)
+                        VALUES (:uid, 'chamado', :ref, :tit, :msg, :link, FALSE, :datahora)
+                    ");
+                    foreach ($novos as $nv) {
+                        $critPrefix = in_array(strtolower($nv['criticidade'] ?? ''), ['critica', 'alta']) ? '[ALTA] ' : '';
+                        $ins->execute([
+                            'uid' => $idUsuario,
+                            'ref' => $nv['idchamado'],
+                            'tit' => "Chamado #{$nv['idchamado']}: " . $critPrefix . ($nv['titulo'] ?: 'Suporte TI'),
+                            'msg' => "Modulo: " . ($nv['modulo_nome'] ?: 'Geral') . " | Solicitante: " . ($nv['solicitante'] ?: 'Equipe'),
+                            'link' => "/portal/modules/chamados.php?id={$nv['idchamado']}",
+                            'datahora' => $nv['datahora']
+                        ]);
+                    }
+                } else {
+                    $stChamUser = $this->pdo->prepare("
+                        SELECT ch.idchamado, ch.titulo, ch.modulo_nome, ch.status, ch.datahora
+                        FROM chamado ch
+                        WHERE (ch.usuario ILIKE :u OR ch.solicitante ILIKE :u)
+                          AND ch.datahora >= NOW() - INTERVAL '72 hours'
+                          AND NOT EXISTS (
+                              SELECT 1 FROM notificacoes n 
+                              WHERE n.tipo = 'chamado' AND n.id_referencia = ch.idchamado AND n.idusuario = :uid
+                          )
+                        LIMIT 5
+                    ");
+                    $stChamUser->execute(['u' => '%' . $username . '%', 'uid' => $idUsuario]);
+                    $novosUser = $stChamUser->fetchAll(PDO::FETCH_ASSOC);
+                    $ins = $this->pdo->prepare("
+                        INSERT INTO notificacoes (idusuario, tipo, id_referencia, titulo, mensagem, link, lida, created_at)
+                        VALUES (:uid, 'chamado', :ref, :tit, :msg, :link, FALSE, :datahora)
+                    ");
+                    foreach ($novosUser as $nu) {
+                        $ins->execute([
+                            'uid' => $idUsuario,
+                            'ref' => $nu['idchamado'],
+                            'tit' => "Chamado #{$nu['idchamado']}: " . ($nu['titulo'] ?: 'Suporte'),
+                            'msg' => "Atualizacao no modulo " . ($nu['modulo_nome'] ?: 'Geral'),
+                            'link' => "/portal/modules/chamados.php?id={$nu['idchamado']}",
+                            'datahora' => $nu['datahora']
+                        ]);
+                    }
+                }
+            } catch (\Throwable $e) {}
+
+            // 3. Notificações Ativas Não Lidas da Central de Alertas (tabela 'notificacoes')
+            try {
+                $stNotif = $this->pdo->prepare("
+                    SELECT id, tipo, id_referencia, titulo, mensagem, link, created_at
+                    FROM notificacoes
+                    WHERE (idusuario = :uid OR idusuario IS NULL)
+                      AND lida = FALSE
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                ");
+                $stNotif->execute(['uid' => $idUsuario]);
+                $notifsAtivas = $stNotif->fetchAll(PDO::FETCH_ASSOC);
+
+                $resultado['sistema']['total'] = count($notifsAtivas);
+                $resultado['sistema']['lista'] = $notifsAtivas;
+                $resultado['total_geral'] += count($notifsAtivas);
+            } catch (\Throwable $e) {}
+
+            // 4. Compromissos Iminentes e do Dia (mkt_compromissos)
+            try {
+                // Iminentes para disparos de alarme
+                $stComp = $this->pdo->prepare("
+                    SELECT c.id, c.titulo, c.tipo, c.data_hora, cl.nome as cliente_nome, cl.id as id_cliente,
+                           ROUND(EXTRACT(EPOCH FROM (c.data_hora - NOW())) / 60) as minutos_para_inicio
+                    FROM mkt_compromissos c
+                    LEFT JOIN mkt_clientes cl ON cl.id = c.id_cliente
+                    WHERE c.status = 'agendado'
+                      AND c.data_hora >= NOW() - INTERVAL '30 minutes'
+                      AND c.data_hora <= NOW() + INTERVAL '30 minutes'
+                    ORDER BY c.data_hora ASC
+                    LIMIT 10
+                ");
+                $stComp->execute();
+                $comps = $stComp->fetchAll(PDO::FETCH_ASSOC);
+
+                // Compromissos do dia
+                $stCompHoje = $this->pdo->prepare("
+                    SELECT c.id, c.titulo, c.tipo, c.data_hora, cl.nome as cliente_nome, cl.id as id_cliente,
+                           ROUND(EXTRACT(EPOCH FROM (c.data_hora - NOW())) / 60) as minutos_para_inicio
+                    FROM mkt_compromissos c
+                    LEFT JOIN mkt_clientes cl ON cl.id = c.id_cliente
+                    WHERE c.status = 'agendado'
+                      AND DATE(c.data_hora) = CURRENT_DATE
+                    ORDER BY c.data_hora ASC
+                    LIMIT 5
+                ");
+                $stCompHoje->execute();
+                $compsHoje = $stCompHoje->fetchAll(PDO::FETCH_ASSOC);
+
+                $resultado['compromissos']['total'] = count($compsHoje);
+                $resultado['compromissos']['lista'] = $comps;
+                $resultado['compromissos']['hoje'] = $compsHoje;
+            } catch (\Throwable $e) {}
+
+            // 5. Monta Lista Unificada do Sino (Alertas, Chamados e Agenda — SEM MISTURAR CHAT)
+            $listaUnificada = [];
+
+            // A. Notificações reais da Central de Alertas (Chamados, TI, Comunicados)
+            foreach ($resultado['sistema']['lista'] as $n) {
+                $isChamado = ($n['tipo'] === 'chamado');
+                $badge = $isChamado ? ('CHAMADO #' . ($n['id_referencia'] ?: $n['id'])) : 'ALERTA';
+                $cor = $isChamado ? 'bg-blue-100 text-blue-700' : 'bg-purple-100 text-purple-700';
+                $icon = $isChamado ? 'fa-solid fa-ticket' : 'fa-solid fa-bell';
+
+                $listaUnificada[] = [
+                    'id' => (int)$n['id'],
+                    'tipo' => $n['tipo'] ?: 'sistema',
+                    'categoria' => $isChamado ? 'chamado' : 'sistema',
+                    'badge' => $badge,
+                    'titulo' => $n['titulo'] ?: 'Notificacao do Portal',
+                    'mensagem' => $n['mensagem'] ?: '',
+                    'created_at' => $n['created_at'],
+                    'icone' => $icon,
+                    'corIcone' => $cor,
+                    'link' => $n['link'] ?: '/portal/'
+                ];
+            }
+
+            // B. Compromissos Iminentes da Agenda de Hoje
+            foreach ($resultado['compromissos']['hoje'] as $c) {
+                $min = (int)($c['minutos_para_inicio'] ?? 0);
+                $horaFmt = !empty($c['data_hora']) ? date('H:i', strtotime($c['data_hora'])) : '';
+                $cliente = $c['cliente_nome'] ?: 'Cliente';
+                $titulo = $c['titulo'] ?: $c['tipo'] ?: 'Compromisso';
+
+                $msg = ($min <= 2 && $min >= -8)
+                    ? "Iniciando agora com {$cliente} ({$horaFmt})"
+                    : "Agendado para hoje as {$horaFmt} com {$cliente}";
+
+                $listaUnificada[] = [
+                    'id' => 'comp_' . $c['id'],
+                    'tipo' => 'agenda',
+                    'categoria' => 'agenda',
+                    'badge' => 'AGENDA',
+                    'titulo' => $titulo,
+                    'mensagem' => $msg,
+                    'created_at' => $c['data_hora'],
+                    'icone' => 'fa-solid fa-calendar-check',
+                    'corIcone' => 'bg-amber-100 text-amber-700',
+                    'link' => '/portal/modules/marketing/clientes.php?tab=agenda'
+                ];
+            }
+
+            // Ordena unificada por data decrescente
+            usort($listaUnificada, function($a, $b) {
+                return strtotime($b['created_at'] ?? 'now') - strtotime($a['created_at'] ?? 'now');
+            });
+
+            $resultado['lista_unificada'] = $listaUnificada;
+            $resultado['total_geral'] = count($listaUnificada);
+
+            return $this->json($response, $resultado);
+
+        } catch (\Throwable $e) {
+            return $this->json($response, [
+                'success' => false,
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
 }

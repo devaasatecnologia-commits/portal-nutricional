@@ -78,3 +78,60 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ==============================================================================
+// GESTÃO DE NOTIFICAÇÕES NATIVAS (WINDOWS / ANDROID / IOS PWA)
+// ==============================================================================
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) ? event.notification.data.url : '/portal/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url && 'focus' in client) {
+          if ('navigate' in client && targetUrl) {
+            client.navigate(targetUrl);
+          }
+          return client.focus();
+        }
+      }
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.tipo === 'EXIBIR_NOTIFICACAO') {
+    const titulo = event.data.titulo || 'Portal Nutricional';
+    const opcoes = event.data.opcoes || {};
+    self.registration.showNotification(titulo, {
+      icon: '/portal/assets/icons/android-chrome-192x192.png',
+      badge: '/portal/assets/icons/apple-touch-icon.png',
+      vibrate: [200, 100, 200],
+      ...opcoes
+    });
+  }
+});
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (_) {
+      data = { title: 'Portal Nutricional', body: event.data.text() };
+    }
+  }
+  const title = data.title || 'Notificação Nutricional';
+  const options = {
+    body: data.body || 'Você tem uma nova notificação.',
+    icon: data.icon || '/portal/assets/icons/android-chrome-192x192.png',
+    badge: '/portal/assets/icons/apple-touch-icon.png',
+    data: { url: data.url || '/portal/' },
+    vibrate: [200, 100, 200]
+  };
+  event.waitUntil(self.registration.showNotification(title, options));
+});

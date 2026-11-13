@@ -1033,6 +1033,11 @@ $protected->group('/chamados', function ($group) {
     $group->post('/atualizar-status', [$controller, 'atualizarStatus']);
     $group->post('/adicionar-interacao', [$controller, 'adicionarInteracao']);
     $group->post('/upload-anexo', [$controller, 'uploadAnexo']);
+    $group->post('/atualizar-prioridade', [$controller, 'atualizarPrioridade']);
+    $group->post('/editar', [$controller, 'editar']);
+    $group->post('/comentario', [$controller, 'adicionarComentario']);
+    $group->post('/ordenar', [$controller, 'ordenarChamados']);
+    $group->post('/limpar-notificacoes', [$controller, 'limparNotificacoes']);
 });
 
 $protected->group('/avaliacao-chapd', function ($group) {
@@ -1102,6 +1107,7 @@ $protected->group('/desembarque', function ($group) {
         // NOTIFICAÇÕES
         // ======================================================================
 $protected->get('/notificacoes', [new MarketingController(), 'getNotificacoes']);
+$protected->get('/notificacoes/resumo-geral', [new MarketingController(), 'getResumoGeralNotificacoes']);
 $protected->put('/notificacoes/{id}/ler', [new MarketingController(), 'marcarNotificacaoLida']);
 $protected->put('/notificacoes/ler-todas', [new MarketingController(), 'marcarTodasLidas']);
 
@@ -1273,7 +1279,10 @@ $protected->group('/chat', function ($group) {
     $group->get('/mensagens/{outroUsuario}', [$controller, 'getMensagens']);
     $group->post('/enviar', [$controller, 'enviarMensagem']);
     $group->post('/marcar-lida/{remetente}', [$controller, 'marcarLida']);
+    $group->post('/digitando', [$controller, 'notificarDigitando']);
+    $group->post('/parar-digitando', [$controller, 'pararDigitando']);
     $group->get('/nao-lidas', [$controller, 'getNaoLidas']);
+    $group->get('/ultimas-nao-lidas', [$controller, 'getUltimasNaoLidas']);
     $group->get('/minhas-conversas', [$controller, 'getMinhasConversas']);
 });
 

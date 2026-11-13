@@ -96,8 +96,14 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="flex items-center gap-3">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=recompra_clientes" 
+                   class="px-4 py-2.5 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xs font-black shadow-md transition flex items-center gap-2 no-underline"
+                   title="Treinamento e Manual da Inteligência de Recompra">
+                    <i class="fa-solid fa-graduation-cap text-sm"></i>
+                    <span>Treinamento &amp; Manual</span>
+                </a>
                 <a href="<?= $appBase ?>/portal/modules/dashboard-vendas.php" 
-                   class="px-3.5 py-2 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-2 no-underline">
+                   class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-bold transition flex items-center gap-2 no-underline">
                     <i class="fa-solid fa-chart-line"></i>
                     <span>Dashboard Vendas</span>
                 </a>
@@ -510,78 +516,79 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="p-6 overflow-y-auto space-y-4">
-                <div x-show="loadingCliente" class="text-center py-10 text-slate-400">
-                    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-rose-600 mb-2 block"></i>
-                    Carregando histórico do cliente...
-                </div>
+                <template x-if="clienteDetalhes">
+                    <div class="space-y-4">
+                        <div x-show="loadingCliente" class="text-center py-2 text-xs text-rose-600 font-bold bg-rose-50 rounded-lg border border-rose-200">
+                            <i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Sincronizando notas fiscais do cliente...
+                        </div>
 
-                <div x-show="!loadingCliente && clienteDetalhes" class="space-y-4">
-                    <!-- Cards de resumo do cliente -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
-                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Última Compra</span>
-                            <strong class="text-sm text-slate-800" x-text="formatarDataBR(clienteDetalhes.ultima_compra) || '—'"></strong>
+                        <!-- Cards de resumo do cliente -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
+                            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase block">Última Compra</span>
+                                <strong class="text-sm text-slate-800" x-text="formatarDataBR(clienteDetalhes.ultima_compra) || '—'"></strong>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase block">Dias sem Comprar</span>
+                                <strong class="text-sm text-rose-700" x-text="(clienteDetalhes.dias_sem_comprar || 0) + ' dias'"></strong>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase block">Faturamento 12m</span>
+                                <strong class="text-sm text-emerald-700" x-text="formatMoney(clienteDetalhes.valor_historico || 0)"></strong>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                                <span class="text-[10px] font-bold text-slate-500 uppercase block">Média Mensal (12m)</span>
+                                <strong class="text-sm text-rose-700" x-text="formatMoney((clienteDetalhes.valor_historico || 0) / 12)"></strong>
+                            </div>
                         </div>
-                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Dias sem Comprar</span>
-                            <strong class="text-sm text-rose-700" x-text="(clienteDetalhes.dias_sem_comprar || 0) + ' dias'"></strong>
-                        </div>
-                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Faturamento 12m</span>
-                            <strong class="text-sm text-emerald-700" x-text="formatMoney(clienteDetalhes.valor_historico || 0)"></strong>
-                        </div>
-                        <div class="p-3 bg-slate-50 rounded-xl border border-slate-200">
-                            <span class="text-[10px] font-bold text-slate-500 uppercase block">Média Mensal (12m)</span>
-                            <strong class="text-sm text-rose-700" x-text="formatMoney((clienteDetalhes.valor_historico || 0) / 12)"></strong>
-                        </div>
-                    </div>
 
-                    <!-- Informações cadastrais -->
-                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
-                        <div>
-                            <span class="text-slate-400 block font-bold uppercase text-[10px]">Representante</span>
-                            <strong class="text-slate-800" x-text="clienteDetalhes.representante || '—'"></strong>
+                        <!-- Informações cadastrais -->
+                        <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 text-xs grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div>
+                                <span class="text-slate-400 block font-bold uppercase text-[10px]">Representante</span>
+                                <strong class="text-slate-800" x-text="clienteDetalhes.representante || '—'"></strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-bold uppercase text-[10px]">Região</span>
+                                <strong class="text-slate-800" x-text="clienteDetalhes.regiao || '—'"></strong>
+                            </div>
+                            <div>
+                                <span class="text-slate-400 block font-bold uppercase text-[10px]">Cidade / UF</span>
+                                <strong class="text-slate-800" x-text="clienteDetalhes.cidade_uf || '—'"></strong>
+                            </div>
                         </div>
-                        <div>
-                            <span class="text-slate-400 block font-bold uppercase text-[10px]">Região</span>
-                            <strong class="text-slate-800" x-text="clienteDetalhes.regiao || '—'"></strong>
-                        </div>
-                        <div>
-                            <span class="text-slate-400 block font-bold uppercase text-[10px]">Cidade / UF</span>
-                            <strong class="text-slate-800" x-text="clienteDetalhes.cidade_uf || '—'"></strong>
-                        </div>
-                    </div>
 
-                    <!-- Histórico de NFs -->
-                    <div>
-                        <h4 class="text-xs font-extrabold uppercase text-slate-600 mb-2">Últimas Notas Fiscais Faturadas</h4>
-                        <div class="overflow-x-auto border border-slate-200 rounded-xl">
-                            <table class="w-full text-xs">
-                                <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold">
-                                    <tr>
-                                        <th class="px-3 py-2 text-left">NF</th>
-                                        <th class="px-3 py-2 text-center">Emissão</th>
-                                        <th class="px-3 py-2 text-right">Peso (Kg)</th>
-                                        <th class="px-3 py-2 text-right">Valor Líquido</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-slate-100">
-                                    <template x-for="nf in (clienteDetalhes.notas || [])" :key="nf.numero">
-                                        <tr class="hover:bg-slate-50">
-                                            <td class="px-3 py-2 font-bold text-slate-800" x-text="'NF ' + nf.numero"></td>
-                                            <td class="px-3 py-2 text-center text-slate-600" x-text="formatarDataBR(nf.data)"></td>
-                                            <td class="px-3 py-2 text-right text-amber-700 font-bold" x-text="formatPeso(nf.peso)"></td>
-                                            <td class="px-3 py-2 text-right font-black text-emerald-700" x-text="formatMoney(nf.valor)"></td>
+                        <!-- Histórico de NFs -->
+                        <div>
+                            <h4 class="text-xs font-extrabold uppercase text-slate-600 mb-2">Últimas Notas Fiscais Faturadas</h4>
+                            <div class="overflow-x-auto border border-slate-200 rounded-xl">
+                                <table class="w-full text-xs">
+                                    <thead class="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold">
+                                        <tr>
+                                            <th class="px-3 py-2 text-left">NF</th>
+                                            <th class="px-3 py-2 text-center">Emissão</th>
+                                            <th class="px-3 py-2 text-right">Peso (Kg)</th>
+                                            <th class="px-3 py-2 text-right">Valor Líquido</th>
                                         </tr>
-                                    </template>
-                                    <tr x-show="!clienteDetalhes.notas || clienteDetalhes.notas.length === 0">
-                                        <td colspan="4" class="text-center py-4 text-slate-400">Nenhuma nota detalhada retornada.</td>
-                                    </tr>
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-100">
+                                        <template x-for="(nf, idx) in (clienteDetalhes.notas || [])" :key="idx">
+                                            <tr class="hover:bg-slate-50">
+                                                <td class="px-3 py-2 font-bold text-slate-800" x-text="'NF ' + nf.numero"></td>
+                                                <td class="px-3 py-2 text-center text-slate-600" x-text="formatarDataBR(nf.data)"></td>
+                                                <td class="px-3 py-2 text-right text-amber-700 font-bold" x-text="formatPeso(nf.peso)"></td>
+                                                <td class="px-3 py-2 text-right font-black text-emerald-700" x-text="formatMoney(nf.valor)"></td>
+                                            </tr>
+                                        </template>
+                                        <tr x-show="!clienteDetalhes.notas || clienteDetalhes.notas.length === 0">
+                                            <td colspan="4" class="text-center py-4 text-slate-400">Nenhuma nota detalhada retornada.</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </template>
             </div>
 
             <div class="p-4 bg-slate-50 border-t border-slate-200 flex justify-end">

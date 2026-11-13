@@ -1,4 +1,4 @@
-// Módulo Pedido de Material de Apoio & Amostras
+// Módulo: Pedidos de Material de Apoio & Amostras (Apoio ao Gestor)
 // Nutricional Distribuidora - Experiência Premium
 
 const apiFetch = async function (acao, metodo = 'GET', body = null) {

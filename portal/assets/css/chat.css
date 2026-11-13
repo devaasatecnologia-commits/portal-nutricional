@@ -217,5 +217,5 @@
     .chat-widget { bottom: 16px; right: 16px; }
 }
 
-/* Utilitários */
-.hidden { display: none !important; }
+/* Utilitários Chat */
+.chat-container.hidden, .chat-modal.hidden, #chatModal.hidden, #chatFab.hidden, .chat-badge.hidden { display: none !important; }

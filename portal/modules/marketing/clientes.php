@@ -30,6 +30,15 @@ $extraCss = '
     .crm-mobile-spacer { display: none !important; }
 }
 
+@media (max-width: 767px) {
+    .crm-desktop-table { display: none !important; }
+    .crm-mobile-cards { display: block !important; }
+}
+@media (min-width: 768px) {
+    .crm-desktop-table { display: block !important; }
+    .crm-mobile-cards { display: none !important; }
+}
+
 
 
 /* Timeline de Interações */
@@ -353,7 +362,8 @@ require_once __DIR__ . '/../../estrutura/header.php';
                     <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-extrabold uppercase tracking-wide">
                         <i class="fa-solid fa-users-viewfinder mr-1"></i>Visão 360° Carteira
                     </span>
-                    <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-extrabold uppercase tracking-wide">
+                    <span class="px-2.5 py-0.5 rounded-full bg-amber-400 text-slate-900 text-[10px] font-extrabold uppercase tracking-wide"
+                          x-text="filtros.periodo === 'este_mes' ? 'Mês Corrente' : ('Período: ' + labelPeriodoCards())">
                         Mês Corrente
                     </span>
                 </div>
@@ -374,9 +384,17 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <div x-show="aberto" x-transition.duration.200ms class="notification-dropdown-crm" style="display: none;">
                     <div class="notification-header-crm">
                         <span class="font-bold text-sm"><i class="fa-regular fa-bell mr-2"></i>Notificações</span>
-                        <button @click="marcarTodasLidas()" class="mark-all-read-crm">
-                            <i class="fa-regular fa-check-circle mr-1"></i>Marcar todas
-                        </button>
+                        <div class="flex items-center gap-1.5">
+                            <button type="button" onclick="window.PortalNotificacoes && window.PortalNotificacoes.testarNotificacao()" class="text-[11px] px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 hover:bg-indigo-500/30 border border-indigo-500/30 font-bold transition-all flex items-center gap-1" title="Testar som e notificação no Windows">
+                                <i class="fa-solid fa-bell text-[10px]"></i><span>Testar</span>
+                            </button>
+                            <button type="button" @click="solicitarPermissaoNavegador()" class="text-[11px] px-2 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/30 font-bold transition-all flex items-center gap-1" title="Ativar notificações nativas no computador e celular">
+                                <i class="fa-solid fa-desktop text-[10px]"></i><span>Ativar Barra</span>
+                            </button>
+                            <button @click="marcarTodasLidas()" class="mark-all-read-crm">
+                                <i class="fa-regular fa-check-circle mr-1"></i>Marcar todas
+                            </button>
+                        </div>
                     </div>
                     <div class="notification-list-crm" x-ref="listaNotificacoes">
                         <template x-for="n in notificacoes" :key="n.id">
@@ -427,120 +445,10 @@ require_once __DIR__ . '/../../estrutura/header.php';
         </div>
     </div>
 
-    <!-- CARDS DE INDICADORES (MÊS CORRENTE - PADRÃO EXECUTIVO 6 CARDS) -->
-    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
-        <!-- 1. Total Carteira -->
-        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md transition-all group"
-             data-tooltip="Total Carteira CRM|Total de clientes sob alçada das filiais e gestores selecionados.">
-            <div class="flex items-center justify-between text-slate-400 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Carteira</span>
-                <i class="fa-solid fa-users text-slate-400 group-hover:text-slate-700 transition-colors text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight truncate" x-text="stats.total">0</div>
-            <div class="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">Clientes ativos no escopo</div>
-        </div>
-
-        <!-- 2. Positivados Mês -->
-        <div class="bg-white rounded-2xl p-4 border border-emerald-200/80 shadow-xs hover:shadow-md transition-all group"
-             data-tooltip="Positivados no Mês|Clientes com pedidos faturados (NFs confirmadas) no mês corrente.">
-            <div class="flex items-center justify-between text-emerald-500 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">Positivados Mês</span>
-                <i class="fa-solid fa-circle-check text-emerald-500 group-hover:scale-110 transition-transform text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight truncate" x-text="stats.fechados">0</div>
-            <div class="text-[10px] text-emerald-700 font-bold mt-0.5 truncate" x-text="stats.conversao + '% da carteira'">0% da carteira</div>
-        </div>
-
-        <!-- 3. Sem Compras Mês -->
-        <div class="bg-white rounded-2xl p-4 border border-rose-200/80 shadow-xs hover:shadow-md transition-all group"
-             data-tooltip="Sem Compras no Mês|Clientes ativos da carteira que ainda não realizaram compras faturadas neste mês.">
-            <div class="flex items-center justify-between text-rose-500 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-700">Sem Compras Mês</span>
-                <i class="fa-solid fa-user-xmark text-rose-500 group-hover:scale-110 transition-transform text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-rose-600 tracking-tight truncate" x-text="stats.sem_compras_mes">0</div>
-            <div class="text-[10px] text-rose-600 font-bold mt-0.5 truncate">Pendente positivação</div>
-        </div>
-
-        <!-- 4. Em Negociação -->
-        <div class="bg-white rounded-2xl p-4 border border-amber-200/80 shadow-xs hover:shadow-md transition-all group"
-             data-tooltip="Em Negociação|Contas e oportunidades ativas no funil (Novo, Qualificado ou Proposta).">
-            <div class="flex items-center justify-between text-amber-500 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Em Negociação</span>
-                <i class="fa-solid fa-handshake text-amber-500 group-hover:scale-110 transition-transform text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-amber-600 tracking-tight truncate" x-text="stats.emNegociacao">0</div>
-            <div class="text-[10px] text-amber-700 font-bold mt-0.5 truncate" x-text="'Pipeline: ' + (typeof stats.pipelineValue === 'number' ? formatarMoeda(stats.pipelineValue) : stats.pipelineValue)">R$ 0</div>
-        </div>
-
-        <!-- 5. Faturamento Mês -->
-        <div class="bg-white rounded-2xl p-4 border border-blue-200/80 shadow-xs hover:shadow-md transition-all group"
-             data-tooltip="Faturamento Líquido Mês|Volume financeiro total faturado das notas fiscais emitidas no mês corrente sob o escopo.">
-            <div class="flex items-center justify-between text-blue-500 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">Faturado Mês</span>
-                <i class="fa-solid fa-sack-dollar text-blue-500 group-hover:scale-110 transition-transform text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-blue-600 tracking-tight truncate" x-text="formatarMoeda(stats.total_faturado || 0)">R$ 0</div>
-            <div class="text-[10px] text-blue-600 font-bold mt-0.5 truncate">Total NFs mês atual</div>
-        </div>
-
-        <!-- 6. Agenda & Disciplina Mês -->
-        <div class="bg-white rounded-2xl p-4 border border-indigo-200/80 shadow-xs hover:shadow-md transition-all group cursor-pointer"
-             @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
-             data-tooltip="Agenda & Disciplina Comercial|Visitas e contatos concluídos versus total agendado no mês corrente. Clique para alternar para a agenda.">
-            <div class="flex items-center justify-between text-indigo-500 mb-1">
-                <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">Agenda Mês</span>
-                <i class="fa-regular fa-calendar-check text-indigo-500 group-hover:scale-110 transition-transform text-xs"></i>
-            </div>
-            <div class="text-xl sm:text-2xl font-black text-indigo-600 tracking-tight flex items-baseline gap-1 truncate">
-                <span x-text="stats.concluidosMes || 0">0</span>
-                <span class="text-xs text-slate-400 font-semibold">/</span>
-                <span class="text-sm font-bold text-slate-500" x-text="stats.totalCompromissosMes || 0">0</span>
-            </div>
-            <div class="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">Concluídos / Total</div>
-        </div>
-    </div>
-
-    <!-- BARRA RÁPIDA DE NAVEGAÇÃO & ATALHOS -->
-    <div class="flex flex-wrap items-center justify-between gap-3 mb-5 p-2 bg-white rounded-2xl border border-slate-200 shadow-xs">
-        <div class="flex items-center gap-1.5">
-            <button type="button" @click="viewMode = 'tabela'"
-                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
-                :class="viewMode === 'tabela' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
-                <i class="fa-solid fa-users"></i>
-                <span>Carteira de Clientes (Grade)</span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-black" :class="viewMode === 'tabela' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700'" x-text="pagination.total">0</span>
-            </button>
-            <button type="button" @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
-                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
-                :class="viewMode === 'agenda' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
-                <i class="fa-regular fa-calendar-alt"></i>
-                <span>Agenda de Visitas &amp; Compromissos</span>
-                <span x-show="proximosCompromissos.length > 0" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white" x-text="proximosCompromissos.length">0</span>
-            </button>
-        </div>
-
-        <div class="flex items-center gap-2">
-            <button type="button" onclick="abrirModalAgendamento()"
-                class="px-3 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all flex items-center gap-1.5">
-                <i class="fa-solid fa-calendar-plus"></i>
-                <span>Novo Agendamento</span>
-            </button>
-            <button type="button" onclick="window.abrirPedidoMercos()"
-                class="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all flex items-center gap-1.5">
-                <i class="fa-solid fa-cart-plus"></i>
-                <span>Pedido Mercos</span>
-            </button>
-        </div>
-    </div>
-
-
-<!-- VIEW TABELA / CARDS -->
-<div id="secaoCarteiraClientes" x-show="viewMode === 'tabela'">
-    <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-      <!-- FILTROS AVANÇADOS MODERNOS -->
-<!-- FILTROS AVANÇADOS MODERNOS -->
-<div class="bg-gradient-to-r from-slate-50 to-slate-100/50 p-4 border-b border-slate-200">
+        <!-- ================================================================
+    FILTROS AVANÇADOS & HIERARQUIA COMERCIAL (FILIAL / GESTOR / REPRESENTANTE)
+    ================================================================ -->
+    <div id="secaoFiltrosCRM" class="bg-white rounded-2xl shadow-xs border border-slate-200/80 p-4 sm:p-5 mb-5 transition-all">
 
     <!-- ================================================================
     BARRA DE HIERARQUIA & ESCOPO (FILIAL / GESTOR / REPRESENTANTE)
@@ -596,7 +504,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <i class="fa-solid fa-id-badge text-purple-600 mr-1.5"></i> Representante Comercial
             </label>
             <div class="relative">
-                <select x-model="filtros.representante" @change="carregarClientes()"
+                <select x-model="filtros.representante" @change="carregarClientes(); carregarDashboard();"
                     class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-purple-500 focus:bg-white focus:ring-2 focus:ring-purple-200 transition-all cursor-pointer">
                     <option value="">🤝 Todos os Representantes</option>
                     <template x-for="r in representantesDisponiveis" :key="r.id">
@@ -616,7 +524,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
                 <span class="text-[10px] text-emerald-700 font-semibold bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">Ativos ERP</span>
             </label>
             <div class="relative">
-                <select x-model="filtros.status_pedido" @change="carregarClientes()"
+                <select x-model="filtros.status_pedido" @change="carregarClientes(); carregarDashboard();"
                     class="w-full appearance-none px-3.5 py-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl text-sm font-bold text-slate-800 focus:border-amber-500 focus:bg-white focus:ring-2 focus:ring-amber-200 transition-all cursor-pointer">
                     <option value="abertos_ou_faturados">📦 Abertos ou Faturados (Padrão)</option>
                     <option value="abertos">⏳ Apenas com Pedidos em Aberto</option>
@@ -646,7 +554,7 @@ require_once __DIR__ . '/../../estrutura/header.php';
         <button @click="limparFiltros()" class="px-5 py-3 bg-slate-200 hover:bg-slate-300 rounded-2xl text-sm font-bold text-slate-600 transition-all flex items-center gap-2 whitespace-nowrap">
             <i class="fa-solid fa-eraser"></i> Limpar
         </button>
-        <button @click="carregarClientes()" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-2xl text-sm font-bold text-white transition-all shadow-md flex items-center gap-2 whitespace-nowrap">
+        <button @click="carregarClientes(); carregarDashboard();" class="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 rounded-2xl text-sm font-bold text-white transition-all shadow-md flex items-center gap-2 whitespace-nowrap">
             <i class="fa-solid fa-magnifying-glass"></i> Buscar
         </button>
     </div>
@@ -664,13 +572,13 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             📌 Base do Filtro
         </label>
         <div class="flex items-center gap-1 bg-white border-2 border-slate-200 rounded-xl p-1 shadow-sm">
-            <button type="button" @click="filtros.tipo_periodo = 'compra'; carregarClientes()" 
+            <button type="button" @click="filtros.tipo_periodo = 'compra'; carregarClientes(); carregarDashboard();" 
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
                 :class="filtros.tipo_periodo === 'compra' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
                 data-tooltip="Filtro por Compra|Filtra os clientes pela data da última compra ou pedidos faturados no período.">
                 <i class="fa-solid fa-shopping-cart mr-1"></i> Compra
             </button>
-            <button type="button" @click="filtros.tipo_periodo = 'cadastro'; carregarClientes()" 
+            <button type="button" @click="filtros.tipo_periodo = 'cadastro'; carregarClientes(); carregarDashboard();" 
                 class="px-2.5 py-1 rounded-lg text-xs font-bold transition-all"
                 :class="filtros.tipo_periodo === 'cadastro' ? 'bg-emerald-600 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'"
                 data-tooltip="Filtro por Cadastro|Filtra os clientes pela data em que foram cadastrados no sistema ERP.">
@@ -739,10 +647,10 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
         x-transition.duration.200ms 
         class="flex items-center gap-2 bg-white border-2 border-indigo-200 rounded-xl px-3 py-1 shadow-sm">
         <span class="text-xs text-slate-400 font-medium">De:</span>
-        <input type="date" x-model="filtros.data_inicio" 
+        <input type="date" x-model="filtros.data_inicio" @change="carregarClientes(); carregarDashboard();"
             class="px-2 py-1 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-200 transition-all w-32">
         <span class="text-xs text-slate-400 font-medium">Até:</span>
-        <input type="date" x-model="filtros.data_fim" 
+        <input type="date" x-model="filtros.data_fim" @change="carregarClientes(); carregarDashboard();"
             class="px-2 py-1 border border-indigo-300 rounded-lg text-xs focus:ring-2 focus:ring-indigo-200 transition-all w-32">
         <button type="button" @click="aplicarDatasPersonalizadas()" 
             class="px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-bold hover:bg-indigo-700 transition-all">
@@ -1106,15 +1014,135 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             </span>
         </template>
     </div>
-</div>
+    </div>
 
+<!-- CARDS DE INDICADORES (MÊS CORRENTE - PADRÃO EXECUTIVO 6 CARDS) -->
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
+        <!-- 1. Total Carteira -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Total Carteira CRM|Total de clientes sob alçada das filiais e gestores selecionados.">
+            <div class="flex items-center justify-between text-slate-400 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">Carteira</span>
+                <i class="fa-solid fa-users text-slate-400 group-hover:text-slate-700 transition-colors text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-slate-900 tracking-tight truncate" x-text="stats.total">0</div>
+            <div class="text-[10px] text-slate-500 font-semibold mt-0.5 truncate">Clientes ativos no escopo</div>
+        </div>
+
+        <!-- 2. Positivados no Período -->
+        <div class="bg-white rounded-2xl p-4 border border-emerald-200/80 shadow-xs hover:shadow-md transition-all group"
+             :data-tooltip="'Positivados no Período|Clientes com pedidos faturados (NFs confirmadas) no ' + (filtros.periodo === 'este_mes' ? 'mês corrente' : labelPeriodoCards().toLowerCase()) + '.'">
+            <div class="flex items-center justify-between text-emerald-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-emerald-700">
+                    Positivados <span x-text="labelPeriodoCards()">Mês</span>
+                </span>
+                <i class="fa-solid fa-circle-check text-emerald-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-emerald-600 tracking-tight truncate" x-text="stats.fechados">0</div>
+            <div class="text-[10px] text-emerald-700 font-bold mt-0.5 truncate" x-text="stats.conversao + '% da carteira'">0% da carteira</div>
+        </div>
+
+        <!-- 3. Sem Compras no Período -->
+        <div class="bg-white rounded-2xl p-4 border border-rose-200/80 shadow-xs hover:shadow-md transition-all group"
+             :data-tooltip="'Sem Compras no Período|Clientes ativos da carteira que ainda não realizaram compras faturadas no ' + (filtros.periodo === 'este_mes' ? 'mês corrente' : labelPeriodoCards().toLowerCase()) + '.'">
+            <div class="flex items-center justify-between text-rose-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-rose-700">
+                    Sem Compras <span x-text="labelPeriodoCards()">Mês</span>
+                </span>
+                <i class="fa-solid fa-user-xmark text-rose-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-rose-600 tracking-tight truncate" x-text="stats.sem_compras_mes">0</div>
+            <div class="text-[10px] text-rose-600 font-bold mt-0.5 truncate">Pendente positivação</div>
+        </div>
+
+        <!-- 4. Em Negociação -->
+        <div class="bg-white rounded-2xl p-4 border border-amber-200/80 shadow-xs hover:shadow-md transition-all group"
+             data-tooltip="Em Negociação|Contas e oportunidades ativas no funil (Novo, Qualificado ou Proposta).">
+            <div class="flex items-center justify-between text-amber-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Em Negociação</span>
+                <i class="fa-solid fa-handshake text-amber-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-amber-600 tracking-tight truncate" x-text="stats.emNegociacao">0</div>
+            <div class="text-[10px] text-amber-700 font-bold mt-0.5 truncate" x-text="'Pipeline: ' + (typeof stats.pipelineValue === 'number' ? formatarMoeda(stats.pipelineValue) : stats.pipelineValue)">R$ 0</div>
+        </div>
+
+        <!-- 5. Faturamento no Período -->
+        <div class="bg-white rounded-2xl p-4 border border-blue-200/80 shadow-xs hover:shadow-md transition-all group"
+             :data-tooltip="'Faturamento Líquido no Período|Volume financeiro total faturado das notas fiscais emitidas no ' + (filtros.periodo === 'este_mes' ? 'mês corrente' : labelPeriodoCards().toLowerCase()) + ' sob o escopo.'">
+            <div class="flex items-center justify-between text-blue-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-blue-700">
+                    Faturado <span x-text="labelPeriodoCards()">Mês</span>
+                </span>
+                <i class="fa-solid fa-sack-dollar text-blue-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-blue-600 tracking-tight truncate" x-text="formatarMoeda(stats.total_faturado || 0)">R$ 0</div>
+            <div class="text-[10px] text-blue-600 font-bold mt-0.5 truncate" x-text="'Total NFs ' + (filtros.periodo === 'este_mes' ? 'mês atual' : labelPeriodoCards().toLowerCase())">Total NFs mês atual</div>
+        </div>
+
+        <!-- 6. Agenda & Disciplina no Período -->
+        <div class="bg-white rounded-2xl p-4 border border-indigo-200/80 shadow-xs hover:shadow-md transition-all group cursor-pointer"
+             @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
+             :data-tooltip="'Agenda & Disciplina Comercial|Visitas e contatos concluídos versus total agendado no ' + (filtros.periodo === 'este_mes' ? 'mês corrente' : labelPeriodoCards().toLowerCase()) + '. Clique para alternar para a agenda.'">
+            <div class="flex items-center justify-between text-indigo-500 mb-1">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider text-indigo-700">
+                    Agenda <span x-text="labelPeriodoCards()">Mês</span>
+                </span>
+                <i class="fa-regular fa-calendar-check text-indigo-500 group-hover:scale-110 transition-transform text-xs"></i>
+            </div>
+            <div class="text-xl sm:text-2xl font-black text-indigo-600 tracking-tight flex items-baseline gap-1 truncate">
+                <span x-text="stats.concluidosMes || 0">0</span>
+                <span class="text-xs text-slate-400 font-semibold">/</span>
+                <span class="text-sm font-bold text-slate-500" x-text="stats.totalCompromissosMes || 0">0</span>
+            </div>
+            <div class="text-[10px] text-indigo-600 font-bold mt-0.5 truncate">Concluídos / Total</div>
+        </div>
+    </div>
+
+    <!-- BARRA RÁPIDA DE NAVEGAÇÃO & ATALHOS -->
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-5 p-2 bg-white rounded-2xl border border-slate-200 shadow-xs">
+        <div class="flex items-center gap-1.5">
+            <button type="button" @click="viewMode = 'tabela'"
+                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
+                :class="viewMode === 'tabela' ? 'bg-slate-900 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-solid fa-users"></i>
+                <span>Carteira de Clientes (Grade)</span>
+                <span class="px-2 py-0.5 rounded-full text-[10px] font-black" :class="viewMode === 'tabela' ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-700'" x-text="pagination.total">0</span>
+            </button>
+            <button type="button" @click="viewMode = 'agenda'; $nextTick(() => { if (calendario) calendario.render(); })"
+                class="px-4 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-2"
+                :class="viewMode === 'agenda' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-100'">
+                <i class="fa-regular fa-calendar-alt"></i>
+                <span>Agenda de Visitas &amp; Compromissos</span>
+                <span x-show="proximosCompromissos.length > 0" class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500 text-white" x-text="proximosCompromissos.length">0</span>
+            </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+            <button type="button" onclick="abrirModalAgendamento()"
+                class="px-3 py-2 rounded-xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-calendar-plus"></i>
+                <span>Novo Agendamento</span>
+            </button>
+            <button type="button" onclick="window.abrirPedidoMercos()"
+                class="px-3.5 py-2 rounded-xl text-xs font-bold bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 transition-all flex items-center gap-1.5">
+                <i class="fa-solid fa-cart-plus"></i>
+                <span>Pedido Mercos</span>
+            </button>
+        </div>
+    </div>
+
+
+<!-- VIEW TABELA / CARDS -->
+    <!-- VIEW TABELA / CARDS DA CARTEIRA -->
+    <div id="secaoCarteiraClientes" x-show="viewMode === 'tabela'">
+        <div class="bg-white rounded-2xl shadow-xs border border-slate-200/80 overflow-hidden">
 <!-- VISÃO MOBILE (MODO APP DE CAMPO PARA O GESTOR) -->
-<div id="clientesMobileCards" class="md:hidden divide-y divide-slate-100">
+<div id="clientesMobileCards" class="crm-mobile-cards block md:hidden divide-y divide-slate-100">
     <div class="text-center py-8 text-slate-400 text-xs">Carregando carteira de clientes...</div>
 </div>
 
 <!-- VISÃO DESKTOP (TABELA COMPLETA) -->
-<div class="hidden md:block overflow-x-auto">
+<div class="crm-desktop-table hidden md:block overflow-x-auto">
     <table class="w-full text-sm min-w-[920px]" id="tabelaClientes">
         <thead class="bg-slate-50 border-b">
             <tr>
@@ -1310,6 +1338,190 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
     function crmProfissional() {
 
         return {
+            // ====================================================================
+            // UTILITÁRIOS E HELPERS DE FORMATAÇÃO E REQUISIÇÃO
+            // ====================================================================
+            getToken() {
+                return localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token') || '';
+            },
+
+            async fetchWithAuth(url, options = {}) {
+                const token = this.getToken();
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...(options.headers || {})
+                };
+                if (token) {
+                    headers['Authorization'] = 'Bearer ' + token;
+                }
+                return await fetch(url, {
+                    ...options,
+                    headers
+                });
+            },
+
+            escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#39;');
+            },
+
+            formatarMoeda(valor) {
+                if (window.MarketingUtils && typeof MarketingUtils.formatarValor === 'function') {
+                    return MarketingUtils.formatarValor(valor, 'moeda');
+                }
+                const num = parseFloat(valor || 0);
+                return 'R$ ' + num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            },
+
+            formatarData(data) {
+                if (window.MarketingUtils && typeof MarketingUtils.formatarData === 'function') {
+                    return MarketingUtils.formatarData(data);
+                }
+                return data ? new Date(data).toLocaleDateString('pt-BR') : '—';
+            },
+
+            formatarDataRelativa(data) {
+                if (window.MarketingUtils && typeof MarketingUtils.formatarDataRelativa === 'function') {
+                    return MarketingUtils.formatarDataRelativa(data);
+                }
+                return data ? new Date(data).toLocaleDateString('pt-BR') : '—';
+            },
+
+            // ====================================================================
+            // HELPERS DE TEXTO E CONTAGEM DOS FILTROS DROPDOWN
+            // ====================================================================
+            textoFiltroOrigem() {
+                if (!this.filtros.origens || this.filtros.origens.length === 0) {
+                    return '🌐 Todas Origens';
+                }
+                if (this.filtros.origens.length === 1) {
+                    const labels = {
+                        'APENAS_CRM': '💾 CRM',
+                        'APENAS_ERP': '🏭 ERP',
+                        'AMBOS': '🔄 Ambos'
+                    };
+                    return labels[this.filtros.origens[0]] || this.filtros.origens[0];
+                }
+                return `🌐 ${this.filtros.origens.length} origens`;
+            },
+
+            textoFiltroStatus() {
+                if (!this.filtros.status_list || this.filtros.status_list.length === 0) {
+                    return '📊 Todos Status';
+                }
+                if (this.filtros.status_list.length === 1) {
+                    const labels = {
+                        'Novo': '🆕 Novo',
+                        'Qualificado': '⭐ Qualificado',
+                        'Proposta': '📄 Proposta',
+                        'Fechado': '✅ Fechado',
+                        'Perdido': '❌ Perdido'
+                    };
+                    return labels[this.filtros.status_list[0]] || this.filtros.status_list[0];
+                }
+                return `📊 ${this.filtros.status_list.length} status`;
+            },
+
+            textoFiltroTermometro() {
+                if (!this.filtros.termometro_list || this.filtros.termometro_list.length === 0) {
+                    return '🌡️ Todos';
+                }
+                if (this.filtros.termometro_list.length === 1) {
+                    const labels = {
+                        'Frio': '🥶 Frio',
+                        'Morno': '🌤️ Morno',
+                        'Quente': '🔥 Quente'
+                    };
+                    return labels[this.filtros.termometro_list[0]] || this.filtros.termometro_list[0];
+                }
+                return `🌡️ ${this.filtros.termometro_list.length} selecionados`;
+            },
+
+            textoFiltroOrigemCliente() {
+                if (!this.filtros.origem_cliente_list || this.filtros.origem_cliente_list.length === 0) {
+                    return '📌 Todas Origens';
+                }
+                if (this.filtros.origem_cliente_list.length === 1) {
+                    const labels = {
+                        'Site': '🌐 Site',
+                        'WhatsApp': '💬 WhatsApp',
+                        'Instagram': '📷 Instagram',
+                        'Bio do Instagram': '📷 Bio',
+                        'Facebook': '📘 Facebook',
+                        'LandPage': '📄 LandPage',
+                        'Indicação': '👥 Indicação',
+                        'Outros': '📌 Outros'
+                    };
+                    return labels[this.filtros.origem_cliente_list[0]] || this.filtros.origem_cliente_list[0];
+                }
+                return `📌 ${this.filtros.origem_cliente_list.length} origens`;
+            },
+
+            textoFiltroCompra() {
+                if (!this.filtros.compra_list || this.filtros.compra_list.length === 0) {
+                    return '🛒 Todos';
+                }
+                if (this.filtros.compra_list.length === 1) {
+                    return this.filtros.compra_list[0] === 'sim' ? '✅ Já comprou' : '❌ Nunca comprou';
+                }
+                return `🛒 ${this.filtros.compra_list.length} selecionados`;
+            },
+
+            origensSelecionadasCount() {
+                return this.filtros.origens ? this.filtros.origens.length : 0;
+            },
+
+            origemClienteSelecionadasCount() {
+                return this.filtros.origem_cliente_list ? this.filtros.origem_cliente_list.length : 0;
+            },
+
+            statusSelecionadasCount() {
+                return this.filtros.status_list ? this.filtros.status_list.length : 0;
+            },
+
+            termometroSelecionadasCount() {
+                return this.filtros.termometro_list ? this.filtros.termometro_list.length : 0;
+            },
+
+            compraSelecionadasCount() {
+                return this.filtros.compra_list ? this.filtros.compra_list.length : 0;
+            },
+
+            aplicarDestaque(cliente) {
+                if (!cliente) return;
+                const linhas = document.querySelectorAll('#clientesTableBody tr');
+                let encontrou = false;
+
+                if (this._clienteDestacado) return;
+                this._clienteDestacado = true;
+
+                linhas.forEach(linha => {
+                    const idCliente = linha.getAttribute('data-cliente-id');
+                    if (idCliente == cliente.id || idCliente == cliente.id_crm || idCliente == cliente.id_erp) {
+                        encontrou = true;
+                        linhas.forEach(l => {
+                            l.style.backgroundColor = '';
+                            l.style.borderLeft = '';
+                            l.style.boxShadow = '';
+                        });
+                        linha.style.backgroundColor = '#f0fdf4';
+                        linha.style.borderLeft = '4px solid #10b981';
+                        linha.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.2)';
+                        linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        this._clienteEncontrado = true;
+                    }
+                });
+
+                setTimeout(() => {
+                    this._clienteDestacado = false;
+                }, 5000);
+            },
+
         // ====================================================================
         // ESTADO
         // ====================================================================
@@ -1413,6 +1625,7 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                 }
                 this.pagination.atual = 1;
                 this.carregarClientes();
+                this.carregarDashboard();
             },
 
     // ====================================================================
@@ -1424,6 +1637,7 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                 this.filtros.data_fim = new Date().toISOString().split('T')[0];
                 this.pagination.atual = 1;
                 this.carregarClientes();
+                this.carregarDashboard();
             },
             // ====================================================================
 // FUNÇÃO: APLICAR DATAS PERSONALIZADAS
@@ -1440,6 +1654,37 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                 }
                 this.pagination.atual = 1;
                 this.carregarClientes();
+                this.carregarDashboard();
+            },
+
+            labelPeriodoCards() {
+                const p = this.filtros.periodo;
+                if (p === 'hoje') return 'Hoje';
+                if (p === 'mes_passado') return 'Mês Passado';
+                if (p === '30dias') return '30 Dias';
+                if (p === 'este_ano') return 'Ano';
+                if (p === 'todos') return 'Histórico';
+                if (p === 'personalizado') return 'Período';
+                return 'Mês';
+            },
+
+            limparFiltros() {
+                this.filtros.busca = '';
+                this.filtros.origens = [];
+                this.filtros.origem_cliente_list = [];
+                this.filtros.status_list = [];
+                this.filtros.termometro_list = [];
+                this.filtros.compra_list = [];
+                this.filtros.periodo = 'este_mes';
+                this.filtros.tipo_periodo = 'compra';
+                const hoje = new Date();
+                const ano = hoje.getFullYear();
+                const mes = String(hoje.getMonth() + 1).padStart(2, '0');
+                this.filtros.data_inicio = `${ano}-${mes}-01`;
+                this.filtros.data_fim = hoje.toISOString().split('T')[0];
+                this.pagination.atual = 1;
+                this.carregarClientes();
+                this.carregarDashboard();
             },
 
         // ====================================================================
@@ -1699,1381 +1944,47 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             },
 
         // ====================================================================
-        // CARREGAR CLIENTES - PRINCIPAL (COM CONTROLE DE CONCORRÊNCIA)
-        // ====================================================================
-        // clientes.php - Função carregarClientes()
-
-            async carregarClientes(manterFiltro = false) {
-    // 🔥 EVITAR MÚLTIPLAS CHAMADAS CONCORRENTES
-                if (this._carregando) {
-                    console.log('⏳ Já está carregando, ignorando...');
-                    return;
-                }
-
-                if (manterFiltro && this._clienteEncontrado) {
-                    console.log('⏭️ Mantendo cliente encontrado, não recarregando');
-                    return;
-                }
-
-                this._carregando = true;
-
-                try {
-        // ================================================================
-        // 1. PREPARAR PARÂMETROS
-        // ================================================================
-                    const params = new URLSearchParams({
-                        pagina: this.pagination.atual,
-                        limite: this.pagination.limite,
-                        status: this.filtros.status || '',
-                        termometro: this.filtros.termometro || '',
-                        busca: this.filtros.busca || '',
-                        origem: this.filtros.origens ? this.filtros.origens.join(',') : '',
-                        origem_cliente: this.filtros.origem_cliente || '',
-                        periodo: this.filtros.periodo || '',
-                        ja_comprou: this.filtros.ja_comprou || '',
-                        tipo_periodo: this.filtros.tipo_periodo || 'compra',
-                        data_inicio: this.filtros.data_inicio || '',
-                        data_fim: this.filtros.data_fim || ''
-                    });
-
-        // ================================================================
-        // 2. 🔥 BUSCA INTELIGENTE - NÃO ENVIA busca_id separadamente
-        //    A função V2 já faz a busca inteligente no backend
-        // ================================================================
-        // REMOVEMOS a lógica de busca_id separada
-        // Agora tudo vai como "busca" e o backend decide como processar
-
-                    const url = `/v1/marketing/clientes/consulta-otimizado?${params}`;
-                    console.log('🔍 Buscando clientes:', url);
-
-        // ================================================================
-        // 3. FAZER REQUISIÇÃO
-        // ================================================================
-                    const resp = await this.fetchWithAuth(url);
-                    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-
-                    const data = await resp.json();
-                    if (!data.success) throw new Error(data.error || 'Erro ao carregar clientes');
-
-        // ================================================================
-        // 4. PROCESSAR RESULTADOS
-        // ================================================================
-                    this.clientesTabela = (data.clientes || []).map(c => ({
-                        id: c.id_crm || c.id_erp,
-                        id_crm: c.id_crm,
-                        id_erp: c.id_erp,
-                        uid: `crm_${c.id_crm || 0}_erp_${c.id_erp || 0}`,
-                        nome: c.nome || '—',
-                        empresa: c.empresa || '',
-                        telefone: c.telefone || '',
-                        email: c.email || '',
-                        cidade: c.cidade || '',
-                        uf: c.uf || '',
-                        status: c.status_crm || 'Novo',
-                        termometro: c.termometro || 'Frio',
-                        origem: c.origem_crm || (c.origem_dados === 'APENAS_ERP' ? 'ERP' : 'Site'),
-                        valor_negocio: c.valor_negocio || 0,
-                        data_cadastro: c.data_cadastro_crm || c.data_cadastro_erp,
-                        ultima_interacao: c.ultima_interacao,
-                        total_interacoes: c.total_interacoes || 0,
-                        nome_vendedor: c.nome_vendedor,
-                        origem_dados: c.origem_dados,
-                        pode_acao: c.id_crm !== null,
-                        total_pedidos: c.total_pedidos || 0,
-                        total_compras: c.total_compras || 0,
-                        data_ultima_compra: c.data_ultima_compra,
-                        cnpj_cpf: c.cnpj_cpf || ''
-                    }));
-
-                    this.pagination.total = data.total || 0;
-                    this.pagination.totalPaginas = data.total_paginas || 1;
-                    this.renderizarTabela();
-
-        // ================================================================
-        // 5. SE BUSCOU POR ID, DESTACAR O CLIENTE
-        // ================================================================
-                    if (data.busca && data.busca.tipo === 'ID' && data.clientes && data.clientes.length > 0) {
-                        const cliente = data.clientes[0];
-                        setTimeout(() => {
-                            this.aplicarDestaque(cliente);
-                        }, 500);
-                    }
-
-        // Mostrar info da busca no console
-                    if (data.busca) {
-                        console.log(`🔍 Busca: "${data.busca.original}" → Tipo: ${data.busca.tipo} → Encontrados: ${data.total}`);
-                    }
-
-                } catch (e) {
-                    console.error('❌ Erro ao carregar clientes:', e);
-                    Swal.fire({
-                        icon: 'error',
-                        title: 'Erro ao carregar clientes',
-                        text: e.message,
-                        confirmButtonText: 'Tentar novamente',
-                        confirmButtonColor: '#10b981'
-                    }).then(() => this.carregarClientes());
-                } finally {
-                    this._carregando = false;
-                }
-            },
-
-        // ====================================================================
-        // APLICAR DESTAQUE AO CLIENTE
-        // ====================================================================
-            aplicarDestaque(cliente) {
-                const linhas = document.querySelectorAll('#clientesTableBody tr');
-                let encontrou = false;
-
-                if (this._clienteDestacado) return;
-                this._clienteDestacado = true;
-
-                linhas.forEach(linha => {
-                    const idCliente = linha.getAttribute('data-cliente-id');
-                    if (idCliente == cliente.id || idCliente == cliente.id_crm || idCliente == cliente.id_erp) {
-                        encontrou = true;
-                        linhas.forEach(l => {
-                            l.style.backgroundColor = '';
-                            l.style.borderLeft = '';
-                            l.style.boxShadow = '';
-                        });
-                        linha.style.backgroundColor = '#f0fdf4';
-                        linha.style.borderLeft = '4px solid #10b981';
-                        linha.style.boxShadow = '0 2px 8px rgba(16, 185, 129, 0.2)';
-                        linha.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        this._clienteEncontrado = true;
-                    }
-                });
-
-                if (!encontrou) {
-                    console.warn('⚠️ Cliente não encontrado na tabela visualizada');
-                    Swal.fire({
-                        icon: 'info',
-                        title: 'Cliente não encontrado',
-                        text: 'Verifique se o cliente está na lista atual',
-                        timer: 2000,
-                        showConfirmButton: false,
-                        toast: true,
-                        position: 'top-end'
-                    });
-                }
-
-                setTimeout(() => {
-                    this._clienteDestacado = false;
-                }, 5000);
-            },
-
-        // ====================================================================
-        // FUNÇÕES DE CONTROLE DE ORIGEM (MÚLTIPLA SELEÇÃO)
-        // ====================================================================
-            toggleDropdownOrigem() {
-                this.dropdownOrigemAberto = !this.dropdownOrigemAberto;
-            },
-            toggleDropdownStatus() {
-                this.dropdownStatusAberto = !this.dropdownStatusAberto;
-            },
-            toggleDropdownOrigemCliente() {
-                this.dropdownOrigemClienteAberto = !this.dropdownOrigemClienteAberto;
-            },
-            toggleDropdownTermometro() {
-                this.dropdownTermometroAberto = !this.dropdownTermometroAberto;
-            },
-            toggleDropdownCompra() {
-                this.dropdownCompraAberto = !this.dropdownCompraAberto;
-            },
-
-            get origensSelecionadasCount() {
-                return this.filtros.origens ? this.filtros.origens.length : 0;
-            },
-            get statusSelecionadosCount() {
-                return this.filtros.status_list ? this.filtros.status_list.length : 0;
-            },
-            get origemClienteSelecionadasCount() {
-                return this.filtros.origem_cliente_list ? this.filtros.origem_cliente_list.length : 0;
-            },
-            get termometroSelecionadosCount() {
-                return this.filtros.termometro_list ? this.filtros.termometro_list.length : 0;
-            },
-            get compraSelecionadosCount() {
-                return this.filtros.compra_list ? this.filtros.compra_list.length : 0;
-            },
-
-            textoFiltroOrigem() {
-                if (!this.filtros.origens || this.filtros.origens.length === 0) {
-                    return '🌐 Todas Origens';
-                }
-                if (this.filtros.origens.length === 1) {
-                    const labels = {
-                        'APENAS_CRM': '💾 CRM',
-                        'APENAS_ERP': '🏭 ERP',
-                        'AMBOS': '🔄 Ambos'
-                    };
-                    return labels[this.filtros.origens[0]] || this.filtros.origens[0];
-                }
-                return `🌐 ${this.filtros.origens.length} origens`;
-            },
-
-            textoFiltroStatus() {
-                if (!this.filtros.status_list || this.filtros.status_list.length === 0) {
-                    return '📊 Todos Status';
-                }
-                if (this.filtros.status_list.length === 1) {
-                    const labels = {
-                        'Novo': '🆕 Novo',
-                        'Qualificado': '⭐ Qualificado',
-                        'Proposta': '📄 Proposta',
-                        'Fechado': '✅ Fechado',
-                        'Perdido': '❌ Perdido'
-                    };
-                    return labels[this.filtros.status_list[0]] || this.filtros.status_list[0];
-                }
-                return `📊 ${this.filtros.status_list.length} status`;
-            },
-            textoFiltroOrigemCliente() {
-                if (!this.filtros.origem_cliente_list || this.filtros.origem_cliente_list.length === 0) {
-                    return '📌 Todas Origens';
-                }
-                if (this.filtros.origem_cliente_list.length === 1) {
-                    const labels = {
-                        'Site': '🌐 Site',
-                        'WhatsApp': '💬 WhatsApp',
-                        'Instagram': '📷 Instagram',
-                        'Bio do Instagram': '📷 Bio',
-                        'Facebook': '📘 Facebook',
-                        'LandPage': '📄 LandPage',
-                        'Indicação': '👥 Indicação',
-                        'Outros': '📌 Outros'
-                    };
-                    return labels[this.filtros.origem_cliente_list[0]] || this.filtros.origem_cliente_list[0];
-                }
-                return `📌 ${this.filtros.origem_cliente_list.length} origens`;
-            },
-            textoFiltroTermometro() {
-                if (!this.filtros.termometro_list || this.filtros.termometro_list.length === 0) {
-                    return '🌡️ Todos';
-                }
-                if (this.filtros.termometro_list.length === 1) {
-                    const labels = {
-                        'Frio': '🥶 Frio',
-                        'Morno': '🌤️ Morno',
-                        'Quente': '🔥 Quente'
-                    };
-                    return labels[this.filtros.termometro_list[0]] || this.filtros.termometro_list[0];
-                }
-                return `🌡️ ${this.filtros.termometro_list.length} selecionados`;
-            },
-            textoFiltroCompra() {
-                if (!this.filtros.compra_list || this.filtros.compra_list.length === 0) {
-                    return '🛒 Todos';
-                }
-                if (this.filtros.compra_list.length === 1) {
-                    return this.filtros.compra_list[0] === 'sim' ? '✅ Já comprou' : '❌ Nunca comprou';
-                }
-                return `🛒 ${this.filtros.compra_list.length} selecionados`;
-            },
-
-            selecionarTodasOrigens() {
-                this.filtros.origens = ['APENAS_CRM', 'APENAS_ERP', 'AMBOS'];
-            },
-
-            selecionarTodosStatus() {
-                this.filtros.status_list = ['Novo', 'Qualificado', 'Proposta', 'Fechado', 'Perdido'];
-            },
-            limparStatus() {
-                this.filtros.status_list = [];
-            },
-            selecionarTodasOrigemCliente() {
-                this.filtros.origem_cliente_list = ['Site', 'WhatsApp', 'Instagram', 'Bio do Instagram', 'Facebook', 'LandPage', 'Indicação', 'Outros'];
-            },
-            limparOrigemCliente() {
-                this.filtros.origem_cliente_list = [];
-            },
-            selecionarTodosTermometro() {
-                this.filtros.termometro_list = ['Frio', 'Morno', 'Quente'];
-            },
-            limparTermometro() {
-                this.filtros.termometro_list = [];
-            },
-            selecionarTodosCompra() {
-                this.filtros.compra_list = ['sim', 'nao'];
-            },
-            limparCompra() {
-                this.filtros.compra_list = [];
-            },
-            limparOrigens() {
-                this.filtros.origens = [];
-                this.carregarClientes();
-            },
-
-            aplicarFiltroOrigem() {
-                this.dropdownOrigemAberto = false;
-                this.carregarClientes();
-            },
-            aplicarFiltroStatus() {
-                this.dropdownStatusAberto = false;
-    // Converter lista para string separada por vírgula ou usar como array
-                this.carregarClientes();
-            },
-            aplicarFiltroOrigemCliente() {
-                this.dropdownOrigemClienteAberto = false;
-                this.carregarClientes();
-            },
-            aplicarFiltroTermometro() {
-                this.dropdownTermometroAberto = false;
-                this.carregarClientes();
-            },
-            aplicarFiltroCompra() {
-                this.dropdownCompraAberto = false;
-                this.carregarClientes();
-            },
-
-            limparFiltros() {
-                this.filtros.status = '';
-                this.filtros.termometro = '';
-                this.filtros.busca = '';
-                this.filtros.origens = [];
-                this.filtros.origem_cliente = '';
-                this.filtros.status_list = [];
-                this.filtros.origem_cliente_list = [];
-                this.filtros.termometro_list = [];
-                this.filtros.compra_list = [];
-                this.filtros.periodo = 'este_mes';
-                this.filtros.ja_comprou = '';
-                this.filtros.tipo_periodo = 'compra';
-                this.filtros.data_inicio = new Date().getFullYear() + '-' + String(new Date().getMonth() + 1).padStart(2, '0') + '-01';
-                this.filtros.data_fim = new Date().toISOString().split('T')[0];
-                this.dropdownOrigemAberto = false;
-                this.dropdownStatusAberto = false;
-                this.dropdownOrigemClienteAberto = false;
-                this.dropdownTermometroAberto = false;
-                this.dropdownCompraAberto = false;
-                this.pagination.atual = 1;
-                this.carregarClientes();
-            },
-        // ====================================================================
-        // FUNÇÕES DE AUTENTICAÇÃO
-        // ====================================================================
-            getToken: MarketingUtils.getToken,
-
-            async fetchWithAuth(url, options = {}) {
-                const token = this.getToken();
-                if (!token) {
-                    window.location.href = '/portal/login.php';
-                    throw new Error('Token não encontrado');
-                }
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'Content-Type': 'application/json',
-                        ...(options.headers || {})
-                    }
-                });
-                if (response.status === 401) {
-                    localStorage.removeItem('authToken');
-                    localStorage.removeItem('userData');
-                    window.location.href = '/portal/login.php';
-                    throw new Error('Sessão expirada');
-                }
-                return response;
-            },
-
-            escapeHtml: MarketingUtils.escapeHtml,
-            formatarMoeda: (valor) => MarketingUtils.formatarValor(valor, 'moeda'),
-            formatarData: MarketingUtils.formatarData,
-            formatarDataRelativa: MarketingUtils.formatarDataRelativa,
-
-        // ====================================================================
-        // RENDERIZAR TABELA
-        // ====================================================================
-            renderizarTabela() {
-                const tbody = document.getElementById('clientesTableBody');
-                if (!this.clientesTabela.length) {
-                    tbody.innerHTML = '<tr><td colspan="8" class="text-center py-8 text-slate-400">Nenhum cliente encontrado</td></tr>';
-                    return;
-                }
-
-                tbody.innerHTML = this.clientesTabela.map(c => {
-                    const statusClass = {
-                        'Novo': 'bg-blue-100 text-blue-700',
-                        'Qualificado': 'bg-amber-100 text-amber-700',
-                        'Proposta': 'bg-purple-100 text-purple-700',
-                        'Fechado': 'bg-emerald-100 text-emerald-700',
-                        'Perdido': 'bg-rose-100 text-rose-700'
-                    }[c.status] || 'bg-slate-100';
-
-                    const termoIcon = { 'Frio': '🥶', 'Morno': '🌤️', 'Quente': '🔥' }[c.termometro] || '';
-
-                    let origemBadge = '';
-                    if (c.origem_dados === 'APENAS_CRM') origemBadge = '<span class="ml-2 text-[10px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full">💾 CRM</span>';
-                    else if (c.origem_dados === 'APENAS_ERP') origemBadge = '<span class="ml-2 text-[10px] bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded-full">🏭 ERP</span>';
-                    else if (c.origem_dados === 'AMBOS') origemBadge = '<span class="ml-2 text-[10px] bg-purple-100 text-purple-600 px-1.5 py-0.5 rounded-full">🔄 Ambos</span>';
-
-                    const btnImportar = (c.origem_dados === 'APENAS_ERP') ?
-                `<button onclick="window.importarClienteERP(${c.id_erp}, '${this.escapeHtml(c.nome).replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-indigo-500 mr-2 transition-colors" title="Importar para CRM"><i class="fa-solid fa-cloud-arrow-down"></i></button>` :
-                '';
-                const btnEditar = c.id_crm ? `<button onclick="window.editarCliente(${c.id_crm}, 'CRM')" class="text-slate-400 hover:text-emerald-600 mr-2 transition-colors"><i class="fa-solid fa-pen"></i></button>` : '';
-                const btnDeletar = c.id_crm ? `<button onclick="window.deletarCliente(${c.id_crm}, '${this.escapeHtml(c.nome).replace(/'/g, "\\'")}')" class="text-slate-400 hover:text-rose-500 transition-colors"><i class="fa-solid fa-trash"></i></button>` : '';
-                const valorExibir = c.valor_negocio > 0 ? MarketingUtils.formatarValor(c.valor_negocio, 'moeda') : (c.total_compras > 0 ? MarketingUtils.formatarValor(c.total_compras, 'moeda') : '—');
-
-                let statusCompra = '';
-                let statusCompraClass = '';
-                let ultimoValor = '';
-
-                if (c.total_pedidos > 0) {
-                    statusCompra = '✅ Já comprou';
-                    statusCompraClass = 'bg-emerald-100 text-emerald-700';
-                    ultimoValor = c.total_compras ? MarketingUtils.formatarValor(c.total_compras, 'moeda') : 'R$ 0,00';
-                } else {
-                    statusCompra = '❌ Nunca comprou';
-                    statusCompraClass = 'bg-slate-100 text-slate-500';
-                    ultimoValor = '—';
-                }
-
-                const clienteId = c.id_crm || c.id_erp || c.id;
-
-                return `
-                    <tr class="border-b hover:bg-slate-50 cursor-pointer transition-colors" 
-                        data-cliente-id="${clienteId}"
-                    onclick="${c.id_crm ? `window.editarCliente(${c.id_crm}, 'CRM')` : `window.visualizarClienteUnificado(${c.id_erp}, '${c.origem_dados}')`}">
-                        <td class="px-4 py-3">
-                            <div class="font-bold text-slate-800">
-                                ${this.escapeHtml(c.nome)}${origemBadge}
-                                ${!c.id_crm ? '<span class="ml-2 text-[9px] bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full">Apenas leitura</span>' : ''}
-                            </div>
-                            <div class="text-xs text-slate-400">
-                                ${c.empresa || ''} ${c.telefone ? '• ' + c.telefone : ''}
-                                ${c.nome_vendedor ? '<br><span class="text-[10px]">Vend: ' + this.escapeHtml(c.nome_vendedor) + '</span>' : ''}
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 text-center"><span class="px-2 py-1 rounded-lg text-xs font-bold ${statusClass}">${c.status}</span></td>
-                        <td class="px-4 py-3 text-center text-xl">${termoIcon}</td>
-                        <td class="px-4 py-3 text-center text-xs">${c.origem}</td>
-                        <td class="px-4 py-3 text-right font-bold text-emerald-600">${valorExibir}</td>
-                        <td class="px-4 py-3 text-center text-xs">${this.formatarDataRelativa(c.ultima_interacao || c.data_ultima_compra || c.data_cadastro)}</td>
-                        <td class="px-4 py-3 text-center">
-                            <div class="flex flex-col items-center gap-0.5">
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCompraClass}">${statusCompra}</span>
-                    ${c.total_pedidos > 0 ? `<span class="text-[9px] text-slate-400">Último: ${ultimoValor}</span>` : ''}
-                            </div>
-                        </td>
-                        <td class="px-4 py-3 text-center" onclick="event.stopPropagation()">${btnImportar}${btnEditar}${btnDeletar}</td>
-                    </tr>
-                `;
-            }).join('');
-},
-
-        // ====================================================================
-        // BUSCA COM DEBOUNCE
-        // ====================================================================
-buscarComDebounce() {
-    if (this.timeoutBusca) clearTimeout(this.timeoutBusca);
-    this.timeoutBusca = setTimeout(() => {
-        this.pagination.atual = 1;
-        this.carregarClientes();
-    }, 500);
-},
-
-        // ====================================================================
-        // MUDAR PÁGINA
-        // ====================================================================
-mudarPagina(pagina) {
-    if (pagina < 1 || pagina > this.pagination.totalPaginas) return;
-    this.pagination.atual = pagina;
-    this.carregarClientes();
-},
-
-        // ====================================================================
-        // ALERTAS E COMPROMISSOS
-        // ====================================================================
-async carregarAlertas() {
-    try {
-        const resp = await this.fetchWithAuth('/v1/marketing/crm-dashboard');
-        const data = await resp.json();
-        this.alertas = data.alertas || [];
-    } catch (e) {
-        console.error(e);
-    }
-},
-
-        // ====================================================================
-        // FUNÇÕES AUXILIARES PARA AGENDA DE COMPROMISSOS
-        // ====================================================================
-getProximidadeClass(dataHora) {
-    if (!dataHora) return 'bg-slate-100 text-slate-500';
-    const data = new Date(dataHora);
-    const agora = new Date();
-    const diffMs = data - agora;
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 0) return 'bg-rose-100 text-rose-700';
-    if (diffMin < 15) return 'bg-red-100 text-red-700 font-bold';
-    if (diffMin < 60) return 'bg-amber-100 text-amber-700';
-    if (diffMin < 1440) return 'bg-blue-100 text-blue-700';
-    return 'bg-slate-100 text-slate-500';
-},
-
-formatarDataProxima(dataHora) {
-    if (!dataHora) return '—';
-    const data = new Date(dataHora);
-    const agora = new Date();
-    const diffMs = data - agora;
-    const diffMin = Math.floor(diffMs / 60000);
-    const diffHoras = Math.floor(diffMs / 3600000);
-    const diffDias = Math.floor(diffMs / 86400000);
-    if (diffMin < 0) return 'Atrasado';
-    if (diffMin < 1) return 'Agora';
-    if (diffMin < 60) return `${diffMin} min`;
-    if (diffHoras < 24) return `${diffHoras}h`;
-    if (diffDias === 0) return 'Hoje';
-    if (diffDias === 1) return 'Amanhã';
-    if (diffDias < 7) return `${diffDias} dias`;
-    return data.toLocaleDateString('pt-BR');
-},
-
-formatarHora(dataHora) {
-    if (!dataHora) return '—';
-    const data = new Date(dataHora);
-    return data.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-},
-
-calcularDuracao(inicio, fim) {
-    if (!inicio || !fim) return '—';
-    const inicioDate = new Date(inicio);
-    const fimDate = new Date(fim);
-    const diffMs = fimDate - inicioDate;
-    const diffMin = Math.floor(diffMs / 60000);
-    if (diffMin < 1) return '—';
-    if (diffMin < 60) return `${diffMin} min`;
-    const horas = Math.floor(diffMin / 60);
-    const minutos = diffMin % 60;
-    if (minutos === 0) return `${horas}h`;
-    return `${horas}h${minutos}min`;
-},
-
-async carregarProximosCompromissos() {
-    try {
-        const resp = await this.fetchWithAuth('/v1/marketing/compromissos/proximos');
-        const data = await resp.json();
-        this.proximosCompromissos = data.data || [];
-    } catch (e) {
-        console.error(e);
-    }
-},
-
-        // ====================================================================
-        // LEMBRETES DE HOJE
-        // ====================================================================
-async carregarLembretesHoje() {
-    try {
-        const token = this.getToken();
-        const resp = await fetch('/v1/marketing/lembretes-hoje', {
-            headers: { 'Authorization': 'Bearer ' + token }
-        });
-        const data = await resp.json();
-        this.lembretesHoje = data || [];
-        this.verificarLembretesPendentes();
-    } catch (e) {
-        console.error('Erro ao carregar lembretes de hoje:', e);
-    }
-},
-
-verificarLembretesPendentes() {
-    const agora = new Date();
-    const horaAtual = agora.getHours();
-    const minAtual = agora.getMinutes();
-
-    this.lembretesHoje.forEach(lembrete => {
-        if (lembrete.concluido) return;
-        const [hora, min] = (lembrete.hora_lembrete || '09:00').split(':').map(Number);
-        const diffMin = (hora * 60 + min) - (horaAtual * 60 + minAtual);
-        if (diffMin >= 0 && diffMin <= 15) {
-            this.mostrarAlertaLembrete(lembrete);
-        }
-    });
-},
-
-mostrarAlertaLembrete(lembrete) {
-    const jaAlertado = localStorage.getItem(`lembrete_alert_${lembrete.id}`);
-    if (jaAlertado) return;
-
-    const clienteNome = lembrete.cliente_nome || 'Cliente';
-    const hora = lembrete.hora_lembrete || '09:00';
-
-    try {
-        const audio = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==');
-        audio.play().catch(() => {});
-    } catch(e) {}
-
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('⏰ Lembrete pendente!', {
-            body: `${clienteNome} - ${lembrete.descricao} às ${hora}`,
-            icon: '/favicon.ico'
-        });
-    }
-
-    Swal.fire({
-        icon: 'info',
-        title: '⏰ Lembrete pendente!',
-        html: `
-                    <div class="text-left">
-                        <p><strong>Cliente:</strong> ${clienteNome}</p>
-                        <p><strong>Descrição:</strong> ${lembrete.descricao}</p>
-                        <p><strong>Horário:</strong> ${hora}</p>
-                    </div>
-            `,
-            timer: 10000,
-            showConfirmButton: true,
-            confirmButtonText: 'Ver cliente',
-            confirmButtonColor: '#f59e0b'
-        }).then((result) => {
-            if (result.isConfirmed && lembrete.id_cliente) {
-                window.editarCliente(lembrete.id_cliente, 'CRM');
-            }
-        });
-
-        localStorage.setItem(`lembrete_alert_${lembrete.id}`, 'true');
-        setTimeout(() => {
-            localStorage.removeItem(`lembrete_alert_${lembrete.id}`);
-        }, 3600000);
-    },
-
-        // ====================================================================
-        // INICIAR VERIFICAÇÃO DE LEMBRETES
-        // ====================================================================
-    iniciarVerificacaoLembretes() {
-        this.carregarLembretesHoje();
-        this.intervaloLembretes = setInterval(() => {
-            this.carregarLembretesHoje();
-        }, 30000);
-    },
-
-    limparVerificacaoLembretes() {
-        if (this.intervaloLembretes) {
-            clearInterval(this.intervaloLembretes);
-            this.intervaloLembretes = null;
-        }
-    },
-
-        // ====================================================================
-        // VERIFICAÇÃO DE COMPROMISSOS EM TEMPO REAL
-        // ====================================================================
-    async verificarCompromissosProximos() {
-        try {
-            const token = this.getToken();
-            if (!token) return;
-
-            const resp = await fetch('/v1/marketing/compromissos/meus-proximos', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-
-            if (!resp.ok) return;
-
-            const data = await resp.json();
-
-            if (data.success && data.compromissos) {
-                const urgentes = data.compromissos.filter(c => 
-                    c.urgencia === 'iminente' || c.urgencia === 'proximo'
-                    );
-
-                urgentes.forEach(comp => {
-                    if (!comp.ja_notificado) {
-                        this.mostrarAlertaCompromisso(comp);
-                    }
-                });
-            }
-
-        } catch (e) {
-            console.error('Erro ao verificar compromissos:', e);
-        }
-    },
-
-    mostrarAlertaCompromisso(comp) {
-        const icone = comp.urgencia === 'iminente' ? '🔴' : '🟡';
-        const titulo = comp.urgencia === 'iminente' ? 'Compromisso iminente!' : 'Compromisso em breve!';
-        const clienteNome = comp.cliente_nome || 'Cliente';
-        const dataHora = new Date(comp.data_hora).toLocaleString('pt-BR');
-
-        try {
-            const audio = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==');
-            audio.play().catch(() => {});
-        } catch(e) {}
-
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('📅 ' + titulo, {
-                body: `${clienteNome} - ${comp.titulo || comp.tipo} às ${dataHora}`,
-                icon: '/favicon.ico'
-            });
-        }
-
-        Swal.fire({
-            icon: 'warning',
-            title: `${icone} ${titulo}`,
-            html: `
-                    <div class="text-left">
-                        <p><strong>Cliente:</strong> ${clienteNome}</p>
-                        <p><strong>Título:</strong> ${comp.titulo || comp.tipo}</p>
-                        <p><strong>Data/Hora:</strong> ${dataHora}</p>
-                        ${comp.horas_para_inicio <= 0.25 ? '<p class="text-red-500 font-bold mt-2">⚠️ Começa em menos de 15 minutos!</p>' : ''}
-                    </div>
-                `,
-                timer: 15000,
-                showConfirmButton: true,
-                confirmButtonText: 'Ver cliente',
-                confirmButtonColor: '#3b82f6',
-                showCancelButton: true,
-                cancelButtonText: 'Ignorar'
-            }).then((result) => {
-                if (result.isConfirmed && comp.id_cliente) {
-                    window.editarCliente(comp.id_cliente, 'CRM');
-                }
-            });
-
-            this.criarNotificacaoCompromisso(comp);
-        },
-
-        async criarNotificacaoCompromisso(comp) {
-            try {
-                const token = this.getToken();
-                if (!token) return;
-
-                const resp = await fetch('/v1/crm/notificacoes', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        titulo: `📅 ${comp.urgencia === 'iminente' ? 'Compromisso iminente!' : 'Compromisso em breve!'}`,
-                        mensagem: `Compromisso com ${comp.cliente_nome || 'Cliente'} às ${new Date(comp.data_hora).toLocaleString('pt-BR')}`,
-                        tipo: 'compromisso',
-                        id_referencia: comp.id,
-                        link: `/portal/modules/marketing/clientes.php?id=${comp.id_cliente}`
-                    })
-                });
-
-                if (resp.ok) {
-                    console.log('✅ Notificação criada no banco para compromisso:', comp.id);
-                }
-            } catch (e) {
-                console.error('Erro ao criar notificação:', e);
-            }
-        },
-
-        iniciarVerificacaoCompromissos() {
-            this.verificarCompromissosProximos();
-            this.intervaloVerificacao = setInterval(() => {
-                this.verificarCompromissosProximos();
-            }, 60000);
-        },
-
-        limparVerificacaoCompromissos() {
-            if (this.intervaloVerificacao) {
-                clearInterval(this.intervaloVerificacao);
-                this.intervaloVerificacao = null;
-            }
-        },
-
-        async carregarEstatisticasMes() {
-            try {
-                const token = this.getToken();
-                const resp = await fetch('/v1/marketing/compromissos/estatisticas', {
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                const data = await resp.json();
-                this.stats.totalCompromissosMes = data.total || 0;
-                this.stats.concluidosMes = data.concluidos || 0;
-            } catch (e) {
-                console.error(e);
-            }
-        },
-
-        async concluirCompromisso(id) {
-            try {
-                const token = this.getToken();
-                await fetch(`/v1/marketing/compromissos/${id}/concluir`, {
-                    method: 'PUT',
-                    headers: { 'Authorization': 'Bearer ' + token }
-                });
-                Swal.fire({
-                    toast: true,
-                    position: 'top-end',
-                    icon: 'success',
-                    title: 'Concluído!',
-                    timer: 1500,
-                    showConfirmButton: false
-                });
-                await this.atualizarTudoAposCadastro();
-            } catch (e) {
-                console.error(e);
-            }
-        },
-
-        async atualizarTudoAposCadastro() {
-            if (this.calendario) this.calendario.refetchEvents();
-            await this.carregarProximosCompromissos();
-            await this.carregarEstatisticasMes();
-        },
-
-        // ====================================================================
-        // CALENDÁRIO
-        // ====================================================================
-        inicializarCalendario() {
-            const calendarEl = document.getElementById('calendarioAgenda');
-            if (!calendarEl) return;
-
-            this.calendario = new FullCalendar.Calendar(calendarEl, {
-                locale: 'pt-br',
-                initialView: 'timeGridWeek',
-                headerToolbar: {
-                    left: 'prev,next today',
-                    center: 'title',
-                    right: 'dayGridMonth,timeGridWeek,timeGridDay'
-                },
-                height: 'auto',
-                slotMinTime: '08:00:00',
-                slotMaxTime: '20:00:00',
-                slotDuration: '00:30:00',
-                slotLabelInterval: '01:00',
-                allDaySlot: false,
-                nowIndicator: true,
-                editable: true,
-                selectable: true,
-                selectMirror: true,
-                dayMaxEvents: true,
-                weekends: true,
-                selectMinDistance: 0,
-
-                eventDidMount: (info) => {
-                    const tipo = info.event.extendedProps.tipo;
-                    const status = info.event.extendedProps.status;
-                    let bgColor = '#3b82f6';
-                    if (status === 'concluido') bgColor = '#10b981';
-                    else if (status === 'cancelado') bgColor = '#ef4444';
-                    else if (tipo === 'reuniao') bgColor = '#3b82f6';
-                    else if (tipo === 'ligacao') bgColor = '#f59e0b';
-                    else if (tipo === 'visita') bgColor = '#8b5cf6';
-                    else if (tipo === 'whatsapp') bgColor = '#25D366';
-                    else if (tipo === 'email') bgColor = '#6b7280';
-                    info.el.style.backgroundColor = bgColor;
-                    info.el.style.borderLeft = '3px solid rgba(255,255,255,0.5)';
-                },
-
-                select: (info) => {
-                    this.abrirAgendamentoRapido(info.start, info.end);
-                },
-                eventResize: async (info) => {
-                    await this.atualizarHorarioCompromisso(info.event.id, info.event.start, info.event.end);
-                },
-                eventDrop: async (info) => {
-                    await this.atualizarHorarioCompromisso(info.event.id, info.event.start, info.event.end);
-                },
-
-                events: async (fetchInfo, successCallback) => {
-                    try {
-                        const token = this.getToken();
-                        const filtroAtivo = window.filtroAgendaAtual || 'todos';
-                        let url = `/v1/marketing/compromissos?inicio=${fetchInfo.start.toISOString()}&fim=${fetchInfo.end.toISOString()}`;
-                        if (filtroAtivo !== 'todos') url += `&tipo=${filtroAtivo}`;
-                        const resp = await fetch(url, {
-                            headers: { 'Authorization': 'Bearer ' + token }
-                        });
-                        const data = await resp.json();
-                        const eventos = (data.data || []).map(c => ({
-                            id: c.id,
-                            title: `${c.cliente_nome || 'Cliente'} - ${c.titulo || c.tipo}`,
-                            start: c.data_hora,
-                            end: c.data_hora_fim || null,
-                            extendedProps: {
-                                cliente_id: c.id_cliente,
-                                cliente_nome: c.cliente_nome,
-                                tipo: c.tipo,
-                                status: c.status,
-                                descricao: c.descricao,
-                                data_hora: c.data_hora,
-                                data_hora_fim: c.data_hora_fim
-                            }
-                        }));
-                        successCallback(eventos);
-                    } catch (e) {
-                        successCallback([]);
-                    }
-                },
-
-                eventClick: (info) => {
-                    Swal.fire({
-                        title: '<div class="flex items-center gap-2"><i class="fa-regular fa-calendar-check text-blue-500"></i> Detalhes do Compromisso</div>',
-                        html: `
-                            <div class="text-left space-y-3">
-                                <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs text-slate-400">Cliente</p><p class="font-bold text-slate-800">${info.event.extendedProps.cliente_nome || '-'}</p></div>
-                                <div class="grid grid-cols-2 gap-3">
-                                    <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs text-slate-400">Início</p><p class="font-bold text-slate-800">${new Date(info.event.start).toLocaleString('pt-BR')}</p></div>
-                                    <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs text-slate-400">Término</p><p class="font-bold text-slate-800">${info.event.end ? new Date(info.event.end).toLocaleString('pt-BR') : '—'}</p></div>
-                                </div>
-                                <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs text-slate-400">Tipo</p><p class="font-bold">${info.event.extendedProps.tipo}</p></div>
-                                <div class="bg-slate-50 p-3 rounded-xl"><p class="text-xs text-slate-400">Descrição</p><p class="text-sm text-slate-600">${info.event.extendedProps.descricao || '—'}</p></div>
-                                <div class="bg-amber-50 p-3 rounded-xl"><p class="text-xs text-amber-600">Status</p><p class="font-bold">${info.event.extendedProps.status === 'agendado' ? '📅 Agendado' : (info.event.extendedProps.status === 'concluido' ? '✅ Concluído' : '❌ Cancelado')}</p></div>
-                            </div>
-                            `,
-                            showCancelButton: true,
-                            confirmButtonText: '<i class="fa-solid fa-pen mr-1"></i>Editar',
-                            cancelButtonText: 'Fechar',
-                            showDenyButton: info.event.extendedProps.status === 'agendado',
-                            denyButtonText: '<i class="fa-solid fa-check mr-1"></i>Concluir',
-                            showCloseButton: true,
-                            confirmButtonColor: '#3b82f6',
-                            denyButtonColor: '#10b981'
-                        }).then(result => {
-                            if (result.isConfirmed) this.abrirEdicaoCompromisso(info.event.id, info.event.extendedProps);
-                            else if (result.isDenied) this.concluirCompromisso(info.event.id);
-                        });
-                    }
-                });
-this.calendario.render();
-this.carregarEstatisticasMes();
-},
-
-async atualizarHorarioCompromisso(id, start, end) {
-    try {
-        const token = this.getToken();
-        await fetch(`/v1/marketing/compromissos/${id}`, {
-            method: 'PUT',
-            headers: {
-                'Authorization': 'Bearer ' + token,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                data_hora: start.toISOString(),
-                data_hora_fim: end ? end.toISOString() : null
-            })
-        });
-        Swal.fire({
-            toast: true,
-            position: 'top-end',
-            icon: 'success',
-            title: 'Horário atualizado!',
-            timer: 1500,
-            showConfirmButton: false
-        });
-        await this.atualizarTudoAposCadastro();
-    } catch (e) {
-        console.error(e);
-    }
-},
-
-        // ====================================================================
-        // AGENDAMENTO RÁPIDO
-        // ====================================================================
-abrirAgendamentoRapido(start, end) {
-    const formatarDateTime = (date) => {
-        if (!date) return '';
-        const ano = date.getFullYear();
-        const mes = String(date.getMonth() + 1).padStart(2, '0');
-        const dia = String(date.getDate()).padStart(2, '0');
-        const horas = String(date.getHours()).padStart(2, '0');
-        const minutos = String(date.getMinutes()).padStart(2, '0');
-        return `${ano}-${mes}-${dia}T${horas}:${minutos}`;
-    };
-
-    const dataHoraInicio = formatarDateTime(start);
-    const dataHoraFim = end && end > start ? formatarDateTime(end) : '';
-    const duracaoMinutos = end && end > start ? Math.round((end - start) / 60000) : 0;
-
-    Swal.fire({
-        title: '<i class="fa-regular fa-calendar-plus mr-2 text-blue-500"></i>Novo Compromisso',
-        html: `
-                    <div class="space-y-3 text-left">
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Cliente *</label><select id="rapidoCliente" class="w-full p-2 border rounded-xl text-sm"><option value="">Carregando clientes...</option></select></div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><label class="block text-xs font-bold text-slate-400 mb-1">Início *</label><input type="datetime-local" id="rapidoDataHoraInicio" class="w-full p-2 border rounded-xl text-sm" value="${dataHoraInicio}"></div>
-                            <div><label class="block text-xs font-bold text-slate-400 mb-1">Término</label><input type="datetime-local" id="rapidoDataHoraFim" class="w-full p-2 border rounded-xl text-sm" value="${dataHoraFim}"></div>
-                        </div>
-                        <div>
-                            <label class="block text-xs font-bold text-slate-400 mb-1">Tipo</label>
-                            <div class="flex gap-2">
-                                <button type="button" data-tipo="reuniao" class="tipo-btn flex-1 py-2 rounded-xl text-sm font-bold transition-all bg-slate-100 text-slate-600 hover:bg-blue-100 hover:text-blue-600"><i class="fa-regular fa-calendar mr-1"></i> Reunião</button>
-                                <button type="button" data-tipo="ligacao" class="tipo-btn flex-1 py-2 rounded-xl text-sm font-bold transition-all bg-slate-100 text-slate-600 hover:bg-amber-100 hover:text-amber-600"><i class="fa-solid fa-phone mr-1"></i> Ligação</button>
-                                <button type="button" data-tipo="visita" class="tipo-btn flex-1 py-2 rounded-xl text-sm font-bold transition-all bg-slate-100 text-slate-600 hover:bg-purple-100 hover:text-purple-600"><i class="fa-solid fa-building mr-1"></i> Visita</button>
-                            </div>
-                            <input type="hidden" id="rapidoTipo" value="reuniao">
-                        </div>
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Título</label><input type="text" id="rapidoTitulo" class="w-full p-2 border rounded-xl text-sm" placeholder="Ex: Follow-up proposta"></div>
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Descrição</label><textarea id="rapidoDescricao" rows="2" class="w-full p-2 border rounded-xl text-sm"></textarea></div>
-            ${duracaoMinutos > 0 ? `<div class="bg-blue-50 p-3 rounded-lg border border-blue-200"><i class="fa-regular fa-clock text-blue-500 mr-1"></i><span class="text-sm text-blue-700">Intervalo selecionado: <strong>${duracaoMinutos} minutos</strong></span></div>` : '<div class="text-xs text-slate-400 bg-slate-50 p-2 rounded-lg"><i class="fa-regular fa-clock mr-1"></i>Clique e arraste no calendário para selecionar um intervalo</div>'}
-                    </div>
-            `,
-            width: '550px',
-            showCancelButton: true,
-            confirmButtonText: '<i class="fa-regular fa-save mr-1"></i>Agendar',
-            cancelButtonText: 'Cancelar',
-            confirmButtonColor: '#10b981',
-            didOpen: async () => {
-                await this.carregarClientesParaSelectRapido();
-
-                const botoes = document.querySelectorAll('.tipo-btn');
-                const atualizarEstiloBotoes = (btnAtivo) => {
-                    botoes.forEach(btn => {
-                        btn.classList.remove('bg-blue-500', 'bg-amber-500', 'bg-purple-500', 'text-white');
-                        btn.classList.add('bg-slate-100', 'text-slate-600');
-                    });
-                    if (btnAtivo) {
-                        btnAtivo.classList.remove('bg-slate-100', 'text-slate-600');
-                        btnAtivo.classList.add('bg-blue-500', 'text-white');
-                    }
-                };
-                botoes.forEach(btn => {
-                    btn.removeEventListener('click', this.tipoClickHandler);
-                    this.tipoClickHandler = () => {
-                        document.getElementById('rapidoTipo').value = btn.getAttribute('data-tipo');
-                        atualizarEstiloBotoes(btn);
-                    };
-                    btn.addEventListener('click', this.tipoClickHandler);
-                });
-                const primeiroBotao = document.querySelector('.tipo-btn[data-tipo="reuniao"]');
-                if (primeiroBotao) atualizarEstiloBotoes(primeiroBotao);
-            },
-            preConfirm: () => {
-                const clienteId = document.getElementById('rapidoCliente').value;
-                const dataHoraInicio = document.getElementById('rapidoDataHoraInicio').value;
-                const dataHoraFim = document.getElementById('rapidoDataHoraFim').value || null;
-                const tipo = document.getElementById('rapidoTipo').value;
-                const titulo = document.getElementById('rapidoTitulo').value;
-                const descricao = document.getElementById('rapidoDescricao').value;
-                if (!clienteId || !dataHoraInicio) {
-                    Swal.showValidationMessage('Preencha cliente e data/hora de início');
-                    return false;
-                }
-                if (dataHoraFim && new Date(dataHoraFim) <= new Date(dataHoraInicio)) {
-                    Swal.showValidationMessage('A data/hora de término deve ser maior que a data/hora de início');
-                    return false;
-                }
-                return { clienteId, dataHoraInicio, dataHoraFim, tipo, titulo, descricao };
-            }
-        }).then(async (result) => {
-            if (result.isConfirmed) await this.salvarCompromissoRapido(result.value);
-        });
-    },
-
-    async carregarClientesParaSelectRapido() {
-        try {
-            const token = this.getToken();
-            const resp = await fetch('/v1/marketing/clientes/consulta-otimizado?limite=100', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const data = await resp.json();
-            const select = document.getElementById('rapidoCliente');
-            const clientes = data.clientes || [];
-            select.innerHTML = '<option value="">Selecione um cliente...</option>' +
-            clientes.map(c => `<option value="${c.id_crm || c.id_erp}">${c.nome || c.empresa || 'Cliente'}</option>`).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    },
-
-    async salvarCompromissoRapido(dados) {
-        try {
-            const token = this.getToken();
-            const resp = await fetch('/v1/marketing/compromissos', {
-                method: 'POST',
-                headers: {
-                    'Authorization': 'Bearer ' + token,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    id_cliente: parseInt(dados.clienteId),
-                    data_hora: dados.dataHoraInicio,
-                    data_hora_fim: dados.dataHoraFim || null,
-                    tipo: dados.tipo,
-                    titulo: dados.titulo || dados.tipo,
-                    descricao: dados.descricao,
-                    status: 'agendado'
-                })
-            });
-            const result = await resp.json();
-            if (result.success) {
-                Swal.fire({
-                    icon: 'success',
-                    title: 'Agendado!',
-                    timer: 1500,
-                    showConfirmButton: false
-                });
-                await this.atualizarTudoAposCadastro();
-            }
-        } catch (e) {
-            Swal.fire('Erro', e.message, 'error');
-        }
-    },
-
-        // ====================================================================
-        // MÉTODOS DO MODAL DE CLIENTE
-        // ====================================================================
-    async carregarInteracoes(id) {
-        try {
-            const token = this.getToken();
-            const resp = await fetch(`/v1/marketing/clientes/${id}/interacoes`, {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const interacoes = await resp.json();
-            const container = document.getElementById('historicoInteracoes');
-            if (!container) return;
-            if (!interacoes?.length) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-4">Nenhuma interação registrada</p>';
-                return;
-            }
-            container.innerHTML = interacoes.map(i => `
-                    <div class="timeline-item" style="--timeline-color: ${i.tipo === 'ligacao' ? '#f59e0b' : (i.tipo === 'whatsapp' ? '#25D366' : '#3b82f6')}">
-                        <div class="timeline-icon"><i class="fa-solid ${i.tipo === 'ligacao' ? 'fa-phone' : (i.tipo === 'whatsapp' ? 'fa-whatsapp' : 'fa-envelope')} text-sm"></i></div>
-                        <div class="timeline-content">
-                            <div class="flex justify-between items-start"><span class="font-bold text-sm">${i.tipo}</span><span class="text-xs text-slate-400">${i.data_interacao} ${i.hora_interacao}</span></div>
-                            <p class="text-sm mt-1">${i.descricao}</p><span class="text-xs text-slate-400">Por: ${i.usuario || 'Sistema'}</span>
-                        </div>
-                    </div>
-            `).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    },
-
-    async carregarLembretes(id) {
-        try {
-            const token = this.getToken();
-            const resp = await fetch('/v1/marketing/lembretes', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const lembretes = await resp.json();
-            const filtrados = (lembretes || []).filter(l => l.id_cliente == id);
-            const container = document.getElementById('historicoLembretes');
-            if (!container) return;
-            if (!filtrados.length) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-4">Nenhum lembrete</p>';
-                return;
-            }
-            container.innerHTML = filtrados.map(l => `
-                    <div class="flex justify-between items-center bg-white p-3 rounded-xl border ${l.concluido ? 'border-emerald-200' : 'border-amber-200'}">
-                        <div><div class="font-bold">${l.descricao}</div><div class="text-xs text-slate-400">${l.data_lembrete} ${l.hora_lembrete}</div></div>
-                ${!l.concluido ? `<button onclick="window.concluirLembrete(${l.id})" class="px-3 py-1.5 bg-emerald-500 text-white rounded-lg text-xs font-bold">Concluir</button>` : '<span class="text-emerald-600 text-xs">✅ Concluído</span>'}
-                    </div>
-            `).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    },
-
-    async carregarAnexos(id) {
-        try {
-            const token = this.getToken();
-            const resp = await fetch(`/v1/marketing/clientes/${id}/anexos`, {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const anexos = await resp.json();
-            const container = document.getElementById('historicoAnexos');
-            if (!container) return;
-            if (!anexos?.length) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-4">Nenhum anexo</p>';
-                return;
-            }
-            container.innerHTML = anexos.map(a => `
-                    <div class="flex justify-between items-center bg-white p-3 rounded-xl border">
-                        <div><span class="font-bold">${a.nome_original}</span><div class="text-xs text-slate-400">${new Date(a.created_at).toLocaleDateString('pt-BR')}</div></div>
-                        <div class="flex gap-2">
-                            <a href="/v1/marketing/anexos/${a.id}/download" class="px-3 py-1.5 bg-blue-500 text-white rounded-lg text-xs font-bold">Download</a>
-                            <button onclick="window.deletarAnexo(${a.id})" class="px-3 py-1.5 bg-rose-500 text-white rounded-lg text-xs font-bold">Excluir</button>
-                        </div>
-                    </div>
-            `).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    },
-
-    async carregarCompromissosCliente(idCliente) {
-        try {
-            const token = this.getToken();
-            const resp = await fetch(`/v1/marketing/compromissos/cliente/${idCliente}`, {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            const compromissos = await resp.json();
-            const container = document.getElementById('listaCompromissos');
-            if (!container) return;
-            if (!compromissos.length) {
-                container.innerHTML = '<p class="text-center text-slate-400 py-4">Nenhum compromisso agendado</p>';
-                return;
-            }
-            container.innerHTML = compromissos.map(c => `
-                    <div class="flex justify-between items-center bg-white p-3 rounded-xl border border-slate-200">
-                        <div>
-                            <div class="flex items-center gap-2"><span class="font-bold text-sm">${c.titulo || c.tipo}</span><span class="px-2 py-0.5 rounded-full text-xs ${c.status === 'agendado' ? 'bg-blue-100 text-blue-700' : (c.status === 'concluido' ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700')}">${c.status === 'agendado' ? 'Agendado' : (c.status === 'concluido' ? 'Concluído' : 'Cancelado')}</span></div>
-                            <div class="text-xs text-slate-400">${new Date(c.data_hora).toLocaleString('pt-BR')}</div>
-                            <p class="text-sm mt-1">${c.descricao || ''}</p>
-                        </div>
-                        <div class="flex gap-1">
-                ${c.status === 'agendado' ? `<button onclick="window.concluirCompromisso(${c.id})" class="p-1.5 text-emerald-600 hover:text-emerald-700" title="Concluir"><i class="fa-solid fa-check"></i></button>` : ''}
-                            <button onclick="window.excluirCompromisso(${c.id})" class="p-1.5 text-rose-500 hover:text-rose-600" title="Excluir"><i class="fa-solid fa-trash"></i></button>
-                        </div>
-                    </div>
-            `).join('');
-        } catch (e) {
-            console.error(e);
-        }
-    },
-
-        // ====================================================================
-        // AUTO REFRESH
-        // ====================================================================
-    iniciarAutoRefresh() {
-        const updateRelogio = () => {
-            const relogio = document.getElementById('relogioMobile');
-            if (relogio) {
-                const agora = new Date();
-                relogio.innerText = String(agora.getHours()).padStart(2, '0') + ':' + String(agora.getMinutes()).padStart(2, '0');
-            }
-        };
-        updateRelogio();
-        setInterval(updateRelogio, 1000);
-
-        setInterval(() => {
-            this.carregarAlertas();
-            this.carregarProximosCompromissos();
-            if (this.calendario) this.calendario.refetchEvents();
-        }, 60000);
-    },
-
-        // ====================================================================
-        // EDIÇÃO DE COMPROMISSO
-        // ====================================================================
-    abrirEdicaoCompromisso(id, dados) {
-        const dataHoraInicio = dados.data_hora ? dados.data_hora.slice(0, 16) : '';
-        const dataHoraFim = dados.data_hora_fim ? dados.data_hora_fim.slice(0, 16) : '';
-
-        Swal.fire({
-            title: 'Editar Compromisso',
-            html: `
-                    <div class="space-y-3 text-left">
-                        <div class="grid grid-cols-2 gap-2">
-                            <div><label class="block text-xs font-bold text-slate-400 mb-1">Início</label><input type="datetime-local" id="editDataHoraInicio" class="w-full p-2 border rounded-xl text-sm" value="${dataHoraInicio}"></div>
-                            <div><label class="block text-xs font-bold text-slate-400 mb-1">Término</label><input type="datetime-local" id="editDataHoraFim" class="w-full p-2 border rounded-xl text-sm" value="${dataHoraFim}"></div>
-                        </div>
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Tipo</label><select id="editTipo" class="w-full p-2 border rounded-xl text-sm">
-                            <option value="reuniao" ${dados.tipo === 'reuniao' ? 'selected' : ''}>📅 Reunião</option>
-                            <option value="ligacao" ${dados.tipo === 'ligacao' ? 'selected' : ''}>📞 Ligação</option>
-                            <option value="visita" ${dados.tipo === 'visita' ? 'selected' : ''}>🏢 Visita</option>
-                            <option value="whatsapp" ${dados.tipo === 'whatsapp' ? 'selected' : ''}>💬 WhatsApp</option>
-                            <option value="email" ${dados.tipo === 'email' ? 'selected' : ''}>📧 Email</option>
-                        </select></div>
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Título</label><input type="text" id="editTitulo" class="w-full p-2 border rounded-xl text-sm" value="${dados.titulo || ''}"></div>
-                        <div><label class="block text-xs font-bold text-slate-400 mb-1">Descrição</label><textarea id="editDescricao" rows="2" class="w-full p-2 border rounded-xl text-sm">${dados.descricao || ''}</textarea></div>
-                    </div>
-                `,
-                showCancelButton: true,
-                confirmButtonText: 'Salvar',
-                cancelButtonText: 'Cancelar',
-                preConfirm: () => {
-                    const dataHoraInicio = document.getElementById('editDataHoraInicio').value;
-                    const dataHoraFim = document.getElementById('editDataHoraFim').value || null;
-                    if (!dataHoraInicio) {
-                        Swal.showValidationMessage('Data/hora de início é obrigatória');
-                        return false;
-                    }
-                    if (dataHoraFim && new Date(dataHoraFim) <= new Date(dataHoraInicio)) {
-                        Swal.showValidationMessage('O término deve ser maior que o início');
-                        return false;
-                    }
-                    return {
-                        data_hora: dataHoraInicio,
-                        data_hora_fim: dataHoraFim,
-                        tipo: document.getElementById('editTipo').value,
-                        titulo: document.getElementById('editTitulo').value,
-                        descricao: document.getElementById('editDescricao').value
-                    };
-                }
-            }).then(async (result) => {
-                if (result.isConfirmed) await this.atualizarCompromissoCompleto(id, result.value);
-            });
-        },
-
-        async atualizarCompromissoCompleto(id, dados) {
-            try {
-                const token = this.getToken();
-                const resp = await fetch(`/v1/marketing/compromissos/${id}`, {
-                    method: 'PUT',
-                    headers: {
-                        'Authorization': 'Bearer ' + token,
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(dados)
-                });
-                const result = await resp.json();
-                if (result.success) {
-                    Swal.fire({
-                        icon: 'success',
-                        title: 'Atualizado!',
-                        timer: 1500,
-                        showConfirmButton: false
-                    });
-                    await this.atualizarTudoAposCadastro();
-                }
-            } catch (e) {
-                Swal.fire('Erro', e.message, 'error');
-            }
-        },
-
-        editarCliente(id, origem) {
-            window.editarCliente(id, origem);
-        },
-
-        // ====================================================================
         // INICIALIZAÇÃO - COM CONTROLE DE CONCORRÊNCIA
         // ====================================================================
         async init() {
-            // 🔥 EVITAR INICIALIZAÇÃO DUPLICADA
+            window.crmClientesApp = this;
             if (this._inicializado) return;
             this._inicializado = true;
-            
-            // 🔥 EVITAR CARREGAMENTO CONCORRENTE
-            if (this._carregando) return;
             
             this.viewMode = 'tabela';
             localStorage.setItem('crm_view_mode', 'tabela');
             
             const temClienteURL = this.carregarClienteDaURL();
             
-            await this.carregarDashboard();
-            await this.carregarFiliaisEGestores();
+            try {
+                await this.carregarFiliaisEGestores();
+                await this.carregarDashboard();
+                if (!temClienteURL) {
+                    await this.carregarClientes();
+                }
+            } catch (errInit) {
+                console.error('⚠️ Falha parcial na inicialização primária:', errInit);
+            }
             
-            if (temClienteURL) {
-                console.log('🚀 Cliente carregado da URL, pulando carregamento completo');
+            // Tarefas secundárias não-bloqueantes
+            try {
                 this.carregarAlertas();
                 this.carregarProximosCompromissos();
                 this.iniciarVerificacaoCompromissos();
-                this.inicializarCalendario();
-                this.iniciarAutoRefresh();
                 this.carregarLembretesHoje();
                 this.iniciarVerificacaoLembretes();
                 this.carregarMetasSelect();
+                this.inicializarCalendario();
+                this.iniciarAutoRefresh();
                 this.carregarEstatisticasMes();
-                
-                if ('Notification' in window && Notification.permission === 'default') {
-                    Notification.requestPermission();
-                }
-                return;
+                this.verificarParametrosBusca();
+            } catch (errSec) {
+                console.warn('Processos em background do CRM iniciados com ressalvas:', errSec);
             }
-            
-            console.log('📋 Carregando clientes normalmente');
-            await this.carregarClientes();
-            await this.carregarAlertas();
-            await this.carregarProximosCompromissos();
-            this.iniciarVerificacaoCompromissos();
-            await this.carregarLembretesHoje();
-            this.iniciarVerificacaoLembretes();
-            await this.carregarMetasSelect();
-            this.inicializarCalendario();
-            this.iniciarAutoRefresh();
-            await this.carregarEstatisticasMes();
             
             if ('Notification' in window && Notification.permission === 'default') {
                 Notification.requestPermission();
             }
-            
-            this.verificarParametrosBusca();
         },
 
 
@@ -3167,6 +2078,10 @@ abrirAgendamentoRapido(start, end) {
                 if (this.filtros.filial) params.append('filial', this.filtros.filial);
                 if (this.filtros.gestor) params.append('gestor', this.filtros.gestor);
                 if (this.filtros.representante) params.append('representante', this.filtros.representante);
+                if (this.filtros.periodo) params.append('periodo', this.filtros.periodo);
+                if (this.filtros.data_inicio) params.append('data_inicio', this.filtros.data_inicio);
+                if (this.filtros.data_fim) params.append('data_fim', this.filtros.data_fim);
+                if (this.filtros.tipo_periodo) params.append('base_filtro', this.filtros.tipo_periodo);
 
                 const resp = await this.fetchWithAuth(`/v1/marketing/crm-dashboard?${params.toString()}`);
                 const data = await resp.json();
@@ -3347,13 +2262,11 @@ abrirAgendamentoRapido(start, end) {
 
         } catch (e) {
             console.error('❌ Erro ao carregar clientes:', e);
-            Swal.fire({
-                icon: 'error',
-                title: 'Erro ao carregar clientes',
-                text: e.message,
-                confirmButtonText: 'Tentar novamente',
-                confirmButtonColor: '#10b981'
-            }).then(() => this.carregarClientes());
+            const tbody = document.getElementById('clientesTableBody');
+            const mobileCards = document.getElementById('clientesMobileCards');
+            const msgErro = 'Falha ao carregar carteira: ' + (e.message || 'Erro de conexão');
+            if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="text-center py-8 text-rose-500 font-semibold"><i class="fa-solid fa-circle-exclamation mr-1.5"></i>${this.escapeHtml(msgErro)}</td></tr>`;
+            if (mobileCards) mobileCards.innerHTML = `<div class="text-center py-6 px-4 text-rose-500 text-xs font-semibold"><i class="fa-solid fa-circle-exclamation mr-1"></i>${this.escapeHtml(msgErro)}</div>`;
         } finally {
             this._carregando = false;
         }
@@ -3824,46 +2737,43 @@ mostrarAlertaLembrete(lembrete) {
         const clienteNome = comp.cliente_nome || 'Cliente';
         const dataHora = new Date(comp.data_hora).toLocaleString('pt-BR');
         
-    // Tocar som de notificação
-        try {
-            const audio = new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==');
-            audio.play().catch(() => {});
-        } catch(e) {}
-        
-    // Exibir notificação do navegador
-        if ('Notification' in window && Notification.permission === 'granted') {
-            new Notification('📅 ' + titulo, {
-                body: `${clienteNome} - ${comp.titulo || comp.tipo} às ${dataHora}`,
-                icon: '/favicon.ico'
+        // Notificação Unificada (Web Audio API + Service Worker PWA Mobile + Desktop Notification)
+        if (window.PortalNotificacoes) {
+            window.PortalNotificacoes.notificar({
+                titulo: `📅 ${titulo}`,
+                corpo: `${clienteNome} - ${comp.titulo || comp.tipo || 'Compromisso'} às ${dataHora}`,
+                url: window.location.href,
+                tag: `comp_${comp.id}`,
+                som: true
             });
         }
         
-    // Exibir toast
+        // Exibir modal/toast Swal para confirmação imediata
         Swal.fire({
             icon: 'warning',
             title: `${icone} ${titulo}`,
             html: `
-            <div class="text-left">
+            <div class="text-left text-sm">
                 <p><strong>Cliente:</strong> ${clienteNome}</p>
                 <p><strong>Título:</strong> ${comp.titulo || comp.tipo}</p>
                 <p><strong>Data/Hora:</strong> ${dataHora}</p>
-                ${comp.horas_para_inicio <= 0.25 ? '<p class="text-red-500 font-bold mt-2">⚠️ Começa em menos de 15 minutos!</p>' : ''}
+                ${comp.horas_para_inicio <= 0.25 ? '<p class="text-rose-600 font-bold mt-2">⚠️ Começa em menos de 15 minutos!</p>' : ''}
             </div>
-                `,
-                timer: 15000,
-                showConfirmButton: true,
-                confirmButtonText: 'Ver cliente',
-                confirmButtonColor: '#3b82f6',
-                showCancelButton: true,
-                cancelButtonText: 'Ignorar'
-            }).then((result) => {
-                if (result.isConfirmed && comp.id_cliente) {
-                    window.editarCliente(comp.id_cliente, 'CRM');
-                }
-            });
+            `,
+            timer: 15000,
+            showConfirmButton: true,
+            confirmButtonText: 'Ver cliente',
+            confirmButtonColor: '#274036',
+            showCancelButton: true,
+            cancelButtonText: 'Ignorar'
+        }).then((result) => {
+            if (result.isConfirmed && comp.id_cliente) {
+                window.editarCliente(comp.id_cliente, 'CRM');
+            }
+        });
 
-    // ⚠️ NOVO: Criar notificação no banco após exibir o alerta
-            this.criarNotificacaoCompromisso(comp);
+        // Criar notificação no banco após exibir o alerta
+        this.criarNotificacaoCompromisso(comp);
         },
 
 /**
@@ -4542,69 +3452,77 @@ function notificacoesCRM() {
         intervalo: null,
 
         async init() {
+            // Sincroniza com a Central Global de Notificações
+            if (window.PortalNotificacoes) {
+                const dados = window.PortalNotificacoes.obterDados();
+                if (dados) this.processarDadosGlobais(dados);
+            }
+
+            window.addEventListener('notificacoes-atualizadas', (e) => {
+                this.processarDadosGlobais(e.detail);
+            });
+
             await this.carregarNotificacoes();
             this.iniciarPolling();
         },
 
-        getToken() {
-            return localStorage.getItem('authToken');
+        processarDadosGlobais(data) {
+            if (!data) return;
+            if (Array.isArray(data.lista_unificada) && data.lista_unificada.length > 0) {
+                this.notificacoes = data.lista_unificada;
+                this.naoLidas = Math.max(0, parseInt(data.total_geral) || 0);
+            }
         },
 
-        async fetchWithAuth(url, options = {}) {
-            const token = this.getToken();
-            if (!token) return null;
-            const response = await fetch(url, {
-                ...options,
-                headers: {
-                    'Authorization': 'Bearer ' + token,
-                    'Content-Type': 'application/json',
-                    ...(options.headers || {})
-                }
-            });
-            if (response.status === 401) return null;
-            return response;
+        solicitarPermissaoNavegador() {
+            if (window.PortalNotificacoes) {
+                window.PortalNotificacoes.solicitarPermissao();
+            } else if ('Notification' in window) {
+                Notification.requestPermission();
+            }
         },
 
         async carregarNotificacoes() {
             try {
-                const resp = await this.fetchWithAuth('/v1/crm/notificacoes?limite=30');
-                if (!resp) return;
-                const data = await resp.json();
-                if (data.success) {
+                let data = null;
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    data = await window.PortalNotificacoes.requisitar('/crm/notificacoes');
+                }
+                if (data && data.success) {
                     this.notificacoes = data.notificacoes || [];
-                    this.naoLidas = data.nao_lidas || 0;
-                    if (this.naoLidas > 0 && !this.aberto && this.naoLidas !== (window._ultimoCount || 0)) this.tocarSom();
-                    window._ultimoCount = this.naoLidas;
+                    this.naoLidas = Math.max(0, parseInt(data.nao_lidas) || 0);
                 }
             } catch (e) {
-                console.error('Erro carregar notificações CRM:', e);
+                console.warn('Erro carregar notificações CRM:', e);
             }
         },
 
         iniciarPolling() {
             this.intervalo = setInterval(() => {
                 this.carregarNotificacoes();
-            }, 60000);
+            }, 20000);
         },
 
         tocarSom() {
-            try {
-                new Audio('data:audio/wav;base64,U3RlYWx0aCBzb3VuZA==').play().catch(e => console.log('Som não suportado'));
-            } catch (e) {}
+            if (window.PortalNotificacoes) {
+                window.PortalNotificacoes.tocarSom();
+            }
         },
 
         toggleAbrir() {
             this.aberto = !this.aberto;
+            if (this.aberto) {
+                this.carregarNotificacoes();
+            }
         },
 
         async marcarLida(id) {
             try {
-                await this.fetchWithAuth(`/v1/crm/notificacoes/${id}/ler`, { method: 'PUT' });
-                const notif = this.notificacoes.find(n => n.id === id);
-                if (notif && !notif.lida) {
-                    notif.lida = true;
-                    this.naoLidas = Math.max(0, this.naoLidas - 1);
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    await window.PortalNotificacoes.requisitar(`/crm/notificacoes/${id}/ler`, { method: 'PUT' });
                 }
+                this.notificacoes = this.notificacoes.filter(n => n.id !== id);
+                this.naoLidas = Math.max(0, this.notificacoes.length);
             } catch (e) {
                 console.error(e);
             }
@@ -4612,8 +3530,10 @@ function notificacoesCRM() {
 
         async marcarTodasLidas() {
             try {
-                await this.fetchWithAuth('/v1/crm/notificacoes/ler-todas', { method: 'PUT' });
-                this.notificacoes.forEach(n => n.lida = true);
+                if (window.PortalNotificacoes && typeof window.PortalNotificacoes.requisitar === 'function') {
+                    await window.PortalNotificacoes.requisitar('/crm/notificacoes/ler-todas', { method: 'PUT' });
+                }
+                this.notificacoes = [];
                 this.naoLidas = 0;
             } catch (e) {
                 console.error(e);
@@ -6811,8 +5731,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
-    window.crmClientesApp = crmProfissional();
-    window.crmClientesApp.init();
+    // Instância já gerenciada nativamente pelo Alpine via x-data
+    if (window.crmClientesApp && typeof window.crmClientesApp.renderizarTabela === 'function') {
+        window.crmClientesApp.renderizarTabela();
+    }
     initModernTooltipsDash();
 });
 
