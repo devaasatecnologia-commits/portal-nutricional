@@ -44,12 +44,16 @@ const estado = {
     reps: [],
     repSelecionado: null,
     gestores: {},
+    gestoresEquipe: [],
+    gestoresHistorico: [],
     gestorAtual: null,
+    metaCache: null,
     tipo: 'DEBITO',
     valor: 0,
     observacao: '',
     usarGestor: true,
     historico: [],
+    resumoAuditoria: {},
     enviando: false,
     abaAtiva: 'movimentar'
 };
@@ -86,9 +90,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             return;
         }
 
+        inicializarDatasHistorico();
         await carregarContexto();
         $('selFilial').addEventListener('change', async (e) => {
             estado.filial = Number(e.target.value);
+            if ($('filtroGestorEquipe')) $('filtroGestorEquipe').value = '';
+            if ($('filtroHistGestor')) $('filtroHistGestor').value = '';
+            if ($('filtroHistColab')) $('filtroHistColab').value = '';
             await carregarRepresentantes();
             await carregarHistorico();
         });
@@ -139,11 +147,16 @@ async function carregarRepresentantes(forcarToast = false) {
         $('selRep').innerHTML = '<option value="">Carregando representantes da filial...</option>';
         $('tabelaEquipeCorpo').innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400"><i class="fa-solid fa-spinner fa-spin mr-2"></i> Consultando API Mercos...</td></tr>';
 
-        const res = await apiFetch(`flex-movimentacao/representantes?filial=${estado.filial}`);
+        const res = await apiFetch(`flex-movimentacao/representantes?filial=${estado.filial}${forcarToast ? '&forcar=1' : ''}`);
         if (!res.success) throw new Error(res.error || 'Erro ao carregar dados');
 
         estado.reps = res.representantes || [];
+        estado.gestoresEquipe = res.gestores_equipe || [];
         estado.gestorAtual = res.gestor_filial || null;
+        estado.metaCache = res.meta_cache || null;
+
+        atualizarBadgeStatusCache(estado.metaCache);
+        popularSelectoresEquipeEHistorico();
 
         // Atualiza KPIs
         if (estado.gestorAtual) {
@@ -171,8 +184,8 @@ async function carregarRepresentantes(forcarToast = false) {
             sel.appendChild(opt);
         });
 
-        // Renderiza Tabela da Equipe
-        renderizarTabelaEquipe(estado.reps);
+        // Renderiza Tabela da Equipe aplicando filtros ativos
+        filtrarEquipe();
 
         // Se havia representante selecionado, revalida
         if (estado.repSelecionado) {
@@ -640,16 +653,102 @@ async function confirmarExecucao() {
 // ==========================================
 // RENDERIZAÇÃO DA TABELA DA EQUIPE
 // ==========================================
+function inicializarDatasHistorico() {
+    const inpIni = $('filtroHistInicio');
+    const inpFim = $('filtroHistFim');
+    const pad = (n) => String(n).padStart(2, '0');
+    const fmt = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const hoje = new Date();
+    const d60 = new Date();
+    d60.setDate(hoje.getDate() - 60);
+    if (inpIni && !inpIni.value) inpIni.value = fmt(d60);
+    if (inpFim && !inpFim.value) inpFim.value = fmt(hoje);
+}
+
+function atualizarBadgeStatusCache(meta) {
+    const el = $('badgeCacheHistorico');
+    const badgeTop = $('badgeApi');
+    if (meta && meta.stale) {
+        if (el) {
+            el.className = 'mf-chip bg-amber-100 text-amber-800 border border-amber-200';
+            el.innerHTML = `<i class="fa-solid fa-triangle-exclamation"></i> Cache Offline (${esc(meta.atualizado_em || '--')})`;
+        }
+        if (badgeTop) {
+            badgeTop.className = 'mf-chip bg-amber-500/25 text-amber-200 border border-amber-400/30';
+            badgeTop.innerHTML = '<span class="pulse-dot"></span> Mercos (Cache)';
+        }
+        return;
+    }
+    if (meta && meta.cache_hit) {
+        if (el) {
+            el.className = 'mf-chip bg-blue-50 text-blue-700 border border-blue-200';
+            el.innerHTML = `<i class="fa-solid fa-bolt"></i> Cache Live (${meta.idade_segundos || 0}s)`;
+        }
+    } else if (meta) {
+        if (el) {
+            el.className = 'mf-chip bg-emerald-50 text-emerald-700 border border-emerald-200';
+            el.innerHTML = `<i class="fa-solid fa-circle-check"></i> Mercos Live (${esc(meta.atualizado_em || 'agora')})`;
+        }
+    }
+    if (badgeTop && (!meta || !meta.stale)) {
+        badgeTop.className = 'mf-chip bg-emerald-500/25 text-emerald-200 border border-emerald-400/30';
+        badgeTop.innerHTML = '<span class="pulse-dot"></span> Mercos Online';
+    }
+}
+
+function popularSelectoresEquipeEHistorico() {
+    const selGEq = $('filtroGestorEquipe');
+    if (selGEq) {
+        const valAtual = selGEq.value;
+        selGEq.innerHTML = '<option value="">Todos os Gestores</option>';
+        (estado.gestoresEquipe || []).forEach(g => {
+            const opt = document.createElement('option');
+            opt.value = String(g.cdgestor);
+            opt.textContent = `${g.nome} (${g.qtd_representantes})`;
+            selGEq.appendChild(opt);
+        });
+        if (valAtual && [...selGEq.options].some(o => o.value === valAtual)) {
+            selGEq.value = valAtual;
+        }
+    }
+
+    const selColabHist = $('filtroHistColab');
+    if (selColabHist) {
+        const valAtual = selColabHist.value;
+        selColabHist.innerHTML = '<option value="">Todos os Colaboradores</option>';
+        if (estado.gestorAtual) {
+            const optG = document.createElement('option');
+            optG.value = String(estado.gestorAtual.id);
+            optG.textContent = `★ ${estado.gestorAtual.nome} (Gestor Cobertura)`;
+            selColabHist.appendChild(optG);
+        }
+        (estado.reps || []).forEach(r => {
+            const opt = document.createElement('option');
+            opt.value = String(r.id);
+            opt.textContent = `${r.nome} (Cód. ${r.id})`;
+            selColabHist.appendChild(opt);
+        });
+        if (valAtual && [...selColabHist.options].some(o => o.value === valAtual)) {
+            selColabHist.value = valAtual;
+        }
+    }
+}
+
 function renderizarTabelaEquipe(lista) {
     const tbody = $('tabelaEquipeCorpo');
+    const resumoEl = $('resumoEquipeFiltrada');
+    if (resumoEl) {
+        const somaFiltrada = (lista || []).reduce((acc, r) => acc + (Number(r.saldo) || 0), 0);
+        resumoEl.textContent = `${(lista || []).length} representante(s) exibido(s) · Carteira combinada: ${brl(somaFiltrada)}`;
+    }
+
     if (!lista || lista.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">Nenhum representante encontrado nesta filial.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="6" class="text-center py-8 text-slate-400">Nenhum representante encontrado com os filtros aplicados.</td></tr>';
         return;
     }
 
     tbody.innerHTML = lista.map(r => {
         const saldo = Number(r.saldo);
-        const corSaldo = saldo > 0 ? 'text-emerald-700' : (saldo < 0 ? 'text-rose-600' : 'text-slate-400');
         const badgeSaldo = saldo > 0 ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : (saldo < 0 ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-slate-100 text-slate-600 border-slate-200');
 
         return `
@@ -664,9 +763,14 @@ function renderizarTabelaEquipe(lista) {
                     </span>
                 </td>
                 <td class="py-3 px-3 text-center">
-                    <button type="button" onclick="iniciarMovimentacaoPara(${r.id})" class="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-xs transition border border-emerald-200">
-                        <i class="fa-solid fa-sliders mr-1"></i> Movimentar
-                    </button>
+                    <div class="inline-flex items-center gap-1.5">
+                        <button type="button" onclick="iniciarMovimentacaoPara(${r.id})" class="px-2.5 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold text-xs transition border border-emerald-200">
+                            <i class="fa-solid fa-sliders mr-1"></i> Movimentar
+                        </button>
+                        <button type="button" onclick="verHistoricoDoRep(${r.id})" class="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold text-xs transition border border-indigo-200" title="Auditar extrato deste representante">
+                            <i class="fa-solid fa-magnifying-glass-dollar mr-1"></i> Extrato
+                        </button>
+                    </div>
                 </td>
             </tr>
         `;
@@ -674,18 +778,38 @@ function renderizarTabelaEquipe(lista) {
 }
 
 function filtrarEquipe() {
-    const termo = ($('filtroEquipe').value || '').trim().toLowerCase();
-    if (!termo) {
-        renderizarTabelaEquipe(estado.reps);
-        return;
-    }
-    const filtrados = estado.reps.filter(r => 
-        String(r.id).includes(termo) ||
-        (r.nome && r.nome.toLowerCase().includes(termo)) ||
-        (r.razao && r.razao.toLowerCase().includes(termo)) ||
-        (r.fantasia && r.fantasia.toLowerCase().includes(termo))
-    );
+    const termo = ($('filtroEquipe')?.value || '').trim().toLowerCase();
+    const gestorFiltro = Number($('filtroGestorEquipe')?.value || '0');
+    const filtrados = estado.reps.filter(r => {
+        if (gestorFiltro > 0 && Number(r.cdgestor) !== gestorFiltro) return false;
+        if (!termo) return true;
+        return String(r.id).includes(termo) ||
+            (r.nome && r.nome.toLowerCase().includes(termo)) ||
+            (r.razao && r.razao.toLowerCase().includes(termo)) ||
+            (r.fantasia && r.fantasia.toLowerCase().includes(termo)) ||
+            (r.gestor && r.gestor.toLowerCase().includes(termo));
+    });
     renderizarTabelaEquipe(filtrados);
+}
+
+function verHistoricoDoRep(id) {
+    if ($('filtroHistColab')) {
+        $('filtroHistColab').value = String(id);
+    }
+    alternarAba('historico');
+}
+
+function limparFiltrosHistorico() {
+    if ($('filtroHistGestor')) $('filtroHistGestor').value = '';
+    if ($('filtroHistColab')) $('filtroHistColab').value = '';
+    if ($('filtroHistTipo')) $('filtroHistTipo').value = 'TODOS';
+    if ($('filtroHistOrigem')) $('filtroHistOrigem').value = 'TODAS';
+    if ($('filtroHistBusca')) $('filtroHistBusca').value = '';
+    if ($('chkHistApenasGestor')) $('chkHistApenasGestor').checked = false;
+    if ($('filtroHistInicio')) $('filtroHistInicio').value = '';
+    if ($('filtroHistFim')) $('filtroHistFim').value = '';
+    inicializarDatasHistorico();
+    carregarHistorico(false);
 }
 
 function iniciarMovimentacaoPara(id) {
@@ -695,52 +819,156 @@ function iniciarMovimentacaoPara(id) {
 }
 
 // ==========================================
-// HISTÓRICO & AUDITORIA
+// HISTÓRICO & AUDITORIA UNIFICADA
 // ==========================================
-async function carregarHistorico() {
+function badgeOrigemRotulo(h) {
+    const orig = String(h.origem || 'MANUAL_PORTAL').toUpperCase();
+    if (orig === 'TRANSFERENCIA') {
+        return '<span class="px-2 py-0.5 rounded-md text-[0.65rem] font-extrabold bg-blue-50 text-blue-700 border border-blue-200"><i class="fa-solid fa-right-left mr-1"></i>' + esc(h.origem_rotulo || 'Transferência') + '</span>';
+    }
+    if (orig === 'BONIFICACAO_CRON') {
+        return '<span class="px-2 py-0.5 rounded-md text-[0.65rem] font-extrabold bg-amber-50 text-amber-800 border border-amber-200"><i class="fa-solid fa-file-invoice-dollar mr-1"></i>Bonif. NF</span>';
+    }
+    if (orig === 'BONIFICACAO_GESTOR') {
+        return '<span class="px-2 py-0.5 rounded-md text-[0.65rem] font-extrabold bg-purple-50 text-purple-800 border border-purple-200"><i class="fa-solid fa-shield-halved mr-1"></i>Cobert. Bonif.</span>';
+    }
+    if (orig === 'FLEX_MINIMO') {
+        return '<span class="px-2 py-0.5 rounded-md text-[0.65rem] font-extrabold bg-teal-50 text-teal-800 border border-teal-200"><i class="fa-solid fa-coins mr-1"></i>Flex Mínimo</span>';
+    }
+    return '<span class="px-2 py-0.5 rounded-md text-[0.65rem] font-extrabold bg-emerald-50 text-emerald-800 border border-emerald-200"><i class="fa-solid fa-sliders mr-1"></i>Manual Portal</span>';
+}
+
+async function carregarHistorico(forcarSync = false) {
     const tbody = $('tabelaHistoricoCorpo');
     try {
-        const res = await apiFetch(`flex-movimentacao/historico?filial=${estado.filial}&limite=50`);
+        const params = {
+            filial: estado.filial,
+            limite: 200
+        };
+        const cdGestor = $('filtroHistGestor')?.value || '';
+        const colabId = $('filtroHistColab')?.value || '';
+        const tipo = $('filtroHistTipo')?.value || 'TODOS';
+        const origem = $('filtroHistOrigem')?.value || 'TODAS';
+        const inicio = $('filtroHistInicio')?.value || '';
+        const fim = $('filtroHistFim')?.value || '';
+        const busca = ($('filtroHistBusca')?.value || '').trim();
+        const apenasGestor = $('chkHistApenasGestor')?.checked ? '1' : '0';
+
+        if (cdGestor) params.cdgestor = cdGestor;
+        if (colabId) params.colaborador_id = colabId;
+        if (tipo && tipo !== 'TODOS') params.tipo = tipo;
+        if (origem && origem !== 'TODAS') params.origem = origem;
+        if (inicio) params.data_inicio = inicio;
+        if (fim) params.data_fim = fim;
+        if (busca) params.busca = busca;
+        if (apenasGestor === '1') params.apenas_gestor = '1';
+        if (forcarSync) params.forcar = '1';
+
+        const res = await apiFetch('flex-movimentacao/historico', 'GET', params);
         if (!res.success) throw new Error(res.error || 'Erro ao carregar histórico');
 
         estado.historico = res.historico || [];
+        estado.resumoAuditoria = res.resumo_auditoria || {};
+        estado.gestoresHistorico = res.gestores_disponiveis || [];
+        if (res.meta_cache) {
+            estado.metaCache = res.meta_cache;
+            atualizarBadgeStatusCache(res.meta_cache);
+        }
 
+        // Atualiza select de gestores da auditoria preservando filtro ativo
+        const selGHist = $('filtroHistGestor');
+        if (selGHist) {
+            const valSel = selGHist.value;
+            selGHist.innerHTML = '<option value="">Todos os Gestores</option>';
+            estado.gestoresHistorico.forEach(g => {
+                const opt = document.createElement('option');
+                opt.value = String(g.id);
+                opt.textContent = g.nome;
+                selGHist.appendChild(opt);
+            });
+            if (valSel && [...selGHist.options].some(o => o.value === valSel)) {
+                selGHist.value = valSel;
+            }
+        }
+
+        // Atualiza 4 KPIs da aba Auditoria
+        const rAud = estado.resumoAuditoria;
+        if ($('audKpiCreditos')) $('audKpiCreditos').textContent = brl(rAud.total_creditos || 0);
+        if ($('audQtdCreditos')) $('audQtdCreditos').textContent = `${rAud.qtd_creditos || 0} lançamento(s) (+)`;
+        if ($('audKpiDebitos')) $('audKpiDebitos').textContent = brl(rAud.total_debitos || 0);
+        if ($('audQtdDebitos')) $('audQtdDebitos').textContent = `${rAud.qtd_debitos || 0} lançamento(s) (-)`;
+        if ($('audKpiSaldoLiquido')) {
+            const liq = Number(rAud.saldo_liquido || 0);
+            $('audKpiSaldoLiquido').textContent = brl(liq);
+            $('audKpiSaldoLiquido').className = `text-lg sm:text-xl font-black ${liq >= 0 ? 'text-emerald-700' : 'text-rose-600'}`;
+        }
+        if ($('audQtdRegistros')) $('audQtdRegistros').textContent = `${rAud.total_registros || 0} evento(s) auditado(s)`;
+        if ($('audKpiCoberturaGestor')) $('audKpiCoberturaGestor').textContent = brl(rAud.total_coberto_gestor || 0);
+        if ($('audQtdCobertura')) $('audQtdCobertura').textContent = `${rAud.qtd_cobertura_gestor || 0} operação(ões) c/ gestor`;
+
+        // Atualiza KPI de topo "Última Movimentação"
         if (estado.historico.length > 0) {
             const ult = estado.historico[0];
             $('kpiUltimaValor').textContent = brl(ult.valor_solicitado);
             $('kpiUltimaDesc').textContent = `${ult.tipo_movimentacao} · ${ult.nome_colaborador}`;
         } else {
             $('kpiUltimaValor').textContent = '--';
-            $('kpiUltimaDesc').textContent = 'Nenhuma recente';
+            $('kpiUltimaDesc').textContent = 'Nenhuma no filtro';
         }
 
         if (estado.historico.length === 0) {
-            tbody.innerHTML = '<tr><td colspan="9" class="text-center py-8 text-slate-400">Nenhuma movimentação manual registrada para esta filial.</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-slate-400">Nenhuma movimentação encontrada para os filtros selecionados.</td></tr>';
             return;
         }
 
-        tbody.innerHTML = estado.historico.map(h => {
+        tbody.innerHTML = estado.historico.map((h, idx) => {
             const ehCred = h.tipo_movimentacao === 'CREDITO';
-            const badgeTipo = ehCred 
-                ? '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-emerald-100 text-emerald-800">CRÉDITO (+)</span>' 
+            const badgeTipo = ehCred
+                ? '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-emerald-100 text-emerald-800">CRÉDITO (+)</span>'
                 : '<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-rose-100 text-rose-800">DÉBITO (-)</span>';
 
-            const badgeGestor = h.usou_gestor 
-                ? `<span class="px-2 py-0.5 rounded-full text-[0.65rem] font-extrabold bg-purple-100 text-purple-800" title="Cobriu ${brl(h.valor_gestor)} via ${esc(h.nome_gestor)}">SIM (${brl(h.valor_gestor)})</span>` 
-                : '<span class="text-slate-400 text-xs">Não</span>';
+            const gestorNomeExib = h.nome_gestor_carteira || h.nome_gestor || '--';
+            const coberturaBadge = h.usou_gestor
+                ? `<div class="mt-0.5"><span class="px-2 py-0.5 rounded-full text-[0.62rem] font-extrabold bg-purple-100 text-purple-800 border border-purple-200" title="Cobertura pelo gestor ${esc(h.nome_gestor)}">Coberto: ${brl(h.valor_gestor)}</span></div>`
+                : '';
+
+            const temProgressao = h.saldo_anterior_rep !== null && h.saldo_novo_rep !== null;
+            const progressaoHtml = temProgressao
+                ? `<span class="text-slate-400 text-[0.7rem]">${brl(h.saldo_anterior_rep)}</span> <i class="fa-solid fa-arrow-right text-[0.6rem] text-slate-300 mx-0.5"></i> <b class="text-slate-800">${brl(h.saldo_novo_rep)}</b>`
+                : '<span class="text-slate-300 text-[0.7rem]">Via Cron/ERP</span>';
+
+            const saldoLiveHtml = h.saldo_mercos_atual !== null && h.saldo_mercos_atual !== undefined
+                ? `<span class="px-2 py-0.5 rounded-lg text-[0.72rem] font-extrabold border ${Number(h.saldo_mercos_atual) >= 0 ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-rose-50 text-rose-700 border-rose-200'}">${brl(h.saldo_mercos_atual)}</span>`
+                : '<span class="text-slate-300 text-xs">--</span>';
+
+            const docBadge = h.documento
+                ? `<span class="inline-block mr-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono text-[0.65rem]">NF ${esc(h.documento)}</span>`
+                : '';
 
             return `
                 <tr class="hover:bg-slate-50 transition">
-                    <td class="py-3 px-3 text-slate-500 font-mono text-[0.7rem]">${h.data_formatada || '--'}</td>
-                    <td class="py-3 px-3 font-bold text-slate-800">${esc(h.usuario)}</td>
-                    <td class="py-3 px-3 text-slate-600">Filial ${h.filial}</td>
-                    <td class="py-3 px-3 font-bold text-slate-800">${esc(h.nome_colaborador)}</td>
-                    <td class="py-3 px-3">${badgeTipo}</td>
-                    <td class="py-3 px-3 text-right font-black ${ehCred ? 'text-emerald-700' : 'text-rose-600'}">${brl(h.valor_solicitado)}</td>
-                    <td class="py-3 px-3 text-center">${badgeGestor}</td>
-                    <td class="py-3 px-3 text-slate-600 text-[0.75rem] max-w-[240px] truncate" title="${esc(h.observacao)}">${esc(h.observacao)}</td>
-                    <td class="py-3 px-3 text-center">
-                        <button type="button" onclick="verDetalhesHistorico(${h.id})" class="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs transition" title="Ver Detalhes">
+                    <td class="py-3 px-2.5 text-slate-500 font-mono text-[0.68rem] whitespace-nowrap">${esc(h.data_formatada || '--')}</td>
+                    <td class="py-3 px-2.5">
+                        ${badgeOrigemRotulo(h)}
+                        <div class="text-[0.68rem] text-slate-500 font-bold mt-0.5">${esc(h.usuario || '--')}</div>
+                    </td>
+                    <td class="py-3 px-2.5">
+                        <div class="font-bold text-slate-800">${esc(h.nome_colaborador)}</div>
+                        <div class="text-[0.65rem] text-slate-400 font-mono">Cód. ${h.idcolaborador}</div>
+                    </td>
+                    <td class="py-3 px-2.5">
+                        <div class="text-[0.72rem] font-bold text-slate-700 truncate max-w-[160px]" title="${esc(gestorNomeExib)}">${esc(gestorNomeExib)}</div>
+                        ${coberturaBadge}
+                    </td>
+                    <td class="py-3 px-2.5 text-center">${badgeTipo}</td>
+                    <td class="py-3 px-2.5 text-right font-black whitespace-nowrap ${ehCred ? 'text-emerald-700' : 'text-rose-600'}">${ehCred ? '+' : '-'} ${brl(h.valor_solicitado)}</td>
+                    <td class="py-3 px-2.5 text-right whitespace-nowrap">${progressaoHtml}</td>
+                    <td class="py-3 px-2.5 text-right whitespace-nowrap">${saldoLiveHtml}</td>
+                    <td class="py-3 px-2.5 text-slate-600 text-[0.72rem] max-w-[230px]">
+                        <div class="line-clamp-2" title="${esc(h.observacao)}">${docBadge}${esc(h.observacao)}</div>
+                    </td>
+                    <td class="py-3 px-2.5 text-center">
+                        <button type="button" onclick="verDetalhesHistorico(${idx})" class="p-1.5 rounded-lg bg-slate-100 hover:bg-indigo-100 hover:text-indigo-700 text-slate-600 text-xs transition" title="Ver Auditoria Completa">
                             <i class="fa-solid fa-eye"></i>
                         </button>
                     </td>
@@ -748,15 +976,15 @@ async function carregarHistorico() {
             `;
         }).join('');
     } catch (e) {
-        tbody.innerHTML = `<tr><td colspan="9" class="text-center py-6 text-rose-500">Erro ao carregar histórico: ${esc(e.message)}</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" class="text-center py-6 text-rose-500">Erro ao carregar histórico: ${esc(e.message)}</td></tr>`;
     }
 }
 
-function verDetalhesHistorico(id) {
-    const item = estado.historico.find(h => h.id === id);
+function verDetalhesHistorico(index) {
+    const item = estado.historico[Number(index)];
     if (!item) return;
 
-    let etapasHtml = '<p class="text-slate-400 italic">Nenhum detalhe adicional de etapas registrado.</p>';
+    let etapasHtml = '';
     try {
         const json = typeof item.detalhes_json === 'string' ? JSON.parse(item.detalhes_json) : item.detalhes_json;
         if (json?.etapas && json.etapas.length > 0) {
@@ -767,36 +995,44 @@ function verDetalhesHistorico(id) {
                     ${et.observacao ? `<div class="text-[0.7rem] text-slate-400 mt-0.5">Obs: "${esc(et.observacao)}"</div>` : ''}
                 </div>
             `).join('');
+        } else if (json && typeof json === 'object') {
+            etapasHtml = `<pre class="p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[0.7rem] font-mono text-slate-600 overflow-x-auto">${esc(JSON.stringify(json, null, 2))}</pre>`;
         }
     } catch (e) {}
 
+    if (!etapasHtml) {
+        etapasHtml = '<p class="text-slate-400 italic">Nenhum detalhe técnico adicional registrado para esta origem.</p>';
+    }
+
     Swal.fire({
         ...swalBase,
-        title: `Detalhes da Movimentação #${item.id}`,
+        title: `Auditoria #${item.id} • ${item.origem_rotulo || item.origem || 'FLEX'}`,
         html: `
             <div class="text-left text-xs space-y-3">
                 <div class="p-3 bg-slate-50 border border-slate-200 rounded-2xl grid grid-cols-2 gap-2 text-slate-700">
-                    <div><b>Data:</b> ${item.data_formatada}</div>
-                    <div><b>Operador:</b> ${esc(item.usuario)}</div>
-                    <div><b>Representante:</b> ${esc(item.nome_colaborador)}</div>
+                    <div><b>Data:</b> ${esc(item.data_formatada)}</div>
+                    <div><b>Origem / Operador:</b> ${esc(item.origem_rotulo || item.origem)} (${esc(item.usuario)})</div>
+                    <div><b>Colaborador:</b> ${esc(item.nome_colaborador)} (#${item.idcolaborador})</div>
                     <div><b>Filial:</b> ${item.filial}</div>
-                    <div><b>Tipo:</b> ${item.tipo_movimentacao}</div>
-                    <div><b>Valor:</b> ${brl(item.valor_solicitado)}</div>
-                    <div><b>Saldo Rep Antes:</b> ${brl(item.saldo_anterior_rep)}</div>
-                    <div><b>Saldo Rep Depois:</b> ${brl(item.saldo_novo_rep)}</div>
+                    <div><b>Natureza:</b> ${item.tipo_movimentacao}</div>
+                    <div><b>Valor:</b> <b>${brl(item.valor_solicitado)}</b></div>
+                    <div><b>Gestor Carteira:</b> ${esc(item.nome_gestor_carteira || item.nome_gestor || '--')}</div>
+                    <div><b>Saldo Mercos Live:</b> <b class="text-emerald-700">${item.saldo_mercos_atual !== null ? brl(item.saldo_mercos_atual) : '--'}</b></div>
+                    ${item.saldo_anterior_rep !== null ? `<div><b>Saldo Antes:</b> ${brl(item.saldo_anterior_rep)}</div>` : ''}
+                    ${item.saldo_novo_rep !== null ? `<div><b>Saldo Depois:</b> ${brl(item.saldo_novo_rep)}</div>` : ''}
                     ${item.usou_gestor ? `
-                        <div class="col-span-2 pt-1 border-t border-slate-200 text-purple-900">
-                            <b>Gestor:</b> ${esc(item.nome_gestor)} · Cobertura: <b>${brl(item.valor_gestor)}</b><br>
-                            Saldo Gestor: ${brl(item.saldo_anterior_gestor)} ➔ <b>${brl(item.saldo_novo_gestor)}</b>
+                        <div class="col-span-2 pt-1.5 mt-1 border-t border-slate-200 text-purple-900">
+                            <b>Cobertura Gestor:</b> ${esc(item.nome_gestor)} · Valor: <b>${brl(item.valor_gestor)}</b>
+                            ${item.saldo_anterior_gestor !== null ? `<br>Saldo Gestor: ${brl(item.saldo_anterior_gestor)} ➔ <b>${brl(item.saldo_novo_gestor)}</b>` : ''}
                         </div>
                     ` : ''}
                 </div>
                 <div>
-                    <b class="text-slate-700 mb-1 block">Observação Registrada:</b>
-                    <div class="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800">"${esc(item.observacao)}"</div>
+                    <b class="text-slate-700 mb-1 block">Observação / Documento Registrado:</b>
+                    <div class="p-2.5 bg-white border border-slate-200 rounded-xl text-slate-800">${item.documento ? `<b>NF ${esc(item.documento)}</b> — ` : ''}"${esc(item.observacao)}"</div>
                 </div>
                 <div>
-                    <b class="text-slate-700 mb-1 block">Etapas Executadas no Mercos:</b>
+                    <b class="text-slate-700 mb-1 block">Rastreamento Técnico / Etapas:</b>
                     ${etapasHtml}
                 </div>
             </div>

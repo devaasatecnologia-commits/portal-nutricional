@@ -17,17 +17,78 @@ class MercosFlexService
         6 => 'http://mercosf1.nutricionalbr.com:8086/saldo_flex',
     ];
     private const TENTATIVAS_GET = 3;
+    private const CACHE_TTL_SEGUNDOS = 20;
+    private const RATE_LIMIT_BURST_SEGUNDOS = 3;
 
     private int $filial;
     private string $url;
     /** @var array<int,array>|null */
     private ?array $cache = null;
+    /** @var array{cache_hit:bool,atualizado_em:?string,idade_segundos:?int,stale:bool} */
+    private array $statusCache = [
+        'cache_hit' => false,
+        'atualizado_em' => null,
+        'idade_segundos' => null,
+        'stale' => false,
+    ];
 
     public function __construct(int $filial)
     {
         $this->filial = $filial;
         $env = getenv('FLEX_API_URL_F' . $filial) ?: ($_ENV['FLEX_API_URL_F' . $filial] ?? '');
         $this->url = $env !== '' ? $env : (self::URL_PADRAO[$filial] ?? self::URL_PADRAO[6]);
+    }
+
+    private function arquivoCache(): string
+    {
+        return sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'nutricional_mercos_flex_f' . $this->filial . '.json';
+    }
+
+    /** @return array{ts:int,saldos:array<int,array>}|null */
+    private function lerCacheDisco(): ?array
+    {
+        $arq = $this->arquivoCache();
+        if (!is_file($arq)) {
+            return null;
+        }
+        $raw = @file_get_contents($arq);
+        if (!is_string($raw) || $raw === '') {
+            return null;
+        }
+        $decoded = json_decode($raw, true);
+        if (!is_array($decoded) || !isset($decoded['ts'], $decoded['saldos']) || !is_array($decoded['saldos'])) {
+            return null;
+        }
+        $mapa = [];
+        foreach ($decoded['saldos'] as $k => $v) {
+            $mapa[(int)$k] = $v;
+        }
+        return ['ts' => (int)$decoded['ts'], 'saldos' => $mapa];
+    }
+
+    /** @param array<int,array> $mapa */
+    private function gravarCacheDisco(array $mapa): void
+    {
+        $arq = $this->arquivoCache();
+        $payload = json_encode(['ts' => time(), 'saldos' => $mapa], JSON_UNESCAPED_UNICODE);
+        if ($payload !== false) {
+            @file_put_contents($arq, $payload, LOCK_EX);
+        }
+    }
+
+    public function invalidarCacheDisco(): void
+    {
+        $this->cache = null;
+        $arq = $this->arquivoCache();
+        if (is_file($arq)) {
+            @unlink($arq);
+        }
+    }
+
+    /** @return array{cache_hit:bool,atualizado_em:?string,idade_segundos:?int,stale:bool} */
+    public function ultimoStatusCache(): array
+    {
+        return $this->statusCache;
     }
 
     /** @return array{0:int,1:string} */
@@ -68,10 +129,25 @@ class MercosFlexService
     }
 
     /** @return array<int,array> saldos indexados por cliforemp_id */
-    public function saldos(bool $forcar = false): array
+    public function saldos(bool $forcar = false, bool $permitirStaleFallback = false): array
     {
         if ($this->cache !== null && !$forcar) {
             return $this->cache;
+        }
+
+        $disco = $this->lerCacheDisco();
+        if ($disco !== null) {
+            $idade = max(0, time() - $disco['ts']);
+            $ttlEfetivo = $forcar ? self::RATE_LIMIT_BURST_SEGUNDOS : self::CACHE_TTL_SEGUNDOS;
+            if ($idade <= $ttlEfetivo) {
+                $this->statusCache = [
+                    'cache_hit' => true,
+                    'atualizado_em' => date('d/m/Y H:i:s', $disco['ts']),
+                    'idade_segundos' => $idade,
+                    'stale' => false,
+                ];
+                return $this->cache = $disco['saldos'];
+            }
         }
 
         $ultimo = null;
@@ -86,9 +162,20 @@ class MercosFlexService
                             $mapa[(int)$item['cliforemp_id']] = $item;
                         }
                     }
+                    $this->gravarCacheDisco($mapa);
+                    $this->statusCache = [
+                        'cache_hit' => false,
+                        'atualizado_em' => date('d/m/Y H:i:s'),
+                        'idade_segundos' => 0,
+                        'stale' => false,
+                    ];
                     return $this->cache = $mapa;
                 }
                 $ultimo = new MercosIndisponivelException('Resposta invalida da API Mercos (HTTP ' . $status . ')');
+                if ($status === 429) {
+                    usleep($i * 600000);
+                    continue;
+                }
                 if ($status >= 400 && $status < 500) {
                     break; // erro do cliente nao melhora tentando de novo
                 }
@@ -99,6 +186,18 @@ class MercosFlexService
                 usleep($i * 400000);
             }
         }
+
+        if ($permitirStaleFallback && $disco !== null) {
+            $idade = max(0, time() - $disco['ts']);
+            $this->statusCache = [
+                'cache_hit' => true,
+                'atualizado_em' => date('d/m/Y H:i:s', $disco['ts']),
+                'idade_segundos' => $idade,
+                'stale' => true,
+            ];
+            return $this->cache = $disco['saldos'];
+        }
+
         throw $ultimo;
     }
 
@@ -154,10 +253,14 @@ class MercosFlexService
      */
     public function movimentar(int $colaborador, float $valor, string $observacao): void
     {
+        $this->invalidarCacheDisco();
         $antes = $this->saldoDe($colaborador, true);
         if ($antes === null) {
             throw new MercosIndisponivelException('Representante sem saldo Flex na API Mercos.');
         }
+
+        // Proteção preventiva contra rate-limit em operações sequenciais (ex: 3 etapas com gestor)
+        usleep(180000);
 
         try {
             [$status, $corpo] = $this->chamar('POST', [
@@ -166,6 +269,7 @@ class MercosFlexService
                 'observacao' => $observacao,
             ]);
             if ($status < 400) {
+                $this->invalidarCacheDisco();
                 return;
             }
             if ($status < 500) {
@@ -178,6 +282,7 @@ class MercosFlexService
         }
 
         try {
+            $this->invalidarCacheDisco();
             $depois = $this->saldoDe($colaborador, true);
         } catch (MercosIndisponivelException $e) {
             throw new MercosIndisponivelException('Resultado da movimentacao incerto e saldo nao pode ser conferido; verifique manualmente.');

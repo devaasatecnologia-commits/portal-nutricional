@@ -298,15 +298,18 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ========================================== -->
     <div id="painelEquipe" class="hidden space-y-4">
         <div class="mf-card p-5">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4">
                 <div>
                     <h2 class="text-lg font-black text-slate-800">Saldos da Equipe Flex</h2>
-                    <p class="text-xs text-slate-400 font-semibold">Representantes ativos no ERP e integrados à API Mercos na filial selecionada</p>
+                    <p id="resumoEquipeFiltrada" class="text-xs text-slate-400 font-semibold">Representantes ativos no ERP e integrados à API Mercos na filial selecionada</p>
                 </div>
-                <div class="flex items-center gap-2">
-                    <input id="filtroEquipe" type="text" placeholder="Buscar por nome ou código..." oninput="filtrarEquipe()" class="px-3.5 py-2 text-xs rounded-xl border border-slate-200 font-semibold focus:outline-none focus:border-emerald-500 w-64 bg-slate-50">
-                    <button type="button" onclick="carregarRepresentantes(true)" class="p-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition" title="Atualizar saldos no Mercos">
-                        <i class="fa-solid fa-rotate"></i>
+                <div class="flex flex-wrap items-center gap-2">
+                    <select id="filtroGestorEquipe" onchange="filtrarEquipe()" class="px-3 py-2 text-xs rounded-xl border border-slate-200 font-bold text-slate-700 focus:outline-none focus:border-emerald-500 bg-slate-50">
+                        <option value="">Todos os Gestores</option>
+                    </select>
+                    <input id="filtroEquipe" type="text" placeholder="Buscar por nome ou código..." oninput="filtrarEquipe()" class="px-3.5 py-2 text-xs rounded-xl border border-slate-200 font-semibold focus:outline-none focus:border-emerald-500 w-56 sm:w-64 bg-slate-50">
+                    <button type="button" onclick="carregarRepresentantes(true)" class="p-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition flex items-center gap-1.5" title="Atualizar saldos ao vivo no Mercos">
+                        <i class="fa-solid fa-rotate"></i> Sync Mercos
                     </button>
                 </div>
             </div>
@@ -320,7 +323,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <th class="py-3 px-3">Razão Social</th>
                             <th class="py-3 px-3">Gestor</th>
                             <th class="py-3 px-3 text-right">Saldo Atual (Mercos)</th>
-                            <th class="py-3 px-3 text-center">Ação</th>
+                            <th class="py-3 px-3 text-center">Ações</th>
                         </tr>
                     </thead>
                     <tbody id="tabelaEquipeCorpo" class="divide-y divide-slate-100 font-semibold text-slate-700">
@@ -335,34 +338,145 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ABA 3: HISTÓRICO & AUDITORIA               -->
     <!-- ========================================== -->
     <div id="painelHistorico" class="hidden space-y-4">
-        <div class="mf-card p-5">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
-                <div>
-                    <h2 class="text-lg font-black text-slate-800">Histórico de Movimentações Manuais</h2>
-                    <p class="text-xs text-slate-400 font-semibold">Registro de auditoria com rastreamento completo de operadores e empréstimos de gestor</p>
+        <!-- 4 Cards Resumo de Auditoria -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div class="mf-card p-4 border border-emerald-100 bg-gradient-to-br from-emerald-50/80 to-white">
+                <div class="flex items-center justify-between text-emerald-700 mb-1">
+                    <span class="mf-label text-emerald-700">Total Creditado</span>
+                    <i class="fa-solid fa-arrow-trend-up text-xs"></i>
                 </div>
-                <button type="button" onclick="carregarHistorico()" class="p-2 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 self-start sm:self-auto">
-                    <i class="fa-solid fa-rotate"></i> Atualizar
-                </button>
+                <div id="audKpiCreditos" class="text-lg sm:text-xl font-black text-emerald-700">R$ 0,00</div>
+                <div id="audQtdCreditos" class="text-[0.7rem] text-slate-500 font-bold mt-0.5">0 lançamentos (+)</div>
+            </div>
+
+            <div class="mf-card p-4 border border-rose-100 bg-gradient-to-br from-rose-50/80 to-white">
+                <div class="flex items-center justify-between text-rose-700 mb-1">
+                    <span class="mf-label text-rose-700">Total Debitado</span>
+                    <i class="fa-solid fa-arrow-trend-down text-xs"></i>
+                </div>
+                <div id="audKpiDebitos" class="text-lg sm:text-xl font-black text-rose-600">R$ 0,00</div>
+                <div id="audQtdDebitos" class="text-[0.7rem] text-slate-500 font-bold mt-0.5">0 lançamentos (-)</div>
+            </div>
+
+            <div class="mf-card p-4 border border-slate-200 bg-gradient-to-br from-slate-50 to-white">
+                <div class="flex items-center justify-between text-slate-700 mb-1">
+                    <span class="mf-label text-slate-600">Saldo Líquido Período</span>
+                    <i class="fa-solid fa-scale-balanced text-xs text-indigo-600"></i>
+                </div>
+                <div id="audKpiSaldoLiquido" class="text-lg sm:text-xl font-black text-slate-800">R$ 0,00</div>
+                <div id="audQtdRegistros" class="text-[0.7rem] text-slate-500 font-bold mt-0.5">0 eventos auditados</div>
+            </div>
+
+            <div class="mf-card p-4 border border-purple-100 bg-gradient-to-br from-purple-50/80 to-white">
+                <div class="flex items-center justify-between text-purple-700 mb-1">
+                    <span class="mf-label text-purple-700">Cobertura Gestores</span>
+                    <i class="fa-solid fa-shield-halved text-xs"></i>
+                </div>
+                <div id="audKpiCoberturaGestor" class="text-lg sm:text-xl font-black text-purple-700">R$ 0,00</div>
+                <div id="audQtdCobertura" class="text-[0.7rem] text-slate-500 font-bold mt-0.5">0 operações c/ empréstimo</div>
+            </div>
+        </div>
+
+        <div class="mf-card p-5 space-y-4">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <h2 class="text-lg font-black text-slate-800">Extrato Auditado &amp; Saldo Mercos Live</h2>
+                        <span id="badgeCacheHistorico" class="mf-chip bg-slate-100 text-slate-600 border border-slate-200">
+                            <i class="fa-solid fa-database"></i> Aguardando sync
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-400 font-semibold mt-0.5">
+                        Consolidação auditada das 4 rotinas (Manuais, Transferências, Bonificações NF e Flex Mínimo) cruzada com saldo atual da API Mercos
+                    </p>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="limparFiltrosHistorico()" class="py-2 px-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition">
+                        <i class="fa-solid fa-eraser mr-1"></i> Limpar Filtros
+                    </button>
+                    <button type="button" onclick="carregarHistorico(true)" class="py-2 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm">
+                        <i class="fa-solid fa-rotate"></i> Atualizar Live
+                    </button>
+                </div>
+            </div>
+
+            <!-- Barra de Filtros Avançados de Auditoria -->
+            <div class="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-2.5 items-end">
+                <div class="lg:col-span-3">
+                    <label class="text-[0.65rem] font-extrabold uppercase text-slate-500 block mb-1">Gestor Responsável</label>
+                    <select id="filtroHistGestor" onchange="carregarHistorico()" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                        <option value="">Todos os Gestores</option>
+                    </select>
+                </div>
+
+                <div class="lg:col-span-3">
+                    <label class="text-[0.65rem] font-extrabold uppercase text-slate-500 block mb-1">Representante / Colaborador</label>
+                    <select id="filtroHistColab" onchange="carregarHistorico()" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                        <option value="">Todos os Colaboradores</option>
+                    </select>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <label class="text-[0.65rem] font-extrabold uppercase text-slate-500 block mb-1">Natureza</label>
+                    <select id="filtroHistTipo" onchange="carregarHistorico()" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                        <option value="TODOS">Todas (Crédito/Débito)</option>
+                        <option value="CREDITO">Somente Créditos (+)</option>
+                        <option value="DEBITO">Somente Débitos (-)</option>
+                    </select>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <label class="text-[0.65rem] font-extrabold uppercase text-slate-500 block mb-1">Rotina de Origem</label>
+                    <select id="filtroHistOrigem" onchange="carregarHistorico()" class="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                        <option value="TODAS">Todas as Rotinas</option>
+                        <option value="MANUAL_PORTAL">Mov. Manual (Portal)</option>
+                        <option value="TRANSFERENCIA">Transferências</option>
+                        <option value="BONIFICACAO">Bonificações NF</option>
+                        <option value="FLEX_MINIMO">Aporte / Flex Mínimo</option>
+                    </select>
+                </div>
+
+                <div class="lg:col-span-2">
+                    <label class="text-[0.65rem] font-extrabold uppercase text-slate-500 block mb-1">Período</label>
+                    <div class="flex items-center gap-1">
+                        <input id="filtroHistInicio" type="date" onchange="carregarHistorico()" class="w-full px-2 py-2 text-[0.7rem] rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                        <input id="filtroHistFim" type="date" onchange="carregarHistorico()" class="w-full px-2 py-2 text-[0.7rem] rounded-xl border border-slate-200 bg-white font-bold text-slate-700 focus:outline-none focus:border-emerald-500">
+                    </div>
+                </div>
+
+                <div class="sm:col-span-2 lg:col-span-8">
+                    <input id="filtroHistBusca" type="text" placeholder="Buscar por observação, nº da nota fiscal, operador ou gestor..." onkeydown="if(event.key==='Enter'){event.preventDefault();carregarHistorico();}" class="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:border-emerald-500">
+                </div>
+
+                <div class="sm:col-span-2 lg:col-span-4 flex items-center justify-between gap-2">
+                    <label class="flex items-center gap-2 text-xs font-bold text-purple-800 bg-purple-50 border border-purple-200 px-3 py-2 rounded-xl cursor-pointer select-none">
+                        <input id="chkHistApenasGestor" type="checkbox" onchange="carregarHistorico()" class="rounded text-purple-600 focus:ring-0">
+                        <span>Apenas Cobertura Gestor</span>
+                    </label>
+                    <button type="button" onclick="carregarHistorico()" class="py-2 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-extrabold transition shrink-0">
+                        <i class="fa-solid fa-filter mr-1"></i> Filtrar
+                    </button>
+                </div>
             </div>
 
             <div class="overflow-x-auto">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead>
-                        <tr class="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-extrabold">
-                            <th class="py-3 px-3">Data / Hora</th>
-                            <th class="py-3 px-3">Operador</th>
-                            <th class="py-3 px-3">Filial</th>
-                            <th class="py-3 px-3">Representante</th>
-                            <th class="py-3 px-3">Tipo</th>
-                            <th class="py-3 px-3 text-right">Valor Operação</th>
-                            <th class="py-3 px-3 text-center">Gestor</th>
-                            <th class="py-3 px-3">Observação</th>
-                            <th class="py-3 px-3 text-center">Detalhes</th>
+                        <tr class="border-b border-slate-100 text-slate-400 uppercase tracking-wider font-extrabold text-[0.68rem]">
+                            <th class="py-3 px-2.5">Data / Hora</th>
+                            <th class="py-3 px-2.5">Origem &amp; Operador</th>
+                            <th class="py-3 px-2.5">Representante / Colab.</th>
+                            <th class="py-3 px-2.5">Gestor / Cobertura</th>
+                            <th class="py-3 px-2.5 text-center">Tipo</th>
+                            <th class="py-3 px-2.5 text-right">Valor</th>
+                            <th class="py-3 px-2.5 text-right">Antes ➔ Depois</th>
+                            <th class="py-3 px-2.5 text-right">Saldo Live (Mercos)</th>
+                            <th class="py-3 px-2.5">Observação / NF</th>
+                            <th class="py-3 px-2.5 text-center">Auditar</th>
                         </tr>
                     </thead>
                     <tbody id="tabelaHistoricoCorpo" class="divide-y divide-slate-100 font-semibold text-slate-700">
-                        <tr><td colspan="9" class="text-center py-8 text-slate-400">Carregando histórico de auditoria...</td></tr>
+                        <tr><td colspan="10" class="text-center py-8 text-slate-400">Carregando histórico de auditoria...</td></tr>
                     </tbody>
                 </table>
             </div>
