@@ -166,6 +166,7 @@ class ChamadosController
             'username' => $username,
             'is_admin' => $isAdmin,
             'pode_ver_todos' => $podeVerTodos,
+            'pode_gerenciar_ti' => $podeVerTodos,
             'tipos_permitidos' => $tiposPermitidos,
             'permissoes' => $permissoesModulos,
             'idfilial' => $idFilialPadrao,
@@ -196,6 +197,39 @@ class ChamadosController
         $uname = strtoupper(trim((string)$u['username']));
         return strtoupper(trim((string)($chamado['solicitante'] ?? ''))) === $uname
             || strtoupper(trim((string)($chamado['usuario'] ?? ''))) === $uname;
+    }
+
+    private function resolverDadosSolicitante(string $solicitanteInput, array $usuarioLogado): array
+    {
+        $padraoNome = strtoupper(trim((string)($usuarioLogado['username'] ?? 'ALAN')));
+        $padraoId = (int)($usuarioLogado['idcliforemp'] ?? 0) ?: 5166;
+
+        $solNome = strtoupper(trim($solicitanteInput));
+        if (empty($usuarioLogado['pode_ver_todos']) || $solNome === '') {
+            return ['solicitante' => $padraoNome, 'idcliforemp' => $padraoId];
+        }
+
+        try {
+            $st = $this->pdo->prepare("
+                SELECT idcliforemp, UPPER(TRIM(username)) AS username
+                FROM usuario
+                WHERE UPPER(TRIM(username)) = :u1
+                   OR UPPER(TRIM(usuario)) = :u2
+                ORDER BY CASE WHEN UPPER(TRIM(username)) = :u3 THEN 0 ELSE 1 END
+                LIMIT 1
+            ");
+            $st->execute(['u1' => $solNome, 'u2' => $solNome, 'u3' => $solNome]);
+            $row = $st->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                $uname = strtoupper(trim((string)($row['username'] ?: $solNome)));
+                $idCli = (int)($row['idcliforemp'] ?? 0) ?: $padraoId;
+                return ['solicitante' => $uname, 'idcliforemp' => $idCli];
+            }
+        } catch (\Throwable $e) {
+            // fallback para o texto informado
+        }
+
+        return ['solicitante' => $solNome, 'idcliforemp' => $padraoId];
     }
 
     private function userWhereClause(array $u, string $alias = ''): array
@@ -308,7 +342,21 @@ class ChamadosController
             $kpiEmCorrecao = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status = 2 AND {$userFilterSql}", $userParams);
             $kpiCriticos = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND criticidade = 'critica' AND {$userFilterSql}", $userParams);
             $kpiConcluidosMes = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status = 3 AND (concluido_em >= DATE_TRUNC('month', CURRENT_DATE) OR data >= DATE_TRUNC('month', CURRENT_DATE)) AND {$userFilterSql}", $userParams);
-            $taxaResolucao = $kpiTotal > 0 ? round(($kpiConcluidosMes / $kpiTotal) * 100, 1) : 0;
+            $kpiConcluidosTotal = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status = 3 AND {$userFilterSql}", $userParams);
+            $taxaResolucao = $kpiTotal > 0 ? round(($kpiConcluidosTotal / $kpiTotal) * 100, 1) : 0;
+
+            $stTempo = $this->pdo->prepare("
+                SELECT ROUND(AVG(EXTRACT(EPOCH FROM (concluido_em - datahora)) / 3600.0)::numeric, 1)
+                FROM chamado
+                WHERE status = 3
+                  AND concluido_em IS NOT NULL
+                  AND datahora IS NOT NULL
+                  AND concluido_em >= datahora
+                  AND {$userFilterSql}
+            ");
+            $stTempo->execute($userParams);
+            $tempoMedioRaw = $stTempo->fetchColumn();
+            $tempoMedioHoras = ($tempoMedioRaw !== false && $tempoMedioRaw !== null) ? (float)$tempoMedioRaw : 0.0;
 
             // Distribuição por Sistema
             $stS = $this->pdo->prepare("
@@ -344,6 +392,117 @@ class ChamadosController
             $stM->execute($userParams);
             $topModulos = $stM->fetchAll(PDO::FETCH_ASSOC);
 
+            // Ranking & Rastreamento por Solicitante (quem mais abre chamados)
+            $stRank = $this->pdo->prepare("
+                SELECT
+                    CASE
+                        WHEN UPPER(TRIM(COALESCE(NULLIF(TRIM(solicitante), ''), NULLIF(TRIM(usuario), ''), 'SISTEMA'))) = '.' THEN 'INTERNO'
+                        ELSE UPPER(TRIM(COALESCE(NULLIF(TRIM(solicitante), ''), NULLIF(TRIM(usuario), ''), 'SISTEMA')))
+                    END AS username,
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE status = 0) AS abertos,
+                    COUNT(*) FILTER (WHERE status = 1) AS em_analise,
+                    COUNT(*) FILTER (WHERE status = 2) AS em_correcao,
+                    COUNT(*) FILTER (WHERE status = 3) AS concluidos,
+                    COUNT(*) FILTER (WHERE status = 4) AS cancelados,
+                    COUNT(*) FILTER (WHERE status IN (0, 1, 2)) AS pendentes,
+                    COUNT(*) FILTER (WHERE COALESCE(criticidade, 'media') = 'critica') AS criticos,
+                    COUNT(*) FILTER (WHERE COALESCE(criticidade, 'media') = 'alta') AS altos,
+                    COUNT(*) FILTER (WHERE COALESCE(criticidade, 'media') = 'media') AS medios,
+                    COUNT(*) FILTER (WHERE COALESCE(criticidade, 'media') = 'baixa') AS baixos,
+                    MODE() WITHIN GROUP (ORDER BY COALESCE(tipo_sistema, 'PORTAL')) AS sistema_principal,
+                    MODE() WITHIN GROUP (ORDER BY COALESCE(modulo_nome, modulo_slug, 'Geral')) AS modulo_principal,
+                    MAX(datahora) AS ultimo_chamado
+                FROM chamado
+                WHERE {$userFilterSql}
+                GROUP BY 1
+                ORDER BY total DESC, criticos DESC, username ASC
+            ");
+            $stRank->execute($userParams);
+            $rankingSolicitantes = $stRank->fetchAll(PDO::FETCH_ASSOC);
+            $maxSolTotal = !empty($rankingSolicitantes) ? max(1, (int)$rankingSolicitantes[0]['total']) : 1;
+            foreach ($rankingSolicitantes as &$rs) {
+                $rs['total'] = (int)$rs['total'];
+                $rs['abertos'] = (int)$rs['abertos'];
+                $rs['em_analise'] = (int)$rs['em_analise'];
+                $rs['em_correcao'] = (int)$rs['em_correcao'];
+                $rs['concluidos'] = (int)$rs['concluidos'];
+                $rs['cancelados'] = (int)$rs['cancelados'];
+                $rs['pendentes'] = (int)$rs['pendentes'];
+                $rs['criticos'] = (int)$rs['criticos'];
+                $rs['altos'] = (int)$rs['altos'];
+                $rs['medios'] = (int)$rs['medios'];
+                $rs['baixos'] = (int)$rs['baixos'];
+                $rs['percentual'] = $kpiTotal > 0 ? round(($rs['total'] / $kpiTotal) * 100, 1) : 0;
+                $rs['percentual_barra'] = round(($rs['total'] / $maxSolTotal) * 100, 1);
+                $rs['taxa_conclusao'] = $rs['total'] > 0 ? round(($rs['concluidos'] / $rs['total']) * 100, 1) : 0;
+                $rs['ultimo_chamado_fmt'] = !empty($rs['ultimo_chamado']) ? date('d/m/Y H:i', strtotime($rs['ultimo_chamado'])) : '-';
+            }
+            unset($rs);
+
+            // Distribuição por Estágio (Status 0..4)
+            $stStatusDist = $this->pdo->prepare("
+                SELECT COALESCE(status, 0) AS status, COUNT(*) AS total
+                FROM chamado
+                WHERE {$userFilterSql}
+                GROUP BY COALESCE(status, 0)
+                ORDER BY status ASC
+            ");
+            $stStatusDist->execute($userParams);
+            $rowsSt = $stStatusDist->fetchAll(PDO::FETCH_KEY_PAIR);
+            $mapaSt = $this->mapaStatus();
+            $porStatus = [];
+            foreach ([0, 1, 2, 3, 4] as $stCode) {
+                $totSt = (int)($rowsSt[$stCode] ?? 0);
+                $porStatus[] = [
+                    'status' => $stCode,
+                    'label' => $mapaSt[$stCode]['label'] ?? 'Outro',
+                    'total' => $totSt,
+                    'percentual' => $kpiTotal > 0 ? round(($totSt / $kpiTotal) * 100, 1) : 0,
+                ];
+            }
+
+            // Distribuição por Categoria
+            $stCat = $this->pdo->prepare("
+                SELECT COALESCE(NULLIF(TRIM(categoria), ''), 'bug') AS categoria, COUNT(*) AS total
+                FROM chamado
+                WHERE {$userFilterSql}
+                GROUP BY 1
+                ORDER BY total DESC
+            ");
+            $stCat->execute($userParams);
+            $porCategoria = $stCat->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($porCategoria as &$pc) {
+                $pc['total'] = (int)$pc['total'];
+                $pc['percentual'] = $kpiTotal > 0 ? round(($pc['total'] / $kpiTotal) * 100, 1) : 0;
+            }
+            unset($pc);
+
+            // Performance por Atendente / Técnico TI
+            $stAt = $this->pdo->prepare("
+                SELECT
+                    CASE
+                        WHEN TRIM(COALESCE(atendente, '')) IN ('', '.') THEN 'ALAN'
+                        ELSE UPPER(TRIM(atendente))
+                    END AS atendente,
+                    COUNT(*) AS total,
+                    COUNT(*) FILTER (WHERE status = 3) AS concluidos,
+                    COUNT(*) FILTER (WHERE status IN (0, 1, 2)) AS em_andamento
+                FROM chamado
+                WHERE {$userFilterSql}
+                GROUP BY 1
+                ORDER BY total DESC, concluidos DESC
+            ");
+            $stAt->execute($userParams);
+            $performanceAtendentes = $stAt->fetchAll(PDO::FETCH_ASSOC);
+            foreach ($performanceAtendentes as &$pa) {
+                $pa['total'] = (int)$pa['total'];
+                $pa['concluidos'] = (int)$pa['concluidos'];
+                $pa['em_andamento'] = (int)$pa['em_andamento'];
+                $pa['taxa_resolucao'] = $pa['total'] > 0 ? round(($pa['concluidos'] / $pa['total']) * 100, 1) : 0;
+            }
+            unset($pa);
+
             // Últimos Chamados Resolvidos (Entregas Recentes)
             $stR = $this->pdo->prepare("
                 SELECT idchamado, titulo, tipo_sistema, modulo_nome, atendente, versao_entrega, concluido_em, datahora
@@ -378,8 +537,40 @@ class ChamadosController
                 WHERE atendente IS NOT NULL AND TRIM(atendente) <> '' AND TRIM(atendente) <> '.'
                 ORDER BY username ASC
             ")->fetchAll(PDO::FETCH_COLUMN);
-            $atendentes = array_values(array_unique(array_merge(['ALAN', 'MARCON', 'ROBSON'], $atendentesBanco ?: [])));
+            $atendentes = array_values(array_unique(array_merge(['ALAN', 'ROBSON'], $atendentesBanco ?: [])));
             sort($atendentes);
+
+            // Lista completa de usuários para seleção de Solicitante pelo Admin/TI
+            $usuariosSolicitantes = [];
+            try {
+                $rowsUsrSol = $this->pdo->query("
+                    SELECT DISTINCT
+                        UPPER(TRIM(username)) AS username,
+                        COALESCE(NULLIF(TRIM(usuario), ''), UPPER(TRIM(username))) AS nome
+                    FROM usuario
+                    WHERE COALESCE(inativo, 'N') = 'N'
+                      AND username IS NOT NULL
+                      AND TRIM(username) <> ''
+                    ORDER BY username ASC
+                ")->fetchAll(PDO::FETCH_ASSOC);
+                $mapaSol = [];
+                foreach ($rowsUsrSol as $ru) {
+                    $un = strtoupper(trim((string)$ru['username']));
+                    if ($un !== '' && $un !== '.') {
+                        $mapaSol[$un] = ['username' => $un, 'nome' => trim((string)$ru['nome']) ?: $un];
+                    }
+                }
+                foreach ($solicitantes as $rs) {
+                    $un = strtoupper(trim((string)($rs['username'] ?? '')));
+                    if ($un !== '' && $un !== '.' && !isset($mapaSol[$un])) {
+                        $mapaSol[$un] = ['username' => $un, 'nome' => $un];
+                    }
+                }
+                ksort($mapaSol);
+                $usuariosSolicitantes = array_values($mapaSol);
+            } catch (\Throwable $e) {
+                $usuariosSolicitantes = $solicitantes;
+            }
 
             // Notificações Não Lidas de Chamados (sincroniza novos chamados das últimas 72h e lê apenas lida = FALSE)
             $avisosRecentes = [];
@@ -542,18 +733,25 @@ class ChamadosController
                     'em_correcao' => $kpiEmCorrecao,
                     'criticos' => $kpiCriticos,
                     'concluidos_mes' => $kpiConcluidosMes,
-                    'taxa_resolucao' => $taxaResolucao
+                    'concluidos_total' => $kpiConcluidosTotal,
+                    'taxa_resolucao' => $taxaResolucao,
+                    'tempo_medio_horas' => $tempoMedioHoras
                 ],
                 'metricas' => [
                     'por_sistema' => $porSistema,
                     'por_criticidade' => $porCriticidade,
                     'top_modulos' => $topModulos,
-                    'resolvidos_recentes' => $resolvidosRecentes
+                    'resolvidos_recentes' => $resolvidosRecentes,
+                    'ranking_solicitantes' => $rankingSolicitantes,
+                    'por_status' => $porStatus,
+                    'por_categoria' => $porCategoria,
+                    'performance_atendentes' => $performanceAtendentes
                 ],
                 'modulos' => $modulos,
                 'sistemas' => $sistemas,
                 'filiais' => $filiaisLiberadas,
                 'solicitantes' => $solicitantes,
+                'usuarios_solicitantes' => $usuariosSolicitantes,
                 'atendentes' => $atendentes,
                 'avisos_recentes' => $avisosRecentes,
                 'notificacoes_nao_lidas' => $notifNaoLidas,
@@ -957,15 +1155,19 @@ class ChamadosController
                 )
             ");
 
+            $dadosSol = $this->resolverDadosSolicitante((string)($body['solicitante'] ?? ''), $u);
+            $solicitanteFinal = $dadosSol['solicitante'];
+            $idCliSolicitante = $dadosSol['idcliforemp'];
+
             $tituloFinal = (string)($triagem['titulo'] ?? 'Novo Chamado');
             $stmt->execute([
                 'idchamado' => $idNovo,
                 'idfilial' => $filial,
-                'idcliforemp' => $u['idcliforemp'] ?: 5297,
+                'idcliforemp' => $idCliSolicitante,
                 'prioridade' => $prioridadeInicial,
-                'solicitante' => $this->limpaWin1252($u['username']),
+                'solicitante' => $this->limpaWin1252($solicitanteFinal),
                 'atendente' => $atendentePadrao,
-                'usuario' => $this->limpaWin1252($u['username']),
+                'usuario' => $this->limpaWin1252($solicitanteFinal),
                 'motivo' => $this->limpaWin1252($relato),
                 'observacao' => $this->limpaWin1252($relato),
                 'tipo_sistema' => $this->limpaWin1252($tipoSistemaFinal),
@@ -980,6 +1182,10 @@ class ChamadosController
                 'anexo_url' => $this->limpaWin1252(trim((string)($body['anexo_url'] ?? '')))
             ]);
 
+            $emNomeDe = $solicitanteFinal !== strtoupper(trim((string)$u['username']))
+                ? " aberto por {$u['username']} em nome de {$solicitanteFinal}"
+                : '';
+
             // Registra primeira operação na timeline
             $stmtOp = $this->pdo->prepare("
                 INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes)
@@ -987,15 +1193,15 @@ class ChamadosController
             ");
             $stmtOp->execute([
                 'idchamado' => $idNovo,
-                'desc' => "Chamado aberto no Portal e direcionado para TI ({$atendentePadrao})",
+                'desc' => mb_substr("Chamado aberto{$emNomeDe} -> TI ({$atendentePadrao})", 0, 80),
                 'usuario' => $u['username'],
-                'detalhes' => "Chamado [{$tipoSistemaFinal}] classificado como [{$triagem['categoria']}] com criticidade [{$critFinal}] (Prioridade #{$prioridadeInicial}). Atendente responsável: {$atendentePadrao}."
+                'detalhes' => "Chamado [{$tipoSistemaFinal}] classificado como [{$triagem['categoria']}] com criticidade [{$critFinal}] (Prioridade #{$prioridadeInicial}). Solicitante vinculado: {$solicitanteFinal}. Atendente responsável: {$atendentePadrao}."
             ]);
 
             $this->notificarEventoChamado(
                 $idNovo,
                 "Novo Chamado #{$idNovo}: {$tituloFinal}",
-                "Sistema: {$tipoSistemaFinal} | Criticidade: " . strtoupper($critFinal) . " | Solicitante: {$u['username']}",
+                "Sistema: {$tipoSistemaFinal} | Criticidade: " . strtoupper($critFinal) . " | Solicitante: {$solicitanteFinal}",
                 $u
             );
 
@@ -1100,8 +1306,8 @@ class ChamadosController
             if (!$chamado) {
                 return $this->erro($response, 'Chamado não encontrado.', 404);
             }
-            if (!$this->podeEditarChamado($chamado, $u)) {
-                return $this->erro($response, 'Sem permissão para alterar o status deste chamado.', 403);
+            if (empty($u['pode_ver_todos'])) {
+                return $this->erro($response, 'Apenas a equipe de TI liberada pode alterar o estágio do chamado.', 403);
             }
 
             $concluidoSql = $novoStatus === 3 ? ', concluido_em = NOW()' : '';
@@ -1163,8 +1369,8 @@ class ChamadosController
             if (!$chamado) {
                 return $this->erro($response, 'Chamado não encontrado.', 404);
             }
-            if (!$this->podeEditarChamado($chamado, $u)) {
-                return $this->erro($response, 'Sem permissão para alterar a prioridade deste chamado.', 403);
+            if (empty($u['pode_ver_todos'])) {
+                return $this->erro($response, 'Apenas a equipe de TI liberada pode alterar a prioridade ou criticidade após a criação.', 403);
             }
 
             $novaPrioridade = isset($body['prioridade']) ? (int)$body['prioridade'] : null;
@@ -1278,6 +1484,11 @@ class ChamadosController
                 return $this->erro($response, 'Sem permissão para editar este chamado.', 403);
             }
 
+            $ehTiLiberado = !empty($u['pode_ver_todos']);
+            if (!$ehTiLiberado && (int)($chamado['status'] ?? 0) >= 3) {
+                return $this->erro($response, 'Chamados concluídos ou cancelados não podem ser editados pelo solicitante.', 403);
+            }
+
             $sets = [];
             $params = ['id' => $id];
             $alteracoes = [];
@@ -1315,88 +1526,107 @@ class ChamadosController
                 }
             }
 
-            if (array_key_exists('criticidade', $body)) {
-                $novaCrit = strtolower(trim((string)$body['criticidade']));
-                if (in_array($novaCrit, ['critica', 'alta', 'media', 'baixa'], true) && $novaCrit !== (string)($chamado['criticidade'] ?? '')) {
-                    $sets[] = 'criticidade = :criticidade';
-                    $params['criticidade'] = $novaCrit;
-                    $alteracoes[] = 'Criticidade: ' . strtoupper((string)($chamado['criticidade'] ?? 'media')) . ' -> ' . strtoupper($novaCrit);
-                }
-            }
-
-            if (array_key_exists('prioridade', $body)) {
-                $novaPrio = (int)$body['prioridade'];
-                if ($novaPrio > 0 && $novaPrio !== (int)($chamado['prioridade'] ?? 10)) {
-                    $sets[] = 'prioridade = :prioridade';
-                    $params['prioridade'] = $novaPrio;
-                    $alteracoes[] = 'Prioridade: #' . (int)($chamado['prioridade'] ?? 10) . ' -> #' . $novaPrio;
-                }
-            }
-
-            if (array_key_exists('categoria', $body)) {
-                $novaCat = trim((string)$body['categoria']);
-                if ($novaCat !== '' && $novaCat !== (string)($chamado['categoria'] ?? '')) {
-                    $sets[] = 'categoria = :categoria';
-                    $params['categoria'] = $this->limpaWin1252($novaCat);
-                    $alteracoes[] = "Categoria: {$novaCat}";
-                }
-            }
-
-            if (array_key_exists('tipo_sistema', $body)) {
-                $novoSis = trim((string)$body['tipo_sistema']);
-                if ($novoSis !== '' && $novoSis !== (string)($chamado['tipo_sistema'] ?? '')) {
-                    $sets[] = 'tipo_sistema = :tipo_sistema';
-                    $params['tipo_sistema'] = $this->limpaWin1252($novoSis);
-                    $alteracoes[] = "Sistema: {$novoSis}";
-                }
-            }
-
-            if (array_key_exists('subtipo_item', $body)) {
-                $novoSub = trim((string)$body['subtipo_item']);
-                if ($novoSub !== (string)($chamado['subtipo_item'] ?? '')) {
-                    $sets[] = 'subtipo_item = :subtipo_item';
-                    $params['subtipo_item'] = $this->limpaWin1252($novoSub);
-                }
-            }
-
-            if (array_key_exists('equipamento_detalhe', $body)) {
-                $novoEquip = trim((string)$body['equipamento_detalhe']);
-                if ($novoEquip !== (string)($chamado['equipamento_detalhe'] ?? '')) {
-                    $sets[] = 'equipamento_detalhe = :equipamento_detalhe';
-                    $params['equipamento_detalhe'] = $novoEquip !== '' ? $this->limpaWin1252($novoEquip) : null;
-                }
-            }
-
-            if (array_key_exists('modulo_slug', $body)) {
-                $novoSlug = trim((string)$body['modulo_slug']);
-                if ($novoSlug !== (string)($chamado['modulo_slug'] ?? '')) {
-                    $sets[] = 'modulo_slug = :modulo_slug';
-                    $params['modulo_slug'] = $this->limpaWin1252($novoSlug ?: 'geral');
-
-                    $novoNomeMod = trim((string)($body['modulo_nome'] ?? ''));
-                    if ($novoNomeMod === '' && $novoSlug !== '' && $novoSlug !== 'geral') {
-                        $stMod = $this->pdo->prepare("SELECT nome FROM sistema_modulos WHERE slug = :slug LIMIT 1");
-                        $stMod->execute(['slug' => $novoSlug]);
-                        $novoNomeMod = (string)($stMod->fetchColumn() ?: $novoSlug);
+            if ($ehTiLiberado) {
+                if (array_key_exists('criticidade', $body)) {
+                    $novaCrit = strtolower(trim((string)$body['criticidade']));
+                    if (in_array($novaCrit, ['critica', 'alta', 'media', 'baixa'], true) && $novaCrit !== (string)($chamado['criticidade'] ?? '')) {
+                        $sets[] = 'criticidade = :criticidade';
+                        $params['criticidade'] = $novaCrit;
+                        $alteracoes[] = 'Criticidade: ' . strtoupper((string)($chamado['criticidade'] ?? 'media')) . ' -> ' . strtoupper($novaCrit);
                     }
-                    $sets[] = 'modulo_nome = :modulo_nome';
-                    $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod ?: 'Portal Geral');
-                    $alteracoes[] = 'Módulo alterado para ' . ($novoNomeMod ?: 'Portal Geral');
                 }
-            } elseif (array_key_exists('modulo_nome', $body)) {
-                $novoNomeMod = trim((string)$body['modulo_nome']);
-                if ($novoNomeMod !== '' && $novoNomeMod !== (string)($chamado['modulo_nome'] ?? '')) {
-                    $sets[] = 'modulo_nome = :modulo_nome';
-                    $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod);
-                }
-            }
 
-            if (array_key_exists('atendente', $body)) {
-                $novoAtendente = strtoupper(trim((string)$body['atendente']));
-                if ($novoAtendente !== '' && $novoAtendente !== strtoupper(trim((string)($chamado['atendente'] ?? '')))) {
-                    $sets[] = 'atendente = :atendente';
-                    $params['atendente'] = $this->limpaWin1252($novoAtendente);
-                    $alteracoes[] = "Atendente: {$novoAtendente}";
+                if (array_key_exists('prioridade', $body)) {
+                    $novaPrio = (int)$body['prioridade'];
+                    if ($novaPrio > 0 && $novaPrio !== (int)($chamado['prioridade'] ?? 10)) {
+                        $sets[] = 'prioridade = :prioridade';
+                        $params['prioridade'] = $novaPrio;
+                        $alteracoes[] = 'Prioridade: #' . (int)($chamado['prioridade'] ?? 10) . ' -> #' . $novaPrio;
+                    }
+                }
+
+                if (array_key_exists('categoria', $body)) {
+                    $novaCat = trim((string)$body['categoria']);
+                    if ($novaCat !== '' && $novaCat !== (string)($chamado['categoria'] ?? '')) {
+                        $sets[] = 'categoria = :categoria';
+                        $params['categoria'] = $this->limpaWin1252($novaCat);
+                        $alteracoes[] = "Categoria: {$novaCat}";
+                    }
+                }
+
+                if (array_key_exists('tipo_sistema', $body)) {
+                    $novoSis = trim((string)$body['tipo_sistema']);
+                    if ($novoSis !== '' && $novoSis !== (string)($chamado['tipo_sistema'] ?? '')) {
+                        $sets[] = 'tipo_sistema = :tipo_sistema';
+                        $params['tipo_sistema'] = $this->limpaWin1252($novoSis);
+                        $alteracoes[] = "Sistema: {$novoSis}";
+                    }
+                }
+
+                if (array_key_exists('subtipo_item', $body)) {
+                    $novoSub = trim((string)$body['subtipo_item']);
+                    if ($novoSub !== (string)($chamado['subtipo_item'] ?? '')) {
+                        $sets[] = 'subtipo_item = :subtipo_item';
+                        $params['subtipo_item'] = $this->limpaWin1252($novoSub);
+                    }
+                }
+
+                if (array_key_exists('equipamento_detalhe', $body)) {
+                    $novoEquip = trim((string)$body['equipamento_detalhe']);
+                    if ($novoEquip !== (string)($chamado['equipamento_detalhe'] ?? '')) {
+                        $sets[] = 'equipamento_detalhe = :equipamento_detalhe';
+                        $params['equipamento_detalhe'] = $novoEquip !== '' ? $this->limpaWin1252($novoEquip) : null;
+                    }
+                }
+
+                if (array_key_exists('modulo_slug', $body)) {
+                    $novoSlug = trim((string)$body['modulo_slug']);
+                    if ($novoSlug !== (string)($chamado['modulo_slug'] ?? '')) {
+                        $sets[] = 'modulo_slug = :modulo_slug';
+                        $params['modulo_slug'] = $this->limpaWin1252($novoSlug ?: 'geral');
+
+                        $novoNomeMod = trim((string)($body['modulo_nome'] ?? ''));
+                        if ($novoNomeMod === '' && $novoSlug !== '' && $novoSlug !== 'geral') {
+                            $stMod = $this->pdo->prepare("SELECT nome FROM sistema_modulos WHERE slug = :slug LIMIT 1");
+                            $stMod->execute(['slug' => $novoSlug]);
+                            $novoNomeMod = (string)($stMod->fetchColumn() ?: $novoSlug);
+                        }
+                        $sets[] = 'modulo_nome = :modulo_nome';
+                        $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod ?: 'Portal Geral');
+                        $alteracoes[] = 'Módulo alterado para ' . ($novoNomeMod ?: 'Portal Geral');
+                    }
+                } elseif (array_key_exists('modulo_nome', $body)) {
+                    $novoNomeMod = trim((string)$body['modulo_nome']);
+                    if ($novoNomeMod !== '' && $novoNomeMod !== (string)($chamado['modulo_nome'] ?? '')) {
+                        $sets[] = 'modulo_nome = :modulo_nome';
+                        $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod);
+                    }
+                }
+
+                if (array_key_exists('atendente', $body)) {
+                    $novoAtendente = strtoupper(trim((string)$body['atendente']));
+                    if ($novoAtendente !== '' && $novoAtendente !== strtoupper(trim((string)($chamado['atendente'] ?? '')))) {
+                        $sets[] = 'atendente = :atendente';
+                        $params['atendente'] = $this->limpaWin1252($novoAtendente);
+                        $alteracoes[] = "Atendente: {$novoAtendente}";
+                    }
+                }
+
+                if (array_key_exists('solicitante', $body)) {
+                    $novoSolInput = strtoupper(trim((string)$body['solicitante']));
+                    $solAtual = strtoupper(trim((string)($chamado['solicitante'] ?? '')));
+                    if ($novoSolInput !== '' && $novoSolInput !== $solAtual) {
+                        $dadosSol = $this->resolverDadosSolicitante($novoSolInput, $u);
+                        $sets[] = 'solicitante = :solicitante';
+                        $params['solicitante'] = $this->limpaWin1252($dadosSol['solicitante']);
+                        $sets[] = 'usuario = :usuario_sol';
+                        $params['usuario_sol'] = $this->limpaWin1252($dadosSol['solicitante']);
+                        if ($dadosSol['idcliforemp'] > 0) {
+                            $sets[] = 'idcliforemp = :idcliforemp_sol';
+                            $params['idcliforemp_sol'] = $dadosSol['idcliforemp'];
+                        }
+                        $alteracoes[] = "Solicitante: {$solAtual} -> {$dadosSol['solicitante']}";
+                    }
                 }
             }
 
@@ -1476,6 +1706,10 @@ class ChamadosController
             }
 
             $u = $this->usuario($request);
+            if (empty($u['pode_ver_todos'])) {
+                return $this->erro($response, 'Apenas a equipe de TI liberada pode mover ou reordenar chamados no Kanban.', 403);
+            }
+
             $mapaStatus = $this->mapaStatus();
             $mudancasNotificar = [];
 
@@ -1575,6 +1809,12 @@ class ChamadosController
             }
             if (!$this->podeEditarChamado($chamado, $u)) {
                 return $this->erro($response, 'Sem permissão para comentar neste chamado.', 403);
+            }
+            if (empty($u['pode_ver_todos'])) {
+                $ehResolucao = false;
+                if (!in_array($tipo, ['comentario', 'evidencia', 'duvida'], true)) {
+                    $tipo = 'comentario';
+                }
             }
 
             $nextOp = (int)$this->pdo->query("SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = {$id}")->fetchColumn();
@@ -1716,46 +1956,70 @@ class ChamadosController
             }
 
             $extensoesPermitidas = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf', 'txt', 'log'];
+            $extImagens = ['png', 'jpg', 'jpeg', 'gif', 'webp'];
             $maxBytes = 15 * 1024 * 1024; // 15MB
+            $appBase = (strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false || strpos($_SERVER['SCRIPT_NAME'] ?? '', '/API/') !== false) ? '/API' : '';
 
             $body = $this->parsedBody($request);
+            $rawBase64 = (string)($body['imagem_base64'] ?? $body['arquivo_base64'] ?? '');
 
-            // 1. Caso base64 (Print Screen / Ctrl+V)
-            if (!empty($body['imagem_base64'])) {
-                $rawBase64 = (string)$body['imagem_base64'];
-                $ext = 'png';
-                if (preg_match('/^data:image\/(\w+);base64,/', $rawBase64, $m)) {
-                    $ext = strtolower($m[1]) === 'jpeg' ? 'jpg' : strtolower($m[1]);
+            // 1. Caso base64 (Print Screen / Ctrl+V ou FileReader JSON)
+            if ($rawBase64 !== '') {
+                $nomeOriginal = trim((string)($body['nome_original'] ?? $body['nome_arquivo'] ?? ''));
+                $ext = $nomeOriginal !== '' ? strtolower(pathinfo($nomeOriginal, PATHINFO_EXTENSION)) : '';
+
+                if (preg_match('/^data:([^;]+);base64,/', $rawBase64, $m)) {
+                    $mime = strtolower(trim($m[1]));
+                    $mapaMime = [
+                        'image/png' => 'png',
+                        'image/jpeg' => 'jpg',
+                        'image/jpg' => 'jpg',
+                        'image/gif' => 'gif',
+                        'image/webp' => 'webp',
+                        'application/pdf' => 'pdf',
+                        'text/plain' => 'txt',
+                        'text/x-log' => 'log',
+                    ];
+                    if ($ext === '' || !in_array($ext, $extensoesPermitidas, true)) {
+                        $ext = $mapaMime[$mime] ?? '';
+                    }
                     $rawBase64 = substr($rawBase64, strpos($rawBase64, ',') + 1);
                 }
-                if (!in_array($ext, $extensoesPermitidas, true)) {
+
+                if ($ext === '') {
                     $ext = 'png';
                 }
+                if (!in_array($ext, $extensoesPermitidas, true)) {
+                    return $this->erro($response, 'Extensão de arquivo não permitida.');
+                }
 
-                $data = base64_decode($rawBase64);
+                $data = base64_decode($rawBase64, true);
+                if ($data === false) {
+                    $data = base64_decode($rawBase64);
+                }
                 if ($data === false || strlen($data) === 0) {
-                    return $this->erro($response, 'Dados de imagem base64 inválidos.');
+                    return $this->erro($response, 'Dados do arquivo/print em base64 inválidos.');
                 }
                 if (strlen($data) > $maxBytes) {
                     return $this->erro($response, 'Arquivo excede o limite de 15MB.');
                 }
 
-                $nomeArquivo = 'print_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $prefixo = in_array($ext, $extImagens, true) ? 'print_' : 'anexo_';
+                $nomeArquivo = $prefixo . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
                 $caminhoFisico = $uploadDir . '/' . $nomeArquivo;
 
                 if (file_put_contents($caminhoFisico, $data) === false) {
-                    return $this->erro($response, 'Falha ao salvar print no servidor.', 500);
+                    return $this->erro($response, 'Falha ao salvar arquivo no servidor.', 500);
                 }
 
-                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
                 $urlRelativa = $appBase . '/portal/uploads/chamados/' . $nomeArquivo;
 
                 return $this->json($response, [
                     'success' => true,
                     'url' => $urlRelativa,
-                    'nome' => $nomeArquivo,
+                    'nome' => $nomeOriginal !== '' ? $nomeOriginal : $nomeArquivo,
                     'tamanho' => strlen($data),
-                    'tipo' => 'imagem'
+                    'tipo' => in_array($ext, $extImagens, true) ? 'imagem' : 'documento'
                 ]);
             }
 
@@ -1763,14 +2027,14 @@ class ChamadosController
             $files = $request->getUploadedFiles();
             $uploadedFile = $files['anexo'] ?? $files['file'] ?? null;
 
-            if (!$uploadedFile && !empty($_FILES['anexo'])) {
+            if (!$uploadedFile && !empty($_FILES['anexo']['tmp_name'])) {
                 $tmp = $_FILES['anexo']['tmp_name'];
-                $origName = $_FILES['anexo']['name'];
+                $origName = (string)$_FILES['anexo']['name'];
                 $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
                 if (!in_array($ext, $extensoesPermitidas, true)) {
                     return $this->erro($response, 'Extensão de arquivo não permitida.');
                 }
-                if ($_FILES['anexo']['size'] > $maxBytes) {
+                if ((int)$_FILES['anexo']['size'] > $maxBytes) {
                     return $this->erro($response, 'Arquivo excede o limite de 15MB.');
                 }
                 $nomeArquivo = 'anexo_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
@@ -1778,17 +2042,16 @@ class ChamadosController
                 if (!move_uploaded_file($tmp, $dest)) {
                     return $this->erro($response, 'Erro ao mover anexo.', 500);
                 }
-                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
                 return $this->json($response, [
                     'success' => true,
                     'url' => $appBase . '/portal/uploads/chamados/' . $nomeArquivo,
                     'nome' => $origName,
-                    'tipo' => in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp']) ? 'imagem' : 'documento'
+                    'tipo' => in_array($ext, $extImagens, true) ? 'imagem' : 'documento'
                 ]);
             }
 
             if ($uploadedFile && $uploadedFile->getError() === UPLOAD_ERR_OK) {
-                $origName = $uploadedFile->getClientFilename();
+                $origName = (string)$uploadedFile->getClientFilename();
                 $ext = strtolower(pathinfo($origName, PATHINFO_EXTENSION));
                 if (!in_array($ext, $extensoesPermitidas, true)) {
                     return $this->erro($response, 'Extensão de arquivo não permitida.');
@@ -1800,12 +2063,11 @@ class ChamadosController
                 $dest = $uploadDir . '/' . $nomeArquivo;
                 $uploadedFile->moveTo($dest);
 
-                $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
                 return $this->json($response, [
                     'success' => true,
                     'url' => $appBase . '/portal/uploads/chamados/' . $nomeArquivo,
                     'nome' => $origName,
-                    'tipo' => in_array($ext, ['png', 'jpg', 'jpeg', 'gif', 'webp']) ? 'imagem' : 'documento'
+                    'tipo' => in_array($ext, $extImagens, true) ? 'imagem' : 'documento'
                 ]);
             }
 

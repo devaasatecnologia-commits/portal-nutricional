@@ -105,11 +105,50 @@ $extraCss = '
 
     @media print {
         @page { size: A4 landscape; margin: 8mm; }
-        body { background: #fff !important; }
-        .no-print, header, nav, .pa-hero, .pa-tabs { display: none !important; }
-        #painelVisaoGeral { display: none !important; }
-        #painelEditor5W2H { display: block !important; }
-        .pa-card { border: 1px solid #94a3b8 !important; box-shadow: none !important; }
+        html, body {
+            background: #ffffff !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            height: auto !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+        }
+        .no-print,
+        header,
+        nav,
+        footer,
+        aside,
+        .pa-hero,
+        .pa-tabs,
+        #painelVisaoGeral,
+        #painelEditor5W2H,
+        [id^="modal"] {
+            display: none !important;
+        }
+        #folhaImpressaoPdiA4 {
+            display: block !important;
+            width: 100% !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: #ffffff !important;
+        }
+        #folhaImpressaoPdiA4 table {
+            width: 100% !important;
+            border-collapse: collapse !important;
+            page-break-inside: auto;
+        }
+        #folhaImpressaoPdiA4 thead {
+            display: table-header-group;
+        }
+        #folhaImpressaoPdiA4 tr,
+        #folhaImpressaoPdiA4 .print-avoid-break {
+            break-inside: avoid;
+            page-break-inside: avoid;
+        }
     }
 </style>
 ';
@@ -148,6 +187,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </button>
                 <a href="<?= $appBase ?>/portal/modules/avaliacao-chapd.php" class="bg-rose-950/50 hover:bg-rose-950/70 text-white border border-white/20 font-extrabold text-xs sm:text-sm py-2.5 px-4 rounded-2xl transition flex items-center gap-2 no-underline">
                     <i class="fa-solid fa-chart-pie"></i> Dashboard C.H.A.P.D
+                </a>
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=plano-acao-chapd" class="bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs sm:text-sm py-2.5 px-3.5 rounded-2xl transition flex items-center gap-2 shadow-sm no-underline">
+                    <i class="fa-solid fa-graduation-cap"></i> Treinamento &amp; Manual
                 </a>
             </div>
         </div>
@@ -278,6 +320,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                     <input type="text" id="filtroPlanoBusca" onkeyup="carregarPlanosAcao()" placeholder="Buscar colaborador, problema ou responsável..." class="pa-input mt-0 py-1.5 px-3 text-xs w-56">
+                    <select id="filtroPlanoCiclo" onchange="carregarPlanosAcao()" class="pa-input mt-0 py-1.5 px-3 text-xs w-44">
+                        <option value="">Todas Situações</option>
+                        <option value="EM_ELABORACAO">Em Elaboração</option>
+                        <option value="IMPRESSO">Impresso / Execução</option>
+                        <option value="FECHADO">Ciclo Fechado</option>
+                    </select>
                     <select id="filtroPlanoStatus" onchange="carregarPlanosAcao()" class="pa-input mt-0 py-1.5 px-3 text-xs w-48">
                         <option value="">Todos os Status</option>
                         <option value="DENTRO_DO_PRAZO">Dentro do Prazo</option>
@@ -313,6 +361,24 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ABA 2: EDITOR / PLANILHA OFICIAL PLANO DE AÇÃO (5W2H)               -->
     <!-- =================================================================== -->
     <div id="painelEditor5W2H" class="hidden space-y-5">
+
+        <!-- BANNER DO CICLO DE VIDA DO PDI / PLANO 5W2H -->
+        <div id="bannerCicloPlano" class="rounded-2xl p-4 border-2 bg-amber-50 border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print">
+            <div class="flex items-center gap-3">
+                <div id="bannerCicloIcone" class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base flex-none shadow-xs">
+                    <i class="fa-solid fa-pen-ruler"></i>
+                </div>
+                <div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span id="bannerCicloTitulo" class="text-xs font-black uppercase tracking-wider text-amber-950">Estágio 1 • Em Elaboração</span>
+                        <span id="bannerCicloTimestamp" class="text-[11px] font-bold text-amber-700"></span>
+                    </div>
+                    <p id="bannerCicloDesc" class="text-xs font-semibold text-amber-900 mt-0.5">
+                        Você pode editar todos os campos, adicionar/remover etapas ou excluir este plano até clicar em Imprimir (Finalizar para Assinaturas).
+                    </p>
+                </div>
+            </div>
+        </div>
 
         <!-- CABEÇALHO FIEL À PLANILHA "PLANO DE AÇÃO" -->
         <div class="pa-card p-5 sm:p-6">
@@ -486,18 +552,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                         Dica da planilha: Em <b>"O QUE"</b> inicie sempre com verbo de ação; em <b>"COMO"</b> descreva as etapas de realização.
                     </p>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 no-print">
-                    <button type="button" onclick="inserirEtapasSugeridasPdi()" class="py-2 px-3.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Preenche a trilha completa 70-20-10 de PDI C.H.A.P.D">
+                <div id="boxAcoesTabela5W2H" class="flex flex-wrap items-center gap-2 no-print">
+                    <button type="button" id="btnGerarTrilhaPdi" onclick="inserirEtapasSugeridasPdi()" class="py-2 px-3.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Preenche a trilha completa 70-20-10 de PDI C.H.A.P.D">
                         <i class="fa-solid fa-wand-magic-sparkles text-amber-600"></i> Gerar Trilha 70-20-10 Completa
                     </button>
-                    <button type="button" onclick="adicionarLinha5W2H()" class="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer">
+                    <button type="button" id="btnAdicionarLinha5W2H" onclick="adicionarLinha5W2H()" class="py-2 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition flex items-center gap-1.5 shadow-xs cursor-pointer">
                         <i class="fa-solid fa-plus"></i> Adicionar Etapa (Linha)
                     </button>
                 </div>
             </div>
 
             <!-- BIBLIOTECA ESPECIALISTA DE RECOMENDAÇÕES POR PILAR C.H.A.P.D -->
-            <div class="mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 no-print">
+            <div id="boxBibliotecaPdi" class="mb-4 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-wrap items-center justify-between gap-2 no-print">
                 <span class="text-[11px] font-black text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                     <i class="fa-solid fa-lightbulb text-amber-500"></i> Biblioteca Especialista PDI (Inserir ação por pilar):
                 </span>
@@ -576,18 +642,59 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <textarea id="paFeedbackColaborador" rows="2" class="pa-input bg-white" placeholder="Registre aqui os comentários, percepção ou compromisso assumido pelo colaborador durante a apresentação deste PDI / Plano de Ação..."></textarea>
             </div>
 
+            <!-- PARECER DE ENCERRAMENTO / FECHAMENTO DO CICLO PDI -->
+            <div id="boxParecerFechamento" class="hidden mt-4 p-4 rounded-2xl bg-slate-900 text-white space-y-1.5">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <span class="text-xs font-black uppercase tracking-wider text-emerald-300">
+                        <i class="fa-solid fa-lock mr-1"></i> Ciclo PDI Encerrado / Fechado Oficialmente
+                    </span>
+                    <span id="paFechadoMetaInfo" class="text-[11px] font-bold text-slate-300">--</span>
+                </div>
+                <p id="paParecerFechamentoTexto" class="text-xs text-slate-100 font-medium">--</p>
+            </div>
+
+            <!-- BLOCO FORMAL DE ASSINATURAS (PARA IMPRESSÃO A4) -->
+            <div class="mt-6 pt-6 border-t border-slate-300">
+                <div class="flex flex-wrap items-center justify-between text-[10px] font-bold text-slate-500 mb-6">
+                    <span><i class="fa-solid fa-file-signature mr-1"></i> Documento de Compromisso &amp; Acompanhamento PDI 5W2H</span>
+                    <span id="paSeloImpressoInfo">Situação: Em Elaboração</span>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-xs pt-2">
+                    <div>
+                        <div class="border-b border-slate-400 pb-1 mb-1 font-black text-slate-800" id="paAssinaturaColaborador">Colaborador</div>
+                        <div class="text-slate-400 font-bold uppercase text-[0.65rem]">Ciente / Colaborador Pactuante</div>
+                    </div>
+                    <div>
+                        <div class="border-b border-slate-400 pb-1 mb-1 font-black text-slate-800" id="paAssinaturaResponsavel">Sandro Rafo</div>
+                        <div class="text-slate-400 font-bold uppercase text-[0.65rem]">Responsável / Gestor Imediato</div>
+                    </div>
+                    <div>
+                        <div class="border-b border-slate-400 pb-1 mb-1 font-black text-slate-800" id="paAssinaturaAprovador">Robson Becker</div>
+                        <div class="text-slate-400 font-bold uppercase text-[0.65rem]">Aprovação / Diretoria</div>
+                    </div>
+                </div>
+            </div>
+
             <!-- RODAPÉ DE AÇÕES DO EDITOR -->
             <div class="flex flex-wrap items-center justify-between gap-3 pt-5 mt-5 border-t border-slate-200 no-print">
-                <button type="button" onclick="alternarAbaPa('visao')" class="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer">
-                    <i class="fa-solid fa-arrow-left"></i> Voltar para Lista
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button type="button" onclick="alternarAbaPa('visao')" class="py-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-arrow-left"></i> Voltar para Lista
+                    </button>
+                    <button type="button" id="btnExcluirPlanoEditor" onclick="excluirPlanoAtualEditor()" class="hidden py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs sm:text-sm transition flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-trash"></i> Excluir Plano
+                    </button>
+                </div>
 
                 <div class="flex flex-wrap items-center gap-2.5">
-                    <button type="button" onclick="window.print()" class="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer">
-                        <i class="fa-solid fa-print"></i> Imprimir Planilha A4
+                    <button type="button" id="btnImprimirPlano5W2H" onclick="imprimirPlano5W2H()" class="py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 cursor-pointer">
+                        <i class="fa-solid fa-print"></i> <span id="btnImprimirPlanoTexto">Imprimir Planilha A4</span>
                     </button>
-                    <button type="button" id="btnSalvarPlano5W2H" onclick="salvarPlano5W2H()" class="py-2.5 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
+                    <button type="button" id="btnSalvarPlano5W2H" onclick="salvarPlano5W2H()" class="py-2.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
                         <i class="fa-solid fa-floppy-disk"></i> Salvar Plano de Ação 5W2H
+                    </button>
+                    <button type="button" id="btnFecharCicloPlano" onclick="fecharPlano5W2H()" class="hidden py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
+                        <i class="fa-solid fa-circle-check"></i> Fechar / Encerrar Ciclo PDI
                     </button>
                 </div>
             </div>
@@ -596,6 +703,182 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
 </div>
+
+<!-- FOLHA EXECUTIVA A4 PAISAGEM PARA IMPRESSÃO / PDF PREMIUM (PDI & 5W2H) -->
+<section id="folhaImpressaoPdiA4" class="hidden space-y-3 text-slate-800 bg-white text-[11px] leading-snug">
+    <!-- Cabeçalho Institucional Executivo -->
+    <div class="rounded-xl overflow-hidden border border-slate-300 bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between gap-4 print-avoid-break">
+        <div>
+            <p class="text-[9px] font-bold uppercase tracking-[0.22em] text-indigo-300">NUTRICIONAL DISTRIBUIDORA • GESTÃO DE PESSOAS &amp; DESENVOLVIMENTO</p>
+            <h1 class="text-base font-black tracking-tight text-white mt-0.5">PLANO DE DESENVOLVIMENTO INDIVIDUAL (PDI) &amp; PLANILHA 5W2H</h1>
+            <p id="printPdiSubtitulo" class="text-[10px] text-slate-300 mt-0.5">Documento Executivo de Acompanhamento e Evolução de Competências (C.H.A.P.D)</p>
+        </div>
+        <div class="text-right shrink-0 space-y-1">
+            <div class="flex items-center justify-end gap-1.5 flex-wrap">
+                <span id="printPdiNumero" class="px-2.5 py-0.5 rounded-md bg-white/15 text-white font-black text-[10px] border border-white/20">PDI #--</span>
+                <span id="printPdiRevisao" class="px-2 py-0.5 rounded-md bg-slate-700 text-slate-100 font-bold text-[10px] border border-slate-600">Rev. 01</span>
+                <span id="printPdiCicloBadge" class="px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-900 font-black text-[10px] uppercase">EM ELABORAÇÃO</span>
+                <span id="printPdiStatusBadge" class="px-2.5 py-0.5 rounded-md bg-indigo-500 text-white font-black text-[10px] uppercase">EM ANDAMENTO</span>
+            </div>
+            <p id="printPdiEmitidoEm" class="text-[9px] text-slate-300 font-medium"></p>
+        </div>
+    </div>
+
+    <!-- Ficha Completa do Colaborador + Foto 3x4 + KPIs do Plano -->
+    <div class="border border-slate-300 rounded-xl p-3 bg-slate-50/70 grid grid-cols-12 gap-3 items-stretch print-avoid-break">
+        <!-- Foto 3x4 -->
+        <div class="col-span-2 flex flex-col items-center justify-center bg-white border border-slate-200 rounded-lg p-2">
+            <div class="w-20 h-24 rounded-lg overflow-hidden border border-slate-300 bg-slate-100 flex items-center justify-center relative">
+                <img id="printPdiFoto" src="" alt="Foto Colaborador" class="w-full h-full object-cover hidden">
+                <span id="printPdiIniciais" class="text-xl font-black text-slate-500">ND</span>
+            </div>
+            <span id="printPdiCodigoErp" class="mt-1.5 px-2 py-0.5 rounded bg-slate-800 text-white font-bold text-[9px]">Cód. ERP: -</span>
+        </div>
+
+        <!-- Dados Cadastrais + Governança -->
+        <div class="col-span-10 grid grid-cols-12 gap-x-3 gap-y-2 content-between">
+            <div class="col-span-5 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Colaborador</span>
+                <span id="printPdiColabNome" class="block text-xs font-black text-slate-900 break-words">-</span>
+            </div>
+            <div class="col-span-3 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Cargo / Função</span>
+                <span id="printPdiColabCargo" class="block text-[11px] font-bold text-slate-800 break-words">-</span>
+            </div>
+            <div class="col-span-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Setor / Área</span>
+                <span id="printPdiColabSetor" class="block text-[11px] font-bold text-slate-800 break-words">-</span>
+            </div>
+            <div class="col-span-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Filial / Admissão</span>
+                <span class="block text-[10px] font-bold text-slate-800"><span id="printPdiColabFilial">-</span> • <span id="printPdiColabAdmissao">-</span></span>
+            </div>
+
+            <div class="col-span-3 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Origem / Nota C.H.A.P.D</span>
+                <span id="printPdiNotaOrigem" class="block text-[11px] font-black text-indigo-700 break-words">-</span>
+            </div>
+            <div class="col-span-3 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Pilares Prioritários</span>
+                <span id="printPdiPilaresCriticos" class="block text-[10px] font-bold text-rose-700 break-words">-</span>
+            </div>
+            <div class="col-span-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Meta / Prazo Alvo</span>
+                <span class="block text-[11px] font-black text-emerald-700"><span id="printPdiMeta">-</span> • <span id="printPdiPrazo">-</span></span>
+            </div>
+            <div class="col-span-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Responsável / Gestor</span>
+                <span id="printPdiResponsavel" class="block text-[10px] font-bold text-slate-800 break-words">-</span>
+            </div>
+            <div class="col-span-2 bg-white border border-slate-200 rounded-lg px-2.5 py-1.5">
+                <span class="block text-[9px] font-bold uppercase text-slate-400">Aprovador / RH</span>
+                <span id="printPdiAprovador" class="block text-[10px] font-bold text-slate-800 break-words">-</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Resumo dos 5 Pilares C.H.A.P.D & Distribuição 70-20-10 -->
+    <div class="grid grid-cols-12 gap-3 print-avoid-break">
+        <div class="col-span-8 border border-slate-300 rounded-xl p-2.5 bg-white">
+            <div class="flex items-center justify-between mb-1.5">
+                <span class="text-[9px] font-black uppercase tracking-wider text-slate-500">Diagnóstico dos 5 Pilares C.H.A.P.D (Origem)</span>
+                <span class="text-[9px] font-semibold text-slate-400">Pontuação por Pilar (C • H • A • P • D)</span>
+            </div>
+            <div id="printPdiPilaresBox" class="grid grid-cols-5 gap-2"></div>
+        </div>
+        <div class="col-span-4 border border-slate-300 rounded-xl p-2.5 bg-white flex flex-col justify-between">
+            <span class="text-[9px] font-black uppercase tracking-wider text-slate-500">Composição Metodológica 70-20-10</span>
+            <div class="grid grid-cols-3 gap-2 mt-1.5">
+                <div class="rounded-lg bg-indigo-50 border border-indigo-200 px-2 py-1.5 text-center">
+                    <span class="block text-[9px] font-bold text-indigo-700">70% Prática</span>
+                    <span id="printPdi70" class="text-xs font-black text-indigo-900">0</span>
+                </div>
+                <div class="rounded-lg bg-amber-50 border border-amber-200 px-2 py-1.5 text-center">
+                    <span class="block text-[9px] font-bold text-amber-700">20% Troca</span>
+                    <span id="printPdi20" class="text-xs font-black text-amber-900">0</span>
+                </div>
+                <div class="rounded-lg bg-emerald-50 border border-emerald-200 px-2 py-1.5 text-center">
+                    <span class="block text-[9px] font-bold text-emerald-700">10% Ensino</span>
+                    <span id="printPdi10" class="text-xs font-black text-emerald-900">0</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Problema / Lacuna & Objetivo Completo (Sem corte de texto) -->
+    <div class="grid grid-cols-2 gap-3 print-avoid-break">
+        <div class="border border-slate-300 rounded-xl p-3 bg-white">
+            <h3 class="text-[9px] font-black uppercase tracking-wider text-rose-700 mb-1">1. Diagnóstico do Gap / Problema Identificado</h3>
+            <p id="printPdiProblema" class="text-[10.5px] text-slate-800 whitespace-pre-wrap break-words leading-relaxed">-</p>
+        </div>
+        <div class="border border-slate-300 rounded-xl p-3 bg-white">
+            <h3 class="text-[9px] font-black uppercase tracking-wider text-emerald-700 mb-1">2. Objetivo Estratégico &amp; Resultado Esperado</h3>
+            <p id="printPdiObjetivo" class="text-[10.5px] text-slate-800 whitespace-pre-wrap break-words leading-relaxed">-</p>
+        </div>
+    </div>
+
+    <!-- Planilha 5W2H Completa -->
+    <div class="border border-slate-300 rounded-xl overflow-hidden bg-white">
+        <div class="bg-slate-800 text-white px-3 py-1.5 flex items-center justify-between">
+            <span class="text-[10px] font-black uppercase tracking-wider">3. Matriz de Execução 5W2H — Detalhamento das Ações</span>
+            <span id="printPdiContagemAcoes" class="text-[9px] font-bold text-slate-300">0 ações</span>
+        </div>
+        <table class="w-full text-left border-collapse text-[9.5px]">
+            <thead>
+                <tr class="bg-slate-100 text-slate-700 border-b border-slate-300">
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-7 text-center">#</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-24">Pilar / 70-20-10</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-[22%]">O QUÊ (What)</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-[23%]">COMO / EVIDÊNCIA (How)</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-[13%]">ONDE (Where)</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-[12%]">QUEM (Who)</th>
+                    <th class="py-1.5 px-2 font-black border-r border-slate-200 w-[11%]">QUANDO (When)</th>
+                    <th class="py-1.5 px-2 font-black w-[11%] text-center">STATUS / OBS</th>
+                </tr>
+            </thead>
+            <tbody id="printPdiTabela5W2H" class="divide-y divide-slate-200"></tbody>
+        </table>
+    </div>
+
+    <!-- Feedback 1:1 & Parecer de Encerramento -->
+    <div class="grid grid-cols-12 gap-3 print-avoid-break">
+        <div id="printPdiFeedbackBox" class="col-span-6 border border-slate-300 rounded-xl p-2.5 bg-white">
+            <h4 class="text-[9px] font-black uppercase tracking-wider text-indigo-700 mb-1">Registro de Alinhamento / Feedback 1:1</h4>
+            <p id="printPdiFeedback" class="text-[10px] text-slate-700 whitespace-pre-wrap break-words">-</p>
+        </div>
+        <div id="printPdiParecerBox" class="col-span-6 border border-slate-300 rounded-xl p-2.5 bg-slate-50">
+            <div class="flex items-center justify-between mb-1">
+                <h4 class="text-[9px] font-black uppercase tracking-wider text-slate-700">Governança do Ciclo &amp; Parecer Final</h4>
+                <span id="printPdiSeloCiclo" class="px-2 py-0.5 rounded bg-slate-200 text-slate-800 font-black text-[9px]">REGISTRO ATIVO</span>
+            </div>
+            <p id="printPdiParecerTexto" class="text-[10px] text-slate-700 whitespace-pre-wrap break-words">-</p>
+        </div>
+    </div>
+
+    <!-- Bloco Executivo de 3 Assinaturas -->
+    <div class="border border-slate-300 rounded-xl p-4 pt-7 bg-white print-avoid-break">
+        <div class="grid grid-cols-3 gap-8 text-center">
+            <div>
+                <div class="border-t border-slate-700 pt-1.5">
+                    <p id="printPdiAssinColab" class="text-[10.5px] font-black text-slate-900">Colaborador(a)</p>
+                    <p class="text-[9px] text-slate-500 font-semibold uppercase">Ciência e Compromisso • Data: ____/____/______</p>
+                </div>
+            </div>
+            <div>
+                <div class="border-t border-slate-700 pt-1.5">
+                    <p id="printPdiAssinResp" class="text-[10.5px] font-black text-slate-900">Gestor / Avaliador Responsável</p>
+                    <p class="text-[9px] text-slate-500 font-semibold uppercase">Acompanhamento &amp; Validação • Data: ____/____/______</p>
+                </div>
+            </div>
+            <div>
+                <div class="border-t border-slate-700 pt-1.5">
+                    <p id="printPdiAssinAprov" class="text-[10.5px] font-black text-slate-900">Diretoria / Gestão de Pessoas</p>
+                    <p class="text-[9px] text-slate-500 font-semibold uppercase">Aprovação &amp; Homologação • Data: ____/____/______</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
 
 <?php
 require_once __DIR__ . '/../estrutura/footer.php';

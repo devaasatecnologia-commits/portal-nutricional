@@ -151,7 +151,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="flex-1 grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center">
-                <div class="md:col-span-5">
+                <div :class="ehTiLiberado() ? 'md:col-span-4' : 'md:col-span-5'">
                     <input type="text" x-model="quickForm.relato" @keydown.enter.prevent="criarChamadoRapido()"
                            placeholder="Descreva o erro ou solicitação e pressione Enter (ou cole um print com Ctrl+V aqui)..."
                            class="w-full px-3.5 py-2.5 bg-white border border-slate-200 focus:border-indigo-500 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none shadow-2xs">
@@ -176,7 +176,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </select>
                 </div>
 
-                <div class="md:col-span-3 flex items-center gap-2">
+                <div x-show="ehTiLiberado()" class="md:col-span-2" style="display: none;">
+                    <select x-model="quickForm.solicitante"
+                            class="w-full px-2.5 py-2.5 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-indigo-800 focus:outline-none focus:border-indigo-500"
+                            title="Vincular chamado a um solicitante específico (Admin/TI)">
+                        <option value="">👤 Solicitante: Eu</option>
+                        <template x-for="usr in usuariosSolicitantes" :key="`qk-${usr.username}`">
+                            <option :value="usr.username" x-text="`👤 ${usr.username}`"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div :class="ehTiLiberado() ? 'md:col-span-2' : 'md:col-span-3'" class="flex items-center gap-2">
                     <input type="file" x-ref="quickAnexoInput" @change="selecionarArquivoAnexo($event, 'quick')" accept="image/*,.pdf,.txt,.log" class="hidden">
 
                     <button type="button" @click="$refs.quickAnexoInput.click()"
@@ -458,10 +469,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                           x-text="colunaChamados(col.st).length">0</span>
                 </div>
 
-                <!-- Lista de Cards Arrastáveis -->
+                <!-- Lista de Cards Arrastáveis (drag apenas para TI liberado) -->
                 <div class="kanban-col custom-scrollbar space-y-2.5 flex-1 pr-1">
                     <template x-for="(c, idx) in colunaChamados(col.st)" :key="c.idchamado">
-                        <div draggable="true"
+                        <div :draggable="ehTiLiberado() ? 'true' : 'false'"
                              @dragstart="onDragStart($event, c)"
                              @dragend="onDragEnd()"
                              @dragover.prevent="onDragOverCard($event, c)"
@@ -478,20 +489,21 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <!-- Topo do Card: Grip + ID + Posição + Ações Rápidas -->
                             <div class="flex items-center justify-between gap-1.5 mb-2">
                                 <div class="flex items-center gap-1.5 flex-wrap">
-                                    <i class="fa-solid fa-grip-vertical text-slate-300 group-hover:text-indigo-400 cursor-grab text-xs" title="Arraste com o mouse"></i>
+                                    <i x-show="ehTiLiberado()" class="fa-solid fa-grip-vertical text-slate-300 group-hover:text-indigo-400 cursor-grab text-xs" title="Arraste com o mouse"></i>
                                     <span class="text-[10px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100" x-text="`#${c.idchamado}`">#0</span>
                                     <span class="text-[9px] font-black text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-md" :title="`Posição #${c.prioridade} na fila`" x-text="`${idx + 1}º`">1º</span>
                                     <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border" :class="badgeSistema(c.tipo_sistema)" x-text="c.tipo_sistema">PORTAL</span>
                                 </div>
 
                                 <div class="flex items-center gap-1 shrink-0" @click.stop>
-                                    <button type="button" x-show="idx > 0 && col.st !== 3"
+                                    <button type="button" x-show="ehTiLiberado() && idx > 0 && col.st !== 3"
                                             @click.stop="moverParaTopo(c)"
                                             class="w-6 h-6 rounded-lg bg-slate-100 hover:bg-indigo-600 text-slate-500 hover:text-white flex items-center justify-center text-[10px] transition"
                                             title="Enviar para o topo da prioridade (#1)">
                                         <i class="fa-solid fa-arrow-up"></i>
                                     </button>
-                                    <select :value="c.criticidade"
+                                    <select x-show="ehTiLiberado()"
+                                            :value="c.criticidade"
                                             @change.stop="alterarCriticidadeRapida(c, $event.target.value)"
                                             @click.stop
                                             class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-lg cursor-pointer focus:outline-none"
@@ -502,6 +514,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <option value="media">MÉDIA</option>
                                         <option value="baixa">BAIXA</option>
                                     </select>
+                                    <span x-show="!ehTiLiberado()"
+                                          class="text-[9px] font-black uppercase px-2 py-0.5 rounded-lg"
+                                          :class="badgeCriticidade(c.criticidade)"
+                                          x-text="String(c.criticidade || 'media').toUpperCase()">MÉDIA</span>
                                 </div>
                             </div>
 
@@ -557,7 +573,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                     <div x-show="colunaChamados(col.st).length === 0"
                          class="text-center py-10 px-3 text-xs text-slate-400 border-2 border-dashed border-slate-200/80 rounded-2xl"
-                         x-text="col.vazio">
+                         x-text="ehTiLiberado() ? col.vazio : 'Nenhum chamado nesta etapa'">
                         Nenhum chamado nesta coluna
                     </div>
                 </div>
@@ -600,7 +616,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                             </td>
                             <td class="py-3 px-4 text-slate-700 font-bold" x-text="c.tipo_sistema === 'PORTAL' ? c.modulo_nome : (c.subtipo_item || c.tipo_sistema)">Módulo</td>
                             <td class="py-3 px-4 text-center" @click.stop>
-                                <select :value="c.criticidade" @change.stop="alterarCriticidadeRapida(c, $event.target.value)"
+                                <select x-show="ehTiLiberado()" :value="c.criticidade" @change.stop="alterarCriticidadeRapida(c, $event.target.value)"
                                         class="text-[9px] font-black uppercase px-2 py-1 rounded-full cursor-pointer focus:outline-none"
                                         :class="badgeCriticidade(c.criticidade)">
                                     <option value="critica">CRÍTICA</option>
@@ -608,6 +624,10 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     <option value="media">MÉDIA</option>
                                     <option value="baixa">BAIXA</option>
                                 </select>
+                                <span x-show="!ehTiLiberado()"
+                                      class="text-[9px] font-black uppercase px-2.5 py-1 rounded-full inline-block"
+                                      :class="badgeCriticidade(c.criticidade)"
+                                      x-text="String(c.criticidade || 'media').toUpperCase()">MÉDIA</span>
                             </td>
                             <td class="py-3 px-4 text-center">
                                 <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full border" :class="c.status_info.cor" x-text="c.status_info.label">Aberto</span>
@@ -630,13 +650,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <td class="py-3 px-4 text-slate-400 text-[11px]" x-text="c.data_fmt">10/11/2026</td>
                             <td class="py-3 px-4 text-center" @click.stop>
                                 <div class="flex items-center justify-center gap-1">
-                                    <button type="button" @click="moverParaTopo(c)" x-show="c.prioridade > 1 && c.status != 3"
+                                    <button type="button" @click="moverParaTopo(c)" x-show="ehTiLiberado() && c.prioridade > 1 && c.status != 3"
                                             class="px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 font-bold text-[10px]" title="Mover para Topo (#1)">
                                         <i class="fa-solid fa-arrow-up"></i>
                                     </button>
                                     <button type="button" @click="abrirDetalhes(c.idchamado)"
-                                            class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs transition">
-                                        Editar / Ver
+                                            class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 font-bold text-xs transition"
+                                            x-text="ehTiLiberado() ? 'Gerenciar / Ver' : 'Acompanhar'">
+                                        Acompanhar
                                     </button>
                                 </div>
                             </td>
@@ -652,17 +673,60 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- CONTEÚDO PRINCIPAL 3: MODO DASHBOARD / PAINEL & KPIS -->
+    <!-- CONTEÚDO PRINCIPAL 3: MODO DASHBOARD EXECUTIVO & RASTREAMENTO POR USUÁRIO -->
     <div x-show="modoExibicao === 'dashboard'" class="space-y-6" style="display: none;">
+
+        <!-- BANNER EXECUTIVO SERVICE DESK ANALYTICS -->
+        <div class="rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 sm:p-6 shadow-xl border border-indigo-800/40">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <div>
+                    <div class="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <span class="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                            <i class="fa-solid fa-radar text-amber-300 mr-1"></i> Inteligência &amp; Rastreamento Service Desk
+                        </span>
+                        <span class="text-[10px] font-bold text-emerald-300 bg-emerald-500/15 px-2.5 py-0.5 rounded-full border border-emerald-400/30"
+                              x-text="`${(metricas.ranking_solicitantes || []).length} solicitante(s) mapeado(s)`">0 solicitantes</span>
+                    </div>
+                    <h2 class="text-lg sm:text-xl font-black tracking-tight">Painel de Demandas por Solicitante, SLA &amp; Rastreamento Operacional</h2>
+                    <p class="text-xs text-indigo-200/80 mt-0.5">
+                        Acompanhe em tempo real quem mais demanda chamados, gargalos por sistema/módulo e clique em qualquer usuário para rastrear todas as solicitações abertas.
+                    </p>
+                </div>
+
+                <!-- Destaque Dinâmico: Líder de Aberturas + MTTR -->
+                <div class="flex flex-wrap items-center gap-3 shrink-0">
+                    <div class="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl px-4 py-2.5 min-w-[190px]"
+                         x-show="(metricas.ranking_solicitantes || []).length > 0">
+                        <span class="text-[9px] font-black uppercase tracking-wider text-amber-300 block">🏆 Top Solicitante (#1)</span>
+                        <div class="flex items-center justify-between gap-3 mt-0.5">
+                            <span class="text-sm font-black text-white truncate" x-text="(metricas.ranking_solicitantes || [])[0]?.username || '-'">-</span>
+                            <span class="text-xs font-black px-2 py-0.5 rounded-lg bg-amber-400 text-slate-950"
+                                  x-text="`${(metricas.ranking_solicitantes || [])[0]?.total || 0} chamados`">0</span>
+                        </div>
+                        <span class="text-[10px] text-indigo-200 block mt-0.5"
+                              x-text="`${(metricas.ranking_solicitantes || [])[0]?.percentual || 0}% do volume • ${(metricas.ranking_solicitantes || [])[0]?.pendentes || 0} pendente(s)`"></span>
+                    </div>
+
+                    <div class="bg-white/10 backdrop-blur-xs border border-white/15 rounded-2xl px-4 py-2.5 min-w-[145px]">
+                        <span class="text-[9px] font-black uppercase tracking-wider text-emerald-300 block">⏱️ Tempo Médio (MTTR)</span>
+                        <span class="text-lg font-black text-white block mt-0.5"
+                              x-text="kpis.tempo_medio_horas ? `${kpis.tempo_medio_horas}h` : '--'">--</span>
+                        <span class="text-[10px] text-indigo-200 block" x-text="`${kpis.concluidos_total || 0} resolvidos no total`">0 resolvidos</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4 KPI CARDS EXECUTIVOS -->
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex items-center justify-between">
                 <div>
-                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Taxa de Resolução</span>
+                    <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Taxa Global de Resolução</span>
                     <div class="flex items-baseline gap-2">
                         <span class="text-3xl font-black text-emerald-600" x-text="`${kpis.taxa_resolucao || 0}%`">0%</span>
-                        <span class="text-[11px] font-bold text-slate-400">do total</span>
+                        <span class="text-[11px] font-bold text-slate-400">concluídos</span>
                     </div>
-                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.concluidos_mes || 0} chamados concluídos`">0 concluídos</span>
+                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.concluidos_total || 0} total (${kpis.concluidos_mes || 0} no mês)`">0 concluídos</span>
                 </div>
                 <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-xl">
                     <i class="fa-solid fa-chart-line"></i>
@@ -674,9 +738,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Fila Ativa de TI</span>
                     <div class="flex items-baseline gap-2">
                         <span class="text-3xl font-black text-indigo-600" x-text="(parseInt(kpis.abertos || 0) + parseInt(kpis.em_correcao || 0))">0</span>
-                        <span class="text-[11px] font-bold text-slate-400">em andamento</span>
+                        <span class="text-[11px] font-bold text-slate-400">pendentes</span>
                     </div>
-                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.em_correcao || 0} em correção técnica`">0 em correção</span>
+                    <span class="text-[10px] text-slate-500 font-semibold block mt-1" x-text="`${kpis.abertos || 0} triagem/análise · ${kpis.em_correcao || 0} em dev`">0 em andamento</span>
                 </div>
                 <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-xl">
                     <i class="fa-solid fa-bars-progress"></i>
@@ -717,39 +781,321 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
 
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-                <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-                    <h3 class="text-xs font-black uppercase text-slate-800">Demandas por Sistema Corporativo</h3>
-                    <span class="text-xs font-black text-slate-400" x-text="`${(metricas.por_sistema || []).length} sistemas`">0</span>
+        <!-- GRÁFICO PRINCIPAL: TOP USUÁRIOS QUE MAIS ABREM CHAMADOS (BARRAS EMPILHADAS) -->
+        <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-sm">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-4 border-b border-slate-100 mb-5">
+                <div>
+                    <span class="text-[10px] font-black uppercase tracking-wider text-indigo-600 block">Gráfico Comparativo de Solicitantes</span>
+                    <h3 class="text-sm sm:text-base font-black text-slate-800">Ranking: Usuários que Mais Abrem Chamados &amp; Rastreamento de Status</h3>
                 </div>
-                <div class="space-y-3.5">
-                    <template x-for="sis in (metricas.por_sistema || [])" :key="sis.sistema">
-                        <div>
-                            <div class="flex items-center justify-between text-xs mb-1">
-                                <div class="flex items-center gap-2">
-                                    <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded border inline-block" :class="badgeSistema(sis.sistema)" x-text="sis.sistema">PORTAL</span>
-                                    <span class="font-bold text-slate-700" x-text="nomeSistema(sis.sistema)">Nome</span>
-                                </div>
-                                <span class="text-xs font-black text-slate-800" x-text="sis.total">0</span>
-                            </div>
-                            <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
-                                <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500"
-                                     :style="`width: ${Math.round((parseInt(sis.total) / (parseInt(kpis.total) || 1)) * 100)}%`"></div>
-                            </div>
-                        </div>
-                    </template>
+
+                <!-- Legenda das Barras Empilhadas -->
+                <div class="flex flex-wrap items-center gap-3 text-[11px] font-bold">
+                    <span class="flex items-center gap-1.5 text-slate-600">
+                        <span class="w-3 h-3 rounded-sm bg-emerald-500 inline-block"></span> Concluídos
+                    </span>
+                    <span class="flex items-center gap-1.5 text-slate-600">
+                        <span class="w-3 h-3 rounded-sm bg-indigo-500 inline-block"></span> Em Análise / Dev
+                    </span>
+                    <span class="flex items-center gap-1.5 text-slate-600">
+                        <span class="w-3 h-3 rounded-sm bg-amber-400 inline-block"></span> Abertos
+                    </span>
                 </div>
             </div>
 
+            <div x-show="(metricas.ranking_solicitantes || []).length === 0" class="py-10 text-center text-xs text-slate-400">
+                Nenhum dado de solicitante encontrado para exibir no gráfico.
+            </div>
+
+            <div class="space-y-3" x-show="(metricas.ranking_solicitantes || []).length > 0">
+                <template x-for="(sol, idxSol) in (metricas.ranking_solicitantes || [])" :key="sol.username">
+                    <div class="p-3.5 rounded-2xl border transition"
+                         :class="usuarioRastreado === sol.username ? 'bg-indigo-50/70 border-indigo-400 ring-1 ring-indigo-300 shadow-sm' : 'bg-slate-50/60 border-slate-200/70 hover:bg-white hover:border-indigo-200'">
+                        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-2.5 mb-2">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <!-- Posição no Ranking -->
+                                <span class="w-7 h-7 rounded-xl text-xs font-black flex items-center justify-center shrink-0"
+                                      :class="idxSol === 0 ? 'bg-amber-400 text-slate-950 shadow-xs' : (idxSol === 1 ? 'bg-slate-300 text-slate-900' : (idxSol === 2 ? 'bg-amber-700/20 text-amber-900' : 'bg-slate-200 text-slate-600'))"
+                                      x-text="`${idxSol + 1}º`">1º</span>
+
+                                <!-- Avatar Iniciais -->
+                                <div class="w-9 h-9 rounded-full bg-indigo-600 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-2xs"
+                                     x-text="String(sol.username || 'US').slice(0, 2)">US</div>
+
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <span class="text-xs sm:text-sm font-black text-slate-800" x-text="sol.username">USUARIO</span>
+                                        <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800"
+                                              x-text="`${sol.total} chamado(s) (${sol.percentual}%)`">0</span>
+                                        <span x-show="sol.criticos > 0"
+                                              class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 border border-rose-200"
+                                              x-text="`🔴 ${sol.criticos} Crítico(s)`"></span>
+                                        <span x-show="sol.altos > 0"
+                                              class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200"
+                                              x-text="`🟠 ${sol.altos} Alto(s)`"></span>
+                                    </div>
+                                    <div class="text-[10px] text-slate-500 font-medium flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
+                                        <span>Foco: <strong class="text-slate-700" x-text="`${sol.sistema_principal} • ${sol.modulo_principal}`">PORTAL</strong></span>
+                                        <span>·</span>
+                                        <span>Última abertura: <strong class="text-slate-700" x-text="sol.ultimo_chamado_fmt">-</strong></span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Ações de Rastreamento + KPIs Inline -->
+                            <div class="flex flex-wrap items-center gap-2 shrink-0">
+                                <span class="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded-lg border border-emerald-200"
+                                      x-text="`✔ ${sol.concluidos} Concluídos (${sol.taxa_conclusao}%)`"></span>
+                                <span class="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg border border-amber-200"
+                                      x-text="`⏳ ${sol.pendentes} Pendentes`"></span>
+
+                                <button type="button" @click="selecionarUsuarioRastreamento(sol.username)"
+                                        class="px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 transition border"
+                                        :class="usuarioRastreado === sol.username ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs' : 'bg-white text-indigo-700 border-indigo-200 hover:bg-indigo-50'">
+                                    <i class="fa-solid fa-crosshairs"></i>
+                                    <span x-text="usuarioRastreado === sol.username ? 'Ocultar Rastreio' : 'Rastrear Aqui'">Rastrear Aqui</span>
+                                </button>
+
+                                <button type="button" @click="filtrarListaPorSolicitante(sol.username, 'lista')"
+                                        class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-[11px] font-bold flex items-center gap-1 transition"
+                                        title="Abrir todos os chamados deste solicitante na Lista">
+                                    <i class="fa-solid fa-list-ul"></i>
+                                    <span class="hidden sm:inline">Filtrar Lista</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Barra Horizontal Empilhada Proporcional ao Top #1 -->
+                        <div class="w-full h-4 bg-slate-200/80 rounded-full overflow-hidden p-0.5 flex items-center">
+                            <div class="h-full rounded-full overflow-hidden flex transition-all duration-500"
+                                 :style="`width: ${Math.max(sol.percentual_barra || 0, 2)}%`">
+                                <div x-show="sol.concluidos > 0"
+                                     class="h-full bg-emerald-500 transition-all duration-500"
+                                     :style="`width: ${Math.round((sol.concluidos / (sol.total || 1)) * 100)}%`"
+                                     :title="`Concluídos: ${sol.concluidos}`"></div>
+                                <div x-show="(sol.em_analise + sol.em_correcao) > 0"
+                                     class="h-full bg-indigo-500 transition-all duration-500"
+                                     :style="`width: ${Math.round(((sol.em_analise + sol.em_correcao) / (sol.total || 1)) * 100)}%`"
+                                     :title="`Em Análise / Dev: ${sol.em_analise + sol.em_correcao}`"></div>
+                                <div x-show="sol.abertos > 0"
+                                     class="h-full bg-amber-400 transition-all duration-500"
+                                     :style="`width: ${Math.round((sol.abertos / (sol.total || 1)) * 100)}%`"
+                                     :title="`Abertos: ${sol.abertos}`"></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- PAINEL INTERATIVO DRILL-DOWN DE RASTREAMENTO DO USUÁRIO SELECIONADO -->
+        <div x-show="usuarioRastreado !== ''" x-transition class="bg-white rounded-3xl p-5 sm:p-6 border-2 border-indigo-400 shadow-lg" style="display: none;">
+            <div class="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 mb-4">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-indigo-600 text-white flex items-center justify-center shadow-sm">
+                        <i class="fa-solid fa-magnifying-glass-chart"></i>
+                    </div>
+                    <div>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-indigo-600 block">Rastreamento Individual de Demandas</span>
+                        <h3 class="text-sm sm:text-base font-black text-slate-800">
+                            Chamados de <span class="text-indigo-700" x-text="usuarioRastreado">USUARIO</span>
+                            (<span x-text="chamadosDoUsuarioRastreado().length">0</span> carregado(s) na visão atual)
+                        </h3>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button type="button" @click="limparFiltros(); modoExibicao = 'dashboard'"
+                            class="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition">
+                        <i class="fa-solid fa-rotate"></i> Mostrar Base Completa
+                    </button>
+                    <button type="button" @click="usuarioRastreado = ''"
+                            class="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-black transition">
+                        <i class="fa-solid fa-xmark"></i> Fechar Rastreio
+                    </button>
+                </div>
+            </div>
+
+            <div x-show="chamadosDoUsuarioRastreado().length === 0" class="py-8 text-center text-xs text-slate-500 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                Nenhum chamado visível com os filtros ativos no topo. Clique em <strong>"Mostrar Base Completa"</strong> ou <strong>"Filtrar Lista"</strong> para visualizar todos os chamados deste solicitante.
+            </div>
+
+            <div class="overflow-x-auto" x-show="chamadosDoUsuarioRastreado().length > 0">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-[10px] font-black uppercase text-slate-400">
+                            <th class="py-2.5 px-3">#ID</th>
+                            <th class="py-2.5 px-3">Sistema / Módulo</th>
+                            <th class="py-2.5 px-3">Título &amp; Relato</th>
+                            <th class="py-2.5 px-3 text-center">Criticidade</th>
+                            <th class="py-2.5 px-3 text-center">Estágio</th>
+                            <th class="py-2.5 px-3">TI Responsável</th>
+                            <th class="py-2.5 px-3">Abertura</th>
+                            <th class="py-2.5 px-3 text-center">Ação</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100">
+                        <template x-for="ch in chamadosDoUsuarioRastreado()" :key="`rast-${ch.idchamado}`">
+                            <tr @click="abrirDetalhes(ch.idchamado)" class="hover:bg-indigo-50/50 cursor-pointer transition">
+                                <td class="py-2.5 px-3 font-black text-indigo-700" x-text="`#${ch.idchamado}`">#0</td>
+                                <td class="py-2.5 px-3">
+                                    <span class="text-[9px] font-black uppercase px-1.5 py-0.5 rounded border mr-1" :class="badgeSistema(ch.tipo_sistema)" x-text="ch.tipo_sistema">PORTAL</span>
+                                    <span class="text-[11px] font-semibold text-slate-600" x-text="ch.modulo_nome || ch.subtipo_item || '-'">Módulo</span>
+                                </td>
+                                <td class="py-2.5 px-3 max-w-md">
+                                    <span class="font-bold text-slate-800 block line-clamp-1" x-text="ch.titulo">Título</span>
+                                    <span class="text-[10px] text-slate-400 line-clamp-1" x-text="ch.motivo">Motivo</span>
+                                </td>
+                                <td class="py-2.5 px-3 text-center">
+                                    <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded-full" :class="badgeCriticidade(ch.criticidade)" x-text="ch.criticidade">media</span>
+                                </td>
+                                <td class="py-2.5 px-3 text-center">
+                                    <span class="text-[10px] font-black uppercase px-2 py-0.5 rounded-full border" :class="ch.status_info.cor" x-text="ch.status_info.label">Aberto</span>
+                                </td>
+                                <td class="py-2.5 px-3 font-bold text-emerald-700" x-text="ch.atendente || 'ALAN'">ALAN</td>
+                                <td class="py-2.5 px-3 text-[11px] text-slate-400" x-text="ch.data_fmt">-</td>
+                                <td class="py-2.5 px-3 text-center">
+                                    <span class="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 font-bold text-[11px]">Abrir</span>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- TABELA ANALÍTICA COMPLETA DE RASTREAMENTO POR SOLICITANTE -->
+        <div class="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+                <div>
+                    <h3 class="text-xs font-black uppercase tracking-wider text-slate-800">Matriz Analítica de Rastreamento por Solicitante</h3>
+                    <p class="text-[11px] text-slate-400 font-medium">Consolidado histórico com volume, backlog aberto, criticidade e taxa de resolução</p>
+                </div>
+                <span class="text-[11px] font-black px-2.5 py-1 rounded-xl bg-slate-100 text-slate-700"
+                      x-text="`${(metricas.ranking_solicitantes || []).length} usuário(s)`">0</span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-50/80 border-b border-slate-100 text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                            <th class="py-3 px-4">#</th>
+                            <th class="py-3 px-4">Solicitante</th>
+                            <th class="py-3 px-4 text-center">Total (%)</th>
+                            <th class="py-3 px-4 text-center">Abertos</th>
+                            <th class="py-3 px-4 text-center">Análise / Dev</th>
+                            <th class="py-3 px-4 text-center">Concluídos</th>
+                            <th class="py-3 px-4 text-center">Críticos / Altos</th>
+                            <th class="py-3 px-4">Foco Principal</th>
+                            <th class="py-3 px-4 text-center">Conclusão</th>
+                            <th class="py-3 px-4">Última Abertura</th>
+                            <th class="py-3 px-4 text-center">Rastrear</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 font-semibold text-slate-600">
+                        <template x-for="(sol, idxT) in (metricas.ranking_solicitantes || [])" :key="`tab-${sol.username}`">
+                            <tr class="hover:bg-indigo-50/30 transition">
+                                <td class="py-2.5 px-4 font-black text-slate-400" x-text="idxT + 1">1</td>
+                                <td class="py-2.5 px-4 font-black text-slate-800" x-text="sol.username">USER</td>
+                                <td class="py-2.5 px-4 text-center">
+                                    <span class="font-black text-indigo-700" x-text="sol.total">0</span>
+                                    <span class="text-[10px] text-slate-400" x-text="`(${sol.percentual}%)`"></span>
+                                </td>
+                                <td class="py-2.5 px-4 text-center font-bold text-amber-600" x-text="sol.abertos">0</td>
+                                <td class="py-2.5 px-4 text-center font-bold text-purple-600" x-text="sol.em_analise + sol.em_correcao">0</td>
+                                <td class="py-2.5 px-4 text-center font-bold text-emerald-600" x-text="sol.concluidos">0</td>
+                                <td class="py-2.5 px-4 text-center">
+                                    <span class="px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 font-black text-[10px]" x-text="sol.criticos">0</span>
+                                    <span class="text-slate-300 mx-0.5">/</span>
+                                    <span class="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-black text-[10px]" x-text="sol.altos">0</span>
+                                </td>
+                                <td class="py-2.5 px-4 text-[11px] text-slate-600" x-text="`${sol.sistema_principal} (${sol.modulo_principal})`">-</td>
+                                <td class="py-2.5 px-4 text-center">
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-black"
+                                          :class="sol.taxa_conclusao >= 75 ? 'bg-emerald-100 text-emerald-700' : (sol.taxa_conclusao >= 40 ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-700')"
+                                          x-text="`${sol.taxa_conclusao}%`">0%</span>
+                                </td>
+                                <td class="py-2.5 px-4 text-[11px] text-slate-400" x-text="sol.ultimo_chamado_fmt">-</td>
+                                <td class="py-2.5 px-4 text-center">
+                                    <button type="button" @click="selecionarUsuarioRastreamento(sol.username)"
+                                            class="px-2.5 py-1 rounded-lg text-[11px] font-bold transition"
+                                            :class="usuarioRastreado === sol.username ? 'bg-indigo-600 text-white' : 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100'">
+                                        <span x-text="usuarioRastreado === sol.username ? 'Ativo' : 'Rastrear'">Rastrear</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- GRID ANALÍTICO 360° -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Funil de Estágios + Demandas por Sistema -->
             <div class="space-y-6">
                 <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
-                    <h3 class="text-xs font-black uppercase text-slate-800 pb-3 border-b border-slate-100 mb-4">Matriz de Criticidade</h3>
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                        <h3 class="text-xs font-black uppercase text-slate-800">Funil de Estágios de Atendimento</h3>
+                        <span class="text-[11px] font-bold text-slate-400" x-text="`${kpis.total || 0} total`">0 total</span>
+                    </div>
+                    <div class="space-y-3">
+                        <template x-for="stItem in (metricas.por_status || [])" :key="stItem.status">
+                            <div>
+                                <div class="flex items-center justify-between text-xs mb-1">
+                                    <span class="font-bold text-slate-700" x-text="stItem.label">Status</span>
+                                    <span class="font-black text-slate-800" x-text="`${stItem.total} (${stItem.percentual}%)`">0</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                                    <div class="h-full rounded-full transition-all duration-500"
+                                         :class="stItem.status == 3 ? 'bg-emerald-500' : (stItem.status == 2 ? 'bg-purple-500' : (stItem.status == 1 ? 'bg-blue-500' : (stItem.status == 0 ? 'bg-amber-400' : 'bg-slate-400')))"
+                                         :style="`width: ${stItem.percentual || 0}%`"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
+                        <h3 class="text-xs font-black uppercase text-slate-800">Demandas por Sistema Corporativo</h3>
+                        <span class="text-xs font-black text-slate-400" x-text="`${(metricas.por_sistema || []).length} sistemas`">0</span>
+                    </div>
+                    <div class="space-y-3.5">
+                        <template x-for="sis in (metricas.por_sistema || [])" :key="sis.sistema">
+                            <div>
+                                <div class="flex items-center justify-between text-xs mb-1">
+                                    <div class="flex items-center gap-2">
+                                        <span class="text-[9px] font-black uppercase px-2 py-0.5 rounded border inline-block" :class="badgeSistema(sis.sistema)" x-text="sis.sistema">PORTAL</span>
+                                        <span class="font-bold text-slate-700" x-text="nomeSistema(sis.sistema)">Nome</span>
+                                    </div>
+                                    <span class="text-xs font-black text-slate-800" x-text="sis.total">0</span>
+                                </div>
+                                <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                                    <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500"
+                                         :style="`width: ${Math.round((parseInt(sis.total) / (parseInt(kpis.total) || 1)) * 100)}%`"></div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Criticidade, Categorias, Módulos e Entregas Recentes -->
+            <div class="space-y-6">
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <h3 class="text-xs font-black uppercase text-slate-800 pb-3 border-b border-slate-100 mb-4">Matriz de Criticidade &amp; Natureza</h3>
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                         <template x-for="crit in (metricas.por_criticidade || [])" :key="crit.criticidade">
                             <div class="p-3 rounded-xl border text-center" :class="badgeCriticidade(crit.criticidade)">
                                 <span class="text-[10px] font-black uppercase block mb-0.5" x-text="crit.criticidade">Média</span>
                                 <span class="text-2xl font-black block" x-text="crit.total">0</span>
+                            </div>
+                        </template>
+                    </div>
+                    <div class="pt-3 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <template x-for="cat in (metricas.por_categoria || [])" :key="cat.categoria">
+                            <div class="bg-slate-50 border border-slate-200/70 rounded-xl px-3 py-2 flex items-center justify-between gap-2">
+                                <span class="text-[11px] font-bold text-slate-700 truncate" x-text="labelCategoria(cat.categoria)">Cat</span>
+                                <span class="text-[11px] font-black text-indigo-700" x-text="`${cat.total} (${cat.percentual}%)`">0</span>
                             </div>
                         </template>
                     </div>
@@ -764,6 +1110,29 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <span class="text-xs font-black px-2 py-0.5 rounded-lg bg-indigo-100 text-indigo-700" x-text="mod.total">0</span>
                             </div>
                         </template>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm">
+                    <h3 class="text-xs font-black uppercase text-slate-800 pb-3 border-b border-slate-100 mb-3">Últimas Entregas Técnicas Concluídas</h3>
+                    <div class="space-y-2">
+                        <template x-for="ent in (metricas.resolvidos_recentes || [])" :key="ent.idchamado">
+                            <div @click="abrirDetalhes(ent.idchamado)"
+                                 class="p-2.5 rounded-xl bg-emerald-50/50 hover:bg-emerald-50 border border-emerald-200/70 flex items-center justify-between gap-2 cursor-pointer transition">
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex items-center gap-1.5">
+                                        <span class="text-[10px] font-black text-emerald-800 bg-emerald-100 px-1.5 py-0.5 rounded" x-text="`#${ent.idchamado}`">#0</span>
+                                        <span class="text-xs font-bold text-slate-800 truncate" x-text="ent.titulo">Entrega</span>
+                                    </div>
+                                    <span class="text-[10px] text-slate-500 font-medium block mt-0.5"
+                                          x-text="`${ent.modulo_nome || ent.tipo_sistema} · TI: ${ent.atendente || 'ALAN'} · ${ent.versao_entrega || 'v3.5'}`"></span>
+                                </div>
+                                <span class="text-[10px] font-black text-emerald-700 shrink-0" x-text="ent.concluido_fmt">-</span>
+                            </div>
+                        </template>
+                        <div x-show="(metricas.resolvidos_recentes || []).length === 0" class="text-center py-4 text-xs text-slate-400">
+                            Nenhuma entrega concluída ainda.
+                        </div>
                     </div>
                 </div>
             </div>
@@ -835,6 +1204,19 @@ require_once __DIR__ . '/../estrutura/header.php';
                             </template>
                         </select>
                     </div>
+                </div>
+
+                <!-- Vincular Solicitante (Exclusivo Admin / TI Liberado) -->
+                <div x-show="ehTiLiberado()" class="bg-indigo-50/70 p-3 rounded-2xl border border-indigo-200/80">
+                    <div class="flex items-center justify-between gap-2 mb-1">
+                        <label class="text-[11px] font-black text-indigo-900 uppercase tracking-wider">Solicitante do Chamado (Vincular Usuário)</label>
+                        <span class="text-[10px] font-semibold text-indigo-600">Exclusivo Admin / TI</span>
+                    </div>
+                    <select x-model="novoForm.solicitante" class="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500">
+                        <template x-for="usr in usuariosSolicitantes" :key="`nv-${usr.username}`">
+                            <option :value="usr.username" x-text="`${usr.username}${usr.nome && usr.nome !== usr.username ? ' (' + usr.nome + ')' : ''}`"></option>
+                        </template>
+                    </select>
                 </div>
 
                 <!-- Módulo do Portal (se PORTAL) ou Detalhe do Item -->
@@ -947,10 +1329,21 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 text-slate-600" x-text="chamadoAtual.categoria">bug</span>
                             </div>
                             <h2 class="text-base sm:text-lg font-black text-slate-800 leading-snug" x-text="chamadoAtual.titulo || chamadoAtual.motivo">Título</h2>
-                            <p class="text-[11px] text-slate-500 mt-1">
-                                Solicitado por <strong class="text-slate-800" x-text="chamadoAtual.solicitante">User</strong> em <span x-text="chamadoAtual.data_fmt">Data</span> ·
-                                Origem: <strong class="text-indigo-600" x-text="chamadoAtual.tipo_sistema === 'PORTAL' ? chamadoAtual.modulo_nome : (chamadoAtual.equipamento_detalhe || chamadoAtual.subtipo_item || chamadoAtual.tipo_sistema)">Módulo</strong> ·
-                                Responsável: <strong class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" x-text="chamadoAtual.atendente || 'ALAN'">ALAN</strong>
+                            <p class="text-[11px] text-slate-500 mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                                <span>Solicitado por</span>
+                                <strong x-show="!ehTiLiberado()" class="text-slate-800" x-text="chamadoAtual.solicitante">User</strong>
+                                <select x-show="ehTiLiberado()"
+                                        :value="chamadoAtual.solicitante"
+                                        @change="alterarSolicitanteRapido($event.target.value)"
+                                        class="px-2 py-0.5 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg text-[11px] font-black text-indigo-800 focus:outline-none cursor-pointer"
+                                        title="Alterar solicitante vinculado (Admin/TI)">
+                                    <template x-for="usr in usuariosSolicitantes" :key="`hdr-${usr.username}`">
+                                        <option :value="usr.username" x-text="usr.username"></option>
+                                    </template>
+                                </select>
+                                <span>em <span x-text="chamadoAtual.data_fmt">Data</span> ·</span>
+                                <span>Origem: <strong class="text-indigo-600" x-text="chamadoAtual.tipo_sistema === 'PORTAL' ? chamadoAtual.modulo_nome : (chamadoAtual.equipamento_detalhe || chamadoAtual.subtipo_item || chamadoAtual.tipo_sistema)">Módulo</strong> ·</span>
+                                <span>Responsável: <strong class="text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200" x-text="chamadoAtual.atendente || 'ALAN'">ALAN</strong></span>
                             </p>
                         </div>
 
@@ -961,11 +1354,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <i class="fa-solid fa-user-check"></i>
                                 <span>Assumir</span>
                             </button>
-                            <button type="button" @click="editandoChamado ? (editandoChamado = false) : iniciarEdicaoChamado()"
+                            <button type="button" x-show="ehTiLiberado() || Number(chamadoAtual.status) < 3"
+                                    @click="editandoChamado ? (editandoChamado = false) : iniciarEdicaoChamado()"
                                     class="px-3 py-1.5 rounded-xl font-black text-xs flex items-center gap-1.5 border transition"
                                     :class="editandoChamado ? 'bg-amber-100 text-amber-800 border-amber-300' : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'">
                                 <i class="fa-solid fa-pen-to-square"></i>
-                                <span x-text="editandoChamado ? 'Cancelar Edição' : 'Editar Chamado'">Editar Chamado</span>
+                                <span x-text="editandoChamado ? 'Cancelar Edição' : (ehTiLiberado() ? 'Editar Chamado' : 'Editar Texto / Título')">Editar Chamado</span>
                             </button>
                             <button type="button" @click="modalDetalhesAberto = false" class="text-slate-400 hover:text-slate-700 w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center">
                                 <i class="fa-solid fa-xmark"></i>
@@ -973,57 +1367,81 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
                     </div>
 
-                    <!-- STEPPER VISUAL DE STATUS CLICÁVEL -->
-                    <div class="py-2.5 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2 bg-slate-50/70 -mx-5 sm:-mx-6 px-5 sm:px-6">
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <span class="text-[10px] font-black uppercase text-slate-400 mr-1">Estágio:</span>
-                            <template x-for="stOpt in [
-                                {v:0, l:'0. Aberto', cls:'bg-amber-500 text-white border-amber-600'},
-                                {v:1, l:'1. Em Análise', cls:'bg-blue-600 text-white border-blue-700'},
-                                {v:2, l:'2. Em Correção', cls:'bg-purple-600 text-white border-purple-700'},
-                                {v:3, l:'3. Concluído', cls:'bg-emerald-600 text-white border-emerald-700'},
-                                {v:4, l:'4. Cancelado', cls:'bg-slate-700 text-white border-slate-800'}
-                            ]" :key="stOpt.v">
-                                <button type="button" @click="trocarStatus(stOpt.v)"
-                                        class="px-2.5 py-1 rounded-xl text-[11px] font-bold border transition"
-                                        :class="Number(chamadoAtual.status) === stOpt.v ? stOpt.cls + ' shadow-xs' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'"
-                                        x-text="stOpt.l"></button>
-                            </template>
+                    <!-- STEPPER VISUAL DE STATUS (INTERATIVO SOMENTE PARA TI LIBERADO) -->
+                    <div class="py-2.5 border-b border-slate-100 bg-slate-50/70 -mx-5 sm:-mx-6 px-5 sm:px-6">
+                        <div x-show="ehTiLiberado()" class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] font-black uppercase text-slate-400 mr-1">Estágio:</span>
+                                <template x-for="stOpt in [
+                                    {v:0, l:'0. Aberto', cls:'bg-amber-500 text-white border-amber-600'},
+                                    {v:1, l:'1. Em Análise', cls:'bg-blue-600 text-white border-blue-700'},
+                                    {v:2, l:'2. Em Correção', cls:'bg-purple-600 text-white border-purple-700'},
+                                    {v:3, l:'3. Concluído', cls:'bg-emerald-600 text-white border-emerald-700'},
+                                    {v:4, l:'4. Cancelado', cls:'bg-slate-700 text-white border-slate-800'}
+                                ]" :key="stOpt.v">
+                                    <button type="button" @click="trocarStatus(stOpt.v)"
+                                            class="px-2.5 py-1 rounded-xl text-[11px] font-bold border transition"
+                                            :class="Number(chamadoAtual.status) === stOpt.v ? stOpt.cls + ' shadow-xs' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'"
+                                            x-text="stOpt.l"></button>
+                                </template>
+                            </div>
+
+                            <!-- Controles Rápidos de Criticidade e Fila (TI) -->
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <template x-for="cr in [
+                                    {v:'critica', l:'🔴 Crítica'},
+                                    {v:'alta', l:'🟠 Alta'},
+                                    {v:'media', l:'🔵 Média'},
+                                    {v:'baixa', l:'🟢 Baixa'}
+                                ]" :key="cr.v">
+                                    <button type="button" @click="alterarCriticidadeRapida(chamadoAtual, cr.v)"
+                                            class="px-2 py-1 rounded-lg text-[10px] font-black border transition"
+                                            :class="chamadoAtual.criticidade === cr.v ? badgeCriticidade(cr.v) + ' ring-1 ring-offset-1 ring-indigo-400' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'"
+                                            x-text="cr.l"></button>
+                                </template>
+
+                                <button type="button" @click="moverParaTopo(chamadoAtual)"
+                                        class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 text-[10px] font-black transition"
+                                        title="Colocar no topo da prioridade (#1)">
+                                    ⚡ Topo #1
+                                </button>
+                                <div class="flex items-center bg-white border border-slate-200 rounded-lg px-1.5 py-0.5">
+                                    <span class="text-[10px] font-bold text-slate-400 mr-1">Pos:</span>
+                                    <input type="number" min="1" max="999" :value="chamadoAtual.prioridade || 10"
+                                           @change="alterarPrioridadeModal($event.target.value)"
+                                           class="w-10 text-xs font-black text-indigo-700 focus:outline-none text-center">
+                                </div>
+                            </div>
                         </div>
 
-                        <!-- Controles Rápidos de Criticidade e Fila -->
-                        <div class="flex items-center gap-1.5 flex-wrap">
-                            <template x-for="cr in [
-                                {v:'critica', l:'🔴 Crítica'},
-                                {v:'alta', l:'🟠 Alta'},
-                                {v:'media', l:'🔵 Média'},
-                                {v:'baixa', l:'🟢 Baixa'}
-                            ]" :key="cr.v">
-                                <button type="button" @click="alterarCriticidadeRapida(chamadoAtual, cr.v)"
-                                        class="px-2 py-1 rounded-lg text-[10px] font-black border transition"
-                                        :class="chamadoAtual.criticidade === cr.v ? badgeCriticidade(cr.v) + ' ring-1 ring-offset-1 ring-indigo-400' : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'"
-                                        x-text="cr.l"></button>
-                            </template>
-
-                            <button type="button" @click="moverParaTopo(chamadoAtual)"
-                                    class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 border border-amber-300 text-[10px] font-black transition"
-                                    title="Colocar no topo da prioridade (#1)">
-                                ⚡ Topo #1
-                            </button>
-                            <div class="flex items-center bg-white border border-slate-200 rounded-lg px-1.5 py-0.5">
-                                <span class="text-[10px] font-bold text-slate-400 mr-1">Pos:</span>
-                                <input type="number" min="1" max="999" :value="chamadoAtual.prioridade || 10"
-                                       @change="alterarPrioridadeModal($event.target.value)"
-                                       class="w-10 text-xs font-black text-indigo-700 focus:outline-none text-center">
+                        <!-- Visualização Somente-Leitura para Solicitante -->
+                        <div x-show="!ehTiLiberado()" class="flex flex-wrap items-center justify-between gap-2">
+                            <div class="flex items-center gap-1.5 flex-wrap">
+                                <span class="text-[10px] font-black uppercase text-slate-400 mr-1">Andamento:</span>
+                                <template x-for="stOpt in [
+                                    {v:0, l:'0. Aberto', cls:'bg-amber-500 text-white border-amber-600'},
+                                    {v:1, l:'1. Em Análise', cls:'bg-blue-600 text-white border-blue-700'},
+                                    {v:2, l:'2. Em Correção', cls:'bg-purple-600 text-white border-purple-700'},
+                                    {v:3, l:'3. Concluído', cls:'bg-emerald-600 text-white border-emerald-700'},
+                                    {v:4, l:'4. Cancelado', cls:'bg-slate-700 text-white border-slate-800'}
+                                ]" :key="`ro-${stOpt.v}`">
+                                    <span class="px-2.5 py-1 rounded-xl text-[11px] font-bold border"
+                                          :class="Number(chamadoAtual.status) === stOpt.v ? stOpt.cls + ' shadow-xs' : 'bg-white/70 text-slate-400 border-slate-200'"
+                                          x-text="stOpt.l"></span>
+                                </template>
                             </div>
+                            <span class="text-[10px] font-bold text-slate-500 bg-white px-2.5 py-1 rounded-xl border border-slate-200 flex items-center gap-1.5">
+                                <i class="fa-solid fa-lock text-indigo-500"></i>
+                                Estágio e prioridade gerenciados pelo TI
+                            </span>
                         </div>
                     </div>
 
                     <!-- CORPO PRINCIPAL DO MODAL COM SCROLL -->
                     <div class="py-4 space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-1">
 
-                        <!-- BARRA DEVOPS TI -->
-                        <div class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3 rounded-2xl border border-slate-700/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                        <!-- BARRA DEVOPS TI (EXCLUSIVA TI LIBERADO) -->
+                        <div x-show="ehTiLiberado()" class="bg-gradient-to-r from-slate-900 via-slate-800 to-indigo-950 text-white p-3 rounded-2xl border border-slate-700/60 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
                             <div class="flex items-center gap-2.5">
                                 <div class="w-8 h-8 rounded-xl bg-indigo-500/20 text-indigo-300 flex items-center justify-center border border-indigo-500/30">
                                     <i class="fa-solid fa-laptop-code text-xs"></i>
@@ -1042,11 +1460,13 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                         <!-- MODO EDIÇÃO INLINE DO CHAMADO -->
                         <div x-show="editandoChamado" class="bg-amber-50/70 p-4 rounded-2xl border-2 border-amber-300 space-y-3" style="display: none;">
-                            <div class="flex items-center justify-between">
+                            <div class="flex items-center justify-between gap-2 flex-wrap">
                                 <span class="text-xs font-black uppercase text-amber-900 flex items-center gap-1.5">
-                                    <i class="fa-solid fa-pen-ruler"></i> Edição Livre do Chamado
+                                    <i class="fa-solid fa-pen-ruler"></i>
+                                    <span x-text="ehTiLiberado() ? 'Edição Completa do Chamado (TI)' : 'Editar Título & Descrição do Chamado'">Edição do Chamado</span>
                                 </span>
-                                <span class="text-[10px] font-semibold text-amber-700">Altere título, texto, criticidade, sistema ou atendente e clique em Salvar</span>
+                                <span class="text-[10px] font-semibold text-amber-700"
+                                      x-text="ehTiLiberado() ? 'Altere título, texto, criticidade, sistema ou atendente e clique em Salvar' : 'Atualize título, relato ou anexe novos prints (prioridade e estágio ficam com o TI)'"></span>
                             </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1056,7 +1476,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                            class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500">
                                 </div>
 
-                                <div>
+                                <div x-show="ehTiLiberado()">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Sistema</label>
                                     <select x-model="editForm.tipo_sistema" class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-700">
                                         <template x-for="s in sistemas" :key="s.id">
@@ -1065,7 +1485,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </select>
                                 </div>
 
-                                <div x-show="editForm.tipo_sistema === 'PORTAL'">
+                                <div x-show="ehTiLiberado() && editForm.tipo_sistema === 'PORTAL'">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Módulo Web</label>
                                     <select x-model="editForm.modulo_slug" class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-700">
                                         <option value="geral">Portal Geral</option>
@@ -1075,13 +1495,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </select>
                                 </div>
 
-                                <div x-show="editForm.tipo_sistema !== 'PORTAL'">
+                                <div x-show="ehTiLiberado() && editForm.tipo_sistema !== 'PORTAL'">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Detalhe / Subtipo / Equipamento</label>
                                     <input type="text" x-model="editForm.equipamento_detalhe" placeholder="Detalhe..."
                                            class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-semibold text-slate-700">
                                 </div>
 
-                                <div>
+                                <div x-show="ehTiLiberado()">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Categoria</label>
                                     <select x-model="editForm.categoria" class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-700">
                                         <option value="bug">Bug / Erro</option>
@@ -1092,7 +1512,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </select>
                                 </div>
 
-                                <div>
+                                <div x-show="ehTiLiberado()">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Responsável Técnico (Atendente)</label>
                                     <select x-model="editForm.atendente" class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-700">
                                         <template x-for="at in atendentes" :key="at">
@@ -1101,7 +1521,16 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </select>
                                 </div>
 
-                                <div>
+                                <div x-show="ehTiLiberado()">
+                                    <label class="text-[10px] font-bold text-indigo-700 uppercase block mb-1">Solicitante (Usuário Vinculado)</label>
+                                    <select x-model="editForm.solicitante" class="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-900">
+                                        <template x-for="usr in usuariosSolicitantes" :key="`ed-${usr.username}`">
+                                            <option :value="usr.username" x-text="`${usr.username}${usr.nome && usr.nome !== usr.username ? ' (' + usr.nome + ')' : ''}`"></option>
+                                        </template>
+                                    </select>
+                                </div>
+
+                                <div x-show="ehTiLiberado()">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Criticidade</label>
                                     <select x-model="editForm.criticidade" class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-700">
                                         <option value="critica">🔴 Crítica</option>
@@ -1111,7 +1540,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </select>
                                 </div>
 
-                                <div>
+                                <div x-show="ehTiLiberado()">
                                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Prioridade Numérica (1 = Topo)</label>
                                     <input type="number" min="1" max="999" x-model.number="editForm.prioridade"
                                            class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800">
@@ -1135,13 +1564,20 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 </button>
                             </div>
 
-                            <div class="flex items-center justify-end gap-2 pt-2">
-                                <button type="button" @click="editandoChamado = false" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold">Cancelar</button>
-                                <button type="button" @click="salvarEdicaoChamado()" :disabled="salvandoEdicao"
-                                        class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-sm">
-                                    <i class="fa-solid" :class="salvandoEdicao ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
-                                    <span>Salvar Alterações</span>
+                            <div class="flex flex-wrap items-center justify-between gap-2 pt-2">
+                                <button type="button" @click="$refs.modalDiretoAnexoInput.click()"
+                                        class="px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 text-xs font-bold flex items-center gap-1.5 transition">
+                                    <i class="fa-solid fa-camera"></i>
+                                    <span>+ Anexar Novo Print / Arquivo</span>
                                 </button>
+                                <div class="flex items-center gap-2">
+                                    <button type="button" @click="editandoChamado = false" class="px-4 py-2 rounded-xl bg-white border border-slate-200 text-slate-600 text-xs font-bold">Cancelar</button>
+                                    <button type="button" @click="salvarEdicaoChamado()" :disabled="salvandoEdicao"
+                                            class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black flex items-center gap-1.5 shadow-sm">
+                                        <i class="fa-solid" :class="salvandoEdicao ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+                                        <span>Salvar Alterações</span>
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -1149,8 +1585,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <div x-show="!editandoChamado" class="bg-slate-50 p-4 rounded-2xl border border-slate-200">
                             <div class="flex items-center justify-between mb-1.5">
                                 <span class="text-[10px] font-black text-slate-400 uppercase tracking-wider">Descrição / Solicitação</span>
-                                <button type="button" @click="iniciarEdicaoChamado()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
-                                    <i class="fa-solid fa-pen"></i> Editar texto / dados
+                                <button type="button" x-show="ehTiLiberado() || Number(chamadoAtual.status) < 3"
+                                        @click="iniciarEdicaoChamado()"
+                                        class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1">
+                                    <i class="fa-solid fa-pen"></i>
+                                    <span x-text="ehTiLiberado() ? 'Editar texto / dados' : 'Editar título / descrição'">Editar texto</span>
                                 </button>
                             </div>
                             <p class="text-xs text-slate-700 whitespace-pre-wrap font-medium leading-relaxed" x-text="chamadoAtual.motivo || chamadoAtual.observacao">Descrição</p>
@@ -1277,8 +1716,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <!-- FORMULÁRIO DE NOVO COMENTÁRIO / RESOLUÇÃO -->
                         <div @paste.stop="tratarColagemPrint($event, 'interacao')" class="bg-indigo-50/60 p-4 rounded-2xl border border-indigo-200/80 space-y-3">
                             <div class="flex flex-wrap items-center justify-between gap-2">
-                                <span class="text-[11px] font-black uppercase text-indigo-900">Adicionar Comentário / Solução / Evidência</span>
-                                <select x-model="novaInteracao.tipo" class="px-2.5 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] font-bold text-slate-700">
+                                <span class="text-[11px] font-black uppercase text-indigo-900"
+                                      x-text="ehTiLiberado() ? 'Adicionar Comentário / Solução / Evidência' : 'Adicionar Comentário ou Novo Print (Ctrl+V)'">Adicionar Comentário</span>
+                                <select x-show="ehTiLiberado()" x-model="novaInteracao.tipo" class="px-2.5 py-1 bg-white border border-indigo-200 rounded-lg text-[11px] font-bold text-slate-700">
                                     <option value="comentario">💬 Comentário Geral</option>
                                     <option value="progresso">🛠️ Progresso Técnico</option>
                                     <option value="evidencia">📸 Evidência / Print</option>
@@ -1311,18 +1751,18 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <span>Anexar Print</span>
                                     </button>
 
-                                    <label class="text-xs text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer ml-1">
+                                    <label x-show="ehTiLiberado()" class="text-xs text-slate-700 font-bold flex items-center gap-1.5 cursor-pointer ml-1">
                                         <input type="checkbox" x-model="novaInteracao.eh_resolucao" class="rounded text-indigo-600 focus:ring-0">
                                         <span>Marcar como Concluído</span>
                                     </label>
-                                    <input type="text" x-show="novaInteracao.eh_resolucao" x-model="novaInteracao.versao_entrega" placeholder="Versão (ex: v3.5)"
+                                    <input type="text" x-show="ehTiLiberado() && novaInteracao.eh_resolucao" x-model="novaInteracao.versao_entrega" placeholder="Versão (ex: v3.5)"
                                            class="px-2 py-1 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 w-24">
                                 </div>
 
                                 <button type="button" @click="enviarInteracao()" :disabled="!novaInteracao.mensagem && !novaInteracao.anexo_url"
                                         class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs flex items-center gap-1.5 transition shadow-xs">
                                     <i class="fa-solid fa-paper-plane"></i>
-                                    <span>Registrar Comentário</span>
+                                    <span x-text="ehTiLiberado() ? 'Registrar Comentário' : 'Enviar Comentário'">Registrar Comentário</span>
                                 </button>
                             </div>
                         </div>

@@ -67,6 +67,9 @@ const estado = {
     faixasClassificacao: [],
     
     // Estado do Wizard de Avaliação
+    idAvaliacaoEditando: null,
+    fichaAbertaId: null,
+    fichaAbertaDados: null,
     colaboradorSelecionado: null,
     anoSelecionado: new Date().getFullYear(),
     mesSelecionado: new Date().getMonth() + 1,
@@ -1008,7 +1011,9 @@ function iniciarQuestionario() {
     estado.anoSelecionado = parseInt($('selAno').value);
     estado.mesSelecionado = parseInt($('selMes').value);
     estado.indicePerguntaAtual = 0;
-    estado.respostas = {}; // Reinicia respostas
+    if (!estado.idAvaliacaoEditando) {
+        estado.respostas = {}; // Reinicia respostas apenas em nova avaliação
+    }
 
     // Transição de Telas
     $('stepSelecao').classList.add('hidden');
@@ -1016,6 +1021,33 @@ function iniciarQuestionario() {
     $('stepSintese').classList.add('hidden');
 
     renderizarPerguntaAtual();
+}
+
+/**
+ * Permite navegar entre etapas durante a edição de uma avaliação não finalizada
+ */
+function irParaEtapaEdicao(etapa) {
+    if (etapa === 1) {
+        $('stepSelecao').classList.remove('hidden');
+        $('stepQuestionario').classList.add('hidden');
+        $('stepSintese').classList.add('hidden');
+    } else if (etapa === 2) {
+        if (!estado.colaboradorSelecionado) {
+            Swal.fire({ ...swalBase, icon: 'warning', title: 'Selecione o Colaborador', text: 'Selecione um colaborador na Etapa 1.' });
+            return;
+        }
+        estado.indicePerguntaAtual = 0;
+        $('stepSelecao').classList.add('hidden');
+        $('stepQuestionario').classList.remove('hidden');
+        $('stepSintese').classList.add('hidden');
+        renderizarPerguntaAtual();
+    } else if (etapa === 3) {
+        if (!estado.colaboradorSelecionado || Object.keys(estado.respostas).length === 0) {
+            Swal.fire({ ...swalBase, icon: 'info', title: 'Preencha as Respostas', text: 'Responda às questões antes de avançar para o resultado.' });
+            return;
+        }
+        exibirStepSintese();
+    }
 }
 
 // ==========================================
@@ -1496,9 +1528,9 @@ function abrirPlanoAcaoColaborador(idavaliacao, idplano = null) {
 }
 
 /**
- * Salva a avaliação final no banco de dados
+ * Abre o diálogo de escolha quando o gestor clica em "Salvar Avaliação"
  */
-async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
+async function abrirEscolhaSalvarAvaliacao() {
     if (!estado.colaboradorSelecionado) return;
 
     if (!estado.conceitoLetraSelecionada) {
@@ -1512,35 +1544,115 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
     }
 
     const chkPdi = $('chkRequerPdi');
+    const requerPdi = chkPdi ? chkPdi.checked : false;
+    const modoEdicaoTxt = estado.idAvaliacaoEditando ? ` (Atualização da Ficha #${estado.idAvaliacaoEditando})` : '';
+
+    const escolha = await Swal.fire({
+        ...swalBase,
+        title: `Como deseja gravar${modoEdicaoTxt}?`,
+        html: `
+            <div class="text-left text-xs space-y-2.5">
+                <p>Colaborador: <b>${esc(estado.colaboradorSelecionado.nome)}</b></p>
+                <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
+                    <div><b>Período:</b> ${String(estado.mesSelecionado).padStart(2, '0')}/${estado.anoSelecionado}</div>
+                    <div><b>Pontuação Total:</b> ${$('resumoPontosTotal').textContent}</div>
+                    <div><b>Classificação:</b> ${$('resumoClassificacao').textContent}</div>
+                    <div><b>Conceito:</b> Letra ${estado.conceitoLetraSelecionada}</div>
+                    <div><b>PDI / Plano 5W2H:</b> ${requerPdi ? '<span class="text-rose-600 font-black">SIM (Ativado)</span>' : 'Não solicitado'}</div>
+                </div>
+                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold space-y-1">
+                    <div><i class="fa-solid fa-floppy-disk text-indigo-600 mr-1"></i> <b>Salvar Apenas:</b> O gestor/usuário liberado poderá editar resultado, notas ou excluir depois.</div>
+                    <div><i class="fa-solid fa-lock text-emerald-700 mr-1"></i> <b>Finalizar &amp; Imprimir:</b> Trava edição e exclusão definitivamente, liberando a ficha para assinaturas.</div>
+                </div>
+            </div>
+        `,
+        icon: 'question',
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        denyButtonColor: '#4f46e5',
+        confirmButtonText: 'Finalizar e Imprimir p/ Assinatura',
+        denyButtonText: 'Salvar Apenas (Editável)',
+        cancelButtonText: 'Revisar'
+    });
+
+    if (escolha.isConfirmed) {
+        await executarGravacaoAvaliacao(false, true);
+    } else if (escolha.isDenied) {
+        await executarGravacaoAvaliacao(false, false);
+    }
+}
+
+/**
+ * Salva a avaliação (modo editável ou finalizada para impressão/assinatura)
+ */
+async function salvarAvaliacaoFinal(irParaPlanoAcao = false, finalizar = null) {
+    if (!estado.colaboradorSelecionado) return;
+
+    if (!estado.conceitoLetraSelecionada) {
+        Swal.fire({
+            ...swalBase,
+            icon: 'warning',
+            title: 'Conceito Obrigatório',
+            text: 'Por favor, selecione uma das Letras de Conceito (A a F).'
+        });
+        return;
+    }
+
+    if (!irParaPlanoAcao && finalizar === null) {
+        await abrirEscolhaSalvarAvaliacao();
+        return;
+    }
+
+    const chkPdi = $('chkRequerPdi');
     const requerPdi = irParaPlanoAcao || (chkPdi ? chkPdi.checked : false);
+
+    const avisoFinalizar = finalizar
+        ? `<div class="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-[11px] text-emerald-900 font-bold"><i class="fa-solid fa-lock mr-1"></i> Atenção: Ao finalizar e imprimir para assinaturas, não será mais possível editar nem excluir esta avaliação (apenas visualizar e reimprimir).</div>`
+        : `<div class="p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl text-[11px] text-indigo-900 font-semibold"><i class="fa-solid fa-pen-to-square mr-1"></i> A avaliação ficará salva como editável até que você clique em Finalizar/Imprimir.</div>`;
 
     const confirm = await Swal.fire({
         ...swalBase,
-        title: irParaPlanoAcao ? 'Salvar e Gerar Plano 5W2H?' : 'Confirmar Avaliação?',
+        title: irParaPlanoAcao
+            ? 'Salvar e Gerar Plano 5W2H?'
+            : (finalizar ? 'Deseja Finalizar e Imprimir para Assinatura?' : 'Salvar Avaliação (Editável)?'),
         html: `
             <div class="text-left text-xs space-y-2">
-                <p>Confirma o registro da avaliação de <b>${estado.colaboradorSelecionado.nome}</b>?</p>
+                <p>Confirma o registro da avaliação de <b>${esc(estado.colaboradorSelecionado.nome)}</b>?</p>
                 <div class="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1">
-                    <div><b>Período:</b> ${estado.mesSelecionado}/${estado.anoSelecionado}</div>
+                    <div><b>Período:</b> ${String(estado.mesSelecionado).padStart(2, '0')}/${estado.anoSelecionado}</div>
                     <div><b>Pontuação Total:</b> ${$('resumoPontosTotal').textContent}</div>
                     <div><b>Classificação:</b> ${$('resumoClassificacao').textContent}</div>
                     <div><b>Conceito:</b> Letra ${estado.conceitoLetraSelecionada}</div>
                     <div><b>Plano de Ação / PDI:</b> ${requerPdi ? '<span class="text-rose-600 font-black">SIM (Ativado)</span>' : 'Não solicitado'}</div>
                 </div>
+                ${avisoFinalizar}
             </div>
         `,
-        icon: 'question',
+        icon: finalizar ? 'warning' : 'question',
         showCancelButton: true,
-        confirmButtonText: irParaPlanoAcao ? 'Sim, Salvar e Abrir 5W2H' : 'Sim, Gravar Avaliação',
+        confirmButtonColor: finalizar ? '#059669' : '#4f46e5',
+        confirmButtonText: irParaPlanoAcao ? 'Sim, Salvar e Abrir 5W2H' : (finalizar ? 'Sim, Finalizar e Imprimir' : 'Sim, Salvar Apenas'),
         cancelButtonText: 'Revisar'
     });
 
     if (!confirm.isConfirmed) return;
 
-    // Prepara payload
+    await executarGravacaoAvaliacao(irParaPlanoAcao, !!finalizar);
+}
+
+/**
+ * Executa a requisição POST /avaliacao-chapd/salvar
+ */
+async function executarGravacaoAvaliacao(irParaPlanoAcao = false, finalizar = false) {
+    if (!estado.colaboradorSelecionado) return;
+
+    const chkPdi = $('chkRequerPdi');
+    const requerPdi = irParaPlanoAcao || (chkPdi ? chkPdi.checked : false);
     const respostasArray = Object.values(estado.respostas);
 
     const payload = {
+        id: estado.idAvaliacaoEditando || null,
         idcliforemp: estado.colaboradorSelecionado.idcliforemp,
         ano: estado.anoSelecionado,
         mes: estado.mesSelecionado,
@@ -1554,13 +1666,17 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
         pontos_desenvolver: $('inputPontosDesenvolver').value.trim(),
         plano_acao: $('inputPlanoAcao').value.trim(),
         requer_pdi: requerPdi,
+        finalizar: !!finalizar,
         observacoes_gerais: '',
         respostas: respostasArray
     };
 
     const btnSalvar = $('btnSalvarAvaliacao');
-    btnSalvar.disabled = true;
-    btnSalvar.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gravando...';
+    const btnFin = $('btnFinalizarImprimirAvaliacao');
+    const btnPdi = $('btnSalvarEAbrirPdi');
+    if (btnSalvar) { btnSalvar.disabled = true; btnSalvar.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Gravando...'; }
+    if (btnFin) { btnFin.disabled = true; }
+    if (btnPdi) { btnPdi.disabled = true; }
 
     try {
         const data = await apiFetch('salvar', 'POST', payload);
@@ -1577,13 +1693,21 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
         const nomeSalvo = estado.colaboradorSelecionado.nome;
         const precisaPdi = !!data.requer_pdi;
 
+        // Limpa formulário após gravar
+        iniciarNovaAvaliacao(false);
+
+        if (finalizar) {
+            await abrirModalFicha(data.id, true);
+            return;
+        }
+
         Swal.fire({
             ...swalBase,
             icon: 'success',
-            title: 'Avaliação Registrada!',
+            title: 'Avaliação Salva (Em Edição)!',
             html: `
                 <div class="text-xs space-y-2">
-                    <p>A avaliação de <b>${nomeSalvo}</b> foi gravada com sucesso.</p>
+                    <p>A avaliação de <b>${esc(nomeSalvo)}</b> foi salva e permanece liberada para edição ou exclusão até ser finalizada/impressa.</p>
                     <div class="p-2.5 bg-emerald-50 text-emerald-800 rounded-xl font-bold">
                         Pontos: ${data.pontuacao_total} • Conceito: ${data.conceito_letra} (${data.classificacao})
                     </div>
@@ -1594,8 +1718,8 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
                 </div>
             `,
             showDenyButton: true,
-            confirmButtonText: precisaPdi ? 'Estruturar Plano de Ação 5W2H' : 'Ver Ficha Completa',
-            denyButtonText: precisaPdi ? 'Ver Ficha Completa' : 'Ir para Dashboard'
+            confirmButtonText: precisaPdi ? 'Estruturar Plano de Ação 5W2H' : 'Visualizar / Imprimir Ficha',
+            denyButtonText: precisaPdi ? 'Visualizar Ficha' : 'Ver Histórico'
         }).then((result) => {
             if (result.isConfirmed) {
                 if (precisaPdi) {
@@ -1607,13 +1731,10 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
                 if (precisaPdi) {
                     abrirModalFicha(data.id);
                 } else {
-                    alternarAba('dashboard');
+                    alternarAba('historico');
                 }
             }
         });
-
-        // Limpa formulário
-        iniciarNovaAvaliacao(false);
 
     } catch (err) {
         console.error('Erro ao salvar avaliação:', err);
@@ -1624,16 +1745,18 @@ async function salvarAvaliacaoFinal(irParaPlanoAcao = false) {
             text: err.message
         });
     } finally {
-        btnSalvar.disabled = false;
-        btnSalvar.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Concluir e Salvar Avaliação';
+        if (btnSalvar) { btnSalvar.disabled = false; btnSalvar.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> <span>Salvar Avaliação</span>'; }
+        if (btnFin) { btnFin.disabled = false; }
+        if (btnPdi) { btnPdi.disabled = false; }
     }
 }
 
 function cancelarAvaliacao() {
+    const emEdicao = !!estado.idAvaliacaoEditando;
     Swal.fire({
         ...swalBase,
-        title: 'Descartar Avaliação?',
-        text: 'Todas as respostas desta avaliação serão perdidas.',
+        title: emEdicao ? 'Cancelar Alterações?' : 'Descartar Avaliação?',
+        text: emEdicao ? 'As alterações não salvas desta avaliação serão descartadas.' : 'Todas as respostas desta avaliação serão perdidas.',
         icon: 'warning',
         showCancelButton: true,
         confirmButtonText: 'Sim, Descartar',
@@ -1646,17 +1769,19 @@ function cancelarAvaliacao() {
 }
 
 function iniciarNovaAvaliacao(mudarParaAbaAvaliar = true) {
+    estado.idAvaliacaoEditando = null;
     estado.colaboradorSelecionado = null;
     estado.respostas = {};
     estado.indicePerguntaAtual = 0;
     estado.conceitoLetraSelecionada = '';
     estado.requerPdiManual = false;
 
-    $('selColaborador').value = '';
+    $('bannerModoEdicaoAvaliacao')?.classList.add('hidden');
+    if ($('selColaborador')) $('selColaborador').value = '';
     $('cardResumoColab')?.classList.add('hidden');
-    $('inputPontosFortes').value = '';
-    $('inputPontosDesenvolver').value = '';
-    $('inputPlanoAcao').value = '';
+    if ($('inputPontosFortes')) $('inputPontosFortes').value = '';
+    if ($('inputPontosDesenvolver')) $('inputPontosDesenvolver').value = '';
+    if ($('inputPlanoAcao')) $('inputPlanoAcao').value = '';
     if ($('chkRequerPdi')) {
         $('chkRequerPdi').checked = false;
         $('chkRequerPdi').disabled = false;
@@ -1665,9 +1790,9 @@ function iniciarNovaAvaliacao(mudarParaAbaAvaliar = true) {
     if (mudarParaAbaAvaliar) {
         alternarAba('avaliar');
     }
-    $('stepSelecao').classList.remove('hidden');
-    $('stepQuestionario').classList.add('hidden');
-    $('stepSintese').classList.add('hidden');
+    $('stepSelecao')?.classList.remove('hidden');
+    $('stepQuestionario')?.classList.add('hidden');
+    $('stepSintese')?.classList.add('hidden');
 }
 
 // ==========================================
@@ -1860,10 +1985,11 @@ function renderizarTabelaMatriz() {
 
                 const qtdMes = parseInt(item.qtd_no_mes || 1);
                 const multiBadge = qtdMes > 1 ? `<span class="ml-0.5 px-1 rounded bg-white/70 text-[9px] font-black" title="${qtdMes} avaliações realizadas neste mês (exibindo a última/principal)">${qtdMes}x</span>` : '';
+                const lockIcon = item.finalizado ? '<i class="fa-solid fa-lock text-[8px] opacity-70 ml-0.5" title="Avaliação finalizada para assinatura"></i>' : '';
                 colsMeses += `
                     <td class="py-2.5 px-1.5 text-center">
-                        <button type="button" onclick="abrirModalFicha(${item.id})" class="p-1 px-1.5 rounded-lg text-[0.68rem] ${badgeClass} hover:opacity-80 transition shadow-xs inline-flex items-center gap-0.5" title="Ver avaliação principal do mês${qtdMes > 1 ? ` (${qtdMes} avaliações no histórico do mês)` : ''}">
-                            <span>${item.pontos}</span> <span class="text-[0.6rem] opacity-75">[${item.letra || ''}]</span>${multiBadge}
+                        <button type="button" onclick="abrirModalFicha(${item.id})" class="p-1 px-1.5 rounded-lg text-[0.68rem] ${badgeClass} hover:opacity-80 transition shadow-xs inline-flex items-center gap-0.5" title="Ver avaliação principal do mês (${item.finalizado ? 'Finalizada' : 'Em edição'})${qtdMes > 1 ? ` • ${qtdMes} avaliações no mês` : ''}">
+                            <span>${item.pontos}</span> <span class="text-[0.6rem] opacity-75">[${item.letra || ''}]</span>${multiBadge}${lockIcon}
                         </button>
                     </td>
                 `;
@@ -1964,15 +2090,33 @@ function renderizarTabelaHistorico() {
         const isPrincipal = a.is_principal !== false;
         const totMes = parseInt(a.total_no_mes || 1);
         const verMes = parseInt(a.versao_mes || 1);
+        const isFinalizada = !!a.finalizado || a.status === 'finalizada';
         const badgeVigencia = isPrincipal
             ? `<span class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 border border-emerald-200 text-[9px] font-black" title="Avaliação Principal Vigente do Mês">PRINCIPAL${totMes > 1 ? ` (${verMes}ª/${totMes})` : ''}</span>`
             : `<span class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 border border-slate-200 text-[9px] font-bold" title="Avaliação anterior do mesmo mês preservada no histórico">HISTÓRICO (${verMes}ª/${totMes})</span>`;
+        const badgeStatus = isFinalizada
+            ? `<span class="px-1.5 py-0.5 rounded bg-emerald-600 text-white text-[9px] font-black inline-flex items-center gap-0.5" title="Finalizada para impressão/assinatura — bloqueada para edição/exclusão"><i class="fa-solid fa-lock text-[8px]"></i> FINALIZADA</span>`
+            : `<span class="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-300 text-[9px] font-black inline-flex items-center gap-0.5" title="Em edição — gestor pode alterar ou excluir"><i class="fa-solid fa-pen text-[8px]"></i> EM EDIÇÃO</span>`;
+
+        const botoesGestao = isFinalizada
+            ? `<button type="button" onclick="abrirModalFicha(${a.id}, true)" class="p-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Visualizar e Reimprimir ficha assinável">
+                 <i class="fa-solid fa-print"></i> Reimprimir
+               </button>`
+            : `<button type="button" onclick="editarAvaliacao(${a.id})" class="p-1.5 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Abrir avaliação para alterar respostas, resultado ou conceito">
+                 <i class="fa-solid fa-pen-to-square"></i> Editar
+               </button>
+               <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Finalizar e Imprimir para Assinatura">
+                 <i class="fa-solid fa-print"></i>
+               </button>
+               <button type="button" onclick="excluirAvaliacaoChapd(${a.id})" class="p-1.5 px-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs transition cursor-pointer" title="Excluir avaliação (disponível enquanto não finalizada)">
+                 <i class="fa-solid fa-trash"></i>
+               </button>`;
 
         return `
             <tr class="hover:bg-slate-50 transition ${!isPrincipal ? 'opacity-80 bg-slate-50/40' : ''}">
                 <td class="py-3 px-3 font-bold text-slate-700">
                     <div>${a.mes.toString().padStart(2, '0')}/${a.ano}</div>
-                    <div class="mt-0.5">${badgeVigencia}</div>
+                    <div class="mt-0.5 flex flex-wrap gap-1">${badgeVigencia}${badgeStatus}</div>
                 </td>
                 <td class="py-3 px-3">
                     <div class="flex items-center gap-2.5">
@@ -1996,10 +2140,11 @@ function renderizarTabelaHistorico() {
                 <td class="py-3 px-3 font-bold text-slate-700">${esc(a.classificacao_pontos)}</td>
                 <td class="py-3 px-3 text-slate-500">${esc(a.avaliador_nome)}</td>
                 <td class="py-3 px-3 text-center">
-                    <div class="flex items-center justify-center gap-1.5">
-                        <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 cursor-pointer">
-                            <i class="fa-solid fa-file-lines"></i> Ficha
+                    <div class="flex flex-wrap items-center justify-center gap-1.5">
+                        <button type="button" onclick="abrirModalFicha(${a.id})" class="p-1.5 px-3 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 font-bold text-xs transition flex items-center gap-1 cursor-pointer" title="Visualizar Ficha Completa">
+                            <i class="fa-solid fa-eye"></i> Visualizar
                         </button>
+                        ${botoesGestao}
                         ${btnPdiHtml}
                     </div>
                 </td>
@@ -2009,9 +2154,168 @@ function renderizarTabelaHistorico() {
 }
 
 // ==========================================
+// EDIÇÃO, FINALIZAÇÃO E EXCLUSÃO C.H.A.P.D
+// ==========================================
+async function editarAvaliacao(id) {
+    try {
+        const data = await apiFetch(`detalhes/${id}`);
+        if (!data.sucesso) throw new Error(data.mensagem);
+
+        const a = data.avaliacao;
+        const respostas = data.respostas || [];
+
+        if (a.finalizado || a.status === 'finalizada') {
+            await Swal.fire({
+                ...swalBase,
+                icon: 'info',
+                title: 'Avaliação Finalizada',
+                text: 'Esta avaliação já foi finalizada para impressão e assinatura e não pode mais ser alterada. Abrindo em modo de visualização/reimpressão.'
+            });
+            await abrirModalFicha(id);
+            return;
+        }
+
+        fecharModalFicha();
+        alternarAba('avaliar');
+
+        estado.idAvaliacaoEditando = a.id;
+        $('selColaborador').value = String(a.idcliforemp);
+        aoSelecionarColaborador();
+
+        // Restaura dados exatos salvos na avaliação
+        $('selMes').value = String(a.mes);
+        $('selAno').value = String(a.ano);
+        estado.mesSelecionado = parseInt(a.mes);
+        estado.anoSelecionado = parseInt(a.ano);
+        verificarAvaliacaoExistentePeriodo();
+
+        if ($('inputSetor')) $('inputSetor').value = a.setor || '';
+        if ($('inputCelula')) $('inputCelula').value = a.celula_trabalho || '';
+        if ($('inputAvaliador')) $('inputAvaliador').value = a.avaliador_nome || 'Sandro Rafo';
+        if ($('inputAprovador')) $('inputAprovador').value = a.aprovador_nome || 'Robson Becker';
+        if ($('inputPontosFortes')) $('inputPontosFortes').value = a.pontos_fortes || '';
+        if ($('inputPontosDesenvolver')) $('inputPontosDesenvolver').value = a.pontos_desenvolver || '';
+        if ($('inputPlanoAcao')) $('inputPlanoAcao').value = a.plano_acao || '';
+
+        estado.respostas = {};
+        respostas.forEach(r => {
+            estado.respostas[r.idpergunta] = {
+                idpergunta: r.idpergunta,
+                pilar: r.pilar,
+                pontuacao: parseFloat(r.pontuacao),
+                observacao_item: r.observacao_item || ''
+            };
+        });
+
+        estado.conceitoLetraSelecionada = a.conceito_letra || '';
+        if (a.conceito_letra) {
+            selecionarLetra(a.conceito_letra);
+        }
+        estado.requerPdiManual = !!a.requer_pdi;
+
+        $('bannerEdicaoTitulo').textContent = `Editando Avaliação #${a.id} • ${a.nome_colaborador} (${String(a.mes).padStart(2, '0')}/${a.ano})`;
+        $('bannerModoEdicaoAvaliacao')?.classList.remove('hidden');
+
+        exibirStepSintese();
+    } catch (err) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao carregar edição', text: err.message });
+    }
+}
+
+function editarAvaliacaoDaFicha() {
+    if (!estado.fichaAbertaId) return;
+    editarAvaliacao(estado.fichaAbertaId);
+}
+
+async function finalizarAvaliacaoDaFicha(imprimirEmSeguida = false) {
+    if (!estado.fichaAbertaId) return;
+
+    const confirm = await Swal.fire({
+        ...swalBase,
+        icon: 'warning',
+        title: imprimirEmSeguida ? 'Finalizar e Imprimir para Assinatura?' : 'Finalizar Avaliação?',
+        html: `
+            <div class="text-left text-xs space-y-2">
+                <p>Ao <b>FINALIZAR</b> esta avaliação para que o colaborador e os responsáveis assinem:</p>
+                <ul class="list-disc pl-4 space-y-1 text-slate-600 font-semibold">
+                    <li>Não será mais possível <b>editar</b> notas, conceito ou textos.</li>
+                    <li>Não será mais possível <b>excluir</b> a avaliação.</li>
+                    <li>A ficha ficará disponível apenas para <b>visualização e reimpressão</b>.</li>
+                </ul>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        confirmButtonText: imprimirEmSeguida ? 'Sim, Finalizar e Imprimir' : 'Sim, Finalizar Agora',
+        cancelButtonText: 'Manter em Edição'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+        const res = await apiFetch('finalizar', 'POST', { id: estado.fichaAbertaId });
+        if (!res.sucesso) throw new Error(res.mensagem);
+
+        await abrirModalFicha(estado.fichaAbertaId, imprimirEmSeguida);
+        carregarHistorico();
+        if (estado.abaAtiva === 'matriz') carregarMatrizAnual();
+        carregarDashboard();
+
+        if (!imprimirEmSeguida) {
+            Swal.fire({
+                ...swalBase,
+                icon: 'success',
+                title: 'Avaliação Finalizada!',
+                text: res.mensagem,
+                timer: 2000,
+                showConfirmButton: false
+            });
+        }
+    } catch (err) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao finalizar', text: err.message });
+    }
+}
+
+async function excluirAvaliacaoChapd(id) {
+    const confirm = await Swal.fire({
+        ...swalBase,
+        icon: 'warning',
+        title: `Excluir Avaliação #${id}?`,
+        text: 'Esta ação removerá permanentemente esta avaliação que ainda está em edição.',
+        showCancelButton: true,
+        confirmButtonColor: '#e11d48',
+        confirmButtonText: 'Sim, Excluir',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+        const res = await apiFetch(`${id}`, 'DELETE');
+        if (!res.sucesso) throw new Error(res.mensagem);
+
+        if (estado.fichaAbertaId === id) {
+            fecharModalFicha();
+        }
+        carregarHistorico();
+        if (estado.abaAtiva === 'matriz') carregarMatrizAnual();
+        carregarDashboard();
+
+        Swal.fire({ ...swalBase, icon: 'success', title: 'Excluída!', text: res.mensagem, timer: 1800, showConfirmButton: false });
+    } catch (err) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao excluir', text: err.message });
+    }
+}
+
+function excluirAvaliacaoDaFicha() {
+    if (!estado.fichaAbertaId) return;
+    excluirAvaliacaoChapd(estado.fichaAbertaId);
+}
+
+// ==========================================
 // MODAL FICHA FORMAL / IMPRESSÃO PDF
 // ==========================================
-async function abrirModalFicha(id) {
+async function abrirModalFicha(id, imprimirAposAbrir = false) {
     try {
         const data = await apiFetch(`detalhes/${id}`);
 
@@ -2019,17 +2323,67 @@ async function abrirModalFicha(id) {
 
         const a = data.avaliacao;
         const respostas = data.respostas || [];
+        const isFinalizada = !!a.finalizado || a.status === 'finalizada';
 
         const mesesNomes = ['', 'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+
+        estado.fichaAbertaId = a.id;
+        estado.fichaAbertaDados = a;
 
         $('fichaModalTitulo').textContent = `Ficha de Avaliação #${a.id} • ${a.nome_colaborador}`;
         $('fichaModalSubtitulo').textContent = `Período: ${mesesNomes[a.mes]} / ${a.ano} • Realizada em ${formatarDataBR(a.data_avaliacao)}`;
 
+        const badgeStatus = $('fichaStatusBadge');
+        const btnEditar = $('btnFichaEditar');
+        const btnFinalizar = $('btnFichaFinalizar');
+        const btnExcluir = $('btnFichaExcluir');
+        const btnImprimirTxt = $('btnFichaImprimirTexto');
+        const seloFin = $('fichaSeloFinalizacao');
+        const seloInfo = $('fichaSeloInfo');
+
+        if (isFinalizada) {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-400 text-slate-900';
+                badgeStatus.innerHTML = '<i class="fa-solid fa-lock mr-1"></i> Finalizada p/ Assinatura';
+            }
+            btnEditar?.classList.add('hidden');
+            btnFinalizar?.classList.add('hidden');
+            btnExcluir?.classList.add('hidden');
+            if (btnImprimirTxt) btnImprimirTxt.textContent = 'Reimprimir Ficha';
+            if (seloFin) seloFin.classList.remove('hidden');
+            if (seloInfo) seloInfo.textContent = `${a.finalizado_em_fmt || ''} ${a.finalizado_por ? '• Por ' + a.finalizado_por : ''}`;
+        } else {
+            if (badgeStatus) {
+                badgeStatus.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-300 text-slate-900';
+                badgeStatus.innerHTML = '<i class="fa-solid fa-pen mr-1"></i> Em Edição (Editável)';
+            }
+            btnEditar?.classList.remove('hidden');
+            btnFinalizar?.classList.remove('hidden');
+            btnExcluir?.classList.remove('hidden');
+            if (btnImprimirTxt) btnImprimirTxt.textContent = 'Imprimir p/ Assinatura';
+            if (seloFin) seloFin.classList.add('hidden');
+        }
+
         $('fichaPeriodo').textContent = `${mesesNomes[a.mes]} / ${a.ano}`;
+        if ($('fichaNumeroTopo')) $('fichaNumeroTopo').textContent = `Ficha #${a.id}`;
+        if ($('fichaDataAvaliacao')) $('fichaDataAvaliacao').textContent = `Avaliada em ${formatarDataBR(a.data_avaliacao)}`;
+        const elStatusTopo = $('fichaStatusTopo');
+        if (elStatusTopo) {
+            elStatusTopo.className = isFinalizada
+                ? 'px-2.5 py-0.5 rounded-lg bg-emerald-400 text-slate-900 font-black text-[10px] uppercase'
+                : 'px-2.5 py-0.5 rounded-lg bg-amber-300 text-slate-900 font-black text-[10px] uppercase';
+            elStatusTopo.textContent = isFinalizada ? 'FINALIZADA' : 'EM EDIÇÃO';
+        }
         $('fichaColaborador').textContent = a.nome_colaborador;
+        if ($('fichaCodigoErp')) $('fichaCodigoErp').textContent = `#${a.idcliforemp || '--'}`;
+        if ($('fichaAdmissao')) $('fichaAdmissao').textContent = a.data_admissao_fmt || '--';
         $('fichaCargo').textContent = a.cargo || 'Não informado';
+        const filialNome = Number(a.idfilial) === 6 ? 'Filial 6 (PR)' : (Number(a.idfilial) === 2 ? 'Filial 2 (SC)' : 'Matriz 1 (SC)');
+        if ($('fichaFilial')) $('fichaFilial').textContent = filialNome;
         $('fichaSetor').textContent = a.setor || 'Geral';
-        $('fichaCelula').textContent = a.celula_trabalho || `Filial ${a.idfilial}`;
+        $('fichaCelula').textContent = a.celula_trabalho || filialNome;
+        if ($('fichaAvaliadorTopo')) $('fichaAvaliadorTopo').textContent = a.avaliador_nome || 'Sandro Rafo';
+        if ($('fichaAprovadorTopo')) $('fichaAprovadorTopo').textContent = a.aprovador_nome || 'Robson Becker';
 
         // Foto do Colaborador na Ficha Oficial (sem sobrescrita duplicada)
         const fotoUrl = a.foto_colaborador || a.foto_url;
@@ -2067,12 +2421,35 @@ async function abrirModalFicha(id) {
 
         $('fichaLetra').textContent = `Letra ${a.conceito_letra || '-'}`;
 
+        // Desempenho por Pilar C.H.A.P.D na Ficha
+        const maxPilaresFicha = { C: 0, H: 0, A: 0, P: 0, D: 0 };
+        (estado.perguntas || []).forEach(p => {
+            const pil = (p.pilar || '').toUpperCase();
+            if (maxPilaresFicha[pil] !== undefined) {
+                maxPilaresFicha[pil] += 10 * parseFloat(p.peso || 1);
+            }
+        });
+        const pilaresMap = [
+            { key: 'C', val: parseFloat(a.pontos_conhecimento || 0), defMax: 40 },
+            { key: 'H', val: parseFloat(a.pontos_habilidade || 0), defMax: 20 },
+            { key: 'A', val: parseFloat(a.pontos_atitude || 0), defMax: 30 },
+            { key: 'P', val: parseFloat(a.pontos_postura || 0), defMax: 30 },
+            { key: 'D', val: parseFloat(a.pontos_disciplina || 0), defMax: 20 }
+        ];
+        pilaresMap.forEach(pm => {
+            const maxP = maxPilaresFicha[pm.key] || pm.defMax;
+            const pct = maxP > 0 ? Math.min(100, Math.round((pm.val / maxP) * 100)) : 0;
+            const elVal = $(`fichaPilar${pm.key}`);
+            const elBar = $(`fichaBarraPilar${pm.key}`);
+            if (elVal) elVal.textContent = `${pm.val} / ${maxP}`;
+            if (elBar) elBar.style.width = `${pct}%`;
+        });
+
         $('fichaPontosFortes').textContent = a.pontos_fortes || 'Nenhum ponto forte registrado.';
         $('fichaPontosDesenvolver').textContent = a.pontos_desenvolver || 'Nenhum ponto registrado.';
         $('fichaPlanoAcao').textContent = a.plano_acao || 'Nenhum plano de ação formalizado.';
 
         // Feedback & Ciência do Colaborador
-        estado.fichaAbertaId = a.id;
         const elCienciaStatus = $('fichaCienciaStatus');
         const elFeedbackExib = $('fichaFeedbackTextoExibicao');
         const elInputFeedback = $('fichaInputFeedbackColab');
@@ -2097,6 +2474,7 @@ async function abrirModalFicha(id) {
             }
         }
 
+        if ($('fichaAssinaturaColaborador')) $('fichaAssinaturaColaborador').textContent = a.nome_colaborador || 'Colaborador Avaliado';
         $('fichaAssinaturaAvaliador').textContent = a.avaliador_nome || 'Sandro Rafo';
         $('fichaAssinaturaAprovador').textContent = a.aprovador_nome || 'Robson Becker';
 
@@ -2118,6 +2496,10 @@ async function abrirModalFicha(id) {
         `).join('');
 
         $('modalFicha').classList.remove('hidden');
+
+        if (imprimirAposAbrir) {
+            setTimeout(() => window.print(), 300);
+        }
 
     } catch (err) {
         Swal.fire({
@@ -2177,8 +2559,18 @@ function fecharModalFicha() {
     $('modalFicha').classList.add('hidden');
 }
 
-function imprimirFicha() {
-    window.print();
+async function imprimirFicha() {
+    const a = estado.fichaAbertaDados;
+    if (!a) {
+        window.print();
+        return;
+    }
+    const isFinalizada = !!a.finalizado || a.status === 'finalizada';
+    if (isFinalizada) {
+        window.print();
+        return;
+    }
+    await finalizarAvaliacaoDaFicha(true);
 }
 
 // ==========================================

@@ -55,7 +55,8 @@ require_once __DIR__ . '/../estrutura/header.php';
 
 <!-- Seleção de OC -->
 <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 mb-6">
-    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Selecione a Ordem de Compra</label>
+    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">Selecione a Ordem de Compra</label>
+    <p class="text-[11px] text-slate-500 mb-2"><i class="fa-solid fa-file-circle-check text-emerald-600 mr-1"></i> Apenas OCs com Conferência XML concluída são exibidas para desembarque.</p>
     
     <div id="btnAbrirSelecao" onclick="toggleMenuOCs()" class="w-full p-4 rounded-xl border-2 border-slate-200 font-bold bg-slate-50 flex justify-between items-center text-slate-700 cursor-pointer hover:border-emerald-500 transition-colors">
         <span id="textoSelecao">Toque para selecionar uma OC...</span>

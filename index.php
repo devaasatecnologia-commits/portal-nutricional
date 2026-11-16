@@ -133,10 +133,14 @@ if ($temApiRoute) {
         parse_str($rQuery, $extraParams);
         $_GET = array_merge($_GET, $extraParams);
     }
+    $qsParams = $_GET;
+    unset($qsParams['api_route']);
+    $cleanQs = http_build_query($qsParams);
+    $_SERVER['QUERY_STRING'] = $cleanQs;
     if (strpos($routePath, '/v1') !== 0) {
         $routePath = '/v1' . (strpos($routePath, '/') === 0 ? '' : '/') . $routePath;
     }
-    $_SERVER['REQUEST_URI'] = $routePath;
+    $_SERVER['REQUEST_URI'] = $routePath . ($cleanQs !== '' ? '?' . $cleanQs : '');
 }
 
 // ==========================================================================

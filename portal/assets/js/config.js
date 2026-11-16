@@ -49,9 +49,11 @@ window.apiFetch = async function(endpoint, options) {
     } else {
         url = baseUrl.replace(/\/+$/, '') + '/' + cleanEndpoint;
     }
-    var defaultHeaders = {
-        'Content-Type': 'application/json'
-    };
+    var isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
+    var defaultHeaders = {};
+    if (!isFormData) {
+        defaultHeaders['Content-Type'] = 'application/json';
+    }
     if (token) {
         defaultHeaders['Authorization'] = 'Bearer ' + token;
     }
@@ -172,10 +174,14 @@ window.fetchWithAuth = async function(url, options) {
         finalUrl = window.API_URL + '/' + url;
     }
     
-    var headers = Object.assign({
-        'Authorization': 'Bearer ' + token,
-        'Content-Type': 'application/json'
-    }, options.headers || {});
+    var isFormData = (typeof FormData !== 'undefined') && (options.body instanceof FormData);
+    var defaultHeaders = {
+        'Authorization': 'Bearer ' + token
+    };
+    if (!isFormData) {
+        defaultHeaders['Content-Type'] = 'application/json';
+    }
+    var headers = Object.assign(defaultHeaders, options.headers || {});
     
     var response = await fetch(finalUrl, Object.assign({}, options, { headers: headers }));
     

@@ -36,64 +36,89 @@ class AvaliacaoChapdController
             $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS requer_pdi BOOLEAN DEFAULT FALSE");
             $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS feedback_colaborador TEXT NULL");
             $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS data_ciencia_colaborador TIMESTAMP NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS finalizado BOOLEAN DEFAULT FALSE");
+            $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS finalizado_em TIMESTAMP NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd ADD COLUMN IF NOT EXISTS finalizado_por TEXT NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd ALTER COLUMN nome_colaborador TYPE TEXT, ALTER COLUMN cargo TYPE TEXT, ALTER COLUMN setor TYPE TEXT, ALTER COLUMN celula_trabalho TYPE TEXT, ALTER COLUMN avaliador_nome TYPE TEXT, ALTER COLUMN avaliador_usuario TYPE TEXT, ALTER COLUMN aprovador_nome TYPE TEXT, ALTER COLUMN status TYPE VARCHAR(50), ALTER COLUMN classificacao_pontos TYPE TEXT, ALTER COLUMN conceito_letra TYPE VARCHAR(20), ALTER COLUMN foto_colaborador TYPE TEXT, ALTER COLUMN finalizado_por TYPE TEXT");
+            $db->exec("ALTER TABLE avaliacao_chapd_respostas ALTER COLUMN texto_opcao TYPE VARCHAR(255)");
+            $db->exec("ALTER TABLE avaliacao_chapd_colaborador_perfil ALTER COLUMN nome_custom TYPE TEXT, ALTER COLUMN cargo_custom TYPE TEXT, ALTER COLUMN setor_custom TYPE TEXT, ALTER COLUMN celula_custom TYPE TEXT, ALTER COLUMN foto_url TYPE TEXT, ALTER COLUMN atualizado_por TYPE TEXT");
+            $db->exec("ALTER TABLE avaliacao_chapd_colaborador_foto ALTER COLUMN foto_url TYPE TEXT");
             $db->exec("
                 CREATE TABLE IF NOT EXISTS avaliacao_chapd_plano_acao (
                     id SERIAL PRIMARY KEY,
                     idavaliacao INTEGER NULL REFERENCES avaliacao_chapd(id) ON DELETE SET NULL,
                     idcliforemp INTEGER NULL,
-                    nome_colaborador VARCHAR(200),
-                    cargo VARCHAR(150),
-                    setor VARCHAR(120),
+                    nome_colaborador TEXT,
+                    cargo TEXT,
+                    setor TEXT,
                     idfilial INTEGER DEFAULT 1,
                     ano INTEGER,
                     mes INTEGER,
                     pontuacao_origem NUMERIC(6,2),
-                    conceito_origem VARCHAR(10),
-                    origem_tipo VARCHAR(40) DEFAULT 'PDI_ABAIXO_85',
+                    conceito_origem TEXT,
+                    origem_tipo TEXT DEFAULT 'PDI_ABAIXO_85',
                     problema TEXT NOT NULL,
                     objetivo TEXT NOT NULL,
-                    responsavel VARCHAR(150) NOT NULL DEFAULT 'Sandro Rafo',
-                    aprovador VARCHAR(150) DEFAULT 'Robson Becker',
-                    revisao VARCHAR(100),
-                    status_geral VARCHAR(40) DEFAULT 'DENTRO_DO_PRAZO',
+                    responsavel TEXT NOT NULL DEFAULT 'Sandro Rafo',
+                    aprovador TEXT DEFAULT 'Robson Becker',
+                    revisao TEXT,
+                    status_geral TEXT DEFAULT 'DENTRO_DO_PRAZO',
                     observacoes_gerais TEXT,
                     meta_pontuacao NUMERIC(6,2) DEFAULT 90.00,
                     prazo_dias_reavaliacao INTEGER DEFAULT 60,
-                    pilares_criticos VARCHAR(50) NULL,
+                    pilares_criticos TEXT NULL,
                     feedback_colaborador TEXT NULL,
                     data_ciencia_colaborador TIMESTAMP NULL,
-                    criado_por VARCHAR(100),
+                    situacao_ciclo VARCHAR(30) DEFAULT 'EM_ELABORACAO',
+                    impresso BOOLEAN DEFAULT FALSE,
+                    impresso_em TIMESTAMP NULL,
+                    impresso_por TEXT NULL,
+                    fechado BOOLEAN DEFAULT FALSE,
+                    fechado_em TIMESTAMP NULL,
+                    fechado_por TEXT NULL,
+                    parecer_fechamento TEXT NULL,
+                    criado_por TEXT,
                     criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ");
             $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS meta_pontuacao NUMERIC(6,2) DEFAULT 90.00");
             $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS prazo_dias_reavaliacao INTEGER DEFAULT 60");
-            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS pilares_criticos VARCHAR(50) NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS pilares_criticos TEXT NULL");
             $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS feedback_colaborador TEXT NULL");
             $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS data_ciencia_colaborador TIMESTAMP NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS situacao_ciclo VARCHAR(30) DEFAULT 'EM_ELABORACAO'");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS impresso BOOLEAN DEFAULT FALSE");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS impresso_em TIMESTAMP NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS impresso_por TEXT NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS fechado BOOLEAN DEFAULT FALSE");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS fechado_em TIMESTAMP NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS fechado_por TEXT NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ADD COLUMN IF NOT EXISTS parecer_fechamento TEXT NULL");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao ALTER COLUMN pilares_criticos TYPE TEXT, ALTER COLUMN conceito_origem TYPE TEXT, ALTER COLUMN origem_tipo TYPE TEXT, ALTER COLUMN status_geral TYPE TEXT, ALTER COLUMN revisao TYPE TEXT, ALTER COLUMN nome_colaborador TYPE TEXT, ALTER COLUMN cargo TYPE TEXT, ALTER COLUMN setor TYPE TEXT, ALTER COLUMN responsavel TYPE TEXT, ALTER COLUMN aprovador TYPE TEXT, ALTER COLUMN criado_por TYPE TEXT, ALTER COLUMN impresso_por TYPE TEXT, ALTER COLUMN fechado_por TYPE TEXT");
             $db->exec("
                 CREATE TABLE IF NOT EXISTS avaliacao_chapd_plano_acao_item (
                     id SERIAL PRIMARY KEY,
                     idplano INTEGER NOT NULL REFERENCES avaliacao_chapd_plano_acao(id) ON DELETE CASCADE,
                     ordem INTEGER DEFAULT 1,
-                    pilar_chapd VARCHAR(10) DEFAULT 'GERAL',
-                    tipo_702010 VARCHAR(20) DEFAULT '70_PRATICA',
+                    pilar_chapd VARCHAR(30) DEFAULT 'GERAL',
+                    tipo_702010 VARCHAR(50) DEFAULT '70_PRATICA',
                     o_que TEXT NOT NULL,
                     como TEXT,
-                    onde VARCHAR(150) DEFAULT 'NTD',
-                    quem VARCHAR(150),
+                    onde TEXT DEFAULT 'NTD',
+                    quem TEXT,
                     data_inicio DATE,
                     data_termino DATE,
-                    status VARCHAR(50) DEFAULT 'Dentro do Prazo',
+                    status TEXT DEFAULT 'Dentro do Prazo',
                     observacao TEXT,
-                    evidencia_status VARCHAR(10) DEFAULT 'P',
+                    evidencia_status VARCHAR(30) DEFAULT 'P',
                     evidencia_auditoria TEXT,
                     atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             ");
-            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao_item ADD COLUMN IF NOT EXISTS pilar_chapd VARCHAR(10) DEFAULT 'GERAL'");
-            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao_item ADD COLUMN IF NOT EXISTS tipo_702010 VARCHAR(20) DEFAULT '70_PRATICA'");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao_item ADD COLUMN IF NOT EXISTS pilar_chapd VARCHAR(30) DEFAULT 'GERAL'");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao_item ADD COLUMN IF NOT EXISTS tipo_702010 VARCHAR(50) DEFAULT '70_PRATICA'");
+            $db->exec("ALTER TABLE avaliacao_chapd_plano_acao_item ALTER COLUMN status TYPE TEXT, ALTER COLUMN pilar_chapd TYPE VARCHAR(30), ALTER COLUMN tipo_702010 TYPE VARCHAR(50), ALTER COLUMN onde TYPE TEXT, ALTER COLUMN quem TYPE TEXT, ALTER COLUMN evidencia_status TYPE VARCHAR(30)");
         } catch (Throwable $e) {
             // Silencioso caso o usuário do banco tenha restrição de DDL em runtime
         }
@@ -474,6 +499,7 @@ class AvaliacaoChapdController
                 SELECT 
                     a.id, a.idcliforemp, a.nome_colaborador, a.cargo, a.pontuacao_total, 
                     a.conceito_letra, a.classificacao_pontos, a.mes, a.ano,
+                    a.status, COALESCE(a.finalizado, FALSE) AS finalizado,
                     COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url
                 FROM ultimas_avaliacoes a
                 LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = a.idcliforemp
@@ -493,16 +519,23 @@ class AvaliacaoChapdController
                 SELECT 
                     a.id, a.idcliforemp, a.nome_colaborador, a.cargo, a.pontuacao_total, 
                     a.conceito_letra, a.classificacao_pontos, a.pontos_desenvolver, a.plano_acao, a.mes, a.ano,
+                    a.status, COALESCE(a.finalizado, FALSE) AS finalizado,
                     COALESCE(a.requer_pdi, FALSE) AS requer_pdi,
                     pa.id AS idplano,
                     pa.status_geral AS plano_status,
+                    pa.situacao_ciclo AS plano_situacao_ciclo,
+                    COALESCE(pa.impresso, FALSE) AS plano_impresso,
+                    COALESCE(pa.fechado, FALSE) AS plano_fechado,
                     COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url
                 FROM ultimas_avaliacoes a
                 LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = a.idcliforemp
                 LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = a.idcliforemp
                 LEFT JOIN usuario u ON u.idcliforemp = a.idcliforemp
                 LEFT JOIN LATERAL (
-                    SELECT p.id, p.status_geral
+                    SELECT p.id, p.status_geral,
+                           COALESCE(p.situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                           COALESCE(p.impresso, FALSE) AS impresso,
+                           COALESCE(p.fechado, FALSE) AS fechado
                     FROM avaliacao_chapd_plano_acao p
                     WHERE p.idavaliacao = a.id OR (p.idcliforemp = a.idcliforemp AND p.ano = a.ano AND p.mes = a.mes)
                     ORDER BY p.id DESC
@@ -576,6 +609,9 @@ class AvaliacaoChapdController
                 SELECT DISTINCT ON (a.idcliforemp, a.mes)
                     a.id, a.idcliforemp, a.mes, a.pontuacao_total, a.conceito_letra, a.classificacao_pontos,
                     a.foto_colaborador, COALESCE(a.requer_pdi, FALSE) AS requer_pdi,
+                    a.status, COALESCE(a.finalizado, FALSE) AS finalizado,
+                    TO_CHAR(a.finalizado_em, 'DD/MM/YYYY HH24:MI') AS finalizado_em_fmt,
+                    a.finalizado_por,
                     COUNT(*) OVER (PARTITION BY a.idcliforemp, a.mes) AS qtd_no_mes
                 FROM avaliacao_chapd a
                 WHERE a.ano = :ano
@@ -590,12 +626,17 @@ class AvaliacaoChapdController
             foreach ($avaliacoes as $av) {
                 $pts = (float)$av['pontuacao_total'];
                 $conjunto = $pts >= 115 ? 'AB' : ($pts >= 85 ? 'CD' : 'EF');
+                $isFin = !empty($av['finalizado']) || ($av['status'] ?? '') === 'finalizada';
                 $mapa[$av['idcliforemp']][(int)$av['mes']] = [
                     'id' => (int)$av['id'],
                     'pontos' => $pts,
                     'letra' => $av['conceito_letra'],
                     'conjunto' => $conjunto,
                     'classificacao' => $av['classificacao_pontos'],
+                    'status' => $isFin ? 'finalizada' : 'em_edicao',
+                    'finalizado' => $isFin,
+                    'finalizado_em_fmt' => $av['finalizado_em_fmt'] ?? null,
+                    'finalizado_por' => $av['finalizado_por'] ?? null,
                     'requer_pdi' => !empty($av['requer_pdi']) || $pts < 85,
                     'qtd_no_mes' => (int)($av['qtd_no_mes'] ?? 1),
                     'foto_colaborador' => $av['foto_colaborador'] ?? null
@@ -702,18 +743,27 @@ class AvaliacaoChapdController
                     a.classificacao_pontos, a.conceito_letra, a.conceito_descricao,
                     a.pontos_conhecimento, a.pontos_habilidade, a.pontos_atitude, a.pontos_postura, a.pontos_disciplina,
                     a.status, COALESCE(a.requer_pdi, FALSE) AS requer_pdi,
+                    COALESCE(a.finalizado, FALSE) AS finalizado,
+                    TO_CHAR(a.finalizado_em, 'DD/MM/YYYY HH24:MI') AS finalizado_em_fmt,
+                    a.finalizado_por,
                     a.feedback_colaborador,
                     TO_CHAR(a.data_ciencia_colaborador, 'DD/MM/YYYY HH24:MI') AS data_ciencia_fmt,
                     ROW_NUMBER() OVER (PARTITION BY a.idcliforemp, a.ano, a.mes ORDER BY a.id DESC) AS rk_mes,
                     COUNT(*) OVER (PARTITION BY a.idcliforemp, a.ano, a.mes) AS total_no_mes,
                     pa.id AS idplano, pa.status_geral AS plano_status,
+                    pa.situacao_ciclo AS plano_situacao_ciclo,
+                    COALESCE(pa.impresso, FALSE) AS plano_impresso,
+                    COALESCE(pa.fechado, FALSE) AS plano_fechado,
                     COALESCE(a.foto_colaborador, cp.foto_url, cf.foto_url, u.foto_perfil) AS foto_url
                 FROM avaliacao_chapd a
                 LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = a.idcliforemp
                 LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = a.idcliforemp
                 LEFT JOIN usuario u ON u.idcliforemp = a.idcliforemp
                 LEFT JOIN LATERAL (
-                    SELECT p.id, p.status_geral
+                    SELECT p.id, p.status_geral,
+                           COALESCE(p.situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                           COALESCE(p.impresso, FALSE) AS impresso,
+                           COALESCE(p.fechado, FALSE) AS fechado
                     FROM avaliacao_chapd_plano_acao p
                     WHERE p.idavaliacao = a.id
                     ORDER BY p.id DESC
@@ -732,6 +782,8 @@ class AvaliacaoChapdController
                 $pts = (float)$row['pontuacao_total'];
                 $row['conjunto'] = $pts >= 115 ? 'AB' : ($pts >= 85 ? 'CD' : 'EF');
                 $row['requer_pdi'] = !empty($row['requer_pdi']) || $pts < 85;
+                $row['finalizado'] = !empty($row['finalizado']) || ($row['status'] ?? '') === 'finalizada';
+                $row['status'] = $row['finalizado'] ? 'finalizada' : ($row['status'] ?: 'em_edicao');
                 $rkMes = (int)($row['rk_mes'] ?? 1);
                 $totMes = (int)($row['total_no_mes'] ?? 1);
                 $row['is_principal'] = ($rkMes === 1);
@@ -755,7 +807,7 @@ class AvaliacaoChapdController
     }
 
     /**
-     * GET /v1/avaliacao-chapd/{id}
+     * GET /v1/avaliacao-chapd/detalhes/{id}
      * Detalhes de uma avaliação individual com todas as perguntas e respostas
      */
     public function detalhes(Request $request, Response $response, array $args): Response
@@ -764,7 +816,13 @@ class AvaliacaoChapdController
             $db = $this->getDb();
             $id = (int)$args['id'];
 
-            $stAval = $db->prepare("SELECT * FROM avaliacao_chapd WHERE id = ?");
+            $stAval = $db->prepare("
+                SELECT *,
+                       TO_CHAR(finalizado_em, 'DD/MM/YYYY HH24:MI') AS finalizado_em_fmt,
+                       TO_CHAR(data_ciencia_colaborador, 'DD/MM/YYYY HH24:MI') AS data_ciencia_fmt
+                FROM avaliacao_chapd
+                WHERE id = ?
+            ");
             $stAval->execute([$id]);
             $avaliacao = $stAval->fetch(PDO::FETCH_ASSOC);
 
@@ -772,27 +830,45 @@ class AvaliacaoChapdController
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'Avaliação não encontrada.'], 404);
             }
 
-            if (empty($avaliacao['foto_colaborador'])) {
-                $stFoto = $db->prepare("
-                    SELECT COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil)
-                    FROM cliforemp c
-                    LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = c.idcliforemp
-                    LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = c.idcliforemp
-                    LEFT JOIN usuario u ON u.idcliforemp = c.idcliforemp
-                    WHERE c.idcliforemp = ?
-                ");
-                $stFoto->execute([$avaliacao['idcliforemp']]);
-                $avaliacao['foto_colaborador'] = $stFoto->fetchColumn() ?: null;
+            $stColInfo = $db->prepare("
+                SELECT
+                    COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil) AS foto_url,
+                    COALESCE(TO_CHAR(cp.data_admissao_custom, 'DD/MM/YYYY'), TO_CHAR(e.data_admissao, 'DD/MM/YYYY')) AS data_admissao_fmt
+                FROM cliforemp c
+                LEFT JOIN empregado e ON e.idcliforemp = c.idcliforemp
+                LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = c.idcliforemp
+                LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = c.idcliforemp
+                LEFT JOIN usuario u ON u.idcliforemp = c.idcliforemp
+                WHERE c.idcliforemp = ?
+            ");
+            $stColInfo->execute([$avaliacao['idcliforemp']]);
+            $colInfo = $stColInfo->fetch(PDO::FETCH_ASSOC);
+            if (empty($avaliacao['foto_colaborador']) && !empty($colInfo['foto_url'])) {
+                $avaliacao['foto_colaborador'] = $colInfo['foto_url'];
             }
+            $avaliacao['data_admissao_fmt'] = $colInfo['data_admissao_fmt'] ?? null;
             $pts = (float)$avaliacao['pontuacao_total'];
             $avaliacao['conjunto'] = $pts >= 115 ? 'AB' : ($pts >= 85 ? 'CD' : 'EF');
             $avaliacao['requer_pdi'] = !empty($avaliacao['requer_pdi']) || $pts < 85;
+            $avaliacao['finalizado'] = !empty($avaliacao['finalizado']) || ($avaliacao['status'] ?? '') === 'finalizada';
+            $avaliacao['status'] = $avaliacao['finalizado'] ? 'finalizada' : ($avaliacao['status'] ?: 'em_edicao');
 
-            $stPlano = $db->prepare("SELECT id, status_geral FROM avaliacao_chapd_plano_acao WHERE idavaliacao = ? ORDER BY id DESC LIMIT 1");
+            $stPlano = $db->prepare("
+                SELECT id, status_geral,
+                       COALESCE(situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                       COALESCE(impresso, FALSE) AS impresso,
+                       COALESCE(fechado, FALSE) AS fechado
+                FROM avaliacao_chapd_plano_acao
+                WHERE idavaliacao = ?
+                ORDER BY id DESC LIMIT 1
+            ");
             $stPlano->execute([$id]);
             $planoVinc = $stPlano->fetch(PDO::FETCH_ASSOC);
             $avaliacao['idplano'] = $planoVinc ? (int)$planoVinc['id'] : null;
             $avaliacao['plano_status'] = $planoVinc['status_geral'] ?? null;
+            $avaliacao['plano_situacao_ciclo'] = $planoVinc['situacao_ciclo'] ?? null;
+            $avaliacao['plano_impresso'] = $planoVinc ? !empty($planoVinc['impresso']) : false;
+            $avaliacao['plano_fechado'] = $planoVinc ? !empty($planoVinc['fechado']) : false;
 
             $sqlResp = "
                 SELECT 
@@ -983,18 +1059,38 @@ class AvaliacaoChapdController
 
             // PDI obrigatório se pontuação < 85 ou se marcado pelo avaliador ou se houver texto de plano de ação
             $requerPdi = ($totalPontos < 85) || $requerPdiInput || ($planoAcao !== '');
+            $finalizar = !empty($body['finalizar']) && $body['finalizar'] !== 'false' && $body['finalizar'] !== '0';
+            $statusNovo = $finalizar ? 'finalizada' : 'em_edicao';
+            $finalizadoEm = $finalizar ? date('Y-m-d H:i:s') : null;
+            $finalizadoPor = $finalizar ? ($user['nome'] ?? $user['login'] ?? 'Avaliador') : null;
 
-            $db->beginTransaction();
-
-            // Só edita uma avaliação existente se o ID explícito for enviado; caso contrário, registra uma nova avaliação no mês
-            // (a última passa a ser a Principal do mês e todas as anteriores permanecem no Histórico do colaborador)
             $idAvaliacaoExistente = !empty($body['id']) ? (int)$body['id'] : 0;
 
             if ($idAvaliacaoExistente > 0) {
-                // Atualização de avaliação específica
+                $stCheck = $db->prepare("SELECT id, status, COALESCE(finalizado, FALSE) AS finalizado FROM avaliacao_chapd WHERE id = ?");
+                $stCheck->execute([$idAvaliacaoExistente]);
+                $avAtual = $stCheck->fetch(PDO::FETCH_ASSOC);
+                if (!$avAtual) {
+                    return $this->json($response, ['sucesso' => false, 'mensagem' => 'Avaliação não encontrada para edição.'], 404);
+                }
+                if (!empty($avAtual['finalizado']) || ($avAtual['status'] ?? '') === 'finalizada') {
+                    return $this->json($response, [
+                        'sucesso' => false,
+                        'mensagem' => 'Esta avaliação já foi finalizada para impressão e assinatura e não pode mais ser editada.'
+                    ], 422);
+                }
+            }
+
+            $db->beginTransaction();
+
+            if ($idAvaliacaoExistente > 0) {
+                // Atualização de avaliação em edição (antes da finalização/impressão)
                 $idAvaliacao = (int)$idAvaliacaoExistente;
                 $sqlUpd = "
                     UPDATE avaliacao_chapd SET
+                        idcliforemp = :idcliforemp,
+                        ano = :ano,
+                        mes = :mes,
                         nome_colaborador = :nome_colaborador,
                         cargo = :cargo,
                         idfilial = :idfilial,
@@ -1020,12 +1116,18 @@ class AvaliacaoChapdController
                         plano_acao = :plano_acao,
                         observacoes_gerais = :observacoes_gerais,
                         requer_pdi = :requer_pdi,
-                        status = 'concluida',
+                        status = :status,
+                        finalizado = :finalizado,
+                        finalizado_em = :finalizado_em,
+                        finalizado_por = :finalizado_por,
                         atualizado_em = CURRENT_TIMESTAMP
                     WHERE id = :id
                 ";
                 $stUpd = $db->prepare($sqlUpd);
                 $stUpd->execute([
+                    ':idcliforemp' => $idcliforemp,
+                    ':ano' => $ano,
+                    ':mes' => $mes,
                     ':nome_colaborador' => $nomeColaborador,
                     ':cargo' => $cargo,
                     ':idfilial' => $idfilial,
@@ -1051,6 +1153,10 @@ class AvaliacaoChapdController
                     ':plano_acao' => $planoAcao,
                     ':observacoes_gerais' => $observacoes,
                     ':requer_pdi' => $requerPdi ? 'true' : 'false',
+                    ':status' => $statusNovo,
+                    ':finalizado' => $finalizar ? 'true' : 'false',
+                    ':finalizado_em' => $finalizadoEm,
+                    ':finalizado_por' => $finalizadoPor,
                     ':id' => $idAvaliacao
                 ]);
 
@@ -1066,14 +1172,16 @@ class AvaliacaoChapdController
                         pontuacao_total, pontuacao_maxima, percentual_atingido,
                         classificacao_pontos, conceito_letra, conceito_descricao, foto_colaborador,
                         pontos_conhecimento, pontos_habilidade, pontos_atitude, pontos_postura, pontos_disciplina,
-                        pontos_fortes, pontos_desenvolver, plano_acao, observacoes_gerais, requer_pdi, status
+                        pontos_fortes, pontos_desenvolver, plano_acao, observacoes_gerais, requer_pdi,
+                        status, finalizado, finalizado_em, finalizado_por
                     ) VALUES (
                         :idcliforemp, :nome_colaborador, :cargo, :idfilial, :setor, :celula_trabalho,
                         :ano, :mes, :avaliador_nome, :avaliador_usuario, :aprovador_nome,
                         :pontuacao_total, :pontuacao_maxima, :percentual_atingido,
                         :classificacao_pontos, :conceito_letra, :conceito_descricao, :foto_colaborador,
                         :pontos_conhecimento, :pontos_habilidade, :pontos_atitude, :pontos_postura, :pontos_disciplina,
-                        :pontos_fortes, :pontos_desenvolver, :plano_acao, :observacoes_gerais, :requer_pdi, 'concluida'
+                        :pontos_fortes, :pontos_desenvolver, :plano_acao, :observacoes_gerais, :requer_pdi,
+                        :status, :finalizado, :finalizado_em, :finalizado_por
                     ) RETURNING id
                 ";
                 $stIns = $db->prepare($sqlIns);
@@ -1105,7 +1213,11 @@ class AvaliacaoChapdController
                     ':pontos_desenvolver' => $pontosDesenvolver,
                     ':plano_acao' => $planoAcao,
                     ':observacoes_gerais' => $observacoes,
-                    ':requer_pdi' => $requerPdi ? 'true' : 'false'
+                    ':requer_pdi' => $requerPdi ? 'true' : 'false',
+                    ':status' => $statusNovo,
+                    ':finalizado' => $finalizar ? 'true' : 'false',
+                    ':finalizado_em' => $finalizadoEm,
+                    ':finalizado_por' => $finalizadoPor
                 ]);
                 $idAvaliacao = (int)$stIns->fetchColumn();
             }
@@ -1132,8 +1244,12 @@ class AvaliacaoChapdController
 
             return $this->json($response, [
                 'sucesso' => true,
-                'mensagem' => 'Avaliação C.H.A.P.D salva com sucesso!',
+                'mensagem' => $finalizar
+                    ? 'Avaliação C.H.A.P.D finalizada e travada para impressão/assinatura!'
+                    : 'Avaliação C.H.A.P.D salva em modo editável!',
                 'id' => $idAvaliacao,
+                'status' => $statusNovo,
+                'finalizado' => $finalizar,
                 'pontuacao_total' => $totalPontos,
                 'percentual' => $percentual,
                 'classificacao' => $classificacaoPontos,
@@ -1149,6 +1265,108 @@ class AvaliacaoChapdController
             return $this->json($response, [
                 'sucesso' => false,
                 'mensagem' => 'Erro ao salvar avaliação: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /v1/avaliacao-chapd/finalizar
+     * Finaliza a avaliação C.H.A.P.D travando futuras edições/exclusões e liberando para impressão/assinaturas
+     */
+    public function finalizarAvaliacao(Request $request, Response $response): Response
+    {
+        try {
+            $db = $this->getDb();
+            $user = $this->getUsuarioSessao($request);
+            $body = $request->getParsedBody() ?? [];
+            $id = (int)($body['id'] ?? 0);
+
+            if ($id <= 0) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Avaliação não informada.'], 400);
+            }
+
+            $stCheck = $db->prepare("SELECT id, status, COALESCE(finalizado, FALSE) AS finalizado FROM avaliacao_chapd WHERE id = ?");
+            $stCheck->execute([$id]);
+            $atual = $stCheck->fetch(PDO::FETCH_ASSOC);
+
+            if (!$atual) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Avaliação não encontrada.'], 404);
+            }
+
+            $responsavelFin = $user['nome'] ?? $user['login'] ?? 'Gestor';
+            $db->prepare("
+                UPDATE avaliacao_chapd
+                SET status = 'finalizada',
+                    finalizado = TRUE,
+                    finalizado_em = COALESCE(finalizado_em, CURRENT_TIMESTAMP),
+                    finalizado_por = COALESCE(NULLIF(finalizado_por, ''), ?),
+                    atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ")->execute([$responsavelFin, $id]);
+
+            return $this->json($response, [
+                'sucesso' => true,
+                'mensagem' => 'Avaliação finalizada com sucesso! Agora está liberada apenas para visualização e impressão para assinatura.',
+                'id' => $id,
+                'status' => 'finalizada',
+                'finalizado' => true,
+                'finalizado_em_fmt' => date('d/m/Y H:i'),
+                'finalizado_por' => $responsavelFin
+            ]);
+        } catch (Throwable $e) {
+            return $this->json($response, [
+                'sucesso' => false,
+                'mensagem' => 'Erro ao finalizar avaliação: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * DELETE /v1/avaliacao-chapd/{id} ou POST /v1/avaliacao-chapd/excluir
+     * Exclui uma avaliação que ainda não foi finalizada/impressa
+     */
+    public function excluirAvaliacao(Request $request, Response $response, array $args = []): Response
+    {
+        $db = $this->getDb();
+        try {
+            $body = $request->getParsedBody() ?? [];
+            $id = (int)($args['id'] ?? ($body['id'] ?? 0));
+
+            if ($id <= 0) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'ID da avaliação inválido.'], 400);
+            }
+
+            $stCheck = $db->prepare("SELECT id, status, COALESCE(finalizado, FALSE) AS finalizado FROM avaliacao_chapd WHERE id = ?");
+            $stCheck->execute([$id]);
+            $atual = $stCheck->fetch(PDO::FETCH_ASSOC);
+
+            if (!$atual) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Avaliação não encontrada.'], 404);
+            }
+
+            if (!empty($atual['finalizado']) || ($atual['status'] ?? '') === 'finalizada') {
+                return $this->json($response, [
+                    'sucesso' => false,
+                    'mensagem' => 'Avaliação já finalizada para impressão e assinatura não pode ser excluída.'
+                ], 422);
+            }
+
+            $db->beginTransaction();
+            $db->prepare("DELETE FROM avaliacao_chapd_respostas WHERE idavaliacao = ?")->execute([$id]);
+            $db->prepare("DELETE FROM avaliacao_chapd WHERE id = ?")->execute([$id]);
+            $db->commit();
+
+            return $this->json($response, [
+                'sucesso' => true,
+                'mensagem' => 'Avaliação excluída com sucesso!'
+            ]);
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            return $this->json($response, [
+                'sucesso' => false,
+                'mensagem' => 'Erro ao excluir avaliação: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -1593,6 +1811,9 @@ class AvaliacaoChapdController
                     COALESCE(a.foto_colaborador, cp.foto_url, cf.foto_url, u.foto_perfil) AS foto_url,
                     pa.id AS idplano,
                     pa.status_geral AS plano_status,
+                    pa.situacao_ciclo AS plano_situacao_ciclo,
+                    COALESCE(pa.impresso, FALSE) AS plano_impresso,
+                    COALESCE(pa.fechado, FALSE) AS plano_fechado,
                     pa.responsavel AS plano_responsavel,
                     COALESCE(pa_stats.total_itens, 0) AS total_itens,
                     COALESCE(pa_stats.itens_concluidos, 0) AS itens_concluidos
@@ -1601,7 +1822,10 @@ class AvaliacaoChapdController
                 LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = a.idcliforemp
                 LEFT JOIN usuario u ON u.idcliforemp = a.idcliforemp
                 LEFT JOIN LATERAL (
-                    SELECT p.id, p.status_geral, p.responsavel
+                    SELECT p.id, p.status_geral, p.responsavel,
+                           COALESCE(p.situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                           COALESCE(p.impresso, FALSE) AS impresso,
+                           COALESCE(p.fechado, FALSE) AS fechado
                     FROM avaliacao_chapd_plano_acao p
                     WHERE p.idavaliacao = a.id OR (p.idcliforemp = a.idcliforemp AND p.ano = a.ano AND p.mes = a.mes)
                     ORDER BY p.id DESC
@@ -1662,6 +1886,7 @@ class AvaliacaoChapdController
             $mes = !empty($params['mes']) ? (int)$params['mes'] : null;
             $filial = !empty($params['filial']) ? (int)$params['filial'] : null;
             $status = !empty($params['status']) ? trim($params['status']) : null;
+            $situacaoCiclo = !empty($params['situacao_ciclo']) ? trim($params['situacao_ciclo']) : null;
             $idcliforemp = !empty($params['idcliforemp']) ? (int)$params['idcliforemp'] : null;
             $busca = !empty($params['busca']) ? trim($params['busca']) : null;
 
@@ -1684,6 +1909,10 @@ class AvaliacaoChapdController
                 $where[] = 'p.status_geral = :status';
                 $binds[':status'] = $status;
             }
+            if ($situacaoCiclo) {
+                $where[] = "COALESCE(p.situacao_ciclo, 'EM_ELABORACAO') = :situacao_ciclo";
+                $binds[':situacao_ciclo'] = $situacaoCiclo;
+            }
             if ($idcliforemp) {
                 $where[] = 'p.idcliforemp = :idcliforemp';
                 $binds[':idcliforemp'] = $idcliforemp;
@@ -1696,6 +1925,11 @@ class AvaliacaoChapdController
             $sql = "
                 SELECT 
                     p.*,
+                    COALESCE(p.situacao_ciclo, CASE WHEN COALESCE(p.fechado, FALSE) THEN 'FECHADO' WHEN COALESCE(p.impresso, FALSE) THEN 'IMPRESSO' ELSE 'EM_ELABORACAO' END) AS situacao_ciclo,
+                    COALESCE(p.impresso, FALSE) AS impresso,
+                    TO_CHAR(p.impresso_em, 'DD/MM/YYYY HH24:MI') AS impresso_em_fmt,
+                    COALESCE(p.fechado, FALSE) AS fechado,
+                    TO_CHAR(p.fechado_em, 'DD/MM/YYYY HH24:MI') AS fechado_em_fmt,
                     TO_CHAR(p.criado_em, 'DD/MM/YYYY') AS criado_em_fmt,
                     TO_CHAR(p.atualizado_em, 'DD/MM/YYYY HH24:MI') AS atualizado_em_fmt,
                     TO_CHAR(p.data_ciencia_colaborador, 'DD/MM/YYYY HH24:MI') AS data_ciencia_fmt,
@@ -1748,13 +1982,18 @@ class AvaliacaoChapdController
                 'comprometido' => 0
             ];
 
-            foreach ($planos as $pl) {
+            foreach ($planos as &$pl) {
+                $pl['impresso'] = !empty($pl['impresso']) || ($pl['situacao_ciclo'] ?? '') === 'IMPRESSO' || ($pl['situacao_ciclo'] ?? '') === 'FECHADO';
+                $pl['fechado'] = !empty($pl['fechado']) || ($pl['situacao_ciclo'] ?? '') === 'FECHADO';
+                $pl['situacao_ciclo'] = $pl['fechado'] ? 'FECHADO' : ($pl['impresso'] ? 'IMPRESSO' : 'EM_ELABORACAO');
+
                 $kpis['total_etapas'] += (int)$pl['total_itens'];
                 $kpis['dentro_prazo'] += (int)$pl['dentro_prazo'];
                 $kpis['concluidas'] += (int)$pl['concluidas'];
                 $kpis['atraso_recuperavel'] += (int)$pl['atraso_recuperavel'];
                 $kpis['comprometido'] += (int)$pl['comprometido'];
             }
+            unset($pl);
 
             return $this->json($response, [
                 'sucesso' => true,
@@ -1783,6 +2022,11 @@ class AvaliacaoChapdController
             $st = $db->prepare("
                 SELECT 
                     p.*,
+                    COALESCE(p.situacao_ciclo, CASE WHEN COALESCE(p.fechado, FALSE) THEN 'FECHADO' WHEN COALESCE(p.impresso, FALSE) THEN 'IMPRESSO' ELSE 'EM_ELABORACAO' END) AS situacao_ciclo,
+                    COALESCE(p.impresso, FALSE) AS impresso,
+                    TO_CHAR(p.impresso_em, 'DD/MM/YYYY HH24:MI') AS impresso_em_fmt,
+                    COALESCE(p.fechado, FALSE) AS fechado,
+                    TO_CHAR(p.fechado_em, 'DD/MM/YYYY HH24:MI') AS fechado_em_fmt,
                     TO_CHAR(p.criado_em, 'DD/MM/YYYY') AS criado_em_fmt,
                     TO_CHAR(p.atualizado_em, 'DD/MM/YYYY HH24:MI') AS atualizado_em_fmt,
                     TO_CHAR(p.data_ciencia_colaborador, 'DD/MM/YYYY HH24:MI') AS data_ciencia_fmt,
@@ -1793,9 +2037,11 @@ class AvaliacaoChapdController
                     a.pontos_disciplina,
                     a.pontos_fortes AS aval_pontos_fortes,
                     a.pontos_desenvolver AS aval_pontos_desenvolver,
-                    COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url
+                    COALESCE(cp.foto_url, cf.foto_url, u.foto_perfil, a.foto_colaborador) AS foto_url,
+                    COALESCE(TO_CHAR(cp.data_admissao_custom, 'DD/MM/YYYY'), TO_CHAR(e.data_admissao, 'DD/MM/YYYY')) AS data_admissao_fmt
                 FROM avaliacao_chapd_plano_acao p
                 LEFT JOIN avaliacao_chapd a ON a.id = p.idavaliacao
+                LEFT JOIN empregado e ON e.idcliforemp = p.idcliforemp
                 LEFT JOIN avaliacao_chapd_colaborador_perfil cp ON cp.idcliforemp = p.idcliforemp
                 LEFT JOIN avaliacao_chapd_colaborador_foto cf ON cf.idcliforemp = p.idcliforemp
                 LEFT JOIN usuario u ON u.idcliforemp = p.idcliforemp
@@ -1807,6 +2053,10 @@ class AvaliacaoChapdController
             if (!$plano) {
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não encontrado.'], 404);
             }
+
+            $plano['impresso'] = !empty($plano['impresso']) || ($plano['situacao_ciclo'] ?? '') === 'IMPRESSO' || ($plano['situacao_ciclo'] ?? '') === 'FECHADO';
+            $plano['fechado'] = !empty($plano['fechado']) || ($plano['situacao_ciclo'] ?? '') === 'FECHADO';
+            $plano['situacao_ciclo'] = $plano['fechado'] ? 'FECHADO' : ($plano['impresso'] ? 'IMPRESSO' : 'EM_ELABORACAO');
 
             $stItens = $db->prepare("
                 SELECT 
@@ -1874,7 +2124,45 @@ class AvaliacaoChapdController
             $prazoDiasReavaliacao = !empty($body['prazo_dias_reavaliacao']) ? (int)$body['prazo_dias_reavaliacao'] : 60;
             $pilaresCriticos = !empty($body['pilares_criticos']) ? trim((string)$body['pilares_criticos']) : null;
             $feedbackColaborador = array_key_exists('feedback_colaborador', $body) ? trim((string)$body['feedback_colaborador']) : null;
+            $finalizarImprimir = !empty($body['finalizar_imprimir']) && $body['finalizar_imprimir'] !== 'false' && $body['finalizar_imprimir'] !== '0';
             $itens = is_array($body['itens'] ?? null) ? $body['itens'] : [];
+
+            $situacaoCicloNova = $finalizarImprimir ? 'IMPRESSO' : 'EM_ELABORACAO';
+            $impressoNovo = $finalizarImprimir;
+            $impressoEm = $finalizarImprimir ? date('Y-m-d H:i:s') : null;
+            $impressoPor = $finalizarImprimir ? ($user['nome'] ?? $user['login'] ?? 'Gestor') : null;
+
+            if ($id) {
+                $stCheckPlano = $db->prepare("
+                    SELECT id,
+                           COALESCE(situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                           COALESCE(impresso, FALSE) AS impresso,
+                           COALESCE(fechado, FALSE) AS fechado,
+                           impresso_em, impresso_por
+                    FROM avaliacao_chapd_plano_acao
+                    WHERE id = ?
+                ");
+                $stCheckPlano->execute([$id]);
+                $planoAtual = $stCheckPlano->fetch(PDO::FETCH_ASSOC);
+
+                if (!$planoAtual) {
+                    return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não encontrado.'], 404);
+                }
+
+                if (!empty($planoAtual['fechado']) || ($planoAtual['situacao_ciclo'] ?? '') === 'FECHADO') {
+                    return $this->json($response, [
+                        'sucesso' => false,
+                        'mensagem' => 'Este Plano de Ação / PDI já foi FECHADO e encerrado e não permite mais alterações.'
+                    ], 422);
+                }
+
+                if (!empty($planoAtual['impresso']) || ($planoAtual['situacao_ciclo'] ?? '') === 'IMPRESSO') {
+                    $situacaoCicloNova = 'IMPRESSO';
+                    $impressoNovo = true;
+                    $impressoEm = $planoAtual['impresso_em'] ?: date('Y-m-d H:i:s');
+                    $impressoPor = $planoAtual['impresso_por'] ?: ($user['nome'] ?? $user['login'] ?? 'Gestor');
+                }
+            }
 
             if ($problema === '') {
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'Informe o Problema / Ponto de Desenvolvimento no cabeçalho do plano.'], 400);
@@ -1931,6 +2219,9 @@ class AvaliacaoChapdController
                     $tipo702010 = '70_PRATICA';
                 }
 
+                $dataIni = !empty($it['data_inicio']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim((string)$it['data_inicio'])) ? trim((string)$it['data_inicio']) : null;
+                $dataFim = !empty($it['data_termino']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', trim((string)$it['data_termino'])) ? trim((string)$it['data_termino']) : null;
+
                 $itensValidos[] = [
                     'ordem' => (int)($it['ordem'] ?? ($idx + 1)),
                     'pilar_chapd' => $pilarChapd,
@@ -1939,8 +2230,8 @@ class AvaliacaoChapdController
                     'como' => trim($it['como'] ?? ''),
                     'onde' => trim($it['onde'] ?? 'NTD') ?: 'NTD',
                     'quem' => trim($it['quem'] ?? $responsavel),
-                    'data_inicio' => !empty($it['data_inicio']) ? trim($it['data_inicio']) : null,
-                    'data_termino' => !empty($it['data_termino']) ? trim($it['data_termino']) : null,
+                    'data_inicio' => $dataIni,
+                    'data_termino' => $dataFim,
                     'status' => $stItem,
                     'observacao' => trim($it['observacao'] ?? ''),
                     'evidencia_status' => in_array(strtoupper(trim($it['evidencia_status'] ?? 'P')), ['P', 'OK', 'NOK'], true)
@@ -1994,6 +2285,10 @@ class AvaliacaoChapdController
                         prazo_dias_reavaliacao = :prazo_dias_reavaliacao,
                         pilares_criticos = :pilares_criticos,
                         feedback_colaborador = COALESCE(:feedback_colaborador, feedback_colaborador),
+                        situacao_ciclo = :situacao_ciclo,
+                        impresso = :impresso,
+                        impresso_em = :impresso_em,
+                        impresso_por = :impresso_por,
                         atualizado_em = CURRENT_TIMESTAMP
                     WHERE id = :id
                 ");
@@ -2020,6 +2315,10 @@ class AvaliacaoChapdController
                     ':prazo_dias_reavaliacao' => $prazoDiasReavaliacao,
                     ':pilares_criticos' => $pilaresCriticos,
                     ':feedback_colaborador' => $feedbackColaborador,
+                    ':situacao_ciclo' => $situacaoCicloNova,
+                    ':impresso' => $impressoNovo ? 'true' : 'false',
+                    ':impresso_em' => $impressoEm,
+                    ':impresso_por' => $impressoPor,
                     ':id' => $id
                 ]);
 
@@ -2032,6 +2331,7 @@ class AvaliacaoChapdController
                         problema, objetivo, responsavel, aprovador, revisao,
                         status_geral, observacoes_gerais,
                         meta_pontuacao, prazo_dias_reavaliacao, pilares_criticos, feedback_colaborador,
+                        situacao_ciclo, impresso, impresso_em, impresso_por,
                         criado_por
                     ) VALUES (
                         :idavaliacao, :idcliforemp, :nome_colaborador, :cargo, :setor, :idfilial,
@@ -2039,6 +2339,7 @@ class AvaliacaoChapdController
                         :problema, :objetivo, :responsavel, :aprovador, :revisao,
                         :status_geral, :observacoes_gerais,
                         :meta_pontuacao, :prazo_dias_reavaliacao, :pilares_criticos, :feedback_colaborador,
+                        :situacao_ciclo, :impresso, :impresso_em, :impresso_por,
                         :criado_por
                     ) RETURNING id
                 ");
@@ -2065,6 +2366,10 @@ class AvaliacaoChapdController
                     ':prazo_dias_reavaliacao' => $prazoDiasReavaliacao,
                     ':pilares_criticos' => $pilaresCriticos,
                     ':feedback_colaborador' => $feedbackColaborador,
+                    ':situacao_ciclo' => $situacaoCicloNova,
+                    ':impresso' => $impressoNovo ? 'true' : 'false',
+                    ':impresso_em' => $impressoEm,
+                    ':impresso_por' => $impressoPor,
                     ':criado_por' => $user['login']
                 ]);
                 $id = (int)$stIns->fetchColumn();
@@ -2109,9 +2414,14 @@ class AvaliacaoChapdController
 
             return $this->json($response, [
                 'sucesso' => true,
-                'mensagem' => 'PDI & Plano de Ação 5W2H salvo com sucesso!',
+                'mensagem' => $finalizarImprimir
+                    ? 'PDI & Plano de Ação finalizado e liberado para impressão/assinatura!'
+                    : 'PDI & Plano de Ação 5W2H salvo em elaboração com sucesso!',
                 'id' => $id,
-                'status_geral' => $statusGeral
+                'status_geral' => $statusGeral,
+                'situacao_ciclo' => $situacaoCicloNova,
+                'impresso' => $impressoNovo,
+                'fechado' => false
             ]);
 
         } catch (Throwable $e) {
@@ -2121,6 +2431,146 @@ class AvaliacaoChapdController
             return $this->json($response, [
                 'sucesso' => false,
                 'mensagem' => 'Erro ao salvar Plano de Ação: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /v1/avaliacao-chapd/planos-acao/finalizar-impressao
+     * Marca o Plano de Ação / PDI como IMPRESSO (assinatura / em execução), bloqueando exclusão e alteração de escopo
+     */
+    public function finalizarImpressaoPlanoAcao(Request $request, Response $response): Response
+    {
+        try {
+            $db = $this->getDb();
+            $user = $this->getUsuarioSessao($request);
+            $body = $request->getParsedBody() ?? [];
+            $id = (int)($body['id'] ?? 0);
+
+            if ($id <= 0) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não informado.'], 400);
+            }
+
+            $st = $db->prepare("SELECT id, COALESCE(situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo, COALESCE(fechado, FALSE) AS fechado FROM avaliacao_chapd_plano_acao WHERE id = ?");
+            $st->execute([$id]);
+            $atual = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$atual) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não encontrado.'], 404);
+            }
+
+            if (!empty($atual['fechado']) || ($atual['situacao_ciclo'] ?? '') === 'FECHADO') {
+                return $this->json($response, [
+                    'sucesso' => true,
+                    'mensagem' => 'Plano já está fechado; liberando reimpressão.',
+                    'id' => $id,
+                    'situacao_ciclo' => 'FECHADO',
+                    'impresso' => true,
+                    'fechado' => true
+                ]);
+            }
+
+            $resp = $user['nome'] ?? $user['login'] ?? 'Gestor';
+            $db->prepare("
+                UPDATE avaliacao_chapd_plano_acao
+                SET situacao_ciclo = 'IMPRESSO',
+                    impresso = TRUE,
+                    impresso_em = COALESCE(impresso_em, CURRENT_TIMESTAMP),
+                    impresso_por = COALESCE(NULLIF(impresso_por, ''), ?),
+                    atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ")->execute([$resp, $id]);
+
+            return $this->json($response, [
+                'sucesso' => true,
+                'mensagem' => 'Plano marcado como Impresso/Em Execução! Escopo protegido contra exclusão.',
+                'id' => $id,
+                'situacao_ciclo' => 'IMPRESSO',
+                'impresso' => true,
+                'impresso_em_fmt' => date('d/m/Y H:i'),
+                'impresso_por' => $resp
+            ]);
+        } catch (Throwable $e) {
+            return $this->json($response, [
+                'sucesso' => false,
+                'mensagem' => 'Erro ao finalizar impressão do Plano: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /v1/avaliacao-chapd/planos-acao/fechar
+     * Encerra definitivamente o ciclo do PDI/Plano de Ação (mesmo que já impresso), registrando parecer e travando em leitura
+     */
+    public function fecharPlanoAcao(Request $request, Response $response): Response
+    {
+        $db = $this->getDb();
+        try {
+            $user = $this->getUsuarioSessao($request);
+            $body = $request->getParsedBody() ?? [];
+            $id = (int)($body['id'] ?? 0);
+            $parecer = trim((string)($body['parecer_fechamento'] ?? ''));
+            $concluirEtapas = !isset($body['concluir_etapas']) || ($body['concluir_etapas'] !== false && $body['concluir_etapas'] !== 'false' && $body['concluir_etapas'] !== 0 && $body['concluir_etapas'] !== '0');
+
+            if ($id <= 0) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não informado.'], 400);
+            }
+
+            $st = $db->prepare("SELECT id, COALESCE(situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo, COALESCE(fechado, FALSE) AS fechado FROM avaliacao_chapd_plano_acao WHERE id = ?");
+            $st->execute([$id]);
+            $atual = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$atual) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não encontrado.'], 404);
+            }
+
+            if (!empty($atual['fechado']) || ($atual['situacao_ciclo'] ?? '') === 'FECHADO') {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Este PDI já está fechado e encerrado.'], 422);
+            }
+
+            $resp = $user['nome'] ?? $user['login'] ?? 'Gestor';
+
+            $db->beginTransaction();
+
+            if ($concluirEtapas) {
+                $db->prepare("
+                    UPDATE avaliacao_chapd_plano_acao_item
+                    SET status = 'Ação Concluída',
+                        atualizado_em = CURRENT_TIMESTAMP
+                    WHERE idplano = ? AND status <> 'Ação Concluída'
+                ")->execute([$id]);
+            }
+
+            $db->prepare("
+                UPDATE avaliacao_chapd_plano_acao
+                SET situacao_ciclo = 'FECHADO',
+                    fechado = TRUE,
+                    fechado_em = CURRENT_TIMESTAMP,
+                    fechado_por = ?,
+                    parecer_fechamento = ?,
+                    status_geral = 'ACAO_CONCLUIDA',
+                    atualizado_em = CURRENT_TIMESTAMP
+                WHERE id = ?
+            ")->execute([$resp, $parecer !== '' ? $parecer : 'Ciclo PDI encerrado pelo gestor.', $id]);
+
+            $db->commit();
+
+            return $this->json($response, [
+                'sucesso' => true,
+                'mensagem' => 'Ciclo do PDI / Plano de Ação fechado com sucesso!',
+                'id' => $id,
+                'situacao_ciclo' => 'FECHADO',
+                'fechado' => true,
+                'fechado_em_fmt' => date('d/m/Y H:i'),
+                'fechado_por' => $resp
+            ]);
+        } catch (Throwable $e) {
+            if ($db->inTransaction()) {
+                $db->rollBack();
+            }
+            return $this->json($response, [
+                'sucesso' => false,
+                'mensagem' => 'Erro ao fechar Plano de Ação: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -2140,12 +2590,26 @@ class AvaliacaoChapdController
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'Etapa não informada.'], 400);
             }
 
-            $stGet = $db->prepare("SELECT idplano, status, evidencia_status, observacao, evidencia_auditoria FROM avaliacao_chapd_plano_acao_item WHERE id = ?");
+            $stGet = $db->prepare("
+                SELECT i.idplano, i.status, i.evidencia_status, i.observacao, i.evidencia_auditoria,
+                       COALESCE(p.fechado, FALSE) AS plano_fechado,
+                       COALESCE(p.situacao_ciclo, 'EM_ELABORACAO') AS plano_situacao_ciclo
+                FROM avaliacao_chapd_plano_acao_item i
+                JOIN avaliacao_chapd_plano_acao p ON p.id = i.idplano
+                WHERE i.id = ?
+            ");
             $stGet->execute([$idItem]);
             $atual = $stGet->fetch(PDO::FETCH_ASSOC);
 
             if (!$atual) {
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'Etapa não encontrada.'], 404);
+            }
+
+            if (!empty($atual['plano_fechado']) || ($atual['plano_situacao_ciclo'] ?? '') === 'FECHADO') {
+                return $this->json($response, [
+                    'sucesso' => false,
+                    'mensagem' => 'Este Plano de Ação está FECHADO e não permite alterar etapas.'
+                ], 422);
             }
 
             $novoStatus = !empty($body['status']) ? trim($body['status']) : $atual['status'];
@@ -2201,7 +2665,7 @@ class AvaliacaoChapdController
 
     /**
      * DELETE /v1/avaliacao-chapd/planos-acao/{id}
-     * Exclui um Plano de Ação e suas etapas 5W2H
+     * Exclui um Plano de Ação e suas etapas 5W2H (bloqueado se já impresso ou fechado)
      */
     public function excluirPlanoAcao(Request $request, Response $response, array $args): Response
     {
@@ -2210,6 +2674,28 @@ class AvaliacaoChapdController
             $id = (int)($args['id'] ?? 0);
             if ($id <= 0) {
                 return $this->json($response, ['sucesso' => false, 'mensagem' => 'ID inválido.'], 400);
+            }
+
+            $st = $db->prepare("
+                SELECT id,
+                       COALESCE(situacao_ciclo, 'EM_ELABORACAO') AS situacao_ciclo,
+                       COALESCE(impresso, FALSE) AS impresso,
+                       COALESCE(fechado, FALSE) AS fechado
+                FROM avaliacao_chapd_plano_acao
+                WHERE id = ?
+            ");
+            $st->execute([$id]);
+            $atual = $st->fetch(PDO::FETCH_ASSOC);
+
+            if (!$atual) {
+                return $this->json($response, ['sucesso' => false, 'mensagem' => 'Plano de Ação não encontrado.'], 404);
+            }
+
+            if (!empty($atual['impresso']) || !empty($atual['fechado']) || in_array($atual['situacao_ciclo'] ?? '', ['IMPRESSO', 'FECHADO'], true)) {
+                return $this->json($response, [
+                    'sucesso' => false,
+                    'mensagem' => 'Planos de Ação já impressos para assinatura ou fechados não podem ser excluídos.'
+                ], 422);
             }
 
             $db->prepare("DELETE FROM avaliacao_chapd_plano_acao WHERE id = ?")->execute([$id]);

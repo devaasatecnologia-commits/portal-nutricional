@@ -26,23 +26,31 @@ function chamadosApp() {
         lightboxUrl: '',
         lightboxTitulo: '',
 
+        // Rastreamento no Dashboard
+        usuarioRastreado: '',
+
         // Drag and Drop Kanban
         draggingId: null,
         dragOverStatus: null,
         dragOverCardId: null,
 
         // Dados
-        kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0, taxa_resolucao: 0 },
+        kpis: { total: 0, abertos: 0, em_correcao: 0, criticos: 0, concluidos_mes: 0, concluidos_total: 0, taxa_resolucao: 0, tempo_medio_horas: 0 },
         metricas: {
             por_sistema: [],
             por_criticidade: [],
             top_modulos: [],
-            resolvidos_recentes: []
+            resolvidos_recentes: [],
+            ranking_solicitantes: [],
+            por_status: [],
+            por_categoria: [],
+            performance_atendentes: []
         },
         modulos: [],
         sistemas: [],
         filiais: [],
         solicitantes: [],
+        usuariosSolicitantes: [],
         atendentes: [],
         avisosRecentes: [],
         notificacoesNaoLidas: 0,
@@ -75,6 +83,7 @@ function chamadosApp() {
             tipo_sistema: 'PORTAL',
             criticidade: 'media',
             categoria: 'bug',
+            solicitante: '',
             anexo_url: '',
             salvando: false
         },
@@ -90,6 +99,7 @@ function chamadosApp() {
             titulo: '',
             categoria: 'bug',
             criticidade: 'media',
+            solicitante: '',
             diagnostico_ia: '',
             anexo_url: ''
         },
@@ -105,6 +115,7 @@ function chamadosApp() {
             modulo_slug: '',
             modulo_nome: '',
             atendente: 'ALAN',
+            solicitante: 'ALAN',
             criticidade: 'media',
             prioridade: 10
         },
@@ -170,21 +181,72 @@ function chamadosApp() {
             return data;
         },
 
+        ehTiLiberado() {
+            return Boolean(this.usuario && (this.usuario.pode_ver_todos || this.usuario.pode_gerenciar_ti || this.usuario.is_admin));
+        },
+
+        selecionarUsuarioRastreamento(username) {
+            const alvo = String(username || '').toUpperCase().trim();
+            if (!alvo) return;
+            this.usuarioRastreado = (this.usuarioRastreado === alvo) ? '' : alvo;
+        },
+
+        chamadosDoUsuarioRastreado() {
+            const alvo = String(this.usuarioRastreado || '').toUpperCase().trim();
+            if (!alvo) return [];
+            return (this.chamados || []).filter((c) => {
+                const sol = String(c.solicitante || '').toUpperCase().trim();
+                const usr = String(c.usuario || '').toUpperCase().trim();
+                if (alvo === 'INTERNO') {
+                    return sol === '.' || sol === '' || usr === '.';
+                }
+                return sol === alvo || usr === alvo;
+            });
+        },
+
+        filtrarListaPorSolicitante(username, modo = 'lista') {
+            const alvo = String(username || '').toUpperCase().trim();
+            if (!alvo || alvo === 'INTERNO' || alvo === 'SISTEMA') {
+                this.filtros.solicitante = 'todos';
+            } else {
+                this.filtros.solicitante = alvo;
+            }
+            this.modoExibicao = modo;
+            this.carregarChamados();
+        },
+
+        labelCategoria(cat) {
+            const mapa = {
+                bug: '🐛 Bug / Erro',
+                melhoria: '🚀 Melhoria / Ajuste',
+                duvida: '❓ Dúvida / Orientação',
+                permissao: '🔐 Permissão / Acesso',
+                equipamento: '🖨️ Equipamento / Infra'
+            };
+            return mapa[String(cat || 'bug').toLowerCase()] || String(cat || 'Geral').toUpperCase();
+        },
+
         async carregarDashboard() {
             try {
                 const res = await this.api('/chamados/dashboard');
                 if (res.success) {
                     this.kpis = res.kpis || {};
-                    this.metricas = res.metricas || {
-                        por_sistema: [],
-                        por_criticidade: [],
-                        top_modulos: [],
-                        resolvidos_recentes: []
+                    const met = res.metricas || {};
+                    this.metricas = {
+                        por_sistema: met.por_sistema || [],
+                        por_criticidade: met.por_criticidade || [],
+                        top_modulos: met.top_modulos || [],
+                        resolvidos_recentes: met.resolvidos_recentes || [],
+                        ranking_solicitantes: met.ranking_solicitantes || [],
+                        por_status: met.por_status || [],
+                        por_categoria: met.por_categoria || [],
+                        performance_atendentes: met.performance_atendentes || []
                     };
                     this.modulos = res.modulos || [];
                     this.sistemas = res.sistemas || [];
                     this.filiais = res.filiais || [];
                     this.solicitantes = res.solicitantes || [];
+                    this.usuariosSolicitantes = res.usuarios_solicitantes || res.solicitantes || [];
                     this.atendentes = res.atendentes || [];
                     this.avisosRecentes = res.avisos_recentes || [];
                     this.notificacoesNaoLidas = Number(res.notificacoes_nao_lidas || 0);
@@ -320,6 +382,10 @@ function chamadosApp() {
         // ======================== KANBAN DRAG & DROP ========================
 
         onDragStart(e, chamado) {
+            if (!this.ehTiLiberado()) {
+                e.preventDefault();
+                return;
+            }
             this.draggingId = Number(chamado.idchamado);
             if (e.dataTransfer) {
                 e.dataTransfer.effectAllowed = 'move';
@@ -334,6 +400,7 @@ function chamadosApp() {
         },
 
         onDragOverCol(e, statusNum) {
+            if (!this.ehTiLiberado()) return;
             e.preventDefault();
             this.dragOverStatus = Number(statusNum);
         },
@@ -345,6 +412,7 @@ function chamadosApp() {
         },
 
         onDragOverCard(e, targetCard) {
+            if (!this.ehTiLiberado()) return;
             e.preventDefault();
             this.dragOverStatus = Number(targetCard.status);
             if (Number(targetCard.idchamado) !== this.draggingId) {
@@ -354,6 +422,10 @@ function chamadosApp() {
 
         async onDropCol(e, targetStatus) {
             e.preventDefault();
+            if (!this.ehTiLiberado()) {
+                this.onDragEnd();
+                return;
+            }
             const draggedId = this.draggingId || parseInt(e.dataTransfer?.getData('text/plain') || '0', 10);
             this.onDragEnd();
             if (!draggedId) return;
@@ -362,6 +434,10 @@ function chamadosApp() {
 
         async onDropCard(e, targetCard) {
             e.preventDefault();
+            if (!this.ehTiLiberado()) {
+                this.onDragEnd();
+                return;
+            }
             const draggedId = this.draggingId || parseInt(e.dataTransfer?.getData('text/plain') || '0', 10);
             const targetId = Number(targetCard.idchamado);
             const targetStatus = Number(targetCard.status);
@@ -371,6 +447,10 @@ function chamadosApp() {
         },
 
         async aplicarReordenacaoKanban(draggedId, targetStatus, targetCardId = null) {
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas o TI liberado pode alterar estágio ou prioridade.');
+                return;
+            }
             const dragged = this.chamados.find(c => Number(c.idchamado) === Number(draggedId));
             if (!dragged) return;
 
@@ -427,6 +507,10 @@ function chamadosApp() {
         // ======================== PRIORIDADE & CRITICIDADE ========================
 
         async moverParaTopo(chamado) {
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas o TI liberado pode alterar a prioridade.');
+                return;
+            }
             try {
                 const res = await this.api('/chamados/atualizar-prioridade', {
                     method: 'POST',
@@ -449,6 +533,10 @@ function chamadosApp() {
         },
 
         async alterarCriticidadeRapida(chamado, novaCrit) {
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas o TI liberado pode alterar a criticidade após a abertura.');
+                return;
+            }
             if (!chamado || chamado.criticidade === novaCrit) return;
             const anterior = chamado.criticidade;
             chamado.criticidade = novaCrit;
@@ -475,6 +563,10 @@ function chamadosApp() {
         },
 
         async alterarPrioridadeModal(novaPrio) {
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas o TI liberado pode alterar a prioridade.');
+                return;
+            }
             if (!this.chamadoAtual) return;
             const prioNum = parseInt(novaPrio, 10);
             if (!prioNum || prioNum <= 0) return;
@@ -520,6 +612,7 @@ function chamadosApp() {
                         tipo_sistema: this.quickForm.tipo_sistema || 'PORTAL',
                         criticidade: this.quickForm.criticidade || 'media',
                         categoria: this.quickForm.categoria || 'bug',
+                        solicitante: this.ehTiLiberado() ? (this.quickForm.solicitante || '') : '',
                         criticidade_manual: true,
                         idfilial: filialPadrao,
                         anexo_url: this.quickForm.anexo_url || ''
@@ -528,6 +621,7 @@ function chamadosApp() {
                 if (res.success) {
                     this.quickForm.relato = '';
                     this.quickForm.anexo_url = '';
+                    this.quickForm.solicitante = '';
                     this.toast('success', res.message || 'Chamado aberto com sucesso!', 2800);
                     await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
                 }
@@ -551,6 +645,10 @@ function chamadosApp() {
                 ? Number(this.filiais[0].idfilial)
                 : ((this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1);
 
+            const solicitantePadrao = (preencherDoQuick && this.quickForm.solicitante)
+                ? this.quickForm.solicitante
+                : ((this.usuario && this.usuario.username) ? this.usuario.username : 'ALAN');
+
             this.novoForm = {
                 tipo_sistema: sistemaPadrao,
                 subtipo_item: '',
@@ -561,6 +659,7 @@ function chamadosApp() {
                 titulo: '',
                 categoria: preencherDoQuick ? (this.quickForm.categoria || 'bug') : 'bug',
                 criticidade: preencherDoQuick ? (this.quickForm.criticidade || 'media') : 'media',
+                solicitante: solicitantePadrao,
                 diagnostico_ia: '',
                 anexo_url: preencherDoQuick ? (this.quickForm.anexo_url || '') : ''
             };
@@ -590,7 +689,7 @@ function chamadosApp() {
                 this.novoForm.anexo_url = url;
             } else if (destino === 'quick') {
                 this.quickForm.anexo_url = url;
-            } else if (destino === 'modal_anexo' && this.chamadoAtual) {
+            } else if ((destino === 'modal_anexo' || destino === 'edicao') && this.chamadoAtual) {
                 await this.registrarAnexoDiretoNoChamado(url);
                 return;
             } else {
@@ -631,10 +730,12 @@ function chamadosApp() {
                 });
                 const res = await this.api('/chamados/upload-anexo', {
                     method: 'POST',
-                    body: { imagem_base64: base64Data }
+                    body: { imagem_base64: base64Data, arquivo_base64: base64Data }
                 });
                 if (res.success && res.url) {
                     await this.atribuirUrlAnexo(destino, res.url, '📸 Print screen anexado com sucesso!');
+                } else {
+                    throw new Error(res?.error || 'Não foi possível processar o print.');
                 }
             } catch (err) {
                 console.error('Erro ao enviar print:', err);
@@ -650,17 +751,35 @@ function chamadosApp() {
             const file = e.target.files && e.target.files[0];
             if (!file) return;
 
+            if (file.size > 15 * 1024 * 1024) {
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'warning', title: 'Arquivo muito grande', text: 'O limite máximo permitido é 15MB.' });
+                }
+                e.target.value = '';
+                return;
+            }
+
             this.anexoUploadando = true;
             try {
-                const formData = new FormData();
-                formData.append('anexo', file);
+                const base64Data = await new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = (ev) => resolve(ev.target.result);
+                    reader.onerror = () => reject(new Error('Não foi possível ler o arquivo selecionado.'));
+                    reader.readAsDataURL(file);
+                });
 
                 const res = await this.api('/chamados/upload-anexo', {
                     method: 'POST',
-                    body: formData
+                    body: {
+                        arquivo_base64: base64Data,
+                        imagem_base64: base64Data,
+                        nome_original: file.name
+                    }
                 });
                 if (res.success && res.url) {
                     await this.atribuirUrlAnexo(destino, res.url, 'Arquivo anexado com sucesso!');
+                } else {
+                    throw new Error(res?.error || 'Falha no retorno do servidor ao salvar o arquivo.');
                 }
             } catch (err) {
                 console.error('Erro no upload de arquivo:', err);
@@ -868,11 +987,39 @@ function chamadosApp() {
                 modulo_slug: c.modulo_slug || '',
                 modulo_nome: c.modulo_nome || '',
                 atendente: c.atendente || 'ALAN',
+                solicitante: c.solicitante || 'ALAN',
                 criticidade: c.criticidade || 'media',
                 prioridade: parseInt(c.prioridade || 10, 10)
             };
             this.complementoTexto = '';
             this.editandoChamado = true;
+        },
+
+        async alterarSolicitanteRapido(novoSolicitante) {
+            if (!this.ehTiLiberado() || !this.chamadoAtual) return;
+            const alvo = String(novoSolicitante || '').toUpperCase().trim();
+            const atual = String(this.chamadoAtual.solicitante || '').toUpperCase().trim();
+            if (!alvo || alvo === atual) return;
+
+            try {
+                const res = await this.api('/chamados/editar', {
+                    method: 'POST',
+                    body: {
+                        idchamado: this.chamadoAtual.idchamado,
+                        solicitante: alvo
+                    }
+                });
+                if (res.success) {
+                    this.toast('success', `Solicitante alterado para ${alvo}!`);
+                    await Promise.all([
+                        this.carregarDashboard(),
+                        this.carregarChamados(),
+                        this.abrirDetalhes(this.chamadoAtual.idchamado)
+                    ]);
+                }
+            } catch (e) {
+                this.toast('error', e.message || 'Erro ao alterar solicitante.');
+            }
         },
 
         adicionarComplementoAoTexto() {
@@ -900,10 +1047,13 @@ function chamadosApp() {
             }
             this.salvandoEdicao = true;
             try {
-                const payload = {
-                    idchamado: this.chamadoAtual.idchamado,
-                    ...this.editForm
-                };
+                const payload = this.ehTiLiberado()
+                    ? { idchamado: this.chamadoAtual.idchamado, ...this.editForm }
+                    : {
+                        idchamado: this.chamadoAtual.idchamado,
+                        titulo: this.editForm.titulo,
+                        motivo: this.editForm.motivo
+                    };
                 const res = await this.api('/chamados/editar', {
                     method: 'POST',
                     body: payload
@@ -936,6 +1086,10 @@ function chamadosApp() {
 
         async trocarStatus(novoStatus) {
             if (!this.chamadoAtual) return;
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas o TI liberado pode alterar o estágio do chamado.');
+                return;
+            }
             try {
                 const res = await this.api('/chamados/atualizar-status', {
                     method: 'POST',
@@ -959,6 +1113,10 @@ function chamadosApp() {
         },
 
         async assumirChamado(id) {
+            if (!this.ehTiLiberado()) {
+                this.toast('warning', 'Apenas membros da equipe técnica podem assumir chamados.');
+                return;
+            }
             try {
                 const res = await this.api('/chamados/assumir', {
                     method: 'POST',
@@ -982,15 +1140,20 @@ function chamadosApp() {
             if (!this.chamadoAtual) return;
             if (!this.novaInteracao.mensagem.trim() && !this.novaInteracao.anexo_url) return;
 
+            const ehTi = this.ehTiLiberado();
+            const tipoPermitido = ehTi
+                ? (this.novaInteracao.eh_resolucao ? 'resolucao' : this.novaInteracao.tipo)
+                : (['comentario', 'evidencia', 'duvida'].includes(this.novaInteracao.tipo) ? this.novaInteracao.tipo : 'comentario');
+
             try {
                 const res = await this.api('/chamados/adicionar-interacao', {
                     method: 'POST',
                     body: {
                         idchamado: this.chamadoAtual.idchamado,
                         mensagem: this.novaInteracao.mensagem,
-                        tipo: this.novaInteracao.eh_resolucao ? 'resolucao' : this.novaInteracao.tipo,
-                        eh_resolucao: this.novaInteracao.eh_resolucao,
-                        versao_entrega: this.novaInteracao.versao_entrega,
+                        tipo: tipoPermitido,
+                        eh_resolucao: ehTi ? Boolean(this.novaInteracao.eh_resolucao) : false,
+                        versao_entrega: ehTi ? this.novaInteracao.versao_entrega : '',
                         anexo_url: this.novaInteracao.anexo_url
                     }
                 });

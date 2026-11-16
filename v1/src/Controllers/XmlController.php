@@ -83,7 +83,17 @@ public function getOrdensCompra(Request $request, Response $response): Response
     try {
         $sql = "SELECT oc.idoc, TO_CHAR(oc.data, 'YYYY-MM-DD') as data_iso, oc.valortotal as valor_num,
            oc.idoc || ' | ' || TO_CHAR(oc.data, 'DD/MM/YYYY') || ' | R$ ' || REPLACE(TO_CHAR(oc.valortotal, 'FM999G999G990D00'), '.', ',') as descricao_select,
-                COALESCE(conf.conferido_portal, 'N') as conferido_portal
+                CASE 
+                    WHEN COALESCE(conf.conferido_portal, 'N') = 'S' 
+                         OR EXISTS (
+                             SELECT 1 FROM oc_operacao op 
+                             WHERE op.idoc = oc.idoc 
+                               AND op.acao = 7 
+                               AND (op.estacaologistica = 'PORTAL' OR op.usuario = 'PORTAL' OR op.descricao ILIKE '%Conferência finalizada via Portal%')
+                         )
+                    THEN 'S'
+                    ELSE 'N'
+                END as conferido_portal
                 FROM oc 
                 LEFT JOIN aps_oc_conferencia conf ON conf.idoc = oc.idoc
                 WHERE oc.status = 1 
@@ -91,7 +101,7 @@ public function getOrdensCompra(Request $request, Response $response): Response
                   AND oc.idfilial = :idf
                  --and oc.idoc not in (SELECT distinct idoc FROM oc_operacao WHERE (descricao LIKE '%Conferência Digital%' OR descricao LIKE '%Conferência em lote%'))
                  AND oc.data BETWEEN current_date - INTERVAL '30 days' AND current_date + INTERVAL '30 days'
-                  AND (COALESCE(conf.conferido_portal, 'N') = 'N' OR conf.conferido_portal IS NULL)
+                  AND (conf.status IS NULL OR conf.status <> 3)
                 ORDER BY oc.idoc DESC";
         
         $stmt = $this->pdo->prepare($sql);
@@ -112,10 +122,20 @@ public function getOrdensCompra(Request $request, Response $response): Response
         $idOrdem = (int)$args['idoc'];
         
         try {
-            // Verifica se já foi conferida
-            $stmtCheck = $this->pdo->prepare("SELECT COUNT(*) FROM oc_operacao WHERE idoc = :id AND acao = 7");
-            $stmtCheck->execute(['id' => $idOrdem]);
-            $jaConferida = ($stmtCheck->fetchColumn() > 0);
+            // Verifica se já foi conferida via XML no Portal
+            $stmtCheck = $this->pdo->prepare("
+                SELECT CASE WHEN EXISTS (
+                    SELECT 1 FROM oc_operacao 
+                    WHERE idoc = :id1 
+                      AND acao = 7 
+                      AND (estacaologistica = 'PORTAL' OR usuario = 'PORTAL' OR descricao ILIKE '%Conferência finalizada via Portal%')
+                ) OR EXISTS (
+                    SELECT 1 FROM aps_oc_conferencia 
+                    WHERE idoc = :id2 AND COALESCE(conferido_portal, 'N') = 'S'
+                ) THEN 1 ELSE 0 END
+            ");
+            $stmtCheck->execute(['id1' => $idOrdem, 'id2' => $idOrdem]);
+            $jaConferida = ((int)$stmtCheck->fetchColumn() > 0);
             
             $sql = "SELECT 
                         oc.idoc,
@@ -818,6 +838,22 @@ public function atualizarConferencia(Request $request, Response $response): Resp
             ");
             $stmtUp->execute(['q' => $qConf, 'idoc' => $idoc, 'iditemoc' => $iditemoc]);
             $linhasAfetadas += $stmtUp->rowCount();
+
+            // Sincronizar lotes e conferência física pré-existentes quando houver registro único do item (reconferência XML)
+            $stmtCountConfItem = $this->pdo->prepare("SELECT COUNT(*) FROM aps_oc_conferencia_item WHERE idoc = :idoc AND iditem = :iditem");
+            $stmtCountConfItem->execute(['idoc' => $idoc, 'iditem' => $iditem]);
+            if ((int)$stmtCountConfItem->fetchColumn() === 1) {
+                $this->pdo->prepare("
+                    UPDATE aps_oc_conferencia_item
+                    SET quantidadeoriginal = :q1,
+                        quantidadeconferida = CASE WHEN COALESCE(quantidadeconferida, 0) > 0 THEN :q2 ELSE 0 END,
+                        quantidadesaldo = CASE WHEN COALESCE(quantidadeconferida, 0) > 0 THEN 0 ELSE :q3 END
+                    WHERE idoc = :idoc AND iditem = :iditem
+                ")->execute(['q1' => $qConf, 'q2' => $qConf, 'q3' => $qConf, 'idoc' => $idoc, 'iditem' => $iditem]);
+            }
+
+            $this->sincronizarQuantidadeLoteUnico('aps_oc_conferencia_item_lote', (int)$idoc, $iditem, $qConf);
+            $this->sincronizarQuantidadeLoteUnico('oc_item_lote', (int)$idoc, $iditem, $qConf);
         }
 
         // 4. Processar adições de novos itens
@@ -886,6 +922,9 @@ public function atualizarConferencia(Request $request, Response $response): Resp
         // 6. Recalcular parcelas da OC
         $this->recalcularParcelas($idoc);
 
+        // 6.1 Marcar OC como conferida no Portal (libera acesso ao Desembarque)
+        $this->marcarConferidoPortal($idoc, $idEmpresa, $idFilial);
+
         // 7. Registrar log
         try {
             $descLog = "Conferência finalizada via Portal. ";
@@ -931,6 +970,26 @@ public function atualizarConferencia(Request $request, Response $response): Resp
         ], 500);
     }
 }
+private function sincronizarQuantidadeLoteUnico(string $tabela, int $idoc, int $iditem, float $quantidade): void
+{
+    if (!in_array($tabela, ['aps_oc_conferencia_item_lote', 'oc_item_lote'], true)) {
+        return;
+    }
+
+    $stmtCount = $this->pdo->prepare("SELECT COUNT(*) FROM {$tabela} WHERE idoc = :idoc AND iditem = :iditem");
+    $stmtCount->execute(['idoc' => $idoc, 'iditem' => $iditem]);
+    if ((int)$stmtCount->fetchColumn() !== 1) {
+        return;
+    }
+
+    $this->pdo->prepare("
+        UPDATE {$tabela}
+        SET quantidade = :q1,
+            quantsaldo = CASE WHEN COALESCE(quantsaldo, 0) = 0 THEN 0 ELSE GREATEST(0, :q2 - COALESCE(quantutilizado, 0)) END
+        WHERE idoc = :idoc AND iditem = :iditem
+    ")->execute(['q1' => $quantidade, 'q2' => $quantidade, 'idoc' => $idoc, 'iditem' => $iditem]);
+}
+
 private function marcarConferidoPortal($idoc, $idEmpresa, $idFilial): void
 {
     try {
@@ -943,7 +1002,7 @@ private function marcarConferidoPortal($idoc, $idEmpresa, $idFilial): void
                 UPDATE aps_oc_conferencia 
                 SET conferido_portal = 'S', 
                     datahora = NOW(), 
-                    usuario = 'PORTAL'
+                    usuario = CASE WHEN COALESCE(status, 1) IN (2, 3) AND usuario IS NOT NULL AND usuario <> '.' THEN usuario ELSE 'PORTAL' END
                 WHERE idoc = :idoc
             ")->execute(['idoc' => $idoc]);
         } else {

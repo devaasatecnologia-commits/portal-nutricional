@@ -38,9 +38,121 @@ class DesembarqueController
     }
     
     
+    private function sincronizarLoteConferencia(
+        string $tabela,
+        string $colunaItemOc,
+        int $idoc,
+        int $iditem,
+        float $quantidade,
+        string $lote,
+        string $validade,
+        bool $somarSaldoExistente
+    ): void {
+        // Apenas tabelas internas conhecidas sao permitidas no identificador SQL
+        if (!in_array($tabela, ['aps_oc_conferencia_item_lote', 'oc_item_lote'], true)
+            || !in_array($colunaItemOc, ['idocitem', 'iditemoc'], true)) {
+            throw new \InvalidArgumentException('Tabela ou coluna de lote invalida');
+        }
+
+        $stmtLote = $this->pdo->prepare("
+            SELECT quantsaldo FROM {$tabela}
+            WHERE idoc = :idoc AND iditem = :iditem
+            FOR UPDATE
+        ");
+        $stmtLote->execute(['idoc' => $idoc, 'iditem' => $iditem]);
+
+        if ($stmtLote->fetch()) {
+            if (!$somarSaldoExistente) {
+                $this->pdo->prepare("
+                    UPDATE {$tabela}
+                    SET quantidade = :qtd,
+                        quantsaldo = GREATEST(0, (SELECT qt FROM oc_item WHERE idoc = :idoc_qt AND iditem = :iditem_qt) - :qtd2),
+                        validade = :validade,
+                        lote = :lote
+                    WHERE idoc = :idoc AND iditem = :iditem
+                ")->execute([
+                    'qtd' => $quantidade,
+                    'idoc_qt' => $idoc,
+                    'iditem_qt' => $iditem,
+                    'qtd2' => $quantidade,
+                    'validade' => $validade,
+                    'lote' => $lote,
+                    'idoc' => $idoc,
+                    'iditem' => $iditem,
+                ]);
+                return;
+            }
+
+            $this->pdo->prepare("
+                UPDATE {$tabela}
+                SET quantidade = quantidade + :qtd,
+                    quantsaldo = GREATEST(0, quantsaldo - :qtd2),
+                    validade = :validade,
+                    lote = :lote
+                WHERE idoc = :idoc AND iditem = :iditem
+            ")->execute([
+                'qtd' => $quantidade,
+                'qtd2' => $quantidade,
+                'validade' => $validade,
+                'lote' => $lote,
+                'idoc' => $idoc,
+                'iditem' => $iditem,
+            ]);
+            return;
+        }
+
+        $this->pdo->prepare("
+            INSERT INTO {$tabela}
+            (idoc, {$colunaItemOc}, sequencial, idempresa, idfilial, iditem, quantidade, quantutilizado, quantsaldo, lote, complemento, validade)
+            SELECT oi.idoc, oi.iditemoc, 1, oi.idempresa, oi.idfilial, oi.iditem,
+                   :qtd, 0, GREATEST(0, oi.qt - :qtd2), :lote, '.', :validade
+            FROM oc_item oi
+            WHERE oi.idoc = :idoc AND oi.iditem = :iditem
+        ")->execute([
+            'qtd' => $quantidade,
+            'qtd2' => $quantidade,
+            'lote' => $lote,
+            'validade' => $validade,
+            'idoc' => $idoc,
+            'iditem' => $iditem,
+        ]);
+    }
+
+    private function isConferenciaXmlConcluida(int $idoc): bool
+    {
+        if ($idoc <= 0) {
+            return false;
+        }
+
+        $sql = "
+            SELECT 1
+            FROM oc
+            LEFT JOIN aps_oc_conferencia a ON a.idoc = oc.idoc
+            WHERE oc.idoc = :idoc
+              AND (
+                  COALESCE(a.conferido_portal, 'N') = 'S'
+                  OR EXISTS (
+                      SELECT 1 FROM oc_operacao op
+                      WHERE op.idoc = oc.idoc
+                        AND op.acao = 7
+                        AND (
+                            op.estacaologistica = 'PORTAL'
+                            OR op.usuario = 'PORTAL'
+                            OR op.descricao ILIKE '%Conferência finalizada via Portal%'
+                            OR op.descricao ILIKE '%conferência XML%'
+                        )
+                  )
+              )
+            LIMIT 1
+        ";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute(['idoc' => $idoc]);
+        return (bool)$stmt->fetchColumn();
+    }
+
 /**
  * GET /v1/desembarque/ordens-compra
- * Lista OCs disponíveis para conferência (filial 1 e 6, últimos 30 dias)
+ * Lista OCs disponíveis para conferência (filial 1 e 6, somente após Conferência XML concluída)
  */
 public function getOrdensCompra(Request $request, Response $response): Response
 {
@@ -54,6 +166,7 @@ public function getOrdensCompra(Request $request, Response $response): Response
     f.razao || ' | ' || COALESCE(f.fantasia, '') as fornecedor,
     oc.valortotal,
     COALESCE(a.status, 0) as status_conferencia,
+    'S' as xml_conferido,
     CASE 
         WHEN a.status = 3 THEN 'FINALIZADO' 
         WHEN a.status = 2 THEN 'EM ANDAMENTO' 
@@ -66,6 +179,20 @@ WHERE oc.status = 1
   AND oc.idfilial IN (1,6)
   AND (oc.data >= CURRENT_DATE - INTERVAL '120 days' OR oc.dataprevisao >= CURRENT_DATE - INTERVAL '30 days')
   AND (a.status IS NULL OR a.status <> 3)
+  AND (
+      COALESCE(a.conferido_portal, 'N') = 'S'
+      OR EXISTS (
+          SELECT 1 FROM oc_operacao op
+          WHERE op.idoc = oc.idoc
+            AND op.acao = 7
+            AND (
+                op.estacaologistica = 'PORTAL'
+                OR op.usuario = 'PORTAL'
+                OR op.descricao ILIKE '%Conferência finalizada via Portal%'
+                OR op.descricao ILIKE '%conferência XML%'
+            )
+      )
+  )
 ORDER BY oc.idoc DESC
         ";
         
@@ -93,6 +220,12 @@ ORDER BY oc.idoc DESC
         if ($idoc <= 0) {
             $response->getBody()->write(json_encode([]));
             return $response->withHeader('Content-Type', 'application/json');
+        }
+
+        if (!$this->isConferenciaXmlConcluida($idoc)) {
+            return $this->json($response, [
+                'error' => "A Ordem de Compra #{$idoc} ainda não passou pela Conferência XML. Conclua a Conferência XML da Nota Fiscal antes de iniciar o desembarque."
+            ], 409);
         }
         
         try {
@@ -148,11 +281,17 @@ ORDER BY oc.idoc DESC
         if ($denied = $this->validarAcesso($request, $response)) return $denied;
 
         $idoc = (int)($args['idoc'] ?? 0);
-        $codigo = $request->getQueryParams()['codigo'] ?? '';
+        $codigo = trim((string)($request->getQueryParams()['codigo'] ?? ($_GET['codigo'] ?? '')));
         
-        if ($idoc <= 0 || empty($codigo)) {
+        if ($idoc <= 0 || $codigo === '') {
             $response->getBody()->write(json_encode(['error' => 'Parâmetros inválidos']));
             return $response->withStatus(400);
+        }
+
+        if (!$this->isConferenciaXmlConcluida($idoc)) {
+            return $this->json($response, [
+                'error' => "A Ordem de Compra #{$idoc} ainda não passou pela Conferência XML. Conclua a Conferência XML da Nota Fiscal antes de iniciar o desembarque."
+            ], 409);
         }
         
         try {
@@ -180,8 +319,13 @@ ORDER BY oc.idoc DESC
                 WHERE oi.idoc = :idoc
                   AND (
                       oi.iditem::text = :codigo
+                      OR UPPER(TRIM(i.referencia)) = UPPER(:codigo_ref)
+                      OR (
+                          LTRIM(UPPER(:codigo_ref_check), '0') <> ''
+                          AND LTRIM(UPPER(TRIM(i.referencia)), '0') = LTRIM(UPPER(:codigo_ref_sem_zero), '0')
+                      )
                       OR oi.iditem IN (
-                          SELECT iditem FROM codigo_barra WHERE idbarra = :codigo2 AND inativo = 'N'
+                          SELECT iditem FROM codigo_barra WHERE TRIM(idbarra) = :codigo2 AND inativo = 'N'
                       )
                   )
                   AND oi.qt - COALESCE((
@@ -193,7 +337,14 @@ ORDER BY oc.idoc DESC
             ";
             
             $stmt = $this->pdo->prepare($sql);
-            $stmt->execute(['idoc' => $idoc, 'codigo' => $codigo, 'codigo2' => $codigo]);
+            $stmt->execute([
+                'idoc' => $idoc,
+                'codigo' => $codigo,
+                'codigo_ref' => $codigo,
+                'codigo_ref_check' => $codigo,
+                'codigo_ref_sem_zero' => $codigo,
+                'codigo2' => $codigo,
+            ]);
             $item = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$item) {
@@ -310,6 +461,12 @@ public function getSecoes(Request $request, Response $response): Response
             $response->getBody()->write(json_encode(['error' => 'Dados inválidos']));
             return $response->withStatus(400);
         }
+
+        if (!$this->isConferenciaXmlConcluida($idoc)) {
+            return $this->json($response, [
+                'error' => "A Ordem de Compra #{$idoc} ainda não passou pela Conferência XML. Conclua a Conferência XML da Nota Fiscal antes de iniciar o desembarque."
+            ], 409);
+        }
         
         try {
             $this->pdo->beginTransaction();
@@ -362,18 +519,35 @@ public function getSecoes(Request $request, Response $response): Response
                 }
             }
             
-            // 1. Verificar/Criar registro na aps_oc_conferencia
-            $stmtCheck = $this->pdo->prepare("SELECT idoc FROM aps_oc_conferencia WHERE idoc = :idoc FOR UPDATE");
+            // 1. Verificar/Criar/Atualizar registro na aps_oc_conferencia
+            $stmtCheck = $this->pdo->prepare("SELECT status FROM aps_oc_conferencia WHERE idoc = :idoc FOR UPDATE");
             $stmtCheck->execute(['idoc' => $idoc]);
+            $statusAtualConf = $stmtCheck->fetchColumn();
             
-            if (!$stmtCheck->fetch()) {
+            if ($statusAtualConf === false) {
                 $this->pdo->prepare("
-                    INSERT INTO aps_oc_conferencia (idoc, idempresa, idfilial, horainicio, quantidadeitens, status, data, usuario, datahora, estacaotrabalho)
+                    INSERT INTO aps_oc_conferencia (idoc, idempresa, idfilial, horainicio, quantidadeitens, status, data, usuario, datahora, estacaotrabalho, conferido_portal)
                     SELECT idoc, idempresa, idfilial, CURRENT_TIME, 
                            (SELECT COUNT(*) FROM oc_item WHERE idoc = oc.idoc),
-                           2, CURRENT_DATE, :usuario, NOW(), '.'
+                           2, CURRENT_DATE, :usuario, NOW(), '.', 'S'
                     FROM oc WHERE idoc = :idoc
                 ")->execute(['idoc' => $idoc, 'usuario' => $usuario]);
+            } elseif ((int)$statusAtualConf === 1) {
+                $this->pdo->prepare("
+                    UPDATE aps_oc_conferencia
+                    SET status = 2,
+                        horainicio = CURRENT_TIME,
+                        data = CURRENT_DATE,
+                        usuario = :usuario,
+                        datahora = NOW(),
+                        quantidadeitens = (SELECT COUNT(*) FROM oc_item WHERE idoc = :idoc_itens),
+                        conferido_portal = 'S'
+                    WHERE idoc = :idoc
+                ")->execute([
+                    'usuario' => $usuario,
+                    'idoc_itens' => $idoc,
+                    'idoc' => $idoc,
+                ]);
             }
             
             // 2. Conferência do item
@@ -404,7 +578,7 @@ public function getSecoes(Request $request, Response $response): Response
                 $this->pdo->prepare("
                     UPDATE aps_oc_conferencia_item 
                     SET quantidadeconferida = quantidadeconferida + :qtd,
-                        quantidadesaldo = quantidadesaldo - :qtd2
+                        quantidadesaldo = GREATEST(0, quantidadesaldo - :qtd2)
                     WHERE idoc = :idoc AND iditem = :iditem
                 ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'idoc' => $idoc, 'iditem' => $iditem]);
             } else {
@@ -412,67 +586,35 @@ public function getSecoes(Request $request, Response $response): Response
                     INSERT INTO aps_oc_conferencia_item 
                     (idoc, idocitem, idempresa, idfilial, iditem, quantidadeoriginal, quantidadeconferida, quantidadesaldo, codigolido, usuario, estacaotrabalho, fatoritem)
                     SELECT oi.idoc, oi.iditemoc, oi.idempresa, oi.idfilial, oi.iditem,
-                           oi.qt, :qtd, oi.qt - :qtd2, oi.codigolido, :usuario, '.', 0
+                           oi.qt, :qtd, GREATEST(0, oi.qt - :qtd2), oi.codigolido, :usuario, '.', 0
                     FROM oc_item oi
                     WHERE oi.idoc = :idoc AND oi.iditem = :iditem
                 ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'idoc' => $idoc, 'iditem' => $iditem, 'usuario' => $usuario]);
             }
             
             // 3. Lote na aps_oc_conferencia_item_lote
-            $stmtLote = $this->pdo->prepare("
-                SELECT quantsaldo FROM aps_oc_conferencia_item_lote 
-                WHERE idoc = :idoc AND iditem = :iditem AND quantsaldo > 0
-                FOR UPDATE
-            ");
-            $stmtLote->execute(['idoc' => $idoc, 'iditem' => $iditem]);
-            
-            if ($stmtLote->fetch()) {
-                $this->pdo->prepare("
-                    UPDATE aps_oc_conferencia_item_lote 
-                    SET quantidade = quantidade + :qtd,
-                        quantsaldo = quantsaldo - :qtd2,
-                        validade = :validade,
-                        lote = :lote
-                    WHERE idoc = :idoc AND iditem = :iditem
-                ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'validade' => $validade, 'lote' => $lote, 'idoc' => $idoc, 'iditem' => $iditem]);
-            } else {
-                $this->pdo->prepare("
-                    INSERT INTO aps_oc_conferencia_item_lote 
-                    (idoc, idocitem, sequencial, idempresa, idfilial, iditem, quantidade, quantutilizado, quantsaldo, lote, complemento, validade)
-                    SELECT oi.idoc, oi.iditemoc, 1, oi.idempresa, oi.idfilial, oi.iditem,
-                           :qtd, 0, oi.qt - :qtd2, :lote, '.', :validade
-                    FROM oc_item oi
-                    WHERE oi.idoc = :idoc AND oi.iditem = :iditem
-                ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'lote' => $lote, 'validade' => $validade, 'idoc' => $idoc, 'iditem' => $iditem]);
-            }
-            
+            $this->sincronizarLoteConferencia(
+                'aps_oc_conferencia_item_lote',
+                'idocitem',
+                $idoc,
+                $iditem,
+                $quantidade,
+                $lote,
+                $validade,
+                (bool)$itemExistente
+            );
+
             // 4. Lote na oc_item_lote
-            $stmtOCLote = $this->pdo->prepare("
-                SELECT quantsaldo FROM oc_item_lote 
-                WHERE idoc = :idoc AND iditem = :iditem AND quantsaldo > 0
-                FOR UPDATE
-            ");
-            $stmtOCLote->execute(['idoc' => $idoc, 'iditem' => $iditem]);
-            
-            if ($stmtOCLote->fetch()) {
-                $this->pdo->prepare("
-                    UPDATE oc_item_lote 
-                    SET quantidade = quantidade + :qtd,
-                        quantsaldo = quantsaldo - :qtd2,
-                        validade = :validade,
-                        lote = :lote
-                    WHERE idoc = :idoc AND iditem = :iditem
-                ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'validade' => $validade, 'lote' => $lote, 'idoc' => $idoc, 'iditem' => $iditem]);
-            } else {
-                $this->pdo->prepare("
-                    INSERT INTO oc_item_lote 
-                    (idoc, iditemoc, sequencial, idempresa, idfilial, iditem, quantidade, quantutilizado, quantsaldo, lote, complemento, validade)
-                    SELECT oi.idoc, oi.iditemoc, 1, oi.idempresa, oi.idfilial, oi.iditem,
-                           :qtd, 0, oi.qt - :qtd2, :lote, '.', :validade
-                    FROM oc_item oi
-                    WHERE oi.idoc = :idoc AND oi.iditem = :iditem
-                ")->execute(['qtd' => $quantidade, 'qtd2' => $quantidade, 'lote' => $lote, 'validade' => $validade, 'idoc' => $idoc, 'iditem' => $iditem]);
-            }
+            $this->sincronizarLoteConferencia(
+                'oc_item_lote',
+                'iditemoc',
+                $idoc,
+                $iditem,
+                $quantidade,
+                $lote,
+                $validade,
+                (bool)$itemExistente
+            );
             
 // 5. Registrar endereço no lote_endereco e atualizar secao_enderecos
 if (!empty($input['idsecao']) && !empty($input['idendereco'])) {
@@ -652,6 +794,12 @@ public function getEnderecos(Request $request, Response $response, array $args):
 
         if ($idoc <= 0 || empty($usuario)) {
             return $this->json($response, ['error' => 'Dados inválidos'], 400);
+        }
+
+        if (!$this->isConferenciaXmlConcluida($idoc)) {
+            return $this->json($response, [
+                'error' => "A Ordem de Compra #{$idoc} ainda não passou pela Conferência XML. Conclua a Conferência XML da Nota Fiscal antes de iniciar o desembarque."
+            ], 409);
         }
         
         try {

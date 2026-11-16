@@ -88,12 +88,43 @@ $extraCss = '
   .pilar-P { background: #dcfce7; color: #15803d; }
   .pilar-D { background: #ffe4e6; color: #be123c; }
 
-  /* Impressão */
+  /* Impressão Premium A4 Portrait */
   @media print {
-    body * { visibility: hidden; }
-    #modalFichaConteudo, #modalFichaConteudo * { visibility: visible; }
-    #modalFichaConteudo { position: absolute; left: 0; top: 0; width: 100%; }
+    @page { size: A4 portrait; margin: 8mm; }
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: #ffffff !important; margin: 0 !important; padding: 0 !important; }
+    header, nav, footer, aside,
+    .ch-hero, .ch-tabs,
+    #painelAvaliar, #painelDashboard, #painelColaboradores, #painelMatriz, #painelHistorico, #painelPerguntas,
+    #modalManual, #modalPergunta, #modalFotoColab, #modalEditarPerfilColab, #modernTooltipChapd,
     .no-print { display: none !important; }
+    .ch-wrap { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    #modalFicha {
+      position: static !important;
+      display: block !important;
+      background: #ffffff !important;
+      padding: 0 !important;
+      inset: auto !important;
+      backdrop-filter: none !important;
+    }
+    #modalFicha > div {
+      max-width: 100% !important;
+      max-height: none !important;
+      height: auto !important;
+      border-radius: 0 !important;
+      box-shadow: none !important;
+      border: none !important;
+      overflow: visible !important;
+    }
+    #modalFichaConteudo {
+      position: static !important;
+      width: 100% !important;
+      max-height: none !important;
+      overflow: visible !important;
+      padding: 0 !important;
+    }
+    .print-avoid-break { break-inside: avoid; page-break-inside: avoid; }
+    tr { break-inside: avoid; page-break-inside: avoid; }
   }
 </style>
 ';
@@ -171,6 +202,37 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ABA 1: MODO AVALIAR (WIZARD INTERATIVO MOBILE-FIRST) -->
     <!-- =================================================== -->
     <div id="painelAvaliar" class="hidden space-y-4">
+
+        <!-- BANNER MODO EDIÇÃO DE AVALIAÇÃO -->
+        <div id="bannerModoEdicaoAvaliacao" class="hidden rounded-2xl bg-amber-50 border-2 border-amber-300 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base flex-none shadow-xs">
+                    <i class="fa-solid fa-pen-to-square"></i>
+                </div>
+                <div>
+                    <div class="text-xs font-black text-amber-950 uppercase tracking-wider" id="bannerEdicaoTitulo">
+                        Editando Avaliação #--
+                    </div>
+                    <div class="text-[11px] font-bold text-amber-800" id="bannerEdicaoSubtitulo">
+                        Avaliação ainda não finalizada. Você pode ajustar dados, respostas das perguntas ou resultado/conceito.
+                    </div>
+                </div>
+            </div>
+            <div class="flex flex-wrap items-center gap-1.5">
+                <button type="button" onclick="irParaEtapaEdicao(1)" class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[11px] transition cursor-pointer">
+                    1. Dados
+                </button>
+                <button type="button" onclick="irParaEtapaEdicao(2)" class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[11px] transition cursor-pointer">
+                    2. Alterar Respostas
+                </button>
+                <button type="button" onclick="irParaEtapaEdicao(3)" class="px-2.5 py-1.5 rounded-xl bg-white hover:bg-amber-100 text-amber-900 border border-amber-300 font-extrabold text-[11px] transition cursor-pointer">
+                    3. Resultado &amp; Conceito
+                </button>
+                <button type="button" onclick="iniciarNovaAvaliacao()" class="px-2.5 py-1.5 rounded-xl bg-rose-100 hover:bg-rose-200 text-rose-800 font-extrabold text-[11px] transition cursor-pointer">
+                    <i class="fa-solid fa-xmark mr-1"></i> Cancelar Edição
+                </button>
+            </div>
+        </div>
 
         <!-- ETAPA 1: SELEÇÃO DO COLABORADOR E PERÍODO -->
         <div id="stepSelecao" class="ch-card p-5 sm:p-7">
@@ -538,19 +600,23 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <!-- BOTÃO SALVAR AVALIAÇÃO FINAL -->
+            <!-- BOTÕES SALVAR / FINALIZAR AVALIAÇÃO -->
             <div class="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
                 <button type="button" onclick="cancelarAvaliacao()" class="p-2.5 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs sm:text-sm transition cursor-pointer">
                     Descartar
                 </button>
                 <div class="flex flex-wrap items-center gap-2">
-                    <button type="button" id="btnSalvarEAbrirPdi" onclick="salvarAvaliacaoFinal(true)" class="hidden py-3 px-5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
+                    <button type="button" id="btnSalvarEAbrirPdi" onclick="salvarAvaliacaoFinal(true, false)" class="hidden py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-md cursor-pointer">
                         <i class="fa-solid fa-list-check"></i>
-                        <span>Salvar e Abrir Plano de Ação 5W2H</span>
+                        <span>Salvar e Abrir Plano 5W2H</span>
                     </button>
-                    <button type="button" id="btnSalvarAvaliacao" onclick="salvarAvaliacaoFinal(false)" class="ch-btn py-3 px-7 text-sm cursor-pointer">
-                        <i class="fa-solid fa-cloud-arrow-up"></i>
-                        <span>Concluir e Salvar Avaliação</span>
+                    <button type="button" id="btnSalvarAvaliacao" onclick="abrirEscolhaSalvarAvaliacao()" class="py-2.5 px-5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs sm:text-sm transition flex items-center gap-2 shadow-sm cursor-pointer">
+                        <i class="fa-solid fa-floppy-disk"></i>
+                        <span>Salvar Avaliação</span>
+                    </button>
+                    <button type="button" id="btnFinalizarImprimirAvaliacao" onclick="salvarAvaliacaoFinal(false, true)" class="ch-btn py-2.5 px-6 text-xs sm:text-sm cursor-pointer">
+                        <i class="fa-solid fa-print"></i>
+                        <span>Finalizar e Imprimir p/ Assinatura</span>
                     </button>
                 </div>
             </div>
@@ -938,97 +1004,165 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div id="modalFicha" class="fixed inset-0 z-50 hidden bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-5">
         <div class="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl overflow-hidden border border-slate-100">
             <!-- Header Modal -->
-            <div class="p-4 sm:p-5 bg-gradient-to-r from-emerald-800 to-teal-800 text-white flex items-center justify-between no-print">
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-emerald-800 to-teal-800 text-white flex flex-wrap items-center justify-between gap-3 no-print">
                 <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white">
+                    <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center text-white flex-none">
                         <i class="fa-solid fa-file-invoice text-lg"></i>
                     </div>
                     <div>
-                        <h3 class="text-base sm:text-lg font-black tracking-tight" id="fichaModalTitulo">Ficha de Avaliação C.H.A.P.D</h3>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="text-base sm:text-lg font-black tracking-tight" id="fichaModalTitulo">Ficha de Avaliação C.H.A.P.D</h3>
+                            <span id="fichaStatusBadge" class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-amber-300 text-slate-900">Em Edição</span>
+                        </div>
                         <p class="text-xs text-emerald-100 font-semibold" id="fichaModalSubtitulo">Registro Oficial de Desempenho</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button type="button" onclick="imprimirFicha()" class="p-2 px-3.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition flex items-center gap-1.5">
-                        <i class="fa-solid fa-print"></i> Imprimir / PDF
+                <div class="flex flex-wrap items-center gap-1.5">
+                    <button type="button" id="btnFichaEditar" onclick="editarAvaliacaoDaFicha()" class="p-2 px-3 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Abrir avaliação para alterar notas, conceito ou textos">
+                        <i class="fa-solid fa-pen-to-square"></i> Editar
                     </button>
-                    <button type="button" onclick="fecharModalFicha()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition">
+                    <button type="button" id="btnFichaFinalizar" onclick="finalizarAvaliacaoDaFicha(false)" class="p-2 px-3 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-900 font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Finalizar avaliação (trava edição e exclusão)">
+                        <i class="fa-solid fa-lock"></i> Finalizar
+                    </button>
+                    <button type="button" id="btnFichaExcluir" onclick="excluirAvaliacaoDaFicha()" class="p-2 px-3 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer" title="Excluir avaliação enquanto não finalizada">
+                        <i class="fa-solid fa-trash"></i> Excluir
+                    </button>
+                    <button type="button" onclick="imprimirFicha()" id="btnFichaImprimir" class="p-2 px-3.5 rounded-xl bg-white/20 hover:bg-white/30 text-white font-bold text-xs transition flex items-center gap-1.5 cursor-pointer">
+                        <i class="fa-solid fa-print"></i> <span id="btnFichaImprimirTexto">Imprimir p/ Assinatura</span>
+                    </button>
+                    <button type="button" onclick="fecharModalFicha()" class="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition cursor-pointer">
                         <i class="fa-solid fa-xmark"></i>
                     </button>
                 </div>
             </div>
 
-            <!-- Conteúdo da Ficha (Área de Impressão) -->
-            <div id="modalFichaConteudo" class="p-6 sm:p-8 overflow-y-auto space-y-6 text-sm text-slate-700 bg-white">
-                <!-- Cabeçalho Oficial Tipo Planilha -->
-                <div class="border-2 border-slate-800 rounded-2xl p-4 sm:p-5 bg-slate-50">
-                    <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b-2 border-slate-800 pb-3 mb-3 gap-2">
+            <!-- Conteúdo da Ficha (Área de Impressão A4 Premium) -->
+            <div id="modalFichaConteudo" class="p-6 sm:p-8 overflow-y-auto space-y-5 text-sm text-slate-700 bg-white">
+                <!-- Cabeçalho Oficial Executivo A4 -->
+                <div class="border-2 border-slate-800 rounded-2xl overflow-hidden print-avoid-break shadow-xs">
+                    <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-teal-900 text-white px-5 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                         <div>
-                            <div class="text-[0.7rem] uppercase font-black text-slate-500 tracking-wider">NUTRICIONAL DISTRIBUIDORA</div>
-                            <h2 class="text-xl font-black text-slate-900 tracking-tight">AVALIAÇÃO C.H.A.P.D</h2>
-                            <div class="text-xs font-bold text-slate-600">Conhecimento • Habilidade • Atitude • Postura • Disciplina</div>
+                            <div class="flex items-center gap-2 text-[0.65rem] uppercase font-black text-emerald-300 tracking-widest">
+                                <span>NUTRICIONAL DISTRIBUIDORA</span>
+                                <span>•</span>
+                                <span>GENTE &amp; GESTÃO / PERFORMANCE</span>
+                            </div>
+                            <h2 class="text-lg sm:text-xl font-black text-white tracking-tight mt-0.5">FICHA DE AVALIAÇÃO C.H.A.P.D</h2>
+                            <div class="text-[11px] font-semibold text-emerald-100/90">Conhecimento • Habilidade • Atitude • Postura • Disciplina</div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-xs font-bold text-slate-500">Período de Referência:</div>
-                            <div class="text-base font-black text-slate-900" id="fichaPeriodo">Outubro / 2026</div>
+                        <div class="flex flex-col sm:items-end gap-1">
+                            <div class="flex items-center gap-2">
+                                <span id="fichaNumeroTopo" class="px-2.5 py-0.5 rounded-lg bg-white/15 text-white font-black text-xs border border-white/20">Ficha #--</span>
+                                <span id="fichaStatusTopo" class="px-2.5 py-0.5 rounded-lg bg-amber-300 text-slate-900 font-black text-[10px] uppercase">EM EDIÇÃO</span>
+                            </div>
+                            <div class="text-xs font-black text-white" id="fichaPeriodo">Outubro / 2026</div>
+                            <div class="text-[10px] font-semibold text-emerald-100" id="fichaDataAvaliacao">Avaliada em --/--/----</div>
                         </div>
                     </div>
 
-                    <!-- Dados Cadastrais com Foto do Colaborador -->
-                    <div class="flex flex-col sm:flex-row items-center sm:items-start gap-4">
-                        <div class="flex-none">
-                            <div class="w-16 h-20 sm:w-20 sm:h-24 rounded-xl border border-slate-300 bg-white shadow-xs overflow-hidden flex items-center justify-center" id="fichaFotoContainer">
+                    <!-- Prontuário Completo com Foto 3x4 do Colaborador -->
+                    <div class="p-4 sm:p-5 bg-slate-50 flex flex-col sm:flex-row items-center sm:items-stretch gap-4">
+                        <div class="flex-none flex flex-col items-center justify-center">
+                            <div class="w-20 h-24 rounded-xl border-2 border-slate-300 bg-white shadow-sm overflow-hidden flex items-center justify-center" id="fichaFotoContainer">
                                 <img id="fichaColabFoto" class="w-full h-full object-cover hidden" alt="Foto Colaborador">
-                                <div id="fichaColabIniciais" class="w-full h-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-lg sm:text-xl">--</div>
+                                <div id="fichaColabIniciais" class="w-full h-full bg-emerald-100 text-emerald-800 font-black flex items-center justify-center text-xl">--</div>
                             </div>
                         </div>
-                        <div class="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs w-full">
-                            <div>
-                                <span class="text-slate-400 font-bold block">COLABORADOR:</span>
-                                <span class="font-black text-slate-900" id="fichaColaborador">--</span>
+                        <div class="flex-1 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2.5 text-xs w-full">
+                            <div class="col-span-2">
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Colaborador Avaliado</span>
+                                <span class="font-black text-slate-900 text-sm break-words" id="fichaColaborador">--</span>
                             </div>
                             <div>
-                                <span class="text-slate-400 font-bold block">CARGO / FUNÇÃO:</span>
-                                <span class="font-extrabold text-slate-800" id="fichaCargo">--</span>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Código ERP</span>
+                                <span class="font-black text-slate-800" id="fichaCodigoErp">#--</span>
                             </div>
                             <div>
-                                <span class="text-slate-400 font-bold block">SETOR:</span>
-                                <span class="font-extrabold text-slate-800" id="fichaSetor">--</span>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Data de Admissão</span>
+                                <span class="font-extrabold text-slate-800" id="fichaAdmissao">--</span>
                             </div>
                             <div>
-                                <span class="text-slate-400 font-bold block">CÉLULA DE TRABALHO:</span>
-                                <span class="font-extrabold text-slate-800" id="fichaCelula">--</span>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Cargo / Função</span>
+                                <span class="font-extrabold text-slate-800 break-words" id="fichaCargo">--</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Unidade / Filial</span>
+                                <span class="font-extrabold text-slate-800" id="fichaFilial">--</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Setor</span>
+                                <span class="font-extrabold text-slate-800 break-words" id="fichaSetor">--</span>
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-slate-400 font-extrabold uppercase block">Célula de Trabalho</span>
+                                <span class="font-extrabold text-slate-800 break-words" id="fichaCelula">--</span>
+                            </div>
+                            <div class="col-span-2 sm:col-span-4 pt-1.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                                <span><b class="text-slate-800">Avaliador:</b> <span id="fichaAvaliadorTopo">--</span></span>
+                                <span><b class="text-slate-800">Aprovação / Diretoria:</b> <span id="fichaAprovadorTopo">--</span></span>
                             </div>
                         </div>
                     </div>
                 </div>
 
                 <!-- Resumo dos Resultados -->
-                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                    <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-center">
-                        <div class="text-[0.68rem] uppercase font-bold text-slate-400">PONTUAÇÃO TOTAL</div>
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 print-avoid-break">
+                    <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-center">
+                        <div class="text-[0.65rem] uppercase font-bold text-slate-400">PONTUAÇÃO TOTAL</div>
                         <div class="text-2xl font-black text-slate-900 mt-0.5" id="fichaPontos">0 / 140</div>
-                        <div class="text-[0.7rem] text-slate-500 font-bold mt-0.5" id="fichaPercentual">0% de aproveitamento</div>
+                        <div class="text-[0.68rem] text-slate-500 font-bold mt-0.5" id="fichaPercentual">0% de aproveitamento</div>
                     </div>
-                    <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-center">
-                        <div class="text-[0.68rem] uppercase font-bold text-slate-400">CLASSIFICAÇÃO</div>
-                        <div class="text-base font-black text-slate-900 mt-1" id="fichaClassificacao">--</div>
+                    <div class="p-3 rounded-xl border border-slate-200 bg-slate-50 text-center">
+                        <div class="text-[0.65rem] uppercase font-bold text-slate-400">CLASSIFICAÇÃO</div>
+                        <div class="text-sm font-black text-slate-900 mt-1 break-words" id="fichaClassificacao">--</div>
                     </div>
-                    <div class="p-3.5 rounded-xl border border-indigo-100 bg-indigo-50/50 text-center">
-                        <div class="text-[0.68rem] uppercase font-bold text-indigo-500">CONJUNTO DUPLO</div>
+                    <div class="p-3 rounded-xl border border-indigo-200 bg-indigo-50/70 text-center">
+                        <div class="text-[0.65rem] uppercase font-bold text-indigo-600">CONJUNTO DUPLO</div>
                         <div class="text-xl font-black text-indigo-900 mt-1" id="fichaConjuntoDuplo">A &amp; B</div>
                     </div>
-                    <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50 text-center">
-                        <div class="text-[0.68rem] uppercase font-bold text-slate-400">CONCEITO ATRIBUÍDO</div>
-                        <div class="text-2xl font-black text-emerald-700 mt-0.5" id="fichaLetra">--</div>
+                    <div class="p-3 rounded-xl border border-emerald-200 bg-emerald-50/60 text-center">
+                        <div class="text-[0.65rem] uppercase font-bold text-emerald-700">CONCEITO ATRIBUÍDO</div>
+                        <div class="text-2xl font-black text-emerald-800 mt-0.5" id="fichaLetra">--</div>
+                    </div>
+                </div>
+
+                <!-- Desempenho por Pilar C.H.A.P.D na Ficha -->
+                <div class="p-3.5 rounded-xl border border-slate-200 bg-slate-50/80 print-avoid-break">
+                    <div class="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2">Desempenho Detalhado por Pilar C.H.A.P.D</div>
+                    <div class="grid grid-cols-5 gap-2 text-xs">
+                        <div class="p-2 rounded-lg bg-white border border-sky-200">
+                            <div class="text-[9px] font-black text-sky-700 uppercase">Conhecimento (C)</div>
+                            <div class="font-black text-slate-900 text-sm" id="fichaPilarC">0 / 40</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div id="fichaBarraPilarC" class="h-full bg-sky-500 rounded-full" style="width:0%"></div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-white border border-purple-200">
+                            <div class="text-[9px] font-black text-purple-700 uppercase">Habilidade (H)</div>
+                            <div class="font-black text-slate-900 text-sm" id="fichaPilarH">0 / 20</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div id="fichaBarraPilarH" class="h-full bg-purple-500 rounded-full" style="width:0%"></div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-white border border-amber-200">
+                            <div class="text-[9px] font-black text-amber-700 uppercase">Atitude (A)</div>
+                            <div class="font-black text-slate-900 text-sm" id="fichaPilarA">0 / 30</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div id="fichaBarraPilarA" class="h-full bg-amber-500 rounded-full" style="width:0%"></div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-white border border-emerald-200">
+                            <div class="text-[9px] font-black text-emerald-700 uppercase">Postura (P)</div>
+                            <div class="font-black text-slate-900 text-sm" id="fichaPilarP">0 / 30</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div id="fichaBarraPilarP" class="h-full bg-emerald-500 rounded-full" style="width:0%"></div></div>
+                        </div>
+                        <div class="p-2 rounded-lg bg-white border border-rose-200">
+                            <div class="text-[9px] font-black text-rose-700 uppercase">Disciplina (D)</div>
+                            <div class="font-black text-slate-900 text-sm" id="fichaPilarD">0 / 20</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full mt-1 overflow-hidden"><div id="fichaBarraPilarD" class="h-full bg-rose-500 rounded-full" style="width:0%"></div></div>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Tabela de Respostas Pergunta por Pergunta -->
                 <div>
                     <h4 class="font-black text-slate-800 text-xs uppercase tracking-wider mb-2">Detalhamento das Questões Respondidas</h4>
-                    <table class="w-full text-left text-xs border border-slate-200 rounded-xl overflow-hidden">
-                        <thead class="bg-slate-100 text-slate-500 font-extrabold">
+                    <table class="w-full text-left text-xs border border-slate-300 rounded-xl overflow-hidden">
+                        <thead class="bg-slate-800 text-white font-extrabold">
                             <tr>
                                 <th class="p-2 text-center w-12">Pilar</th>
                                 <th class="p-2">Critério Avaliado</th>
@@ -1036,37 +1170,37 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <th class="p-2">Observações</th>
                             </tr>
                         </thead>
-                        <tbody id="fichaTabelaRespostas" class="divide-y divide-slate-100 font-medium text-slate-700">
+                        <tbody id="fichaTabelaRespostas" class="divide-y divide-slate-200 font-medium text-slate-700">
                             <!-- Preenchido via JS -->
                         </tbody>
                     </table>
                 </div>
 
                 <!-- Observações e PDI -->
-                <div class="p-4 rounded-xl border border-slate-200 bg-slate-50 space-y-2.5 text-xs">
+                <div class="p-4 rounded-xl border border-slate-300 bg-slate-50 space-y-3 text-xs print-avoid-break">
                     <div>
-                        <b class="text-slate-800">Pontos Fortes:</b>
-                        <span id="fichaPontosFortes" class="text-slate-600 block mt-0.5">--</span>
+                        <b class="text-slate-900 uppercase text-[10px] tracking-wider block">Pontos Fortes e Diferenciais:</b>
+                        <span id="fichaPontosFortes" class="text-slate-700 block mt-0.5 whitespace-pre-wrap break-words leading-relaxed">--</span>
                     </div>
-                    <div>
-                        <b class="text-slate-800">Pontos a Desenvolver:</b>
-                        <span id="fichaPontosDesenvolver" class="text-slate-600 block mt-0.5">--</span>
+                    <div class="pt-2 border-t border-slate-200">
+                        <b class="text-slate-900 uppercase text-[10px] tracking-wider block">Pontos a Desenvolver / Atenção:</b>
+                        <span id="fichaPontosDesenvolver" class="text-slate-700 block mt-0.5 whitespace-pre-wrap break-words leading-relaxed">--</span>
                     </div>
-                    <div>
-                        <b class="text-slate-800">Plano de Ação (PDI):</b>
-                        <span id="fichaPlanoAcao" class="text-slate-600 block mt-0.5">--</span>
+                    <div class="pt-2 border-t border-slate-200">
+                        <b class="text-slate-900 uppercase text-[10px] tracking-wider block">Resumo do Plano de Ação (PDI):</b>
+                        <span id="fichaPlanoAcao" class="text-slate-700 block mt-0.5 whitespace-pre-wrap break-words leading-relaxed">--</span>
                     </div>
                 </div>
 
                 <!-- Feedback e Ciência do Colaborador -->
-                <div class="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2.5 text-xs">
+                <div class="p-4 rounded-xl border border-indigo-200 bg-indigo-50/40 space-y-2.5 text-xs print-avoid-break">
                     <div class="flex flex-wrap items-center justify-between gap-2">
                         <div class="font-black text-indigo-950 flex items-center gap-1.5">
-                            <i class="fa-solid fa-comments text-indigo-600"></i> Feedback & Ciência do Colaborador (Reunião 1:1)
+                            <i class="fa-solid fa-comments text-indigo-600"></i> Feedback &amp; Ciência do Colaborador (Reunião 1:1)
                         </div>
                         <span id="fichaCienciaStatus" class="text-[10px] font-extrabold px-2.5 py-0.5 rounded-full bg-slate-200 text-slate-600">Aguardando feedback</span>
                     </div>
-                    <div id="fichaFeedbackTextoExibicao" class="text-slate-700 font-medium hidden"></div>
+                    <div id="fichaFeedbackTextoExibicao" class="text-slate-700 font-medium hidden whitespace-pre-wrap break-words leading-relaxed"></div>
                     <div class="no-print space-y-2 pt-1">
                         <textarea id="fichaInputFeedbackColab" rows="2" placeholder="Registre a percepção, comentários ou compromisso assumido pelo colaborador durante o feedback..." class="ch-input bg-white text-xs mt-0"></textarea>
                         <div class="flex justify-end">
@@ -1077,15 +1211,28 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
-                <!-- Assinaturas Formais (conforme planilha: Sandro Rafo / Robson Becker) -->
-                <div class="pt-8 border-t border-slate-300 grid grid-cols-2 gap-8 text-center text-xs mt-6">
+                <!-- Selo de Finalização (visível quando finalizada) -->
+                <div id="fichaSeloFinalizacao" class="hidden p-3 rounded-xl border border-emerald-200 bg-emerald-50/70 text-[11px] font-bold text-emerald-900 flex items-center justify-between print-avoid-break">
+                    <span><i class="fa-solid fa-lock text-emerald-700 mr-1.5"></i> Documento finalizado oficialmente para colheita de assinaturas</span>
+                    <span id="fichaSeloInfo">--</span>
+                </div>
+
+                <!-- Assinaturas Formais (Colaborador, Avaliador e Aprovador) -->
+                <div class="pt-10 border-t border-slate-300 grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-xs mt-6 print-avoid-break">
                     <div>
-                        <div class="border-b border-slate-400 pb-1 mb-1 font-black text-slate-800" id="fichaAssinaturaAvaliador">Sandro Rafo</div>
-                        <div class="text-slate-400 font-bold uppercase text-[0.68rem]">Elaboração / Avaliador</div>
+                        <div class="border-b border-slate-500 pb-1 mb-1 font-black text-slate-900" id="fichaAssinaturaColaborador">Colaborador Avaliado</div>
+                        <div class="text-slate-500 font-bold uppercase text-[0.65rem]">Ciente / Colaborador Avaliado</div>
+                        <div class="text-slate-400 text-[0.65rem] mt-1">Data: _____ / _____ / _________</div>
                     </div>
                     <div>
-                        <div class="border-b border-slate-400 pb-1 mb-1 font-black text-slate-800" id="fichaAssinaturaAprovador">Robson Becker</div>
-                        <div class="text-slate-400 font-bold uppercase text-[0.68rem]">Aprovação / Diretoria</div>
+                        <div class="border-b border-slate-500 pb-1 mb-1 font-black text-slate-900" id="fichaAssinaturaAvaliador">Sandro Rafo</div>
+                        <div class="text-slate-500 font-bold uppercase text-[0.65rem]">Elaboração / Avaliador</div>
+                        <div class="text-slate-400 text-[0.65rem] mt-1">Data: _____ / _____ / _________</div>
+                    </div>
+                    <div>
+                        <div class="border-b border-slate-500 pb-1 mb-1 font-black text-slate-900" id="fichaAssinaturaAprovador">Robson Becker</div>
+                        <div class="text-slate-500 font-bold uppercase text-[0.65rem]">Aprovação / Diretoria</div>
+                        <div class="text-slate-400 text-[0.65rem] mt-1">Data: _____ / _____ / _________</div>
                     </div>
                 </div>
             </div>

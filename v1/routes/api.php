@@ -1051,6 +1051,9 @@ $protected->group('/avaliacao-chapd', function ($group) {
     $group->post('/perguntas/toggle', [$controller, 'togglePergunta']);
     $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
     $group->post('/salvar', [$controller, 'salvar']);
+    $group->post('/finalizar', [$controller, 'finalizarAvaliacao']);
+    $group->delete('/{id:[0-9]+}', [$controller, 'excluirAvaliacao']);
+    $group->post('/excluir', [$controller, 'excluirAvaliacao']);
     $group->post('/upload-foto', [$controller, 'uploadFoto']);
     $group->post('/colaborador/salvar-perfil', [$controller, 'salvarPerfilColaborador']);
     // Plano de Ação 5W2H & PDI
@@ -1058,6 +1061,8 @@ $protected->group('/avaliacao-chapd', function ($group) {
     $group->get('/planos-acao', [$controller, 'listarPlanosAcao']);
     $group->get('/planos-acao/{id:[0-9]+}', [$controller, 'detalhesPlanoAcao']);
     $group->post('/planos-acao/salvar', [$controller, 'salvarPlanoAcao']);
+    $group->post('/planos-acao/finalizar-impressao', [$controller, 'finalizarImpressaoPlanoAcao']);
+    $group->post('/planos-acao/fechar', [$controller, 'fecharPlanoAcao']);
     $group->post('/planos-acao/item/status', [$controller, 'atualizarStatusItemPlano']);
     $group->delete('/planos-acao/{id:[0-9]+}', [$controller, 'excluirPlanoAcao']);
     $group->post('/feedback-colaborador', [$controller, 'salvarFeedbackColaborador']);

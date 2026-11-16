@@ -97,7 +97,11 @@ const estadoPa = {
     pendentesPdi: [],
     planos: [],
     itensEditor: [],
-    avaliacaoVinculada: null
+    avaliacaoVinculada: null,
+    planoAtual: null,
+    situacaoCiclo: 'EM_ELABORACAO',
+    impresso: false,
+    fechado: false
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -130,6 +134,7 @@ function alternarAbaPa(aba) {
         if (estadoPa.itensEditor.length === 0) {
             adicionarLinha5W2H();
         }
+        aplicarModoCicloNoEditor();
     } else {
         btnEditor?.classList.remove('on');
         btnVisao?.classList.add('on');
@@ -215,9 +220,14 @@ function renderizarGridPendentesPdi() {
             : `<span class="px-2 py-0.5 rounded-full bg-amber-500 text-slate-900 text-[10px] font-black uppercase">Indicado pelo Avaliador (${pts} pts)</span>`;
 
         const temPlano = !!item.idplano;
+        const isPlanoFechado = !!item.plano_fechado || item.plano_situacao_ciclo === 'FECHADO';
+        const isPlanoImpresso = !!item.plano_impresso || item.plano_situacao_ciclo === 'IMPRESSO';
         const statusPlanoBadge = temPlano
-            ? obterBadgeStatusGeral(item.plano_status)
+            ? `${obterBadgeStatusGeral(item.plano_status)} ${obterBadgeSituacaoCiclo({ fechado: isPlanoFechado, impresso: isPlanoImpresso, situacao_ciclo: item.plano_situacao_ciclo })}`
             : `<span class="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 border border-rose-200 text-[10px] font-black">AGUARDANDO PLANO 5W2H</span>`;
+        const labelBotaoPlano = isPlanoFechado
+            ? `Visualizar PDI (${item.itens_concluidos}/${item.total_itens})`
+            : (isPlanoImpresso ? `Acompanhar 5W2H (${item.itens_concluidos}/${item.total_itens})` : `Abrir Plano 5W2H (${item.itens_concluidos}/${item.total_itens})`);
 
         const avatarHtml = urlFoto
             ? `<img src="${urlFoto}" class="w-12 h-12 rounded-2xl object-cover border-2 border-white shadow-sm flex-none" alt="Foto" onerror="this.style.display='none'">`
@@ -258,8 +268,8 @@ function renderizarGridPendentesPdi() {
                         <i class="fa-solid fa-file-lines"></i> Ficha
                     </a>
                     ${temPlano ? `
-                        <button type="button" onclick="abrirPlanoExistente(${item.idplano})" class="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
-                            <i class="fa-solid fa-pen-to-square"></i> Abrir Plano 5W2H (${item.itens_concluidos}/${item.total_itens})
+                        <button type="button" onclick="abrirPlanoExistente(${item.idplano})" class="flex-1 py-2 px-3 rounded-xl ${isPlanoFechado ? 'bg-slate-800 hover:bg-slate-900' : 'bg-emerald-600 hover:bg-emerald-700'} text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
+                            <i class="fa-solid ${isPlanoFechado ? 'fa-eye' : 'fa-pen-to-square'}"></i> ${labelBotaoPlano}
                         </button>
                     ` : `
                         <button type="button" onclick="iniciarPlanoAPartirDeAvaliacao(${item.idavaliacao})" class="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm">
@@ -276,11 +286,12 @@ async function carregarPlanosAcao() {
     const ano = $('filtroPdiAno')?.value || '';
     const filial = $('filtroPdiFilial')?.value || '';
     const status = $('filtroPlanoStatus')?.value || '';
+    const ciclo = $('filtroPlanoCiclo')?.value || '';
     const busca = $('filtroPlanoBusca')?.value || '';
     const tbody = $('tabelaPlanosCorpo');
 
     try {
-        const data = await apiFetch(`planos-acao?ano=${ano}&filial=${filial}&status=${encodeURIComponent(status)}&busca=${encodeURIComponent(busca)}`);
+        const data = await apiFetch(`planos-acao?ano=${ano}&filial=${filial}&status=${encodeURIComponent(status)}&situacao_ciclo=${encodeURIComponent(ciclo)}&busca=${encodeURIComponent(busca)}`);
         if (!data.sucesso) throw new Error(data.mensagem);
 
         estadoPa.planos = data.planos || [];
@@ -297,6 +308,19 @@ async function carregarPlanosAcao() {
             tbody.innerHTML = `<tr><td colspan="7" class="text-center py-8 text-rose-600 font-bold">${esc(e.message)}</td></tr>`;
         }
     }
+}
+
+function obterBadgeSituacaoCiclo(p) {
+    const fechado = !!p.fechado || p.situacao_ciclo === 'FECHADO';
+    const impresso = !!p.impresso || p.situacao_ciclo === 'IMPRESSO';
+
+    if (fechado) {
+        return `<span class="px-2 py-0.5 rounded-md bg-slate-800 text-white text-[10px] font-black uppercase inline-flex items-center gap-1" title="Ciclo PDI encerrado oficialmente — somente leitura e reimpressão"><i class="fa-solid fa-lock text-[9px]"></i> Fechado</span>`;
+    }
+    if (impresso) {
+        return `<span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase inline-flex items-center gap-1" title="Impresso para assinatura — em acompanhamento de execução (não excluível)"><i class="fa-solid fa-print text-[9px]"></i> Impresso / Execução</span>`;
+    }
+    return `<span class="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300 text-[10px] font-black uppercase inline-flex items-center gap-1" title="Em elaboração — pode editar ou excluir"><i class="fa-solid fa-pen text-[9px]"></i> Em Elaboração</span>`;
 }
 
 function obterBadgeStatusGeral(status) {
@@ -326,6 +350,47 @@ function renderizarTabelaPlanos() {
         const total = parseInt(p.total_itens || 0);
         const concl = parseInt(p.concluidas || 0);
         const perc = total > 0 ? Math.round((concl / total) * 100) : 0;
+        const isFechado = !!p.fechado || p.situacao_ciclo === 'FECHADO';
+        const isImpresso = !!p.impresso || p.situacao_ciclo === 'IMPRESSO';
+
+        let botoesAcao = '';
+        if (isFechado) {
+            botoesAcao = `
+                <button type="button" onclick="abrirPlanoExistente(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Visualizar PDI Fechado">
+                    <i class="fa-solid fa-eye"></i> Visualizar
+                </button>
+                <button type="button" onclick="imprimirPlanoRapido(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Reimprimir Planilha A4">
+                    <i class="fa-solid fa-print"></i> Reimprimir
+                </button>
+            `;
+        } else if (isImpresso) {
+            botoesAcao = `
+                <button type="button" onclick="abrirPlanoExistente(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Visualizar e acompanhar execução das etapas">
+                    <i class="fa-solid fa-table-list"></i> Acompanhar
+                </button>
+                <button type="button" onclick="imprimirPlanoRapido(${p.id})" class="p-1.5 px-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-extrabold text-xs transition cursor-pointer" title="Reimprimir Planilha A4">
+                    <i class="fa-solid fa-print"></i>
+                </button>
+                <button type="button" onclick="fecharPlano5W2H(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs transition flex items-center gap-1 cursor-pointer shadow-xs" title="Fechar / Encerrar ciclo deste PDI">
+                    <i class="fa-solid fa-circle-check"></i> Fechar
+                </button>
+            `;
+        } else {
+            botoesAcao = `
+                <button type="button" onclick="abrirPlanoExistente(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer" title="Visualizar / Editar Plano 5W2H">
+                    <i class="fa-solid fa-pen-to-square"></i> Editar
+                </button>
+                <button type="button" onclick="imprimirPlanoRapido(${p.id})" class="p-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-extrabold text-xs transition cursor-pointer" title="Finalizar e Imprimir p/ Assinatura">
+                    <i class="fa-solid fa-print"></i>
+                </button>
+                <button type="button" onclick="fecharPlano5W2H(${p.id})" class="p-1.5 px-2 rounded-xl bg-slate-100 hover:bg-emerald-100 text-slate-700 hover:text-emerald-800 font-extrabold text-xs transition cursor-pointer" title="Fechar / Encerrar ciclo PDI">
+                    <i class="fa-solid fa-circle-check"></i>
+                </button>
+                <button type="button" onclick="excluirPlano5W2H(${p.id})" class="p-1.5 px-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 transition cursor-pointer" title="Excluir Plano (disponível enquanto em elaboração)">
+                    <i class="fa-solid fa-trash"></i>
+                </button>
+            `;
+        }
 
         return `
             <tr class="hover:bg-slate-50 transition">
@@ -354,16 +419,14 @@ function renderizarTabelaPlanos() {
                     ${esc(p.prox_vencimento_fmt || 'Concluído')}
                 </td>
                 <td class="py-3 px-3 text-center">
-                    ${obterBadgeStatusGeral(p.status_geral)}
+                    <div class="flex flex-col items-center gap-1">
+                        ${obterBadgeStatusGeral(p.status_geral)}
+                        ${obterBadgeSituacaoCiclo(p)}
+                    </div>
                 </td>
                 <td class="py-3 px-3 text-center">
-                    <div class="flex items-center justify-center gap-1.5">
-                        <button type="button" onclick="abrirPlanoExistente(${p.id})" class="p-1.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-extrabold text-xs transition flex items-center gap-1 cursor-pointer">
-                            <i class="fa-solid fa-table-list"></i> Abrir 5W2H
-                        </button>
-                        <button type="button" onclick="excluirPlano5W2H(${p.id})" class="p-1.5 px-2.5 rounded-xl bg-slate-100 hover:bg-rose-100 text-slate-500 hover:text-rose-700 transition cursor-pointer" title="Excluir Plano">
-                            <i class="fa-solid fa-trash"></i>
-                        </button>
+                    <div class="flex flex-wrap items-center justify-center gap-1">
+                        ${botoesAcao}
                     </div>
                 </td>
             </tr>
@@ -406,8 +469,14 @@ function limparFormularioEditor() {
     if ($('badgeCienciaPlano')) $('badgeCienciaPlano').textContent = 'Registro de ciência e percepção do colaborador sobre o PDI';
     $('bannerOrigemAvaliacao')?.classList.add('hidden');
     $('painelRaioXPilaresPdi')?.classList.add('hidden');
+    $('boxParecerFechamento')?.classList.add('hidden');
     estadoPa.avaliacaoVinculada = null;
+    estadoPa.planoAtual = null;
+    estadoPa.situacaoCiclo = 'EM_ELABORACAO';
+    estadoPa.impresso = false;
+    estadoPa.fechado = false;
     estadoPa.itensEditor = [];
+    aplicarModoCicloNoEditor();
 }
 
 function aoSelecionarColabNoPlano() {
@@ -418,6 +487,9 @@ function aoSelecionarColabNoPlano() {
     $('paCargo').value = colab.cargo || '';
     $('paSetor').value = colab.setor_custom || '';
     $('paFilial').value = String(colab.idfilial || 1);
+    if (typeof preencherFolhaImpressaoPdiA4 === 'function') {
+        preencherFolhaImpressaoPdiA4();
+    }
 }
 
 function renderizarRaioXPilaresPdi(a) {
@@ -590,6 +662,29 @@ function exibirBannerAvaliacaoOrigem(a) {
     $('bannerTextoColab').textContent = `Colaborador: ${a.nome_colaborador} (${a.cargo || 'Colaborador'})`;
     $('bannerSubtextoColab').textContent = `Avaliação C.H.A.P.D #${a.idavaliacao || a.id} • Ref: ${String(a.mes).padStart(2,'0')}/${a.ano} • Nota: ${pts} pts (Conceito ${letra})`;
 
+    const imgEl = $('bannerColabFoto');
+    const initEl = $('bannerColabIniciais');
+    const idColabOrigem = parseInt(a.idcliforemp || a.idcolaborador || '0');
+    const colab = (estadoPa.colaboradores || []).find(c => parseInt(c.idcliforemp) === idColabOrigem);
+    const fotoRaw = a.foto_url || a.foto_colaborador || colab?.foto_url || colab?.foto_caminho || '';
+    const fotoFinal = fotoRaw ? formatarUrlFoto(fotoRaw) : '';
+    const partesNome = String(a.nome_colaborador || 'PDI').trim().split(/\s+/);
+    const iniciais = ((partesNome[0]?.[0] || '') + (partesNome.length > 1 ? partesNome[partesNome.length - 1][0] : (partesNome[0]?.[1] || ''))).toUpperCase() || 'PD';
+
+    if (initEl) initEl.textContent = iniciais;
+    if (imgEl && fotoFinal) {
+        imgEl.src = fotoFinal;
+        imgEl.classList.remove('hidden');
+        if (initEl) initEl.classList.add('hidden');
+        imgEl.onerror = () => {
+            imgEl.classList.add('hidden');
+            if (initEl) initEl.classList.remove('hidden');
+        };
+    } else {
+        if (imgEl) imgEl.classList.add('hidden');
+        if (initEl) initEl.classList.remove('hidden');
+    }
+
     const btnFicha = $('btnVerFichaOrigem');
     if (btnFicha) {
         const idAv = a.idavaliacao || a.id;
@@ -599,7 +694,7 @@ function exibirBannerAvaliacaoOrigem(a) {
     }
 }
 
-async function abrirPlanoExistente(idPlano) {
+async function abrirPlanoExistente(idPlano, imprimirAposAbrir = false) {
     try {
         const data = await apiFetch(`planos-acao/${idPlano}`);
         if (!data.sucesso) throw new Error(data.mensagem);
@@ -607,6 +702,10 @@ async function abrirPlanoExistente(idPlano) {
         limparFormularioEditor();
         const p = data.plano;
         estadoPa.avaliacaoVinculada = p;
+        estadoPa.planoAtual = p;
+        estadoPa.fechado = !!p.fechado || p.situacao_ciclo === 'FECHADO';
+        estadoPa.impresso = !!p.impresso || p.situacao_ciclo === 'IMPRESSO' || estadoPa.fechado;
+        estadoPa.situacaoCiclo = estadoPa.fechado ? 'FECHADO' : (estadoPa.impresso ? 'IMPRESSO' : 'EM_ELABORACAO');
 
         $('paId').value = p.id;
         $('paIdAvaliacao').value = p.idavaliacao || '';
@@ -656,7 +755,12 @@ async function abrirPlanoExistente(idPlano) {
         }));
 
         renderizarLinhas5W2H();
+        aplicarModoCicloNoEditor();
         alternarAbaPa('editor');
+
+        if (imprimirAposAbrir) {
+            setTimeout(() => imprimirPlano5W2H(), 250);
+        }
 
     } catch (e) {
         Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao abrir Plano de Ação', text: e.message });
@@ -897,6 +1001,13 @@ function renderizarLinhas5W2H() {
     const tbody = $('corpoTabela5W2H');
     if (!tbody) return;
 
+    const travarTudo = !!estadoPa.fechado;
+    const travarEscopo = !!estadoPa.impresso || !!estadoPa.fechado;
+    const disEscopo = travarEscopo ? 'disabled' : '';
+    const disExec = travarTudo ? 'disabled' : '';
+    const clsEscopoLocked = travarEscopo ? 'opacity-75 bg-slate-100 cursor-not-allowed' : '';
+    const clsExecLocked = travarTudo ? 'opacity-75 cursor-not-allowed' : '';
+
     tbody.innerHTML = estadoPa.itensEditor.map((it, idx) => {
         const clsStatus = obterClasseSelectStatus(it.status);
         const clsEv = `ev-${it.evidencia_status || 'P'}`;
@@ -907,7 +1018,7 @@ function renderizarLinhas5W2H() {
             <tr data-idx="${idx}" class="align-top hover:bg-slate-50/70 transition">
                 <td class="py-3 px-2 text-center font-black text-slate-400">${idx + 1}</td>
                 <td class="py-2.5 px-2 space-y-1">
-                    <select class="in-pilar pa-input mt-0 py-1 px-2 text-[11px] font-black text-slate-800 bg-slate-50">
+                    <select ${disEscopo} class="in-pilar pa-input mt-0 py-1 px-2 text-[11px] font-black text-slate-800 bg-slate-50 ${clsEscopoLocked}">
                         <option value="GERAL" ${pilar === 'GERAL' ? 'selected' : ''}>Pilar: Geral</option>
                         <option value="C" ${pilar === 'C' ? 'selected' : ''}>[C] Conhecimento</option>
                         <option value="H" ${pilar === 'H' ? 'selected' : ''}>[H] Habilidade</option>
@@ -915,32 +1026,32 @@ function renderizarLinhas5W2H() {
                         <option value="P" ${pilar === 'P' ? 'selected' : ''}>[P] Postura</option>
                         <option value="D" ${pilar === 'D' ? 'selected' : ''}>[D] Disciplina</option>
                     </select>
-                    <select onchange="sincronizarInputsDaTabela()" class="in-702010 pa-input mt-0 py-1 px-2 text-[10px] font-extrabold text-indigo-800 bg-indigo-50/60 border-indigo-200">
+                    <select ${disEscopo} onchange="sincronizarInputsDaTabela()" class="in-702010 pa-input mt-0 py-1 px-2 text-[10px] font-extrabold text-indigo-800 bg-indigo-50/60 border-indigo-200 ${clsEscopoLocked}">
                         <option value="70_PRATICA" ${trilha === '70_PRATICA' ? 'selected' : ''}>70% Prática Rotina</option>
                         <option value="20_MENTORIA" ${trilha === '20_MENTORIA' ? 'selected' : ''}>20% Mentoria / 1:1</option>
                         <option value="10_TREINAMENTO" ${trilha === '10_TREINAMENTO' ? 'selected' : ''}>10% Treinamento</option>
                     </select>
                 </td>
                 <td class="py-2.5 px-2">
-                    <textarea rows="2" class="in-oque pa-input mt-0 text-xs" placeholder="Ex: Realizar treinamento de...">${esc(it.o_que)}</textarea>
+                    <textarea rows="2" ${disEscopo} class="in-oque pa-input mt-0 text-xs ${clsEscopoLocked}" placeholder="Ex: Realizar treinamento de...">${esc(it.o_que)}</textarea>
                 </td>
                 <td class="py-2.5 px-2">
-                    <textarea rows="2" class="in-como pa-input mt-0 text-xs" placeholder="Descreva as etapas...">${esc(it.como)}</textarea>
+                    <textarea rows="2" ${disEscopo} class="in-como pa-input mt-0 text-xs ${clsEscopoLocked}" placeholder="Descreva as etapas...">${esc(it.como)}</textarea>
                 </td>
                 <td class="py-2.5 px-2">
-                    <input type="text" class="in-onde pa-input mt-0 text-xs" value="${esc(it.onde || 'NTD')}" placeholder="NTD / Filial">
+                    <input type="text" ${disEscopo} class="in-onde pa-input mt-0 text-xs ${clsEscopoLocked}" value="${esc(it.onde || 'NTD')}" placeholder="NTD / Filial">
                 </td>
                 <td class="py-2.5 px-2">
-                    <input type="text" class="in-quem pa-input mt-0 text-xs" value="${esc(it.quem)}" placeholder="Responsável">
+                    <input type="text" ${disEscopo} class="in-quem pa-input mt-0 text-xs ${clsEscopoLocked}" value="${esc(it.quem)}" placeholder="Responsável">
                 </td>
                 <td class="py-2.5 px-2">
-                    <input type="date" class="in-inicio pa-input mt-0 text-xs px-2" value="${esc(it.data_inicio)}">
+                    <input type="date" ${disEscopo} class="in-inicio pa-input mt-0 text-xs px-2 ${clsEscopoLocked}" value="${esc(it.data_inicio)}">
                 </td>
                 <td class="py-2.5 px-2">
-                    <input type="date" class="in-termino pa-input mt-0 text-xs px-2" value="${esc(it.data_termino)}">
+                    <input type="date" ${disExec} class="in-termino pa-input mt-0 text-xs px-2 ${clsExecLocked}" value="${esc(it.data_termino)}">
                 </td>
                 <td class="py-2.5 px-2">
-                    <select onchange="this.className='in-status w-full p-2 rounded-xl text-xs font-black uppercase cursor-pointer ' + obterClasseSelectStatus(this.value)" class="in-status w-full p-2 rounded-xl text-xs font-black uppercase cursor-pointer ${clsStatus}">
+                    <select ${disExec} onchange="this.className='in-status w-full p-2 rounded-xl text-xs font-black uppercase cursor-pointer ' + obterClasseSelectStatus(this.value)" class="in-status w-full p-2 rounded-xl text-xs font-black uppercase cursor-pointer ${clsStatus} ${clsExecLocked}">
                         <option value="Dentro do Prazo" ${it.status === 'Dentro do Prazo' ? 'selected' : ''}>Dentro do Prazo</option>
                         <option value="Ação Concluída" ${it.status === 'Ação Concluída' ? 'selected' : ''}>Ação Concluída</option>
                         <option value="Atraso Recuperável" ${it.status === 'Atraso Recuperável' ? 'selected' : ''}>Atraso Recuperável</option>
@@ -948,20 +1059,22 @@ function renderizarLinhas5W2H() {
                     </select>
                 </td>
                 <td class="py-2.5 px-2">
-                    <textarea rows="2" class="in-obs pa-input mt-0 text-xs" placeholder="Observações...">${esc(it.observacao)}</textarea>
+                    <textarea rows="2" ${disExec} class="in-obs pa-input mt-0 text-xs ${clsExecLocked}" placeholder="Observações...">${esc(it.observacao)}</textarea>
                 </td>
                 <td class="py-2.5 px-2 space-y-1">
-                    <select onchange="this.className='in-evstatus w-full p-1.5 rounded-lg text-[11px] font-black text-center cursor-pointer ev-' + this.value" class="in-evstatus w-full p-1.5 rounded-lg text-[11px] font-black text-center cursor-pointer ${clsEv}">
+                    <select ${disExec} onchange="this.className='in-evstatus w-full p-1.5 rounded-lg text-[11px] font-black text-center cursor-pointer ev-' + this.value" class="in-evstatus w-full p-1.5 rounded-lg text-[11px] font-black text-center cursor-pointer ${clsEv} ${clsExecLocked}">
                         <option value="P" ${it.evidencia_status === 'P' ? 'selected' : ''}>P (Pendente)</option>
                         <option value="OK" ${it.evidencia_status === 'OK' ? 'selected' : ''}>OK (Verificado)</option>
                         <option value="NOK" ${it.evidencia_status === 'NOK' ? 'selected' : ''}>NOK (Não Conforme)</option>
                     </select>
-                    <input type="text" class="in-evaud pa-input mt-0 py-1 px-2 text-[11px]" value="${esc(it.evidencia_auditoria)}" placeholder="Evidência / Doc...">
+                    <input type="text" ${disExec} class="in-evaud pa-input mt-0 py-1 px-2 text-[11px] ${clsExecLocked}" value="${esc(it.evidencia_auditoria)}" placeholder="Evidência / Doc...">
                 </td>
                 <td class="py-3 px-2 text-center no-print">
-                    <button type="button" onclick="removerLinha5W2H(${idx})" class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition cursor-pointer" title="Remover etapa">
-                        <i class="fa-solid fa-xmark"></i>
-                    </button>
+                    ${travarEscopo ? '<span class="text-slate-300" title="Etapas pactuadas bloqueadas após impressão"><i class="fa-solid fa-lock text-xs"></i></span>' : `
+                        <button type="button" onclick="removerLinha5W2H(${idx})" class="w-7 h-7 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-600 flex items-center justify-center transition cursor-pointer" title="Remover etapa">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    `}
                 </td>
             </tr>
         `;
@@ -970,7 +1083,146 @@ function renderizarLinhas5W2H() {
     atualizarResumo702010();
 }
 
+/**
+ * Controla travas de edição, botões e banners de acordo com o estágio:
+ * EM_ELABORACAO -> IMPRESSO -> FECHADO
+ */
+function aplicarModoCicloNoEditor() {
+    const idAtual = parseInt($('paId')?.value || '0');
+    const isFechado = !!estadoPa.fechado || estadoPa.situacaoCiclo === 'FECHADO';
+    const isImpresso = !!estadoPa.impresso || estadoPa.situacaoCiclo === 'IMPRESSO' || isFechado;
+
+    const camposEscopo = [
+        'paSelectColaborador', 'paCargo', 'paSetor', 'paFilial',
+        'paMetaPontuacao', 'paPrazoReavaliacao', 'paPilaresCriticos',
+        'paProblema', 'paObjetivo', 'paResponsavel', 'paAprovador'
+    ];
+    camposEscopo.forEach(cid => {
+        const el = $(cid);
+        if (el) el.disabled = isImpresso;
+    });
+
+    const camposExecucao = ['paRevisao', 'paFeedbackColaborador'];
+    camposExecucao.forEach(cid => {
+        const el = $(cid);
+        if (el) el.disabled = isFechado;
+    });
+
+    // Oculta botões estruturais se Impresso ou Fechado
+    if (isImpresso) {
+        $('boxAcoesTabela5W2H')?.classList.add('hidden');
+        $('boxBibliotecaPdi')?.classList.add('hidden');
+    } else {
+        $('boxAcoesTabela5W2H')?.classList.remove('hidden');
+        $('boxBibliotecaPdi')?.classList.remove('hidden');
+    }
+
+    // Banner de Ciclo
+    const banner = $('bannerCicloPlano');
+    const icone = $('bannerCicloIcone');
+    const titulo = $('bannerCicloTitulo');
+    const timestamp = $('bannerCicloTimestamp');
+    const desc = $('bannerCicloDesc');
+    const seloImpresso = $('paSeloImpressoInfo');
+    const p = estadoPa.planoAtual || {};
+
+    if (banner && icone && titulo && desc) {
+        if (isFechado) {
+            banner.className = 'rounded-2xl p-4 border-2 bg-slate-900 text-white border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print';
+            icone.className = 'w-10 h-10 rounded-xl bg-emerald-500 text-white flex items-center justify-center text-base flex-none';
+            icone.innerHTML = '<i class="fa-solid fa-lock"></i>';
+            titulo.className = 'text-xs font-black uppercase tracking-wider text-emerald-300';
+            titulo.textContent = 'Estágio 3 • Ciclo PDI Fechado / Encerrado';
+            if (timestamp) {
+                timestamp.className = 'text-[11px] font-bold text-slate-300';
+                timestamp.textContent = p.fechado_em_fmt ? `Fechado em ${p.fechado_em_fmt}${p.fechado_por ? ' por ' + p.fechado_por : ''}` : '';
+            }
+            desc.className = 'text-xs font-semibold text-slate-200 mt-0.5';
+            desc.textContent = 'Este PDI foi encerrado oficialmente. Somente visualização e reimpressão estão liberadas.';
+            if (seloImpresso) seloImpresso.textContent = `Situação: FECHADO${p.fechado_em_fmt ? ' em ' + p.fechado_em_fmt : ''}`;
+        } else if (isImpresso) {
+            banner.className = 'rounded-2xl p-4 border-2 bg-indigo-50 border-indigo-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print';
+            icone.className = 'w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-base flex-none';
+            icone.innerHTML = '<i class="fa-solid fa-print"></i>';
+            titulo.className = 'text-xs font-black uppercase tracking-wider text-indigo-950';
+            titulo.textContent = 'Estágio 2 • Impresso p/ Assinatura / Em Execução';
+            if (timestamp) {
+                timestamp.className = 'text-[11px] font-bold text-indigo-700';
+                timestamp.textContent = p.impresso_em_fmt ? `Impresso em ${p.impresso_em_fmt}${p.impresso_por ? ' por ' + p.impresso_por : ''}` : '';
+            }
+            desc.className = 'text-xs font-semibold text-indigo-900 mt-0.5';
+            desc.textContent = 'O escopo pactuado e a exclusão estão travados. Atualize o andamento/evidências das etapas e clique em "Fechar / Encerrar Ciclo PDI" ao concluir.';
+            if (seloImpresso) seloImpresso.textContent = `Situação: IMPRESSO${p.impresso_em_fmt ? ' em ' + p.impresso_em_fmt : ''}`;
+        } else {
+            banner.className = 'rounded-2xl p-4 border-2 bg-amber-50 border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 no-print';
+            icone.className = 'w-10 h-10 rounded-xl bg-amber-500 text-white flex items-center justify-center text-base flex-none';
+            icone.innerHTML = '<i class="fa-solid fa-pen-ruler"></i>';
+            titulo.className = 'text-xs font-black uppercase tracking-wider text-amber-950';
+            titulo.textContent = 'Estágio 1 • Em Elaboração';
+            if (timestamp) { timestamp.className = 'text-[11px] font-bold text-amber-700'; timestamp.textContent = ''; }
+            desc.className = 'text-xs font-semibold text-amber-900 mt-0.5';
+            desc.textContent = 'Você pode editar todos os campos, adicionar/remover etapas ou excluir este plano até finalizar para impressão/assinatura.';
+            if (seloImpresso) seloImpresso.textContent = 'Situação: Em Elaboração';
+        }
+    }
+
+    // Parecer de Fechamento
+    const boxParecer = $('boxParecerFechamento');
+    if (boxParecer) {
+        if (isFechado) {
+            boxParecer.classList.remove('hidden');
+            if ($('paFechadoMetaInfo')) $('paFechadoMetaInfo').textContent = `${p.fechado_em_fmt || ''}${p.fechado_por ? ' • Por ' + p.fechado_por : ''}`;
+            if ($('paParecerFechamentoTexto')) $('paParecerFechamentoTexto').textContent = p.parecer_fechamento || 'Ciclo PDI encerrado pelo gestor.';
+        } else {
+            boxParecer.classList.add('hidden');
+        }
+    }
+
+    // Nomes nas assinaturas da impressão A4
+    const idColabSel = parseInt($('paSelectColaborador')?.value || '0');
+    const colabObj = estadoPa.colaboradores.find(c => parseInt(c.idcliforemp) === idColabSel);
+    const nomeColabAssin = p.nome_colaborador || colabObj?.nome || estadoPa.avaliacaoVinculada?.nome_colaborador || 'Colaborador / Equipe';
+    if ($('paAssinaturaColaborador')) $('paAssinaturaColaborador').textContent = nomeColabAssin;
+    if ($('paAssinaturaResponsavel')) $('paAssinaturaResponsavel').textContent = $('paResponsavel')?.value.trim() || 'Sandro Rafo';
+    if ($('paAssinaturaAprovador')) $('paAssinaturaAprovador').textContent = $('paAprovador')?.value.trim() || 'Robson Becker';
+
+    // Botões do rodapé
+    const btnExcluir = $('btnExcluirPlanoEditor');
+    const btnSalvar = $('btnSalvarPlano5W2H');
+    const btnFechar = $('btnFecharCicloPlano');
+    const btnPrintTxt = $('btnImprimirPlanoTexto');
+
+    if (btnExcluir) {
+        if (idAtual > 0 && !isImpresso && !isFechado) btnExcluir.classList.remove('hidden');
+        else btnExcluir.classList.add('hidden');
+    }
+    if (btnSalvar) {
+        if (isFechado) btnSalvar.classList.add('hidden');
+        else {
+            btnSalvar.classList.remove('hidden');
+            btnSalvar.innerHTML = isImpresso
+                ? '<i class="fa-solid fa-floppy-disk"></i> Salvar Acompanhamento'
+                : '<i class="fa-solid fa-floppy-disk"></i> Salvar Plano de Ação 5W2H';
+        }
+    }
+    if (btnFechar) {
+        if (idAtual > 0 && !isFechado) btnFechar.classList.remove('hidden');
+        else btnFechar.classList.add('hidden');
+    }
+    if (btnPrintTxt) {
+        btnPrintTxt.textContent = isImpresso ? 'Reimprimir Planilha A4' : 'Imprimir Planilha A4';
+    }
+    if (typeof preencherFolhaImpressaoPdiA4 === 'function') {
+        preencherFolhaImpressaoPdiA4();
+    }
+}
+
 async function salvarPlano5W2H() {
+    if (estadoPa.fechado) {
+        Swal.fire({ ...swalBase, icon: 'info', title: 'PDI Fechado', text: 'Este Plano de Ação já foi fechado e não aceita novas edições.' });
+        return;
+    }
+
     sincronizarInputsDaTabela();
 
     const idColab = parseInt($('paSelectColaborador')?.value || '0');
@@ -995,6 +1247,51 @@ async function salvarPlano5W2H() {
         return;
     }
 
+    if (estadoPa.impresso) {
+        await executarSalvamentoPlano(false);
+        return;
+    }
+
+    const escolha = await Swal.fire({
+        ...swalBase,
+        icon: 'question',
+        title: 'Como deseja gravar este Plano 5W2H?',
+        html: `
+            <div class="text-left text-xs space-y-2.5">
+                <p>Colaborador / Escopo: <b>${esc(nomeColab || 'Plano Corporativo')}</b> (${itensPreenchidos.length} etapa(s))</p>
+                <div class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-900 font-semibold space-y-1">
+                    <div><i class="fa-solid fa-floppy-disk text-indigo-600 mr-1"></i> <b>Salvar Apenas (Em Elaboração):</b> Mantém tudo editável e permite excluir se necessário.</div>
+                    <div><i class="fa-solid fa-print text-emerald-700 mr-1"></i> <b>Finalizar &amp; Imprimir p/ Assinaturas:</b> Bloqueia exclusão/alteração de escopo e imprime a planilha A4 para o colaborador e responsáveis assinarem.</div>
+                </div>
+            </div>
+        `,
+        showDenyButton: true,
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        denyButtonColor: '#4f46e5',
+        confirmButtonText: 'Finalizar & Imprimir A4',
+        denyButtonText: 'Salvar Apenas (Editável)',
+        cancelButtonText: 'Revisar'
+    });
+
+    if (escolha.isConfirmed) {
+        await executarSalvamentoPlano(true);
+    } else if (escolha.isDenied) {
+        await executarSalvamentoPlano(false);
+    }
+}
+
+async function executarSalvamentoPlano(finalizarImprimir = false) {
+    sincronizarInputsDaTabela();
+
+    const idColab = parseInt($('paSelectColaborador')?.value || '0');
+    const colabObj = estadoPa.colaboradores.find(c => parseInt(c.idcliforemp) === idColab);
+    const nomeColab = colabObj ? colabObj.nome : (estadoPa.avaliacaoVinculada?.nome_colaborador || '');
+
+    const problema = $('paProblema')?.value.trim() || '';
+    const objetivo = $('paObjetivo')?.value.trim() || '';
+    const itensPreenchidos = estadoPa.itensEditor.filter(i => i.o_que.trim() !== '');
+
     const payload = {
         id: $('paId')?.value ? parseInt($('paId').value) : null,
         idavaliacao: $('paIdAvaliacao')?.value ? parseInt($('paIdAvaliacao').value) : null,
@@ -1017,6 +1314,7 @@ async function salvarPlano5W2H() {
         prazo_dias_reavaliacao: parseInt($('paPrazoReavaliacao')?.value || '30'),
         pilares_criticos: $('paPilaresCriticos')?.value.trim() || '',
         feedback_colaborador: $('paFeedbackColaborador')?.value.trim() || null,
+        finalizar_imprimir: !!finalizarImprimir,
         itens: itensPreenchidos
     };
 
@@ -1032,30 +1330,383 @@ async function salvarPlano5W2H() {
 
         $('paId').value = res.id;
         $('badgeIdPlanoEditor').textContent = `#${res.id}`;
+        estadoPa.situacaoCiclo = res.situacao_ciclo || 'EM_ELABORACAO';
+        estadoPa.impresso = !!res.impresso;
+        estadoPa.fechado = !!res.fechado;
 
         await carregarTudoPlanoAcao();
+        await abrirPlanoExistente(res.id, !!finalizarImprimir);
+
+        if (!finalizarImprimir) {
+            Swal.fire({
+                ...swalBase,
+                icon: 'success',
+                title: estadoPa.impresso ? 'Acompanhamento Atualizado!' : 'Plano de Ação 5W2H Salvo!',
+                text: res.mensagem,
+                showCancelButton: true,
+                confirmButtonText: 'Voltar para Fila PDI',
+                cancelButtonText: 'Continuar na Planilha 5W2H'
+            }).then(r => {
+                if (r.isConfirmed) {
+                    alternarAbaPa('visao');
+                }
+            });
+        }
+    } catch (e) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao Salvar', text: e.message });
+    } finally {
+        aplicarModoCicloNoEditor();
+    }
+}
+
+function preencherFolhaImpressaoPdiA4() {
+    if (!$('folhaImpressaoPdiA4')) return;
+    if (typeof sincronizarInputsDaTabela === 'function') {
+        sincronizarInputsDaTabela();
+    }
+
+    const p = estadoPa.planoAtual || estadoPa.plano || {};
+    const a = estadoPa.avaliacaoOrigem || {};
+    const idAtual = parseInt($('paId')?.value || p.id || '0');
+    const idColab = parseInt($('paSelectColaborador')?.value || p.idcliforemp || a.idcliforemp || p.idcolaborador || a.idcolaborador || '0');
+    const colab = (estadoPa.colaboradores || []).find(c => parseInt(c.idcliforemp) === idColab) || {};
+
+    const formatarDataCurta = (val) => {
+        const s = String(val || '').trim();
+        if (!s) return '';
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+            const [ano, mes, dia] = s.slice(0, 10).split('-');
+            return `${dia}/${mes}/${ano}`;
+        }
+        return s;
+    };
+
+    const pegarCampo = (ids, fallback = '') => {
+        for (const id of ids) {
+            const el = $(id);
+            if (!el) continue;
+            const val = el.tagName === 'SELECT'
+                ? (el.selectedOptions?.[0]?.textContent || el.value || '')
+                : (el.value || '');
+            if (String(val).trim() !== '') return String(val).trim();
+        }
+        return String(fallback ?? '').trim();
+    };
+
+    const setTxt = (id, valor, padrao = '-') => {
+        const el = $(id);
+        if (el) el.textContent = (valor !== null && valor !== undefined && String(valor).trim() !== '') ? String(valor) : padrao;
+    };
+
+    const nomeColab = p.nome_colaborador || a.nome_colaborador || colab.nome || colab.razaosocial || ($('paSelectColaborador')?.selectedOptions?.[0]?.textContent?.trim()) || 'Colaborador';
+    const partes = String(nomeColab).trim().split(/\s+/);
+    const iniciais = ((partes[0]?.[0] || '') + (partes.length > 1 ? partes[partes.length - 1][0] : (partes[0]?.[1] || ''))).toUpperCase() || 'ND';
+
+    setTxt('printPdiNumero', idAtual > 0 ? `PDI #${idAtual}` : 'PDI RASCUNHO');
+    setTxt('printPdiRevisao', pegarCampo(['paRevisao', 'paEdicao'], p.revisao || 'Rev. 01'));
+    setTxt('printPdiEmitidoEm', `Emitido em ${new Date().toLocaleString('pt-BR')}`);
+
+    const cicloBadge = $('printPdiCicloBadge');
+    const seloCiclo = $('printPdiSeloCiclo');
+    if (estadoPa.fechado) {
+        if (cicloBadge) {
+            cicloBadge.textContent = 'FECHADO / AUDITADO';
+            cicloBadge.className = 'px-2.5 py-0.5 rounded-md bg-emerald-400 text-slate-950 font-black text-[10px] uppercase';
+        }
+        if (seloCiclo) seloCiclo.textContent = `ENCERRADO ${p.fechado_por ? 'POR ' + String(p.fechado_por).toUpperCase() : ''}`.trim();
+    } else if (estadoPa.impresso) {
+        if (cicloBadge) {
+            cicloBadge.textContent = 'IMPRESSO / EM EXECUÇÃO';
+            cicloBadge.className = 'px-2.5 py-0.5 rounded-md bg-sky-400 text-slate-950 font-black text-[10px] uppercase';
+        }
+        if (seloCiclo) seloCiclo.textContent = `IMPRESSO ${p.impresso_por ? 'POR ' + String(p.impresso_por).toUpperCase() : ''}`.trim();
+    } else {
+        if (cicloBadge) {
+            cicloBadge.textContent = 'EM ELABORAÇÃO';
+            cicloBadge.className = 'px-2.5 py-0.5 rounded-md bg-amber-400 text-slate-950 font-black text-[10px] uppercase';
+        }
+        if (seloCiclo) seloCiclo.textContent = 'MINUTA EDITÁVEL';
+    }
+
+    const statusGeral = pegarCampo(['paStatusGeral', 'paStatus'], p.status_geral || 'EM ANDAMENTO');
+    setTxt('printPdiStatusBadge', statusGeral);
+
+    // Foto 3x4 + Ficha Cadastral
+    const imgEl = $('printPdiFoto');
+    const initEl = $('printPdiIniciais');
+    const fotoRaw = p.foto_colaborador || p.foto_url || a.foto_url || colab.foto_url || colab.foto_caminho || '';
+    const fotoUrl = fotoRaw ? formatarUrlFoto(fotoRaw) : '';
+    if (initEl) initEl.textContent = iniciais;
+    if (imgEl && fotoUrl) {
+        imgEl.src = fotoUrl;
+        imgEl.classList.remove('hidden');
+        if (initEl) initEl.classList.add('hidden');
+        imgEl.onerror = () => {
+            imgEl.classList.add('hidden');
+            if (initEl) initEl.classList.remove('hidden');
+        };
+    } else {
+        if (imgEl) imgEl.classList.add('hidden');
+        if (initEl) initEl.classList.remove('hidden');
+    }
+
+    const codErp = colab.cod_empregado_erp || colab.cod_empregado || colab.matricula || p.cod_empregado_erp || a.cod_empregado_erp || (idColab > 0 ? idColab : '-');
+    setTxt('printPdiCodigoErp', `Cód. ERP: ${codErp}`);
+    setTxt('printPdiColabNome', nomeColab);
+    setTxt('printPdiColabCargo', pegarCampo(['paCargo'], p.cargo || colab.cargo || a.cargo || '-'));
+    setTxt('printPdiColabSetor', pegarCampo(['paSetor'], p.setor || colab.setor_custom || a.setor || '-'));
+
+    const filialTxt = pegarCampo(['paFilial'], p.nome_filial || (p.idfilial ? `Filial ${p.idfilial}` : (colab.idfilial ? `Filial ${colab.idfilial}` : '-')));
+    setTxt('printPdiColabFilial', filialTxt);
+    setTxt('printPdiColabAdmissao', p.data_admissao_fmt || a.data_admissao_fmt || colab.data_admissao_fmt || '-');
+
+    const idAv = a.idavaliacao || a.id || p.idavaliacao || p.idavaliacao_chapd;
+    const ptsOrigem = a.pontuacao_total ?? a.pontuacao_origem ?? p.pontuacao_origem;
+    const conceitoOrigem = a.conceito_letra || a.conceito_origem || p.conceito_origem || '';
+    if (idAv) {
+        setTxt('printPdiNotaOrigem', `C.H.A.P.D #${idAv} • ${parseFloat(ptsOrigem || 0).toFixed(0)} pts ${conceitoOrigem ? '(' + conceitoOrigem + ')' : ''}`);
+    } else {
+        setTxt('printPdiNotaOrigem', p.origem_tipo ? String(p.origem_tipo).toUpperCase() : 'PDI DIRETO');
+    }
+
+    const pilaresCriticos = pegarCampo(['paPilaresCriticos', 'paPilares'], p.pilares_criticos || '-');
+    const responsavel = pegarCampo(['paResponsavel', 'paGestor', 'paAvaliador'], p.responsavel || a.avaliador_nome || '-');
+    const aprovador = pegarCampo(['paAprovador', 'paDiretor'], p.aprovador || a.aprovador_nome || 'Diretoria / RH');
+    const metaVal = pegarCampo(['paMeta', 'paMetaPontuacao', 'paPontuacaoMeta'], p.meta_pontuacao || p.meta || '-');
+    const prazoBruto = pegarCampo(['paPrazoDias', 'paPrazo', 'paDataPrazo', 'paPrazoGeral', 'paDataAlvo'], p.prazo_dias_reavaliacao ? `${p.prazo_dias_reavaliacao} dias` : (p.prazo_geral_fmt || p.prazo_geral || p.data_prazo || '-'));
+    const prazoVal = (/^\d+$/.test(prazoBruto)) ? `${prazoBruto} dias` : prazoBruto;
+
+    setTxt('printPdiPilaresCriticos', pilaresCriticos);
+    setTxt('printPdiMeta', metaVal !== '-' && !String(metaVal).includes('pts') ? `${metaVal} pts` : metaVal);
+    setTxt('printPdiPrazo', prazoVal);
+    setTxt('printPdiResponsavel', responsavel);
+    setTxt('printPdiAprovador', aprovador);
+
+    // 5 Pilares C.H.A.P.D (escala proporcional à pontuação máxima da avaliação ou base 28 pts/pilar)
+    const pilaresBox = $('printPdiPilaresBox');
+    if (pilaresBox) {
+        const defs = [
+            { sigla: 'C', nome: 'Conhecimento', keys: ['pontos_conhecimento', 'nota_c', 'c_pontos', 'pilar_c'] },
+            { sigla: 'H', nome: 'Habilidade', keys: ['pontos_habilidade', 'nota_h', 'h_pontos', 'pilar_h'] },
+            { sigla: 'A', nome: 'Atitude', keys: ['pontos_atitude', 'nota_a', 'a_pontos', 'pilar_a'] },
+            { sigla: 'P', nome: 'Postura', keys: ['pontos_postura', 'nota_p', 'p_pontos', 'pilar_p'] },
+            { sigla: 'D', nome: 'Disciplina', keys: ['pontos_disciplina', 'nota_d', 'd_pontos', 'pilar_d'] }
+        ];
+        const maxTotal = parseFloat(a.pontuacao_maxima || p.pontuacao_maxima || 0);
+        const maxPorPilar = maxTotal > 0 ? (maxTotal / 5) : 28;
+        pilaresBox.innerHTML = defs.map(d => {
+            let val = null;
+            for (const k of d.keys) {
+                if (p[k] !== undefined && p[k] !== null && p[k] !== '') { val = parseFloat(p[k]); break; }
+                if (a[k] !== undefined && a[k] !== null && a[k] !== '') { val = parseFloat(a[k]); break; }
+            }
+            const pct = val !== null && !Number.isNaN(val) ? Math.max(0, Math.min(100, Math.round((val / maxPorPilar) * 100))) : 0;
+            const textoVal = val !== null && !Number.isNaN(val) ? `${val.toFixed(0)} pts` : '--';
+            const corBarra = val === null ? 'bg-slate-300' : (pct >= 75 ? 'bg-emerald-500' : (pct >= 55 ? 'bg-amber-500' : 'bg-rose-500'));
+            return `<div class="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5">
+                <div class="flex items-center justify-between text-[9px] font-black text-slate-700">
+                    <span>${d.sigla} • ${d.nome}</span>
+                    <span>${textoVal}</span>
+                </div>
+                <div class="w-full h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+                    <div class="h-full ${corBarra}" style="width: ${pct}%"></div>
+                </div>
+            </div>`;
+        }).join('');
+    }
+
+    // Problema, Objetivo, Feedback, Parecer (texto integral sem corte)
+    setTxt('printPdiProblema', pegarCampo(['paProblema', 'paGapProblema'], p.problema || 'Não informado.'));
+    setTxt('printPdiObjetivo', pegarCampo(['paObjetivo', 'paObjetivoGeral'], p.objetivo || 'Não informado.'));
+    setTxt('printPdiFeedback', pegarCampo(['paFeedback', 'paFeedbackColaborador'], p.feedback_colaborador || 'Sem registro de alinhamento 1:1 até o momento.'));
+
+    const parecer = pegarCampo(['paParecerFechamento', 'paParecer'], p.parecer_fechamento || '');
+    const obsGerais = pegarCampo(['paObservacoesGerais', 'paObservacoes'], p.observacoes_gerais || '');
+    setTxt('printPdiParecerTexto', parecer || obsGerais || 'Plano em execução conforme cronograma acordado entre colaborador e liderança.');
+
+    // Itens 5W2H
+    let itens = estadoPa.itens || estadoPa.acoes || estadoPa.linhas || p.itens || [];
+    if (!Array.isArray(itens) || itens.length === 0) {
+        const trs = document.querySelectorAll('#painelEditor5W2H tbody tr');
+        itens = Array.from(trs).map((tr) => {
+            const campos = tr.querySelectorAll('select, input, textarea');
+            const datas = tr.querySelectorAll('input[type="date"]');
+            return {
+                pilar_chapd: tr.querySelector('[data-field="pilar_chapd"]')?.value || campos[0]?.value || '-',
+                tipo_702010: tr.querySelector('[data-field="tipo_702010"]')?.value || campos[1]?.value || '-',
+                o_que: tr.querySelector('[data-field="o_que"]')?.value || campos[2]?.value || '',
+                como: tr.querySelector('[data-field="como"]')?.value || campos[3]?.value || '',
+                onde: tr.querySelector('[data-field="onde"]')?.value || campos[4]?.value || '',
+                quem: tr.querySelector('[data-field="quem"]')?.value || campos[5]?.value || '',
+                data_inicio: tr.querySelector('[data-field="data_inicio"]')?.value || datas[0]?.value || '',
+                data_termino: tr.querySelector('[data-field="data_termino"]')?.value || datas[1]?.value || '',
+                status: tr.querySelector('[data-field="status"]')?.value || 'EM_ANDAMENTO',
+                observacao: tr.querySelector('[data-field="observacao"]')?.value || '',
+                evidencia_auditoria: tr.querySelector('[data-field="evidencia_auditoria"]')?.value || ''
+            };
+        }).filter(r => r.o_que || r.como || r.quem);
+    }
+
+    let c70 = 0, c20 = 0, c10 = 0;
+    itens.forEach(it => {
+        const t = String(it.tipo_702010 || '');
+        if (t.includes('70')) c70++;
+        else if (t.includes('20')) c20++;
+        else if (t.includes('10')) c10++;
+    });
+    setTxt('printPdi70', `${c70} ação(ões)`, '0');
+    setTxt('printPdi20', `${c20} ação(ões)`, '0');
+    setTxt('printPdi10', `${c10} ação(ões)`, '0');
+    setTxt('printPdiContagemAcoes', `${itens.length} ação(ões) registrada(s)`);
+
+    const tbodyPrint = $('printPdiTabela5W2H');
+    if (tbodyPrint) {
+        if (!itens.length) {
+            tbodyPrint.innerHTML = '<tr><td colspan="8" class="py-4 px-3 text-center text-slate-400 italic">Nenhuma ação 5W2H cadastrada neste PDI.</td></tr>';
+        } else {
+            tbodyPrint.innerHTML = itens.map((it, idx) => {
+                const comoTxt = esc(it.como || '-');
+                const evidTxt = it.evidencia_auditoria ? `<div class="mt-1 pt-1 border-t border-slate-200 text-[8.5px] text-indigo-700 font-semibold"><strong>Evidência:</strong> ${esc(it.evidencia_auditoria)}</div>` : '';
+                const obsTxt = it.observacao ? `<div class="mt-1 text-[8.5px] text-slate-500 whitespace-pre-wrap break-words">${esc(it.observacao)}</div>` : '';
+                const dtIni = it.data_inicio_fmt || formatarDataCurta(it.data_inicio);
+                const dtFim = it.data_termino_fmt || formatarDataCurta(it.data_termino);
+                const quandoTxt = (dtIni || dtFim)
+                    ? `${dtIni || '--'} até ${dtFim || '--'}`
+                    : (it.quando_fmt || it.quando || it.prazo || '-');
+                return `<tr class="${idx % 2 === 1 ? 'bg-slate-50/70' : 'bg-white'} align-top">
+                    <td class="py-2 px-2 text-center font-black text-slate-500 border-r border-slate-200">${idx + 1}</td>
+                    <td class="py-2 px-2 border-r border-slate-200">
+                        <div class="font-black text-indigo-800">${esc(it.pilar_chapd || '-')}</div>
+                        <div class="text-[8.5px] font-bold text-slate-500 mt-0.5">${esc(it.tipo_702010 || '-')}</div>
+                    </td>
+                    <td class="py-2 px-2 border-r border-slate-200 whitespace-pre-wrap break-words font-semibold text-slate-900">${esc(it.o_que || '-')}</td>
+                    <td class="py-2 px-2 border-r border-slate-200 whitespace-pre-wrap break-words text-slate-700">${comoTxt}${evidTxt}</td>
+                    <td class="py-2 px-2 border-r border-slate-200 whitespace-pre-wrap break-words text-slate-700">${esc(it.onde || '-')}</td>
+                    <td class="py-2 px-2 border-r border-slate-200 whitespace-pre-wrap break-words font-medium text-slate-800">${esc(it.quem || '-')}</td>
+                    <td class="py-2 px-2 border-r border-slate-200 text-slate-800 font-semibold">${esc(quandoTxt)}</td>
+                    <td class="py-2 px-2 text-center">
+                        <span class="inline-block px-1.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-[8.5px] font-black text-slate-800">${esc(it.status || 'PENDENTE')}</span>
+                        ${obsTxt}
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+    }
+
+    // Assinaturas
+    setTxt('printPdiAssinColab', nomeColab);
+    setTxt('printPdiAssinResp', responsavel !== '-' ? responsavel : 'Gestor / Avaliador Responsável');
+    setTxt('printPdiAssinAprov', aprovador !== '-' ? aprovador : 'Diretoria / Gestão de Pessoas');
+}
+
+if (typeof window !== 'undefined' && !window.__pdiBeforePrintBound) {
+    window.__pdiBeforePrintBound = true;
+    window.addEventListener('beforeprint', preencherFolhaImpressaoPdiA4);
+}
+
+async function imprimirPlano5W2H() {
+    const idAtual = parseInt($('paId')?.value || '0');
+    if (idAtual <= 0) {
+        await salvarPlano5W2H();
+        return;
+    }
+
+    preencherFolhaImpressaoPdiA4();
+
+    if (estadoPa.impresso || estadoPa.fechado) {
+        window.print();
+        return;
+    }
+
+    const confirm = await Swal.fire({
+        ...swalBase,
+        icon: 'warning',
+        title: 'Finalizar para Impressão e Assinatura?',
+        html: `
+            <div class="text-left text-xs space-y-2">
+                <p>Ao imprimir a planilha A4 do <b>Plano de Ação #${idAtual}</b> para colheita de assinaturas:</p>
+                <ul class="list-disc pl-4 space-y-1 text-slate-600 font-semibold">
+                    <li>O plano passará para <b>Impresso / Em Execução</b> e <b>não poderá mais ser excluído</b>.</li>
+                    <li>O escopo pactuado ficará protegido; você continuará podendo atualizar o status/evidência das etapas e, ao término do ciclo, clicar em <b>Fechar PDI</b>.</li>
+                </ul>
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        confirmButtonText: 'Sim, Finalizar e Imprimir A4',
+        cancelButtonText: 'Cancelar'
+    });
+
+    if (!confirm.isConfirmed) return;
+
+    try {
+        // Salva eventuais ajustes pendentes junto com finalizar_imprimir = true
+        await executarSalvamentoPlano(true);
+    } catch (e) {
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao finalizar impressão', text: e.message });
+    }
+}
+
+async function imprimirPlanoRapido(idPlano) {
+    await abrirPlanoExistente(idPlano, true);
+}
+
+async function fecharPlano5W2H(idOpcional = null) {
+    const id = idOpcional || parseInt($('paId')?.value || '0');
+    if (!id) return;
+
+    const result = await Swal.fire({
+        ...swalBase,
+        icon: 'question',
+        title: `Fechar / Encerrar Ciclo do PDI #${id}?`,
+        html: `
+            <div class="text-left text-xs space-y-2 mb-2">
+                <p class="text-slate-600">Mesmo após impresso e assinado, o gestor deve <b>Fechar o PDI</b> ao concluir o acompanhamento para consolidar o histórico e travar alterações futuras.</p>
+                <label class="flex items-center gap-2 font-bold text-slate-700 pt-1">
+                    <input type="checkbox" id="swalChkConcluirEtapas" checked class="w-4 h-4 rounded text-emerald-600">
+                    <span>Marcar etapas pendentes como "Ação Concluída" automaticamente</span>
+                </label>
+            </div>
+        `,
+        input: 'textarea',
+        inputLabel: 'Parecer Final de Encerramento / Resultado Alcançado:',
+        inputPlaceholder: 'Ex: Colaborador concluiu todas as metas do ciclo de 30 dias com evolução satisfatória...',
+        showCancelButton: true,
+        confirmButtonColor: '#059669',
+        confirmButtonText: 'Confirmar Fechamento do PDI',
+        cancelButtonText: 'Cancelar',
+        preConfirm: () => {
+            const parecer = (Swal.getInput()?.value || '').trim();
+            const concluirEtapas = !!document.getElementById('swalChkConcluirEtapas')?.checked;
+            return { parecer, concluirEtapas };
+        }
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+        const res = await apiFetch('planos-acao/fechar', 'POST', {
+            id,
+            parecer_fechamento: result.value?.parecer || 'Ciclo PDI encerrado pelo gestor.',
+            concluir_etapas: result.value?.concluirEtapas ?? true
+        });
+        if (!res.sucesso) throw new Error(res.mensagem);
+
+        await carregarTudoPlanoAcao();
+        if (parseInt($('paId')?.value || '0') === id) {
+            await abrirPlanoExistente(id);
+        }
 
         Swal.fire({
             ...swalBase,
             icon: 'success',
-            title: 'Plano de Ação 5W2H Salvo!',
-            text: 'O Plano de Ação e todas as etapas do cronograma foram gravados com sucesso.',
-            showCancelButton: true,
-            confirmButtonText: 'Voltar para Fila PDI',
-            cancelButtonText: 'Continuar na Planilha 5W2H'
-        }).then(r => {
-            if (r.isConfirmed) {
-                alternarAbaPa('visao');
-            }
+            title: 'Ciclo PDI Fechado!',
+            text: res.mensagem,
+            timer: 2200,
+            showConfirmButton: false
         });
-
     } catch (e) {
-        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao Salvar', text: e.message });
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fa-solid fa-floppy-disk"></i> Salvar Plano de Ação 5W2H';
-        }
+        Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao fechar PDI', text: e.message });
     }
 }
 
@@ -1064,8 +1715,9 @@ async function excluirPlano5W2H(id) {
         ...swalBase,
         icon: 'warning',
         title: `Excluir Plano #${id}?`,
-        text: 'Esta ação removerá o Plano de Ação e suas etapas 5W2H.',
+        text: 'Esta ação removerá permanentemente o Plano de Ação e suas etapas 5W2H (disponível apenas enquanto em elaboração).',
         showCancelButton: true,
+        confirmButtonColor: '#e11d48',
         confirmButtonText: 'Sim, Excluir',
         cancelButtonText: 'Cancelar'
     });
@@ -1075,10 +1727,21 @@ async function excluirPlano5W2H(id) {
     try {
         const res = await apiFetch(`planos-acao/${id}`, 'DELETE');
         if (!res.sucesso) throw new Error(res.mensagem);
+        if (parseInt($('paId')?.value || '0') === id) {
+            limparFormularioEditor();
+            alternarAbaPa('visao');
+        }
         await carregarTudoPlanoAcao();
         Swal.fire({ ...swalBase, icon: 'success', title: 'Excluído!', text: res.mensagem, timer: 1800, showConfirmButton: false });
     } catch (e) {
         Swal.fire({ ...swalBase, icon: 'error', title: 'Erro ao excluir', text: e.message });
+    }
+}
+
+function excluirPlanoAtualEditor() {
+    const id = parseInt($('paId')?.value || '0');
+    if (id > 0) {
+        excluirPlano5W2H(id);
     }
 }
 

@@ -8,8 +8,12 @@ let scanner = null;
 let isProcessing = false;
 
 const apiFetch = async function(acao, metodo = 'GET', body = null) {
-    const endpoint = acao.replace(/^\/+/, '').replace(/^v1\//, '');
+    let endpoint = acao.replace(/^\/+/, '').replace(/^v1\//, '');
     const apiRoot = window.API_URL || 'https://api.nutricionalbr.com/v1';
+    if (apiRoot.endsWith('=') && endpoint.includes('?')) {
+        const [pathPart, qsPart] = endpoint.split('?', 2);
+        endpoint = pathPart + (qsPart ? '&' + qsPart : '');
+    }
     let url = apiRoot.replace(/\/$/, '') + '/' + endpoint;
     const options = { method: metodo, headers: {}, credentials: 'include' };
     const token = localStorage.getItem('authToken') || sessionStorage.getItem('authToken') || localStorage.getItem('token');
@@ -99,7 +103,7 @@ async function carregarListaOCs() {
         const ocs = Array.isArray(dados) ? dados : [];
         
         if (ocs.length === 0) {
-            container.innerHTML = '<div class="p-4 text-center text-slate-400 text-sm">Nenhuma OC disponível.</div>';
+            container.innerHTML = '<div class="p-4 text-center text-amber-700 bg-amber-50 border border-amber-200 rounded-xl text-xs font-semibold"><i class="fa-solid fa-lock mr-1"></i> Nenhuma OC liberada para desembarque. As OCs só aparecem aqui após a conclusão da Conferência XML.</div>';
             return;
         }
         
@@ -107,14 +111,20 @@ async function carregarListaOCs() {
         ocs.forEach(oc => {
             const corStatus = oc.status_conferencia == 2 ? '#f59e0b' : '#10b981';
             const statusTexto = oc.status_conferencia == 2 ? 'EM ANDAMENTO' : 'ABERTO';
+            const xmlBadge = oc.xml_conferido === 'S'
+                ? `<span style="font-size:0.65rem; font-weight:700; color:#047857; background:#d1fae5; padding:2px 8px; border-radius:4px;"><i class="fa-solid fa-file-circle-check"></i> XML OK</span>`
+                : '';
             
             h += `<div onclick="selecionarOC('${oc.idoc}', '${(oc.fornecedor || '').replace(/'/g, "\\'")}')" 
                       style="padding: 15px; border-bottom: 1px solid #f1f5f9; cursor: pointer; background: white; transition: all 0.2s; border-left: 4px solid transparent;"
                       onmouseover="this.style.background='#f0fdf4'; this.style.borderLeft='4px solid #10b981';"
                       onmouseout="this.style.background='white'; this.style.borderLeft='4px solid transparent';">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; justify-content:space-between; align-items:center; gap:6px; flex-wrap:wrap;">
                     <span style="font-weight:800; color:#1e293b;">OC #${oc.idoc}</span>
-                    <span style="font-size:0.65rem; font-weight:700; color:${corStatus}; background:${corStatus}15; padding:2px 8px; border-radius:4px;">${statusTexto}</span>
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        ${xmlBadge}
+                        <span style="font-size:0.65rem; font-weight:700; color:${corStatus}; background:${corStatus}15; padding:2px 8px; border-radius:4px;">${statusTexto}</span>
+                    </div>
                 </div>
                 <span style="font-size:0.75rem; color:#64748b; display:block; margin-top:3px;">${oc.fornecedor || ''}</span>
                 <span style="font-size:0.65rem; color:#94a3b8;">${oc.data_oc || ''} | R$ ${parseFloat(oc.valortotal || 0).toLocaleString('pt-BR', {minimumFractionDigits: 2})}</span>
@@ -165,7 +175,7 @@ async function selecionarOC(id, fornecedor) {
     } catch (e) {
         Swal.close();
         console.error('Erro ao buscar OC:', e);
-        Swal.fire({ icon: 'error', title: 'Erro', text: 'Falha ao carregar itens da OC.', position: 'top' });
+        Swal.fire({ icon: 'error', title: 'Erro', text: e.message || 'Falha ao carregar itens da OC.', position: 'top' });
     }
 }
 
@@ -252,7 +262,7 @@ async function processarLeituraDesembarque(codigo) {
         
     } catch (e) {
         new Audio('https://actions.google.com/sounds/v1/alarms/beep_short.ogg').play();
-        await Swal.fire({ title: 'Erro', text: 'Item não encontrado.', icon: 'error', timer: 2000, position: 'top', toast: true, showConfirmButton: false });
+        await Swal.fire({ title: 'Erro', text: e.message || 'Item não encontrado.', icon: 'error', timer: 2500, position: 'top', toast: true, showConfirmButton: false });
     } finally {
         isProcessing = false;
     }

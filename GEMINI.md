@@ -26,6 +26,7 @@
 - **Gestão de Chamados & Incidentes de Produção:**
   - Chamados que envolvam processos de rotinas corporativas (estoque, fiscal, faturamento, transferências, integrações) devem ser tratados com **prioridade crítica**.
   - Todo incidente resolvido ou investigado deve ser documentado na tabela `chamado` e suas etapas cronológicas registradas em `chamado_operacao`.
+  - **Regra Obrigatória de Abertura via Chat/Agente:** Todos os chamados técnicos abertos pelo assistente via chat devem usar obrigatoriamente `solicitante = 'ALAN'`, `usuario = 'ALAN'`, `atendente = 'ALAN'` e `idcliforemp = 5166` (nunca `MARCON` ou `INTERNO`/`.`), registrando as operações em `chamado_operacao` com `usuario = 'ALAN'`.
 - **Integração EMA <-> MERCOS (Força de Vendas):**
   - **Serviço Integrador:** Spring Boot Java (`ema-mercos-integration.exe`) na porta 8081.
   - **Banco DE-PARA (Firebird):** `DE_PARA_MERCOS.FDB` (porta 3050) mantém a tabela de De-Para de IDs entre Mercos e EMA (clientes, produtos, pedidos).
