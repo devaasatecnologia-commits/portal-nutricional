@@ -727,6 +727,17 @@ $protected->group('/financeiro/limite-credito', function ($group) {
 })->add(new ModulePermissionMiddleware(['financeiro', 'limite-credito', 'analise_carteira']));
 
         // ======================================================================
+        // CONTÁBIL & FISCAL (CONFERÊNCIA DOMÍNIO SISTEMAS - CHAMADO #50)
+        // ======================================================================
+$protected->group('/contabil', function ($group) {
+    $controller = new \Nutricional\Controllers\ContabilController();
+    $group->get('/resumo', [$controller, 'resumo']);
+    $group->get('/notas', [$controller, 'notas']);
+    $group->get('/notas/{tipo}/{idfilial}/{idnota}/itens', [$controller, 'notaItens']);
+    $group->get('/itens', [$controller, 'relatorioItens']);
+})->add(new ModulePermissionMiddleware(['contabil', 'financeiro']));
+
+        // ======================================================================
         // RECEITA FEDERAL - CONSULTA CNPJ
         // ======================================================================
 $protected->post('/receita/consultar', [new ReceitaController(), 'consultar']);
@@ -1028,6 +1039,7 @@ $protected->group('/chamados', function ($group) {
     $group->get('/listar', [$controller, 'listar']);
     $group->get('/detalhes/{id:[0-9]+}', [$controller, 'detalhes']);
     $group->post('/triagem-ia', [$controller, 'triarIa']);
+    $group->post('/reprocessar-ia', [$controller, 'reprocessarIa']);
     $group->post('/criar', [$controller, 'criar']);
     $group->post('/assumir', [$controller, 'assumir']);
     $group->post('/atualizar-status', [$controller, 'atualizarStatus']);
