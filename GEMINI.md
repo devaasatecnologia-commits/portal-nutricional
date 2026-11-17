@@ -26,6 +26,7 @@
 - **Gestão de Chamados & Incidentes de Produção:**
   - Chamados que envolvam processos de rotinas corporativas (estoque, fiscal, faturamento, transferências, integrações) devem ser tratados com **prioridade crítica**.
   - Todo incidente resolvido ou investigado deve ser documentado na tabela `chamado` e suas etapas cronológicas registradas em `chamado_operacao`.
+  - **Regra Obrigatória de Documentação, Treinamento & PDF em Ajustes/Melhorias:** Sempre que houver ajuste ou melhoria em qualquer módulo do Portal, anexar nos detalhes/timeline do chamado correspondente (`chamado.anexo_url` / `chamado_operacao.anexo_url`) o **PDF atualizado** da última entrega e manter o **treinamento e documentação oficial** do módulo atualizados em `sistema_manuais` (`/portal/modules/treinamentos.php`).
   - **Regra Obrigatória de Abertura via Chat/Agente:** Todos os chamados técnicos abertos pelo assistente via chat devem usar obrigatoriamente `solicitante = 'ALAN'`, `usuario = 'ALAN'`, `atendente = 'ALAN'` e `idcliforemp = 5166` (nunca `MARCON` ou `INTERNO`/`.`), registrando as operações em `chamado_operacao` com `usuario = 'ALAN'`.
 - **Integração EMA <-> MERCOS (Força de Vendas):**
   - **Serviço Integrador:** Spring Boot Java (`ema-mercos-integration.exe`) na porta 8081.

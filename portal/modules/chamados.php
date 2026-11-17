@@ -228,53 +228,122 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- 4 KPI CARDS CLICÁVEIS -->
-    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4">
-        <div @click="limparFiltros()" class="bg-white rounded-2xl p-4 border border-slate-100 hover:border-indigo-200 cursor-pointer shadow-sm flex items-center justify-between transition">
+    <!-- AVISOS DE PRAZO PRÓXIMO & CONCLUÍDOS PARA O USUÁRIO -->
+    <div x-show="alertasPrazo && alertasPrazo.length > 0" x-cloak class="mb-4 bg-white rounded-2xl border border-indigo-200 p-3 shadow-sm">
+        <div class="flex items-center justify-between gap-2 mb-2">
+            <span class="text-[11px] font-black uppercase tracking-wider text-indigo-800 flex items-center gap-1.5">
+                <i class="fa-solid fa-bell text-amber-500"></i> Avisos de Prazo &amp; Chamados Concluídos
+            </span>
+            <span class="text-[10px] font-bold text-slate-400">Clique no item para abrir</span>
+        </div>
+        <div class="flex flex-wrap gap-2">
+            <template x-for="ap in alertasPrazo" :key="'ap-'+ap.idchamado">
+                <button type="button" @click="abrirDetalhes(ap.idchamado)"
+                        class="text-left px-3 py-1.5 rounded-xl border text-[11px] font-bold flex items-center gap-2 transition hover:shadow-xs"
+                        :class="ap.tipo_alerta === 'concluido' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : (ap.tipo_alerta === 'atrasado' ? 'bg-rose-50 border-rose-200 text-rose-800' : 'bg-amber-50 border-amber-200 text-amber-800')">
+                    <i class="fa-solid" :class="ap.tipo_alerta === 'concluido' ? 'fa-circle-check text-emerald-600' : (ap.tipo_alerta === 'atrasado' ? 'fa-clock-rotate-left text-rose-600' : 'fa-hourglass-half text-amber-600')"></i>
+                    <span x-text="'#' + ap.idchamado"></span>
+                    <span class="truncate max-w-[180px]" x-text="ap.titulo"></span>
+                    <span class="px-1.5 py-0.5 rounded text-[9px] font-black uppercase"
+                          :class="ap.tipo_alerta === 'concluido' ? 'bg-emerald-200/70' : (ap.tipo_alerta === 'atrasado' ? 'bg-rose-200/70' : 'bg-amber-200/70')"
+                          x-text="ap.tipo_alerta === 'concluido' ? 'Concluído!' : (ap.tipo_alerta === 'atrasado' ? 'Atrasado (' + ap.prazo_fmt + ')' : 'Próx. Solução (' + ap.prazo_fmt + ')')"></span>
+                </button>
+            </template>
+        </div>
+    </div>
+
+    <!-- 6 KPI CARDS CLICÁVEIS COM TOOLTIP AO PASSAR O MOUSE -->
+    <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-4">
+        <!-- Total -->
+        <div @click="filtrarPorCard({})" @mouseenter="cardHover = 'total'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-slate-100 hover:border-indigo-300 cursor-pointer shadow-sm flex items-center justify-between transition">
             <div>
-                <span class="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5"
-                      x-text="usuario && !usuario.pode_ver_todos ? 'Minhas Demandas' : 'Total Registrado'">Total Registrado</span>
+                <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5"
+                      x-text="usuario && !usuario.pode_ver_todos ? 'Minhas Demandas' : 'Total Registrado'">Total</span>
                 <span class="text-2xl font-black text-slate-800" x-text="kpis.total || 0">0</span>
-                <span class="text-[10px] text-slate-400 font-semibold block mt-0.5">Clique para ver todos</span>
+                <span class="text-[10px] text-slate-400 font-semibold block mt-0.5">Ver todos</span>
             </div>
-            <div class="w-11 h-11 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-lg">
-                <i class="fa-solid fa-ticket"></i>
+            <div class="w-10 h-10 rounded-2xl bg-slate-100 text-slate-600 flex items-center justify-center text-base"><i class="fa-solid fa-ticket"></i></div>
+            <div x-show="cardHover === 'total'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-indigo-300 block mb-0.5">Visão Geral</strong>
+                Total de chamados registrados (<span x-text="kpis.concluidos_total || 0"></span> concluídos, taxa <span x-text="kpis.taxa_resolucao || 0"></span>%). Clique para limpar filtros.
             </div>
         </div>
 
-        <div @click="filtros.criticidade = 'todas'; filtros.status = ''; carregarChamados()" class="bg-white rounded-2xl p-4 border border-amber-100 hover:border-amber-300 cursor-pointer shadow-sm flex items-center justify-between transition">
+        <!-- Abertos / Análise -->
+        <div @click="filtrarPorCard({ filtro_sla: 'abertos', modo: 'kanban' })" @mouseenter="cardHover = 'abertos'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-amber-100 hover:border-amber-300 cursor-pointer shadow-sm flex items-center justify-between transition">
             <div>
-                <span class="text-[11px] font-bold text-amber-600 uppercase tracking-wider block mb-0.5">Abertos / Em Análise</span>
+                <span class="text-[10px] font-bold text-amber-600 uppercase tracking-wider block mb-0.5">Abertos / Triagem</span>
                 <span class="text-2xl font-black text-amber-600" x-text="kpis.abertos || 0">0</span>
-                <span class="text-[10px] text-amber-700/70 font-semibold block mt-0.5">Aguardando / Triagem</span>
+                <span class="text-[10px] text-amber-700/70 font-semibold block mt-0.5">Aguardando / Análise</span>
             </div>
-            <div class="w-11 h-11 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-lg">
-                <i class="fa-solid fa-clock"></i>
+            <div class="w-10 h-10 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center text-base"><i class="fa-solid fa-clock"></i></div>
+            <div x-show="cardHover === 'abertos'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-amber-300 block mb-0.5">Fila de Entrada</strong>
+                Chamados em Aberto (0) ou Em Análise (1). Clique para filtrar somente os em andamento.
             </div>
         </div>
 
-        <div @click="filtros.status = '2'; modoExibicao = 'lista'; carregarChamados()" class="bg-white rounded-2xl p-4 border border-indigo-100 hover:border-indigo-300 cursor-pointer shadow-sm flex items-center justify-between transition">
+        <!-- Em Correção / Dev -->
+        <div @click="filtrarPorCard({ status: '2', modo: 'lista' })" @mouseenter="cardHover = 'dev'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-indigo-100 hover:border-indigo-300 cursor-pointer shadow-sm flex items-center justify-between transition">
             <div>
-                <span class="text-[11px] font-bold text-indigo-600 uppercase tracking-wider block mb-0.5">Em Correção / Dev</span>
+                <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block mb-0.5">Em Correção / Dev</span>
                 <span class="text-2xl font-black text-indigo-600" x-text="kpis.em_correcao || 0">0</span>
                 <span class="text-[10px] text-indigo-700/70 font-semibold block mt-0.5">Hotfix em andamento</span>
             </div>
-            <div class="w-11 h-11 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-lg">
-                <i class="fa-solid fa-code"></i>
+            <div class="w-10 h-10 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center text-base"><i class="fa-solid fa-code"></i></div>
+            <div x-show="cardHover === 'dev'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-indigo-300 block mb-0.5">Em Desenvolvimento</strong>
+                Chamados em execução pela TI (status 2). Clique para listar apenas os em correção.
             </div>
         </div>
 
-        <div @click="filtros.criticidade = 'critica'; carregarChamados()"
-             class="bg-white rounded-2xl p-4 border border-rose-100 hover:border-rose-300 cursor-pointer shadow-sm flex items-center justify-between transition"
+        <!-- Críticos -->
+        <div @click="filtrarPorCard({ criticidade: 'critica', filtro_sla: 'abertos' })" @mouseenter="cardHover = 'critica'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-rose-100 hover:border-rose-300 cursor-pointer shadow-sm flex items-center justify-between transition"
              :class="kpis.criticos > 0 ? 'bg-rose-50/50 border-rose-300' : ''">
             <div>
-                <span class="text-[11px] font-bold text-rose-600 uppercase tracking-wider block mb-0.5">Críticos em Aberto</span>
+                <span class="text-[10px] font-bold text-rose-600 uppercase tracking-wider block mb-0.5">Críticos Abertos</span>
                 <span class="text-2xl font-black text-rose-600" x-text="kpis.criticos || 0">0</span>
-                <span class="text-[10px] text-rose-600/70 font-semibold block mt-0.5" x-text="kpis.criticos > 0 ? 'Clique para filtrar críticos' : 'Nenhum bloqueio crítico'">Nenhum bloqueio</span>
+                <span class="text-[10px] text-rose-600/70 font-semibold block mt-0.5" x-text="kpis.criticos > 0 ? 'SLA 1 dia • Filtrar' : 'Sem bloqueios'"></span>
             </div>
-            <div class="w-11 h-11 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-lg"
-                 :class="kpis.criticos > 0 ? 'animate-bounce text-rose-700' : ''">
-                <i class="fa-solid fa-triangle-exclamation"></i>
+            <div class="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center text-base" :class="kpis.criticos > 0 ? 'animate-bounce text-rose-700' : ''"><i class="fa-solid fa-triangle-exclamation"></i></div>
+            <div x-show="cardHover === 'critica'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-rose-300 block mb-0.5">SLA por Criticidade</strong>
+                Crítica: 1 dia · Alta: 3 dias · Média: 5 dias · Baixa: 7 dias.
+            </div>
+        </div>
+
+        <!-- Dentro do Prazo -->
+        <div @click="filtrarPorCard({ filtro_sla: 'no_prazo', modo: 'lista' })" @mouseenter="cardHover = 'sla_ok'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-emerald-100 hover:border-emerald-300 cursor-pointer shadow-sm flex items-center justify-between transition">
+            <div>
+                <span class="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-0.5">Dentro do Prazo</span>
+                <span class="text-2xl font-black text-emerald-700" x-text="(kpis.sla_no_prazo || 0) + (kpis.sla_vencendo || 0)">0</span>
+                <span class="text-[10px] text-emerald-700/80 font-semibold block mt-0.5" x-text="(kpis.sla_percentual_abertos || 100) + '% no SLA • ' + (kpis.sla_vencendo || 0) + ' vencendo'"></span>
+            </div>
+            <div class="w-10 h-10 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-base"><i class="fa-solid fa-calendar-check"></i></div>
+            <div x-show="cardHover === 'sla_ok'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-emerald-300 block mb-0.5">Chamados no Tempo</strong>
+                <span x-text="kpis.sla_no_prazo || 0"></span> folgados (+2d) e <span x-text="kpis.sla_vencendo || 0"></span> próximos da solução (hoje/amanhã). Clique para filtrar.
+            </div>
+        </div>
+
+        <!-- Fora do Prazo (Atrasados) -->
+        <div @click="filtrarPorCard({ filtro_sla: 'atrasado', modo: 'lista' })" @mouseenter="cardHover = 'sla_atraso'" @mouseleave="cardHover = null"
+             class="relative bg-white rounded-2xl p-4 border border-rose-200 hover:border-rose-400 cursor-pointer shadow-sm flex items-center justify-between transition"
+             :class="(kpis.sla_atrasados || 0) > 0 ? 'bg-rose-50/70 border-rose-300' : ''">
+            <div>
+                <span class="text-[10px] font-bold text-rose-700 uppercase tracking-wider block mb-0.5">Fora do Prazo</span>
+                <span class="text-2xl font-black text-rose-700" x-text="kpis.sla_atrasados || 0">0</span>
+                <span class="text-[10px] text-rose-700/80 font-semibold block mt-0.5" x-text="(kpis.sla_atrasados || 0) > 0 ? 'Atrasados • Filtrar' : 'Nenhum atraso!'"></span>
+            </div>
+            <div class="w-10 h-10 rounded-2xl bg-rose-100 text-rose-700 flex items-center justify-center text-base"><i class="fa-solid fa-hourglass-end"></i></div>
+            <div x-show="cardHover === 'sla_atraso'" x-transition.opacity x-cloak class="absolute left-1 right-1 top-full mt-2 z-50 bg-slate-900 text-white text-[10px] rounded-xl p-3 shadow-2xl pointer-events-none">
+                <strong class="text-rose-300 block mb-0.5">Chamados Fora do Tempo</strong>
+                Chamados abertos cujo <code>prazo_entrega</code> já venceu. Clique para listar e priorizar agora.
             </div>
         </div>
     </div>
@@ -565,6 +634,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                                             title="Assumir chamado para mim">
                                         Assumir
                                     </button>
+                                    <span class="text-[9px] font-bold px-1.5 py-0.5 rounded border"
+                                          :class="badgeSla(c.sla_status)"
+                                          x-show="c.prazo_fmt"
+                                          :title="'Prazo SLA: ' + c.prazo_fmt"
+                                          x-text="c.sla_label"></span>
                                     <span class="text-[9px] font-semibold" x-text="(c.data_fmt || '').slice(0, 10)">Data</span>
                                 </div>
                             </div>
@@ -1028,6 +1102,36 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
 
+        <!-- BLOCO SLA: DENTRO DO TEMPO x FORA DO TEMPO -->
+        <div class="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm mb-6">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100 mb-4">
+                <div>
+                    <h3 class="text-xs font-black uppercase text-slate-800 flex items-center gap-2">
+                        <i class="fa-solid fa-stopwatch text-indigo-600"></i> Controle de Prazo de Entrega (SLA)
+                    </h3>
+                    <p class="text-[11px] text-slate-400">Regra automática IA: Crítica (1d) · Alta (3d) · Média (5d) · Baixa (7d)</p>
+                </div>
+                <div class="flex items-center gap-3 text-xs font-black">
+                    <span class="text-emerald-700 bg-emerald-50 px-3 py-1 rounded-full border border-emerald-200" x-text="(kpis.sla_percentual_abertos || 100) + '% Abertos no Prazo'"></span>
+                    <span class="text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full border border-indigo-200" x-text="(kpis.sla_percentual_concluidos || 100) + '% Entregues no Prazo'"></span>
+                </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div @click="filtrarPorCard({ filtro_sla: 'no_prazo', modo: 'lista' })" class="p-3.5 rounded-xl bg-emerald-50/70 border border-emerald-200 cursor-pointer hover:border-emerald-400 transition">
+                    <span class="text-[10px] font-black uppercase text-emerald-700 block">Dentro do Tempo (+2 dias)</span>
+                    <span class="text-2xl font-black text-emerald-800" x-text="kpis.sla_no_prazo || 0">0</span>
+                </div>
+                <div @click="filtrarPorCard({ filtro_sla: 'vencendo', modo: 'lista' })" class="p-3.5 rounded-xl bg-amber-50/70 border border-amber-200 cursor-pointer hover:border-amber-400 transition">
+                    <span class="text-[10px] font-black uppercase text-amber-700 block">Próximos da Solução (Hoje / Amanhã)</span>
+                    <span class="text-2xl font-black text-amber-800" x-text="kpis.sla_vencendo || 0">0</span>
+                </div>
+                <div @click="filtrarPorCard({ filtro_sla: 'atrasado', modo: 'lista' })" class="p-3.5 rounded-xl bg-rose-50/80 border border-rose-300 cursor-pointer hover:border-rose-500 transition">
+                    <span class="text-[10px] font-black uppercase text-rose-700 block">Fora do Tempo (Atrasados)</span>
+                    <span class="text-2xl font-black text-rose-800" x-text="kpis.sla_atrasados || 0">0</span>
+                </div>
+            </div>
+        </div>
+
         <!-- GRID ANALÍTICO 360° -->
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Funil de Estágios + Demandas por Sistema -->
@@ -1141,7 +1245,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
     <!-- MODAL 1: ABERTURA DE CHAMADO COMPLETA COM IA & PRINT -->
     <div x-show="modalNovoAberto" @paste="tratarColagemPrint($event, 'novo')" class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-xs" style="display: none;">
-        <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden" @click.outside="modalNovoAberto = false">
+        <div class="bg-white rounded-3xl max-w-2xl w-full p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[90vh] overflow-hidden">
             <div class="flex items-center justify-between pb-4 border-b border-slate-100">
                 <div class="flex items-center gap-2.5">
                     <div class="w-9 h-9 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -1152,8 +1256,21 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <p class="text-xs text-slate-400">Escolha sistema, criticidade, cole prints (Ctrl+V) ou acione a triagem com IA</p>
                     </div>
                 </div>
-                <button type="button" @click="modalNovoAberto = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center">
+                <button type="button" @click="fecharModalNovo()" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-lg flex items-center justify-center" title="Fechar (rascunho mantido automaticamente)">
                     <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Indicador de Auto-Rascunho Persistente -->
+            <div x-show="temRascunhoPreenchido()" class="mt-3 px-3.5 py-2 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-2 text-[11px]" style="display: none;">
+                <span class="font-bold text-emerald-800 flex items-center gap-1.5">
+                    <i class="fa-solid fa-floppy-disk text-emerald-600"></i>
+                    <span>💾 Rascunho salvo automaticamente</span>
+                    <span x-show="rascunhoSalvoEm" class="text-emerald-600 font-semibold" x-text="`(${rascunhoSalvoEm})`"></span>
+                </span>
+                <button type="button" @click="limparRascunhoNovo(true)"
+                        class="px-2.5 py-1 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 font-bold text-[10px] transition">
+                    Limpar Rascunho
                 </button>
             </div>
 
@@ -1162,7 +1279,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1.5">Sistema ou Equipamento Envolvido *</label>
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <template x-for="s in sistemas" :key="s.id">
-                            <button type="button" @click="novoForm.tipo_sistema = s.id"
+                            <button type="button" @click="novoForm.tipo_sistema = s.id; marcarCampoManual('tipo_sistema'); salvarRascunhoNovo()"
                                     class="p-2.5 rounded-xl border text-left transition flex flex-col items-start gap-1 text-xs font-bold"
                                     :class="novoForm.tipo_sistema === s.id ? 'bg-indigo-50/80 border-indigo-500 text-indigo-900 shadow-xs ring-1 ring-indigo-400' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
                                 <div class="flex items-center gap-1.5 w-full">
@@ -1175,20 +1292,20 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
-                <!-- Criticidade + Categoria + Filial -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <!-- Criticidade + Categoria + Filial + Prazo -->
+                <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Criticidade / Urgência</label>
-                        <select x-model="novoForm.criticidade" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
-                            <option value="critica">🔴 Crítica (Bloqueante)</option>
-                            <option value="alta">🟠 Alta (Prioritário)</option>
-                            <option value="media">🔵 Média (Normal)</option>
-                            <option value="baixa">🟢 Baixa (Quando possível)</option>
+                        <select x-model="novoForm.criticidade" @change="marcarCampoManual('criticidade'); salvarRascunhoNovo()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                            <option value="critica">🔴 Crítica (1 dia)</option>
+                            <option value="alta">🟠 Alta (3 dias)</option>
+                            <option value="media">🔵 Média (5 dias)</option>
+                            <option value="baixa">🟢 Baixa (7 dias)</option>
                         </select>
                     </div>
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Categoria</label>
-                        <select x-model="novoForm.categoria" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                        <select x-model="novoForm.categoria" @change="marcarCampoManual('categoria'); salvarRascunhoNovo()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                             <option value="bug">🐛 Bug / Erro</option>
                             <option value="melhoria">🚀 Melhoria / Novo Recurso</option>
                             <option value="duvida">❓ Dúvida / Orientação</option>
@@ -1198,11 +1315,17 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Filial</label>
-                        <select x-model="novoForm.idfilial" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                        <select x-model="novoForm.idfilial" @change="salvarRascunhoNovo()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                             <template x-for="f in filiais" :key="f.idfilial">
                                 <option :value="f.idfilial" x-text="f.nome || `${f.idfilial} - ${f.razao}`"></option>
                             </template>
                         </select>
+                    </div>
+                    <div>
+                        <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Prazo Entrega (SLA)</label>
+                        <input type="date" x-model="novoForm.prazo_entrega" :readonly="!ehTiLiberado()" @change="salvarRascunhoNovo()"
+                               title="Definido automaticamente pela criticidade (1d/3d/5d/7d) ou manualmente pelo TI"
+                               class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                     </div>
                 </div>
 
@@ -1212,7 +1335,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <label class="text-[11px] font-black text-indigo-900 uppercase tracking-wider">Solicitante do Chamado (Vincular Usuário)</label>
                         <span class="text-[10px] font-semibold text-indigo-600">Exclusivo Admin / TI</span>
                     </div>
-                    <select x-model="novoForm.solicitante" class="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500">
+                    <select x-model="novoForm.solicitante" @change="salvarRascunhoNovo()" class="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-bold text-slate-800 focus:outline-none focus:border-indigo-500">
                         <template x-for="usr in usuariosSolicitantes" :key="`nv-${usr.username}`">
                             <option :value="usr.username" x-text="`${usr.username}${usr.nome && usr.nome !== usr.username ? ' (' + usr.nome + ')' : ''}`"></option>
                         </template>
@@ -1222,8 +1345,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <!-- Módulo do Portal (se PORTAL) ou Detalhe do Item -->
                 <div x-show="novoForm.tipo_sistema === 'PORTAL'">
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Módulo do Portal</label>
-                    <select x-model="novoForm.modulo_slug" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
+                    <select x-model="novoForm.modulo_slug" @change="marcarCampoManual('modulo_slug'); salvarRascunhoNovo()" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                         <option value="">Deixar IA Detectar pelo Relato</option>
+                        <option value="geral">🌐 Portal Geral / Novo Módulo / Arquitetura</option>
                         <template x-for="m in modulos" :key="m.slug">
                             <option :value="m.slug" x-text="`${m.nome} (${m.setor})`"></option>
                         </template>
@@ -1233,25 +1357,25 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div x-show="novoForm.tipo_sistema !== 'PORTAL'" class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Rotina / Subtipo</label>
-                        <input type="text" x-model="novoForm.subtipo_item" placeholder="Ex: Impressora, Pedido, CT-e, Rastreamento..."
+                        <input type="text" x-model="novoForm.subtipo_item" @input="salvarRascunhoNovo()" placeholder="Ex: Impressora, Pedido, CT-e, Rastreamento..."
                                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
                     </div>
                     <div>
                         <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Nº Documento / Placa / Identificação</label>
-                        <input type="text" x-model="novoForm.equipamento_detalhe" placeholder="Ex: NF 300808, Placa ABC-1234, Ramal 204..."
+                        <input type="text" x-model="novoForm.equipamento_detalhe" @input="salvarRascunhoNovo()" placeholder="Ex: NF 300808, Placa ABC-1234, Ramal 204..."
                                class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 focus:outline-none focus:border-indigo-500">
                     </div>
                 </div>
 
                 <div>
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Título Resumido <span class="text-slate-400 font-normal lowercase">(opcional - IA gera se vazio)</span></label>
-                    <input type="text" x-model="novoForm.titulo" placeholder="Ex: Erro ao filtrar saldo de estoque..."
+                    <input type="text" x-model="novoForm.titulo" @input="marcarCampoManual('titulo'); salvarRascunhoNovo()" placeholder="Ex: Erro ao filtrar saldo de estoque..."
                            class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500">
                 </div>
 
                 <div>
                     <label class="text-[11px] font-bold text-slate-500 uppercase tracking-wider block mb-1">Descrição Completa do Problema / Solicitação *</label>
-                    <textarea x-model="novoForm.relato" rows="4" placeholder="Descreva em detalhes o que ocorreu ou o que você precisa..."
+                    <textarea x-model="novoForm.relato" @input="salvarRascunhoNovo()" rows="4" placeholder="Descreva em detalhes o que ocorreu ou o que você precisa..."
                               class="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium text-slate-700 focus:outline-none focus:border-indigo-500 focus:bg-white transition"></textarea>
                 </div>
 
@@ -1301,7 +1425,7 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <div class="pt-4 border-t border-slate-100 flex items-center justify-end gap-2.5">
-                <button type="button" @click="modalNovoAberto = false" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100">Cancelar</button>
+                <button type="button" @click="fecharModalNovo()" class="px-4 py-2 rounded-xl text-xs font-bold text-slate-500 hover:bg-slate-100">Fechar / Salvar Rascunho</button>
                 <button type="button" @click="salvarNovoChamado()" :disabled="salvandoChamado || !novoForm.relato"
                         class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-black flex items-center gap-2 shadow-md">
                     <i class="fa-solid" :class="salvandoChamado ? 'fa-spinner fa-spin' : 'fa-paper-plane'"></i>
@@ -1314,7 +1438,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- MODAL 2: DETALHES COMPLETOS, EDIÇÃO TOTAL, PRINTS E TIMELINE -->
     <div x-show="modalDetalhesAberto" @paste="tratarColagemPrint($event, 'modal_anexo')"
          class="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-900/65 backdrop-blur-xs" style="display: none;">
-        <div class="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[94vh] overflow-hidden" @click.outside="modalDetalhesAberto = false">
+        <div class="bg-white rounded-3xl max-w-4xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 flex flex-col max-h-[94vh] overflow-hidden">
             <template x-if="chamadoAtual">
                 <div class="flex flex-col h-full overflow-hidden">
 
@@ -1545,6 +1669,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     <input type="number" min="1" max="999" x-model.number="editForm.prioridade"
                                            class="w-full px-3 py-2 bg-white border border-amber-200 rounded-xl text-xs font-bold text-slate-800">
                                 </div>
+
+                                <div x-show="ehTiLiberado()">
+                                    <label class="text-[10px] font-bold text-indigo-700 uppercase block mb-1">Prazo de Entrega (Data SLA)</label>
+                                    <input type="date" x-model="editForm.prazo_entrega"
+                                           class="w-full px-3 py-2 bg-white border border-indigo-300 rounded-xl text-xs font-bold text-indigo-900">
+                                </div>
                             </div>
 
                             <div>
@@ -1643,11 +1773,20 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
 
                         <!-- DOSSIÊ TÉCNICO IA -->
-                        <div x-show="chamadoAtual.diagnostico_ia" class="bg-slate-900 text-slate-100 p-4 rounded-2xl border border-slate-800">
-                            <span class="text-[11px] font-black uppercase text-indigo-400 flex items-center gap-1.5 mb-2">
-                                <i class="fa-solid fa-microchip"></i> Parecer Técnico de Engenharia
-                            </span>
-                            <pre class="text-[10.5px] font-mono leading-relaxed whitespace-pre-wrap text-slate-200 overflow-x-auto max-h-40" x-text="chamadoAtual.diagnostico_ia"></pre>
+                        <div x-show="chamadoAtual.diagnostico_ia || ehTiLiberado()" class="bg-slate-900 text-slate-100 p-4 rounded-2xl border border-slate-800">
+                            <div class="flex items-center justify-between gap-2 mb-2 flex-wrap">
+                                <span class="text-[11px] font-black uppercase text-indigo-400 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-microchip"></i> Parecer Técnico de Engenharia &amp; Prévia da Solução
+                                </span>
+                                <button type="button" x-show="ehTiLiberado() || Number(chamadoAtual.status) < 3"
+                                        @click="reprocessarIaChamado()" :disabled="reprocessandoIa"
+                                        class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[10px] font-black flex items-center gap-1.5 transition">
+                                    <i class="fa-solid fa-wand-magic-sparkles" :class="reprocessandoIa ? 'fa-spin' : ''"></i>
+                                    <span x-text="reprocessandoIa ? 'Reprocessando...' : '✨ Reprocessar Diagnóstico IA'">✨ Reprocessar Diagnóstico IA</span>
+                                </button>
+                            </div>
+                            <pre x-show="chamadoAtual.diagnostico_ia" class="text-[10.5px] font-mono leading-relaxed whitespace-pre-wrap text-slate-200 overflow-x-auto max-h-60" x-text="chamadoAtual.diagnostico_ia"></pre>
+                            <p x-show="!chamadoAtual.diagnostico_ia" class="text-[11px] text-slate-400 italic">Sem parecer técnico gerado ainda. Clique no botão acima para analisar com o Token de Sabedoria.</p>
                         </div>
 
                         <!-- SOLUÇÃO APLICADA (SE CONCLUÍDO) -->

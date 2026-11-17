@@ -345,6 +345,44 @@ class ChamadosController
             $kpiConcluidosTotal = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status = 3 AND {$userFilterSql}", $userParams);
             $taxaResolucao = $kpiTotal > 0 ? round(($kpiConcluidosTotal / $kpiTotal) * 100, 1) : 0;
 
+            // KPIs de Prazo de Entrega (SLA)
+            $slaAbertosNoPrazo = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND prazo_entrega IS NOT NULL AND prazo_entrega > CURRENT_DATE + 1 AND {$userFilterSql}", $userParams);
+            $slaAbertosVencendo = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND prazo_entrega IS NOT NULL AND prazo_entrega BETWEEN CURRENT_DATE AND CURRENT_DATE + 1 AND {$userFilterSql}", $userParams);
+            $slaAbertosAtrasados = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status IN (0, 1, 2) AND prazo_entrega IS NOT NULL AND prazo_entrega < CURRENT_DATE AND {$userFilterSql}", $userParams);
+            $slaConcluidosNoPrazo = $this->execScalar("SELECT COUNT(*) FROM chamado WHERE status = 3 AND prazo_entrega IS NOT NULL AND COALESCE(concluido_em::date, data, CURRENT_DATE) <= prazo_entrega AND {$userFilterSql}", $userParams);
+            $totalAbertosSla = $slaAbertosNoPrazo + $slaAbertosVencendo + $slaAbertosAtrasados;
+            $slaPercentualAbertos = $totalAbertosSla > 0 ? round((($slaAbertosNoPrazo + $slaAbertosVencendo) / $totalAbertosSla) * 100, 1) : 100.0;
+            $slaPercentualConcluidos = $kpiConcluidosTotal > 0 ? round(($slaConcluidosNoPrazo / $kpiConcluidosTotal) * 100, 1) : 100.0;
+
+            // Alertas de prazo próximo (vence hoje/amanhã) ou recém-concluído (48h) para o usuário
+            $stAlPrazo = $this->pdo->prepare("
+                SELECT idchamado, titulo, status, criticidade, prazo_entrega, concluido_em, solicitante
+                FROM chamado
+                WHERE {$userFilterSql}
+                  AND (
+                    (status IN (0, 1, 2) AND prazo_entrega IS NOT NULL AND prazo_entrega <= CURRENT_DATE + 1)
+                    OR (status = 3 AND concluido_em >= NOW() - INTERVAL '48 hours')
+                  )
+                ORDER BY status ASC, prazo_entrega ASC NULLS LAST, idchamado DESC
+                LIMIT 10
+            ");
+            $stAlPrazo->execute($userParams);
+            $alertasPrazo = [];
+            foreach ($stAlPrazo->fetchAll(PDO::FETCH_ASSOC) as $ap) {
+                $stAp = (int)$ap['status'];
+                $pDate = $ap['prazo_entrega'] ?? null;
+                $tipoAl = $stAp === 3 ? 'concluido' : ($pDate && $pDate < date('Y-m-d') ? 'atrasado' : 'proximo');
+                $alertasPrazo[] = [
+                    'idchamado' => (int)$ap['idchamado'],
+                    'titulo' => (string)($ap['titulo'] ?? ''),
+                    'status' => $stAp,
+                    'criticidade' => (string)($ap['criticidade'] ?? 'media'),
+                    'prazo_fmt' => $pDate ? date('d/m/Y', strtotime($pDate)) : '',
+                    'tipo_alerta' => $tipoAl,
+                    'solicitante' => (string)($ap['solicitante'] ?? ''),
+                ];
+            }
+
             $stTempo = $this->pdo->prepare("
                 SELECT ROUND(AVG(EXTRACT(EPOCH FROM (concluido_em - datahora)) / 3600.0)::numeric, 1)
                 FROM chamado
@@ -735,8 +773,15 @@ class ChamadosController
                     'concluidos_mes' => $kpiConcluidosMes,
                     'concluidos_total' => $kpiConcluidosTotal,
                     'taxa_resolucao' => $taxaResolucao,
-                    'tempo_medio_horas' => $tempoMedioHoras
+                    'tempo_medio_horas' => $tempoMedioHoras,
+                    'sla_no_prazo' => $slaAbertosNoPrazo,
+                    'sla_vencendo' => $slaAbertosVencendo,
+                    'sla_atrasados' => $slaAbertosAtrasados,
+                    'sla_concluidos_no_prazo' => $slaConcluidosNoPrazo,
+                    'sla_percentual_abertos' => $slaPercentualAbertos,
+                    'sla_percentual_concluidos' => $slaPercentualConcluidos
                 ],
+                'alertas_prazo' => $alertasPrazo,
                 'metricas' => [
                     'por_sistema' => $porSistema,
                     'por_criticidade' => $porCriticidade,
@@ -820,6 +865,16 @@ class ChamadosController
                 $where[] = 'c.status = :status';
                 $params['status'] = $status;
             }
+            $filtroSla = trim((string)($q['filtro_sla'] ?? ''));
+            if ($filtroSla === 'abertos') {
+                $where[] = 'c.status IN (0, 1, 2)';
+            } elseif ($filtroSla === 'no_prazo') {
+                $where[] = 'c.status IN (0, 1, 2) AND c.prazo_entrega IS NOT NULL AND c.prazo_entrega > CURRENT_DATE + 1';
+            } elseif ($filtroSla === 'vencendo') {
+                $where[] = 'c.status IN (0, 1, 2) AND c.prazo_entrega IS NOT NULL AND c.prazo_entrega BETWEEN CURRENT_DATE AND CURRENT_DATE + 1';
+            } elseif ($filtroSla === 'atrasado') {
+                $where[] = 'c.status IN (0, 1, 2) AND c.prazo_entrega IS NOT NULL AND c.prazo_entrega < CURRENT_DATE';
+            }
             if ($tipoSistema !== '' && $tipoSistema !== 'todos') {
                 $where[] = 'c.tipo_sistema = :tipoSistema';
                 $params['tipoSistema'] = $tipoSistema;
@@ -882,6 +937,7 @@ class ChamadosController
                     c.atendente,
                     c.idfilial,
                     c.datahora,
+                    c.prazo_entrega,
                     c.atualizado_em,
                     c.concluido_em,
                     c.versao_entrega,
@@ -911,6 +967,39 @@ class ChamadosController
                 $it['data_fmt'] = !empty($it['datahora']) ? date('d/m/Y H:i', strtotime($it['datahora'])) : '';
                 $it['atualizado_fmt'] = !empty($it['atualizado_em']) ? date('d/m H:i', strtotime($it['atualizado_em'])) : '';
                 $it['concluido_fmt'] = !empty($it['concluido_em']) ? date('d/m/Y H:i', strtotime($it['concluido_em'])) : '';
+
+                // Cálculo de SLA / Prazo
+                $prazoStr = !empty($it['prazo_entrega']) ? substr((string)$it['prazo_entrega'], 0, 10) : '';
+                $it['prazo_entrega'] = $prazoStr;
+                $it['prazo_fmt'] = $prazoStr !== '' ? date('d/m/Y', strtotime($prazoStr)) : '';
+                $hojeStr = date('Y-m-d');
+                if ($prazoStr === '') {
+                    $it['sla_status'] = 'sem_prazo';
+                    $it['sla_label'] = 'Sem prazo';
+                    $it['dias_restantes'] = null;
+                } elseif ($st === 3) {
+                    $concStr = !empty($it['concluido_em']) ? substr((string)$it['concluido_em'], 0, 10) : $hojeStr;
+                    $noPrazo = $concStr <= $prazoStr;
+                    $it['sla_status'] = $noPrazo ? 'concluido_no_prazo' : 'concluido_atrasado';
+                    $it['sla_label'] = $noPrazo ? 'Entregue no prazo' : 'Entregue após prazo';
+                    $it['dias_restantes'] = 0;
+                } else {
+                    $diffDias = (int)floor((strtotime($prazoStr) - strtotime($hojeStr)) / 86400);
+                    $it['dias_restantes'] = $diffDias;
+                    if ($diffDias < 0) {
+                        $it['sla_status'] = 'atrasado';
+                        $it['sla_label'] = 'Atrasado ' . abs($diffDias) . 'd';
+                    } elseif ($diffDias === 0) {
+                        $it['sla_status'] = 'vencendo';
+                        $it['sla_label'] = 'Vence hoje';
+                    } elseif ($diffDias === 1) {
+                        $it['sla_status'] = 'vencendo';
+                        $it['sla_label'] = 'Vence amanhã';
+                    } else {
+                        $it['sla_status'] = 'no_prazo';
+                        $it['sla_label'] = "No prazo ({$diffDias}d)";
+                    }
+                }
             }
             unset($it);
 
@@ -1024,9 +1113,38 @@ class ChamadosController
         }
     }
 
+    private function resolverNomeModulo(string $slug, string $nomeInformado = ''): string
+    {
+        $slugClean = trim($slug);
+        if ($slugClean !== '' && $slugClean !== 'geral') {
+            try {
+                $stMod = $this->pdo->prepare("SELECT nome FROM sistema_modulos WHERE slug = :slug LIMIT 1");
+                $stMod->execute(['slug' => $slugClean]);
+                $nomeDb = trim((string)($stMod->fetchColumn() ?: ''));
+                if ($nomeDb !== '') {
+                    return $nomeDb;
+                }
+            } catch (\Throwable $e) {
+                // fallback abaixo
+            }
+        }
+
+        $nomeClean = trim($nomeInformado);
+        // Evita aceitar slug cru como nome amigável de módulo
+        if ($nomeClean !== '' && $nomeClean !== $slugClean && !preg_match('/^[a-z0-9\-_]+$/', $nomeClean)) {
+            return $nomeClean;
+        }
+
+        if ($slugClean === '' || $slugClean === 'geral') {
+            return 'Portal Geral';
+        }
+
+        return mb_convert_case(str_replace(['-', '_'], ' ', $slugClean), MB_CASE_TITLE, 'UTF-8');
+    }
+
     /**
      * POST /v1/chamados/triagem-ia
-     * Realiza a pré-análise e formatação com IA antes da submissão final.
+     * Realiza a pré-análise, correção ortográfica e diagnóstico técnico com IA antes da submissão final.
      */
     public function triarIa(Request $request, Response $response): Response
     {
@@ -1041,7 +1159,20 @@ class ChamadosController
                 return $this->erro($response, 'Por favor, descreva o chamado com mais detalhes para a IA analisar.');
             }
 
-            $resultado = $this->ia->triar($relato, $modulo, $filial, $tipoSistema);
+            $opcoes = [
+                'categoria_informada' => trim((string)($body['categoria'] ?? '')),
+                'criticidade_informada' => trim((string)($body['criticidade'] ?? '')),
+                'titulo_informado' => trim((string)($body['titulo'] ?? '')),
+                'subtipo_informado' => trim((string)($body['subtipo_item'] ?? '')),
+                'equipamento_detalhe' => trim((string)($body['equipamento_detalhe'] ?? '')),
+                'respeitar_categoria' => !empty($body['respeitar_categoria']),
+                'respeitar_criticidade' => !empty($body['respeitar_criticidade']),
+                'respeitar_modulo' => !empty($body['respeitar_modulo']),
+                'respeitar_sistema' => !empty($body['respeitar_sistema']),
+                'respeitar_titulo' => !empty($body['respeitar_titulo']),
+            ];
+
+            $resultado = $this->ia->triar($relato, $modulo, $filial, $tipoSistema, $opcoes);
 
             return $this->json($response, [
                 'success' => true,
@@ -1049,6 +1180,114 @@ class ChamadosController
             ]);
         } catch (\Throwable $e) {
             return $this->erro($response, 'Erro na triagem de IA: ' . $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * POST /v1/chamados/reprocessar-ia
+     * Reanalisa um chamado existente com o Token de Sabedoria do Ecossistema, corrigindo ortografia, módulo e gerando nova prévia da solução.
+     */
+    public function reprocessarIa(Request $request, Response $response): Response
+    {
+        try {
+            $body = $this->parsedBody($request);
+            $id = (int)($body['idchamado'] ?? 0);
+            $u = $this->usuario($request);
+
+            if ($id <= 0) {
+                return $this->erro($response, 'ID de chamado inválido.');
+            }
+
+            $st = $this->pdo->prepare("
+                SELECT idchamado, idcliforemp, solicitante, usuario, idfilial, tipo_sistema, modulo_slug, modulo_nome, categoria, criticidade, titulo, motivo, observacao
+                FROM chamado
+                WHERE idchamado = :id
+            ");
+            $st->execute(['id' => $id]);
+            $chamado = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$chamado) {
+                return $this->erro($response, 'Chamado não encontrado.', 404);
+            }
+            if (!$this->podeEditarChamado($chamado, $u)) {
+                return $this->erro($response, 'Sem permissão para reprocessar este chamado.', 403);
+            }
+
+            $relatoBase = trim((string)($chamado['motivo'] ?: $chamado['observacao'] ?: $chamado['titulo'] ?: ''));
+            $tituloAtual = trim((string)($chamado['titulo'] ?? ''));
+            $moduloAtual = trim((string)($chamado['modulo_slug'] ?? 'geral'));
+            $ehModuloFixoManual = ($moduloAtual !== '' && $moduloAtual !== 'geral' && $moduloAtual !== 'chamados');
+            $tituloSemTag = trim(preg_replace('/^\[[^\]]+\]\s*/', '', $tituloAtual));
+            $tituloPrefixo = rtrim($tituloSemTag, '.');
+            $tituloJaNoRelato = $tituloPrefixo !== '' && str_contains(mb_strtolower($relatoBase, 'UTF-8'), mb_strtolower($tituloPrefixo, 'UTF-8'));
+            $textoParaAnalise = (!$ehModuloFixoManual && $tituloSemTag !== '' && !$tituloJaNoRelato)
+                ? ($tituloSemTag . "\n" . $relatoBase)
+                : $relatoBase;
+
+            $analise = $this->ia->triar(
+                $textoParaAnalise,
+                $ehModuloFixoManual ? $moduloAtual : null,
+                (int)($chamado['idfilial'] ?? 1),
+                (string)($chamado['tipo_sistema'] ?? 'PORTAL'),
+                [
+                    'categoria_informada' => (string)($chamado['categoria'] ?? ''),
+                    'criticidade_informada' => (string)($chamado['criticidade'] ?? ''),
+                    'respeitar_categoria' => false,
+                    'respeitar_criticidade' => true,
+                    'respeitar_modulo' => $ehModuloFixoManual,
+                ]
+            );
+
+            $novoRelato = $this->ia->corrigirOrtografia($relatoBase);
+            $novoTitulo = (string)($analise['titulo'] ?? $chamado['titulo']);
+            $novoSlug = (string)($analise['modulo_slug'] ?? 'geral');
+            $novoNomeMod = $this->resolverNomeModulo($novoSlug, (string)($analise['modulo_nome'] ?? ''));
+            $novaCat = (string)($analise['categoria'] ?? $chamado['categoria']);
+            $novaCrit = (string)($analise['criticidade'] ?? $chamado['criticidade']);
+            $novoDiag = (string)($analise['diagnostico_ia'] ?? '');
+
+            $this->pdo->prepare("
+                UPDATE chamado
+                SET titulo = :titulo,
+                    motivo = :motivo,
+                    observacao = :obs,
+                    modulo_slug = :slug,
+                    modulo_nome = :nome_mod,
+                    categoria = :cat,
+                    criticidade = :crit,
+                    diagnostico_ia = :diag,
+                    atualizado_em = NOW()
+                WHERE idchamado = :id
+            ")->execute([
+                'titulo' => $this->limpaWin1252($novoTitulo),
+                'motivo' => $this->limpaWin1252($novoRelato),
+                'obs' => $this->limpaWin1252($novoRelato),
+                'slug' => $this->limpaWin1252($novoSlug),
+                'nome_mod' => $this->limpaWin1252($novoNomeMod),
+                'cat' => $this->limpaWin1252($novaCat),
+                'crit' => $this->limpaWin1252($novaCrit),
+                'diag' => $this->limpaWin1252($novoDiag),
+                'id' => $id,
+            ]);
+
+            $proxOp = (int)$this->pdo->query("SELECT COALESCE(MAX(idoperacao), 0) + 1 FROM chamado_operacao WHERE idchamado = {$id}")->fetchColumn();
+            $this->pdo->prepare("
+                INSERT INTO chamado_operacao (idchamado, idoperacao, descricao, datahora, usuario, acao, tipo, detalhes)
+                VALUES (:idchamado, :idoperacao, :desc, NOW(), :usuario, 0, 'edicao', :detalhes)
+            ")->execute([
+                'idchamado' => $id,
+                'idoperacao' => $proxOp,
+                'desc' => 'Dossie IA reprocessado com Token de Sabedoria do Ecossistema',
+                'usuario' => $u['username'],
+                'detalhes' => "Alinhamento automático atualizado: Módulo [{$novoNomeMod}], Categoria [{$novaCat}], Criticidade [{$novaCrit}] e ortografia revisada.",
+            ]);
+
+            return $this->json($response, [
+                'success' => true,
+                'message' => 'Diagnóstico e prévia técnica atualizados com sucesso!',
+                'sugestao' => $analise,
+            ]);
+        } catch (\Throwable $e) {
+            return $this->erro($response, 'Erro ao reprocessar IA: ' . $e->getMessage(), 500);
         }
     }
 
@@ -1062,38 +1301,69 @@ class ChamadosController
             $body = $this->parsedBody($request);
             $u = $this->usuario($request);
 
-            $relato = trim((string)($body['motivo'] ?? $body['relato'] ?? ''));
-            if (mb_strlen($relato) < 4) {
+            $relatoBruto = trim((string)($body['motivo'] ?? $body['relato'] ?? ''));
+            if (mb_strlen($relatoBruto) < 4) {
                 return $this->erro($response, 'Informe a descrição do chamado.');
             }
 
-            $modulo = trim((string)($body['modulo_slug'] ?? 'geral'));
+            $modulo = trim((string)($body['modulo_slug'] ?? ''));
             $filial = (int)($body['idfilial'] ?? 1);
             $tipoSistema = !empty($body['tipo_sistema']) ? trim((string)$body['tipo_sistema']) : null;
             $subtipoItem = !empty($body['subtipo_item']) ? trim((string)$body['subtipo_item']) : null;
             $equipamentoDetalhe = !empty($body['equipamento_detalhe']) ? trim((string)$body['equipamento_detalhe']) : null;
+            $tituloInformado = trim((string)($body['titulo'] ?? ''));
+            $diagInformado = trim((string)($body['diagnostico_ia'] ?? ''));
 
-            // Se o usuário não fez a triagem antes, a IA tria automaticamente no ato do salvamento
-            $triagem = !empty($body['titulo']) ? [
-                'titulo' => trim((string)$body['titulo']),
-                'tipo_sistema' => $tipoSistema ?: 'PORTAL',
-                'subtipo_item' => $subtipoItem ?: 'Geral',
-                'modulo_slug' => $modulo,
-                'modulo_nome' => trim((string)($body['modulo_nome'] ?? $modulo)),
-                'categoria' => trim((string)($body['categoria'] ?? 'bug')),
-                'criticidade' => trim((string)($body['criticidade'] ?? 'media')),
-                'diagnostico_ia' => trim((string)($body['diagnostico_ia'] ?? '')),
-            ] : $this->ia->triar($relato, $modulo, $filial, $tipoSistema);
+            $respeitarCatBody = !empty($body['categoria_manual']) || (!empty($body['criticidade_manual']) && !array_key_exists('categoria_manual', $body));
+            $respeitarCritBody = !empty($body['criticidade_manual']);
 
-            // Se o usuário escolheu manualmente criticidade/categoria (ex: Abertura Expressa), respeita a escolha dele
-            if (!empty($body['criticidade_manual'])) {
+            // Roda triagem inteligente sempre que faltar título ou diagnóstico, respeitando campos definidos pelo usuário
+            $opcoesIa = [
+                'categoria_informada' => trim((string)($body['categoria'] ?? '')),
+                'criticidade_informada' => trim((string)($body['criticidade'] ?? '')),
+                'titulo_informado' => $tituloInformado,
+                'subtipo_informado' => $subtipoItem ?: '',
+                'equipamento_detalhe' => $equipamentoDetalhe ?: '',
+                'respeitar_categoria' => $respeitarCatBody && !empty($body['categoria']),
+                'respeitar_criticidade' => $respeitarCritBody && !empty($body['criticidade']),
+                'respeitar_modulo' => ($modulo !== '' && $modulo !== 'geral'),
+                'respeitar_sistema' => !empty($body['respeitar_sistema']),
+                'respeitar_titulo' => ($tituloInformado !== ''),
+            ];
+
+            if ($tituloInformado !== '' && $diagInformado !== '') {
+                $slugResolvido = $modulo !== '' ? $modulo : 'geral';
+                $nomeResolvido = $this->resolverNomeModulo($slugResolvido, trim((string)($body['modulo_nome'] ?? '')));
+                $relato = $this->ia->corrigirOrtografia($relatoBruto);
+                $triagem = [
+                    'titulo' => $this->ia->corrigirOrtografia($tituloInformado),
+                    'tipo_sistema' => $tipoSistema ?: 'PORTAL',
+                    'subtipo_item' => $subtipoItem ?: 'Geral',
+                    'modulo_slug' => $slugResolvido,
+                    'modulo_nome' => $nomeResolvido,
+                    'categoria' => trim((string)($body['categoria'] ?? 'melhoria')),
+                    'criticidade' => trim((string)($body['criticidade'] ?? 'media')),
+                    'diagnostico_ia' => $diagInformado,
+                    'relato_formatado' => $relato,
+                ];
+            } else {
+                $triagem = $this->ia->triar($relatoBruto, $modulo !== '' ? $modulo : null, $filial, $tipoSistema, $opcoesIa);
+                $relato = (string)($triagem['relato_formatado'] ?? $relatoBruto);
+                $triagem['modulo_nome'] = $this->resolverNomeModulo(
+                    (string)($triagem['modulo_slug'] ?? ($modulo ?: 'geral')),
+                    (string)($triagem['modulo_nome'] ?? '')
+                );
+            }
+
+            // Se o usuário escolheu manualmente criticidade/categoria, respeita a escolha dele
+            if ($respeitarCritBody) {
                 $critBody = strtolower(trim((string)($body['criticidade'] ?? '')));
                 if (in_array($critBody, ['critica', 'alta', 'media', 'baixa'], true)) {
                     $triagem['criticidade'] = $critBody;
                 }
-                if (!empty($body['categoria'])) {
-                    $triagem['categoria'] = trim((string)$body['categoria']);
-                }
+            }
+            if ($respeitarCatBody && !empty($body['categoria'])) {
+                $triagem['categoria'] = trim((string)$body['categoria']);
             }
 
             $tipoSistemaFinal = !empty($triagem['tipo_sistema']) ? $triagem['tipo_sistema'] : ($tipoSistema ?: 'PORTAL');
@@ -1134,20 +1404,29 @@ class ChamadosController
                 ? (int)$body['prioridade']
                 : ($mapaPrioridadeDefault[$critFinal] ?? 5);
 
+            $diasSlaMapa = ['critica' => 1, 'alta' => 3, 'media' => 5, 'baixa' => 7];
+            $prazoInput = trim((string)($body['prazo_entrega'] ?? ''));
+            if ($u['pode_ver_todos'] && preg_match('/^\d{4}-\d{2}-\d{2}$/', $prazoInput)) {
+                $prazoEntregaFinal = $prazoInput;
+            } else {
+                $diasSla = $diasSlaMapa[$critFinal] ?? 5;
+                $prazoEntregaFinal = date('Y-m-d', strtotime("+{$diasSla} days"));
+            }
+
             // Próximo ID de chamado
             $idNovo = (int)$this->pdo->query("SELECT COALESCE(MAX(idchamado), 0) + 1 FROM chamado")->fetchColumn();
 
             $stmt = $this->pdo->prepare("
                 INSERT INTO chamado (
                     idchamado, idtransacao, idfilial, idempresa, idcliforemp,
-                    status, prioridade, data, hora, datahora,
+                    status, prioridade, data, hora, datahora, prazo_entrega,
                     solicitante, atendente, usuario, motivo, observacao,
                     tipo_sistema, subtipo_item, equipamento_detalhe,
                     modulo_slug, modulo_nome, categoria, criticidade,
                     titulo, diagnostico_ia, anexo_url
                 ) VALUES (
                     :idchamado, 3, :idfilial, 1, :idcliforemp,
-                    0, :prioridade, CURRENT_DATE, NOW(), NOW(),
+                    0, :prioridade, CURRENT_DATE, NOW(), NOW(), :prazo_entrega,
                     :solicitante, :atendente, :usuario, :motivo, :observacao,
                     :tipo_sistema, :subtipo_item, :equipamento_detalhe,
                     :modulo_slug, :modulo_nome, :categoria, :criticidade,
@@ -1165,6 +1444,7 @@ class ChamadosController
                 'idfilial' => $filial,
                 'idcliforemp' => $idCliSolicitante,
                 'prioridade' => $prioridadeInicial,
+                'prazo_entrega' => $prazoEntregaFinal,
                 'solicitante' => $this->limpaWin1252($solicitanteFinal),
                 'atendente' => $atendentePadrao,
                 'usuario' => $this->limpaWin1252($solicitanteFinal),
@@ -1300,7 +1580,7 @@ class ChamadosController
                 return $this->erro($response, 'ID de chamado inválido.');
             }
 
-            $stCh = $this->pdo->prepare("SELECT idchamado, status, idcliforemp, solicitante, usuario, titulo FROM chamado WHERE idchamado = :id");
+            $stCh = $this->pdo->prepare("SELECT idchamado, status, idcliforemp, solicitante, usuario, titulo, prazo_entrega FROM chamado WHERE idchamado = :id");
             $stCh->execute(['id' => $id]);
             $chamado = $stCh->fetch(PDO::FETCH_ASSOC);
             if (!$chamado) {
@@ -1332,12 +1612,19 @@ class ChamadosController
                 'det' => $this->limpaWin1252(trim((string)($body['observacao'] ?? 'Movido pelo painel de chamados')))
             ]);
 
-            $this->notificarEventoChamado(
-                $id,
-                "Chamado #{$id} atualizado: {$nomeStatus}",
-                "{$u['username']} alterou o status para {$nomeStatus}.",
-                $u
-            );
+            $prazoStr = !empty($chamado['prazo_entrega']) ? date('d/m/Y', strtotime((string)$chamado['prazo_entrega'])) : '';
+            if ($novoStatus === 3) {
+                $notifTit = "Chamado #{$id} concluído e realizado!";
+                $notifMsg = "O chamado aberto por você ('" . ($chamado['titulo'] ?: "#{$id}") . "') foi concluído por {$u['username']}.";
+            } elseif ($novoStatus === 2 && $prazoStr !== '') {
+                $notifTit = "Chamado #{$id} em correção (Previsão: {$prazoStr})";
+                $notifMsg = "{$u['username']} moveu seu chamado para Em Correção / Dev. Prazo previsto: {$prazoStr}.";
+            } else {
+                $notifTit = "Chamado #{$id} atualizado: {$nomeStatus}";
+                $notifMsg = "{$u['username']} alterou o status para {$nomeStatus}.";
+            }
+
+            $this->notificarEventoChamado($id, $notifTit, $notifMsg, $u);
 
             return $this->json($response, [
                 'success' => true,
@@ -1536,6 +1823,16 @@ class ChamadosController
                     }
                 }
 
+                if (array_key_exists('prazo_entrega', $body)) {
+                    $novoPrazo = trim((string)$body['prazo_entrega']);
+                    $prazoAtual = !empty($chamado['prazo_entrega']) ? substr((string)$chamado['prazo_entrega'], 0, 10) : '';
+                    if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $novoPrazo) && $novoPrazo !== $prazoAtual) {
+                        $sets[] = 'prazo_entrega = :prazo_entrega';
+                        $params['prazo_entrega'] = $novoPrazo;
+                        $alteracoes[] = 'Prazo SLA: ' . date('d/m/Y', strtotime($novoPrazo));
+                    }
+                }
+
                 if (array_key_exists('prioridade', $body)) {
                     $novaPrio = (int)$body['prioridade'];
                     if ($novaPrio > 0 && $novaPrio !== (int)($chamado['prioridade'] ?? 10)) {
@@ -1583,23 +1880,19 @@ class ChamadosController
                     $novoSlug = trim((string)$body['modulo_slug']);
                     if ($novoSlug !== (string)($chamado['modulo_slug'] ?? '')) {
                         $sets[] = 'modulo_slug = :modulo_slug';
-                        $params['modulo_slug'] = $this->limpaWin1252($novoSlug ?: 'geral');
+                        $slugResolvido = $novoSlug ?: 'geral';
+                        $params['modulo_slug'] = $this->limpaWin1252($slugResolvido);
 
-                        $novoNomeMod = trim((string)($body['modulo_nome'] ?? ''));
-                        if ($novoNomeMod === '' && $novoSlug !== '' && $novoSlug !== 'geral') {
-                            $stMod = $this->pdo->prepare("SELECT nome FROM sistema_modulos WHERE slug = :slug LIMIT 1");
-                            $stMod->execute(['slug' => $novoSlug]);
-                            $novoNomeMod = (string)($stMod->fetchColumn() ?: $novoSlug);
-                        }
+                        $novoNomeMod = $this->resolverNomeModulo($slugResolvido, trim((string)($body['modulo_nome'] ?? '')));
                         $sets[] = 'modulo_nome = :modulo_nome';
-                        $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod ?: 'Portal Geral');
-                        $alteracoes[] = 'Módulo alterado para ' . ($novoNomeMod ?: 'Portal Geral');
+                        $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod);
+                        $alteracoes[] = 'Módulo alterado para ' . $novoNomeMod;
                     }
                 } elseif (array_key_exists('modulo_nome', $body)) {
                     $novoNomeMod = trim((string)$body['modulo_nome']);
                     if ($novoNomeMod !== '' && $novoNomeMod !== (string)($chamado['modulo_nome'] ?? '')) {
                         $sets[] = 'modulo_nome = :modulo_nome';
-                        $params['modulo_nome'] = $this->limpaWin1252($novoNomeMod);
+                        $params['modulo_nome'] = $this->limpaWin1252($this->resolverNomeModulo((string)($chamado['modulo_slug'] ?? 'geral'), $novoNomeMod));
                     }
                 }
 
@@ -1801,7 +2094,7 @@ class ChamadosController
                 return $this->erro($response, 'Informe o chamado e o conteúdo da mensagem ou anexo.');
             }
 
-            $stCh = $this->pdo->prepare("SELECT idchamado, status, idcliforemp, solicitante, usuario, titulo FROM chamado WHERE idchamado = :id");
+            $stCh = $this->pdo->prepare("SELECT idchamado, status, idcliforemp, solicitante, usuario, titulo, prazo_entrega FROM chamado WHERE idchamado = :id");
             $stCh->execute(['id' => $id]);
             $chamado = $stCh->fetch(PDO::FETCH_ASSOC);
             if (!$chamado) {

@@ -13,6 +13,18 @@ function chamadosApp() {
         salvandoEdicao: false,
         salvandoOrdem: false,
         anexoUploadando: false,
+        reprocessandoIa: false,
+
+        // Rascunho persistente de abertura
+        RASCUNHO_STORAGE_KEY: 'nutri_chamado_rascunho_v1',
+        rascunhoSalvoEm: '',
+        camposAlteradosManualmente: {
+            categoria: false,
+            criticidade: false,
+            modulo_slug: false,
+            tipo_sistema: false,
+            titulo: false
+        },
 
         // Modais & Painéis
         modalNovoAberto: false,
@@ -62,10 +74,13 @@ function chamadosApp() {
         timelineFiltro: 'todos',
 
         // Filtros
+        cardHover: null,
+        alertasPrazo: [],
         filtroPeriodoAtivo: 'todos',
         filtroAtendente: 'todos',
         filtros: {
             status: '',
+            filtro_sla: '',
             tipo_sistema: 'todos',
             modulo: 'todos',
             criticidade: 'todas',
@@ -95,10 +110,12 @@ function chamadosApp() {
             equipamento_detalhe: '',
             relato: '',
             modulo_slug: '',
+            modulo_nome: '',
             idfilial: 1,
             titulo: '',
             categoria: 'bug',
             criticidade: 'media',
+            prazo_entrega: '',
             solicitante: '',
             diagnostico_ia: '',
             anexo_url: ''
@@ -117,7 +134,8 @@ function chamadosApp() {
             atendente: 'ALAN',
             solicitante: 'ALAN',
             criticidade: 'media',
-            prioridade: 10
+            prioridade: 10,
+            prazo_entrega: ''
         },
         complementoTexto: '',
 
@@ -249,6 +267,7 @@ function chamadosApp() {
                     this.usuariosSolicitantes = res.usuarios_solicitantes || res.solicitantes || [];
                     this.atendentes = res.atendentes || [];
                     this.avisosRecentes = res.avisos_recentes || [];
+                    this.alertasPrazo = res.alertas_prazo || [];
                     this.notificacoesNaoLidas = Number(res.notificacoes_nao_lidas || 0);
                     this.usuario = res.usuario || {};
                 }
@@ -262,6 +281,7 @@ function chamadosApp() {
             try {
                 const params = new URLSearchParams();
                 if (this.filtros.status !== '') params.append('status', this.filtros.status);
+                if (this.filtros.filtro_sla) params.append('filtro_sla', this.filtros.filtro_sla);
                 if (this.filtros.tipo_sistema !== 'todos') params.append('tipo_sistema', this.filtros.tipo_sistema);
                 if (this.filtros.modulo !== 'todos') params.append('modulo', this.filtros.modulo);
                 if (this.filtros.criticidade !== 'todas') params.append('criticidade', this.filtros.criticidade);
@@ -289,6 +309,7 @@ function chamadosApp() {
             this.filtroAtendente = 'todos';
             this.filtros = {
                 status: '',
+                filtro_sla: '',
                 tipo_sistema: 'todos',
                 modulo: 'todos',
                 criticidade: 'todas',
@@ -343,6 +364,26 @@ function chamadosApp() {
                 4: { label: 'Cancelado', cor: 'bg-slate-100 text-slate-700 border-slate-300' }
             };
             return mapa[Number(st)] || { label: 'Desconhecido', cor: 'bg-gray-100 text-gray-700 border-gray-300' };
+        },
+
+        badgeSla(slaStatus) {
+            const mapa = {
+                atrasado: 'bg-rose-100 text-rose-800 border-rose-300',
+                vencendo: 'bg-amber-100 text-amber-800 border-amber-300',
+                no_prazo: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                concluido_no_prazo: 'bg-emerald-100 text-emerald-800 border-emerald-300',
+                concluido_atrasado: 'bg-slate-100 text-slate-600 border-slate-300'
+            };
+            return mapa[slaStatus] || 'bg-slate-50 text-slate-500 border-slate-200';
+        },
+
+        filtrarPorCard(opts = {}) {
+            this.limparFiltros();
+            if (opts.status !== undefined) this.filtros.status = opts.status;
+            if (opts.criticidade !== undefined) this.filtros.criticidade = opts.criticidade;
+            if (opts.filtro_sla !== undefined) this.filtros.filtro_sla = opts.filtro_sla;
+            if (opts.modo) this.modoExibicao = opts.modo;
+            this.carregarChamados();
         },
 
         badgeCriticidade(crit) {
@@ -634,36 +675,163 @@ function chamadosApp() {
             }
         },
 
-        abrirModalNovo(preencherDoQuick = false) {
-            const sistemaPadrao = preencherDoQuick && this.quickForm.tipo_sistema
-                ? this.quickForm.tipo_sistema
-                : ((this.sistemas || []).some(s => s.id === 'PORTAL')
-                    ? 'PORTAL'
-                    : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL'));
+        // ======================== AUTO-RASCUNHO & MODAL NOVO ========================
 
+        valoresPadraoNovoForm() {
+            const sistemaPadrao = ((this.sistemas || []).some(s => s.id === 'PORTAL')
+                ? 'PORTAL'
+                : ((this.sistemas && this.sistemas.length > 0) ? this.sistemas[0].id : 'PORTAL'));
             const filialPadrao = (this.filiais && this.filiais.length > 0)
                 ? Number(this.filiais[0].idfilial)
                 : ((this.usuario && this.usuario.idfilial) ? Number(this.usuario.idfilial) : 1);
+            const solicitantePadrao = (this.usuario && this.usuario.username) ? this.usuario.username : 'ALAN';
 
-            const solicitantePadrao = (preencherDoQuick && this.quickForm.solicitante)
-                ? this.quickForm.solicitante
-                : ((this.usuario && this.usuario.username) ? this.usuario.username : 'ALAN');
-
-            this.novoForm = {
+            return {
                 tipo_sistema: sistemaPadrao,
                 subtipo_item: '',
                 equipamento_detalhe: '',
-                relato: preencherDoQuick ? (this.quickForm.relato || '') : '',
+                relato: '',
                 modulo_slug: '',
+                modulo_nome: '',
                 idfilial: filialPadrao,
                 titulo: '',
-                categoria: preencherDoQuick ? (this.quickForm.categoria || 'bug') : 'bug',
-                criticidade: preencherDoQuick ? (this.quickForm.criticidade || 'media') : 'media',
+                categoria: 'bug',
+                criticidade: 'media',
                 solicitante: solicitantePadrao,
                 diagnostico_ia: '',
-                anexo_url: preencherDoQuick ? (this.quickForm.anexo_url || '') : ''
+                anexo_url: ''
             };
+        },
+
+        marcarCampoManual(campo) {
+            if (!this.camposAlteradosManualmente) {
+                this.camposAlteradosManualmente = {};
+            }
+            this.camposAlteradosManualmente[campo] = true;
+        },
+
+        temRascunhoPreenchido() {
+            const f = this.novoForm || {};
+            return Boolean(
+                (f.relato && f.relato.trim())
+                || (f.titulo && f.titulo.trim())
+                || (f.anexo_url && f.anexo_url.trim())
+                || (f.diagnostico_ia && f.diagnostico_ia.trim())
+                || (f.subtipo_item && f.subtipo_item.trim())
+                || (f.equipamento_detalhe && f.equipamento_detalhe.trim())
+            );
+        },
+
+        salvarRascunhoNovo() {
+            try {
+                if (!this.temRascunhoPreenchido()) {
+                    localStorage.removeItem(this.RASCUNHO_STORAGE_KEY);
+                    this.rascunhoSalvoEm = '';
+                    return;
+                }
+                const agora = new Date();
+                const horaFmt = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                const payload = {
+                    novoForm: { ...this.novoForm },
+                    triagemFeita: Boolean(this.triagemFeita),
+                    camposAlteradosManualmente: { ...this.camposAlteradosManualmente },
+                    salvoEm: horaFmt
+                };
+                localStorage.setItem(this.RASCUNHO_STORAGE_KEY, JSON.stringify(payload));
+                this.rascunhoSalvoEm = horaFmt;
+            } catch (_) {}
+        },
+
+        carregarRascunhoNovo() {
+            try {
+                const raw = localStorage.getItem(this.RASCUNHO_STORAGE_KEY);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || !parsed.novoForm) return null;
+                const f = parsed.novoForm;
+                const temDados = Boolean(
+                    (f.relato && f.relato.trim())
+                    || (f.titulo && f.titulo.trim())
+                    || (f.anexo_url && f.anexo_url.trim())
+                    || (f.diagnostico_ia && f.diagnostico_ia.trim())
+                );
+                return temDados ? parsed : null;
+            } catch (_) {
+                return null;
+            }
+        },
+
+        limparRascunhoNovo(resetarFormulario = false) {
+            try {
+                localStorage.removeItem(this.RASCUNHO_STORAGE_KEY);
+            } catch (_) {}
+            this.rascunhoSalvoEm = '';
+            if (resetarFormulario) {
+                this.novoForm = this.valoresPadraoNovoForm();
+                this.triagemFeita = false;
+                this.camposAlteradosManualmente = {
+                    categoria: false,
+                    criticidade: false,
+                    modulo_slug: false,
+                    tipo_sistema: false,
+                    titulo: false
+                };
+                if (this.modalNovoAberto) {
+                    this.toast('info', 'Rascunho limpo.', 1600);
+                }
+            }
+        },
+
+        fecharModalNovo() {
+            this.salvarRascunhoNovo();
+            this.modalNovoAberto = false;
+        },
+
+        abrirModalNovo(preencherDoQuick = false) {
+            const base = this.valoresPadraoNovoForm();
+            this.camposAlteradosManualmente = {
+                categoria: false,
+                criticidade: false,
+                modulo_slug: false,
+                tipo_sistema: false,
+                titulo: false
+            };
+
+            if (preencherDoQuick) {
+                this.novoForm = {
+                    ...base,
+                    tipo_sistema: this.quickForm.tipo_sistema || base.tipo_sistema,
+                    relato: this.quickForm.relato || '',
+                    categoria: this.quickForm.categoria || 'bug',
+                    criticidade: this.quickForm.criticidade || 'media',
+                    solicitante: this.quickForm.solicitante || base.solicitante,
+                    anexo_url: this.quickForm.anexo_url || ''
+                };
+                if (this.novoForm.categoria !== 'bug') this.camposAlteradosManualmente.categoria = true;
+                if (this.novoForm.criticidade !== 'media') this.camposAlteradosManualmente.criticidade = true;
+                this.triagemFeita = false;
+                this.salvarRascunhoNovo();
+                this.modalNovoAberto = true;
+                return;
+            }
+
+            const rascunho = this.carregarRascunhoNovo();
+            if (rascunho) {
+                this.novoForm = { ...base, ...rascunho.novoForm };
+                this.triagemFeita = Boolean(rascunho.triagemFeita);
+                this.camposAlteradosManualmente = {
+                    ...this.camposAlteradosManualmente,
+                    ...(rascunho.camposAlteradosManualmente || {})
+                };
+                this.rascunhoSalvoEm = rascunho.salvoEm || '';
+                this.modalNovoAberto = true;
+                this.toast('info', '💾 Rascunho anterior restaurado automaticamente!', 2400);
+                return;
+            }
+
+            this.novoForm = base;
             this.triagemFeita = false;
+            this.rascunhoSalvoEm = '';
             this.modalNovoAberto = true;
         },
 
@@ -687,6 +855,7 @@ function chamadosApp() {
         async atribuirUrlAnexo(destino, url, msgSucesso = 'Print anexado com sucesso!') {
             if (destino === 'novo') {
                 this.novoForm.anexo_url = url;
+                this.salvarRascunhoNovo();
             } else if (destino === 'quick') {
                 this.quickForm.anexo_url = url;
             } else if ((destino === 'modal_anexo' || destino === 'edicao') && this.chamadoAtual) {
@@ -795,6 +964,7 @@ function chamadosApp() {
         removerAnexo(destino = 'novo') {
             if (destino === 'novo') {
                 this.novoForm.anexo_url = '';
+                this.salvarRascunhoNovo();
             } else if (destino === 'quick') {
                 this.quickForm.anexo_url = '';
             } else {
@@ -828,6 +998,13 @@ function chamadosApp() {
                 return;
             }
 
+            const flags = this.camposAlteradosManualmente || {};
+            const respeitarCat = Boolean(flags.categoria || (this.novoForm.categoria && this.novoForm.categoria !== 'bug'));
+            const respeitarCrit = Boolean(flags.criticidade);
+            const respeitarModulo = Boolean(flags.modulo_slug && this.novoForm.modulo_slug);
+            const respeitarSistema = Boolean(flags.tipo_sistema);
+            const respeitarTitulo = Boolean(flags.titulo && this.novoForm.titulo && this.novoForm.titulo.trim() !== '');
+
             this.analisandoIa = true;
             try {
                 const res = await this.api('/chamados/triagem-ia', {
@@ -836,26 +1013,58 @@ function chamadosApp() {
                         relato: this.novoForm.relato,
                         modulo: this.novoForm.modulo_slug,
                         filial: this.novoForm.idfilial,
-                        tipo_sistema: this.novoForm.tipo_sistema
+                        tipo_sistema: this.novoForm.tipo_sistema,
+                        categoria: this.novoForm.categoria,
+                        criticidade: this.novoForm.criticidade,
+                        titulo: this.novoForm.titulo,
+                        subtipo_item: this.novoForm.subtipo_item,
+                        equipamento_detalhe: this.novoForm.equipamento_detalhe,
+                        respeitar_categoria: respeitarCat,
+                        respeitar_criticidade: respeitarCrit,
+                        respeitar_modulo: respeitarModulo,
+                        respeitar_sistema: respeitarSistema,
+                        respeitar_titulo: respeitarTitulo
                     }
                 });
 
                 if (res.success && res.sugestao) {
                     const s = res.sugestao;
-                    this.novoForm.titulo = s.titulo;
-                    if (s.tipo_sistema) this.novoForm.tipo_sistema = s.tipo_sistema;
-                    if (s.subtipo_item) this.novoForm.subtipo_item = s.subtipo_item;
-                    if (s.modulo_slug) this.novoForm.modulo_slug = s.modulo_slug;
-                    this.novoForm.categoria = s.categoria;
-                    this.novoForm.criticidade = s.criticidade;
-                    this.novoForm.diagnostico_ia = s.diagnostico_ia;
+                    if (s.relato_formatado) {
+                        this.novoForm.relato = s.relato_formatado;
+                    }
+                    if (!respeitarTitulo || !this.novoForm.titulo.trim()) {
+                        this.novoForm.titulo = s.titulo;
+                    }
+                    if (!respeitarSistema && s.tipo_sistema) {
+                        this.novoForm.tipo_sistema = s.tipo_sistema;
+                    }
+                    if (s.subtipo_item && !this.novoForm.subtipo_item) {
+                        this.novoForm.subtipo_item = s.subtipo_item;
+                    }
+                    if (!respeitarModulo) {
+                        if (s.modulo_slug) this.novoForm.modulo_slug = s.modulo_slug;
+                        if (s.modulo_nome) this.novoForm.modulo_nome = s.modulo_nome;
+                    } else if (s.modulo_nome) {
+                        this.novoForm.modulo_nome = s.modulo_nome;
+                    }
+                    if (!respeitarCat && s.categoria) {
+                        this.novoForm.categoria = s.categoria;
+                    }
+                    if (!respeitarCrit && s.criticidade) {
+                        this.novoForm.criticidade = s.criticidade;
+                    }
+                    if (s.prazo_entrega && !this.novoForm.prazo_entrega) {
+                        this.novoForm.prazo_entrega = s.prazo_entrega;
+                    }
+                    this.novoForm.diagnostico_ia = s.diagnostico_ia || '';
                     this.triagemFeita = true;
+                    this.salvarRascunhoNovo();
 
                     Swal.fire({
                         icon: 'success',
                         title: 'IA Triagem Concluída!',
-                        text: `Classificado para [${s.tipo_sistema || 'PORTAL'}] com criticidade [${s.criticidade}].`,
-                        timer: 2000,
+                        text: `Módulo: ${s.modulo_nome || this.novoForm.modulo_slug} | Categoria: ${this.novoForm.categoria.toUpperCase()} | Criticidade: ${this.novoForm.criticidade.toUpperCase()}.`,
+                        timer: 2600,
                         showConfirmButton: false
                     });
                 }
@@ -872,18 +1081,22 @@ function chamadosApp() {
                 return;
             }
 
+            const flags = this.camposAlteradosManualmente || {};
             this.salvandoChamado = true;
             try {
                 const res = await this.api('/chamados/criar', {
                     method: 'POST',
                     body: {
                         ...this.novoForm,
-                        criticidade_manual: true
+                        categoria_manual: Boolean(flags.categoria || this.triagemFeita || (this.novoForm.categoria && this.novoForm.categoria !== 'bug')),
+                        criticidade_manual: Boolean(flags.criticidade || this.triagemFeita),
+                        respeitar_sistema: Boolean(flags.tipo_sistema)
                     }
                 });
 
                 if (res.success) {
                     this.modalNovoAberto = false;
+                    this.limparRascunhoNovo(true);
                     await Promise.all([this.carregarDashboard(), this.carregarChamados()]);
 
                     Swal.fire({
@@ -896,6 +1109,29 @@ function chamadosApp() {
                 Swal.fire({ icon: 'error', title: 'Erro ao Abrir Chamado', text: e.message });
             } finally {
                 this.salvandoChamado = false;
+            }
+        },
+
+        async reprocessarIaChamado() {
+            if (!this.chamadoAtual || this.reprocessandoIa) return;
+            this.reprocessandoIa = true;
+            try {
+                const res = await this.api('/chamados/reprocessar-ia', {
+                    method: 'POST',
+                    body: { idchamado: this.chamadoAtual.idchamado }
+                });
+                if (res.success) {
+                    this.toast('success', res.message || 'Diagnóstico e prévia atualizados!', 2400);
+                    await Promise.all([
+                        this.abrirDetalhes(this.chamadoAtual.idchamado),
+                        this.carregarChamados(),
+                        this.carregarDashboard()
+                    ]);
+                }
+            } catch (e) {
+                Swal.fire({ icon: 'error', title: 'Erro ao Reprocessar IA', text: e.message });
+            } finally {
+                this.reprocessandoIa = false;
             }
         },
 
@@ -989,7 +1225,8 @@ function chamadosApp() {
                 atendente: c.atendente || 'ALAN',
                 solicitante: c.solicitante || 'ALAN',
                 criticidade: c.criticidade || 'media',
-                prioridade: parseInt(c.prioridade || 10, 10)
+                prioridade: parseInt(c.prioridade || 10, 10),
+                prazo_entrega: c.prazo_entrega ? String(c.prazo_entrega).slice(0, 10) : ''
             };
             this.complementoTexto = '';
             this.editandoChamado = true;
