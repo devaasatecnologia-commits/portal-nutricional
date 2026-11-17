@@ -111,38 +111,66 @@ class JwtMiddleware
                 }
             }
 
-            // ── Verifica se o usuário ainda está ativo
-            $stmt = $this->pdo->prepare("
-                SELECT idusuario, inativo, username
-                FROM usuario
-                WHERE idcliforemp = :uid
-            ");
-            $stmt->execute(['uid' => $uid]);
-            $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
+            // ── Fluxo exclusivo de contas externas B2B (Portal do Cliente / Representante)
+            $b2bId = (int)($decoded->b2b_id ?? $decoded->idconta ?? 0);
+            if (!empty($decoded->b2b) && $b2bId > 0) {
+                if (strpos($path, '/portal-cliente') === false) {
+                    return $this->unauthorized('Token B2B restrito ao Portal do Cliente', 403);
+                }
+                $stB2b = $this->pdo->prepare("SELECT id, perfil, idcliforemp, idvendedor, nome, status FROM b2b_portal_contas WHERE id = :id LIMIT 1");
+                $stB2b->execute(['id' => $b2bId]);
+                $b2b = $stB2b->fetch(\PDO::FETCH_ASSOC);
+                if (!$b2b || strtoupper((string)$b2b['status']) !== 'ATIVO') {
+                    return $this->unauthorized('Conta B2B inativa ou não encontrada');
+                }
+                $request = $request->withAttribute('user', [
+                    'uid'          => (int)$b2b['idcliforemp'],
+                    'idusuario'    => 0,
+                    'username'     => (string)$b2b['nome'],
+                    'permissoes'   => ['portal-cliente'],
+                    'is_admin'     => false,
+                    'b2b'          => true,
+                    'b2b_id'       => (int)$b2b['id'],
+                    'perfil_b2b'   => strtoupper((string)$b2b['perfil']),
+                    'idcliforemp'  => (int)$b2b['idcliforemp'],
+                    'idvendedor'   => (int)$b2b['idvendedor'],
+                    'dash_gestores' => (string)($decoded->dash_gestores ?? ''),
+                    'jti'          => $jti,
+                ]);
+            } else {
+                // ── Verifica se o usuário ainda está ativo
+                $stmt = $this->pdo->prepare("
+                    SELECT idusuario, inativo, username
+                    FROM usuario
+                    WHERE idcliforemp = :uid
+                ");
+                $stmt->execute(['uid' => $uid]);
+                $usuario = $stmt->fetch(\PDO::FETCH_ASSOC);
 
-            if (!$usuario) {
-                return $this->unauthorized('Usuário não encontrado');
-            }
-            if ($usuario['inativo'] === 'S') {
-                return $this->unauthorized('Usuário inativo');
-            }
+                if (!$usuario) {
+                    return $this->unauthorized('Usuário não encontrado');
+                }
+                if ($usuario['inativo'] === 'S') {
+                    return $this->unauthorized('Usuário inativo');
+                }
 
-            // ── is_admin
-            $isAdmin = $this->isAdminUser($idusuario);
+                // ── is_admin
+                $isAdmin = $this->isAdminUser($idusuario);
 
-            // ── Anexa dados do usuário ao request
-            $request = $request->withAttribute('user', [
-                'uid'          => $uid,
-                'idusuario'    => $idusuario,
-                'username'     => $username,
-                'permissoes'   => $permissoes,
-                'is_admin'     => $isAdmin,
-                'motorista_id' => $motoristaId,
-                'jti'          => $jti,
-            ]);
+                // ── Anexa dados do usuário ao request
+                $request = $request->withAttribute('user', [
+                    'uid'          => $uid,
+                    'idusuario'    => $idusuario,
+                    'username'     => $username,
+                    'permissoes'   => $permissoes,
+                    'is_admin'     => $isAdmin,
+                    'motorista_id' => $motoristaId,
+                    'jti'          => $jti,
+                ]);
 
-            if ($isAdmin) {
-                $request = $request->withAttribute('is_admin', true);
+                if ($isAdmin) {
+                    $request = $request->withAttribute('is_admin', true);
+                }
             }
 
         } catch (\Firebase\JWT\ExpiredException $e) {

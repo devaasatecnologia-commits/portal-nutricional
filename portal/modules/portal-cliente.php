@@ -41,10 +41,10 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
 
             <!-- Coluna Formulários -->
             <div class="p-7 sm:p-8 flex flex-col justify-center">
-                <div class="flex gap-2 mb-5 border-b border-slate-200 pb-2 text-xs font-extrabold">
+                <div class="flex gap-3 mb-5 border-b border-slate-200 pb-2 text-xs font-extrabold">
                     <button @click="modoAuth = 'login'; erroAuth = ''; msgAuth = ''" :class="modoAuth === 'login' ? 'text-emerald-700 border-b-2 border-emerald-600 pb-1' : 'text-slate-400'">Entrar</button>
+                    <button @click="modoAuth = 'esqueci'; etapaReset = false; erroAuth = ''; msgAuth = ''" :class="modoAuth === 'esqueci' ? 'text-emerald-700 border-b-2 border-emerald-600 pb-1' : 'text-slate-400'">Primeiro Acesso / Esqueci Senha</button>
                     <button @click="modoAuth = 'cadastro'; erroAuth = ''; msgAuth = ''" :class="modoAuth === 'cadastro' ? 'text-emerald-700 border-b-2 border-emerald-600 pb-1' : 'text-slate-400'">Solicitar Cadastro</button>
-                    <button @click="modoAuth = 'esqueci'; erroAuth = ''; msgAuth = ''" :class="modoAuth === 'esqueci' ? 'text-emerald-700 border-b-2 border-emerald-600 pb-1' : 'text-slate-400'">Esqueceu a Senha</button>
                 </div>
 
                 <div x-show="erroAuth" class="mb-3 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold" x-text="erroAuth"></div>
@@ -120,18 +120,21 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     </button>
                 </div>
 
-                <!-- ESQUECEU A SENHA -->
+                <!-- PRIMEIRO ACESSO / ESQUECEU A SENHA -->
                 <div x-show="modoAuth === 'esqueci'" class="space-y-3">
+                    <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                        <strong>Cliente ou Representante ativo:</strong> informe seu <strong>CNPJ/CPF</strong> ou <strong>E-mail cadastrado</strong> para receber o código de 6 dígitos e criar ou redefinir sua senha.
+                    </div>
                     <template x-if="!etapaReset">
                         <div class="space-y-3">
                             <div>
-                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">E-mail ou CNPJ/CPF</label>
-                                <input type="text" x-model="formReset.identificador" placeholder="seu@email.com ou CNPJ"
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">CNPJ/CPF ou E-mail Cadastrado</label>
+                                <input type="text" x-model="formReset.identificador" @keyup.enter="solicitarReset()" placeholder="00.000.000/0001-00 ou seu@email.com"
                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold">
                             </div>
                             <button @click="solicitarReset()" :disabled="loadingAuth"
                                     class="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-extrabold">
-                                Enviar Código de Redefinição
+                                Enviar Código para o E-mail Cadastrado
                             </button>
                         </div>
                     </template>

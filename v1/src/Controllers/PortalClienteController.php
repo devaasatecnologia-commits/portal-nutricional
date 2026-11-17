@@ -154,14 +154,16 @@ class PortalClienteController
 
     private function emitirJwtB2B(array $conta): string
     {
-        $secret = $_ENV['JWT_SECRET'] ?? CHAVE_SECRETA;
+        $secret = defined('CHAVE_SECRETA') ? CHAVE_SECRETA : ($_ENV['CHAVE_SECRETA'] ?? '');
         $agora = time();
         $payload = [
             'iss' => 'nutricional-b2b',
             'iat' => $agora,
             'exp' => $agora + (8 * 3600),
             'b2b' => true,
+            'b2b_id' => (int)$conta['id'],
             'idconta' => (int)$conta['id'],
+            'uid' => (int)$conta['idcliforemp'],
             'idusuario' => (int)($conta['idusuario_erp'] ?? 0),
             'username' => $conta['nome'],
             'perfil_b2b' => strtoupper((string)$conta['perfil']),
@@ -216,7 +218,23 @@ class PortalClienteController
         $st->execute(['em' => $emailLower, 'dig' => $digits]);
         $conta = $st->fetch(PDO::FETCH_ASSOC);
 
-        if (!$conta || !password_verify($senha, (string)$conta['senha_hash'])) {
+        if (!$conta) {
+            $prov = $this->localizarOuProvisionarContaErp($identificador, false);
+            if (!empty($prov['conta'])) {
+                return $this->json($response, [
+                    'success' => false,
+                    'error' => 'Primeiro acesso detectado! Clique em "Primeiro Acesso / Esqueceu a Senha" para receber o código no seu e-mail cadastrado e criar sua senha.',
+                ], 403);
+            }
+            return $this->json($response, ['success' => false, 'error' => 'Credenciais inválidas.'], 401);
+        }
+        if (trim((string)$conta['senha_hash']) === '') {
+            return $this->json($response, [
+                'success' => false,
+                'error' => 'Senha ainda não definida. Use "Primeiro Acesso / Esqueceu a Senha" para receber o código no e-mail cadastrado e criar sua senha.',
+            ], 403);
+        }
+        if (!password_verify($senha, (string)$conta['senha_hash'])) {
             return $this->json($response, ['success' => false, 'error' => 'Credenciais inválidas.'], 401);
         }
         if (strtoupper((string)$conta['status']) !== 'ATIVO') {
@@ -393,33 +411,140 @@ class PortalClienteController
             return $this->json($response, ['success' => false, 'error' => 'Falha na validação Cloudflare Turnstile.'], 403);
         }
 
-        $digits = $this->somenteDigitos($ident);
-        $emailLower = mb_strtolower($ident, 'UTF-8');
-
-        $st = $this->pdo->prepare("SELECT * FROM b2b_portal_contas WHERE LOWER(email) = :em OR (:dig <> '' AND cnpj_cpf = :dig) LIMIT 1");
-        $st->execute(['em' => $emailLower, 'dig' => $digits]);
-        $conta = $st->fetch(PDO::FETCH_ASSOC);
-
-        if (!$conta) {
-            return $this->json($response, ['success' => false, 'error' => 'Conta não encontrada para este E-mail ou CNPJ/CPF.'], 404);
+        $res = $this->localizarOuProvisionarContaErp($ident, true);
+        if (empty($res['conta'])) {
+            return $this->json($response, ['success' => false, 'error' => $res['error'] ?? 'Conta não encontrada para este E-mail ou CNPJ/CPF.'], 404);
+        }
+        $conta = $res['conta'];
+        if (strtoupper((string)$conta['status']) === 'BLOQUEADO') {
+            return $this->json($response, ['success' => false, 'error' => 'Esta conta está bloqueada. Entre em contato com o suporte.'], 403);
         }
 
         $codigo = $this->gerarOtp((int)$conta['id'], (string)$conta['email'], 'RESET_SENHA');
+        $tituloEmail = trim((string)($conta['senha_hash'] ?? '')) === ''
+            ? "Primeiro Acesso ({$codigo}) — Portal do Cliente Nutricional"
+            : "Redefinição de Senha ({$codigo}) — Portal do Cliente Nutricional";
         $this->enviarEmail(
             (string)$conta['email'],
             (string)$conta['nome'],
-            "Redefinição de Senha ({$codigo}) — Portal do Cliente Nutricional",
+            $tituloEmail,
             "<p>Olá, <strong>" . htmlspecialchars((string)$conta['nome']) . "</strong>.</p>"
-            . "<p>Use o código abaixo para redefinir sua senha (válido por 10 minutos):</p>"
+            . "<p>Use o código abaixo para definir sua senha de acesso ao Portal Nutricional (válido por 10 minutos):</p>"
             . "<h2 style='letter-spacing:4px;color:#1e3a8a;'>{$codigo}</h2>"
         );
 
         return $this->json($response, [
             'success' => true,
             'desafio_id' => (int)$conta['id'],
+            'perfil' => $conta['perfil'],
             'email_mascarado' => $this->mascararEmail((string)$conta['email']),
-            'message' => 'Código de redefinição enviado para ' . $this->mascararEmail((string)$conta['email']),
+            'message' => 'Código enviado para o e-mail cadastrado: ' . $this->mascararEmail((string)$conta['email']),
         ]);
+    }
+
+    /**
+     * Localiza conta B2B existente ou provisiona automaticamente a partir de Representante ou Cliente ativo no ERP.
+     */
+    private function localizarOuProvisionarContaErp(string $ident, bool $provisionar): array
+    {
+        $digits = $this->somenteDigitos($ident);
+        $emailLower = mb_strtolower(trim($ident), 'UTF-8');
+
+        $st = $this->pdo->prepare("
+            SELECT * FROM b2b_portal_contas
+            WHERE (LOWER(email) = :em OR (:dig <> '' AND cnpj_cpf = :dig))
+            ORDER BY id DESC LIMIT 1
+        ");
+        $st->execute(['em' => $emailLower, 'dig' => $digits]);
+        $conta = $st->fetch(PDO::FETCH_ASSOC);
+        if ($conta) {
+            return ['conta' => $conta];
+        }
+
+        // 1. Verifica se é Representante ativo no ERP (possui clientes vinculados em cliente.idvendedor)
+        $stRep = $this->pdo->prepare("
+            SELECT c.idcliforemp, c.razao, c.email, um.email AS email_mercos,
+                   COALESCE(NULLIF(REGEXP_REPLACE(COALESCE(c.cnpj,''), '\D', '', 'g'), ''), REGEXP_REPLACE(COALESCE(c.cpf,''), '\D', '', 'g'), '') AS doc
+            FROM cliforemp c
+            LEFT JOIN usuarios_mercos um ON um.idcolaborador = c.idcliforemp
+            WHERE COALESCE(c.inativo, 'N') = 'N'
+              AND EXISTS (SELECT 1 FROM cliente cl WHERE cl.idvendedor = c.idcliforemp)
+              AND (
+                    LOWER(TRIM(COALESCE(c.email,''))) = :em
+                 OR LOWER(TRIM(COALESCE(um.email,''))) = :em
+                 OR (:dig <> '' AND (REGEXP_REPLACE(COALESCE(c.cnpj,''), '\D', '', 'g') = :dig OR REGEXP_REPLACE(COALESCE(c.cpf,''), '\D', '', 'g') = :dig))
+              )
+            LIMIT 1
+        ");
+        $stRep->execute(['em' => $emailLower, 'dig' => $digits]);
+        $rep = $stRep->fetch(PDO::FETCH_ASSOC);
+        if ($rep) {
+            $emailRep = trim((string)$rep['email']);
+            if (!filter_var($emailRep, FILTER_VALIDATE_EMAIL)) {
+                $emailRep = trim((string)($rep['email_mercos'] ?? ''));
+            }
+            if (!filter_var($emailRep, FILTER_VALIDATE_EMAIL)) {
+                return ['error' => 'Representante encontrado no ERP, mas sem e-mail válido cadastrado. Solicite atualização cadastral ao Comercial/TI.'];
+            }
+            $emailRep = mb_strtolower($emailRep, 'UTF-8');
+            $razaoRep = $this->utf8($rep['razao']);
+            if (!$provisionar) {
+                return ['conta' => ['id' => 0, 'perfil' => 'REPRESENTANTE', 'email' => $emailRep, 'nome' => $razaoRep]];
+            }
+            $this->pdo->prepare("
+                INSERT INTO b2b_portal_contas (perfil, idcliforemp, cnpj_cpf, email, nome, senha_hash, status, idvendedor)
+                VALUES ('REPRESENTANTE', :idrep, :doc, :em, :nome, '', 'ATIVO', :idrep)
+            ")->execute([
+                'idrep' => (int)$rep['idcliforemp'],
+                'doc' => $rep['doc'] !== '' ? $rep['doc'] : (string)$rep['idcliforemp'],
+                'em' => $emailRep,
+                'nome' => $razaoRep,
+            ]);
+            $idNova = (int)$this->pdo->lastInsertId('b2b_portal_contas_id_seq');
+            $nova = $this->pdo->query("SELECT * FROM b2b_portal_contas WHERE id = {$idNova}")->fetch(PDO::FETCH_ASSOC);
+            return ['conta' => $nova];
+        }
+
+        // 2. Verifica se é Cliente ativo no ERP (cliforemp + cliente)
+        $stCli = $this->pdo->prepare("
+            SELECT c.idcliforemp, c.razao, c.email, COALESCE(cl.idvendedor, 0) AS idvendedor,
+                   COALESCE(NULLIF(REGEXP_REPLACE(COALESCE(c.cnpj,''), '\D', '', 'g'), ''), REGEXP_REPLACE(COALESCE(c.cpf,''), '\D', '', 'g'), '') AS doc
+            FROM cliforemp c
+            JOIN cliente cl ON cl.idcliforemp = c.idcliforemp
+            WHERE COALESCE(c.inativo, 'N') = 'N'
+              AND (
+                    LOWER(TRIM(COALESCE(c.email,''))) = :em
+                 OR (:dig <> '' AND (REGEXP_REPLACE(COALESCE(c.cnpj,''), '\D', '', 'g') = :dig OR REGEXP_REPLACE(COALESCE(c.cpf,''), '\D', '', 'g') = :dig))
+              )
+            LIMIT 1
+        ");
+        $stCli->execute(['em' => $emailLower, 'dig' => $digits]);
+        $cli = $stCli->fetch(PDO::FETCH_ASSOC);
+        if ($cli) {
+            $emailCli = mb_strtolower(trim((string)$cli['email']), 'UTF-8');
+            if (!filter_var($emailCli, FILTER_VALIDATE_EMAIL)) {
+                return ['error' => 'Cliente encontrado no ERP, porém sem e-mail válido cadastrado. Use a aba "Solicitar Cadastro" para informar seu e-mail.'];
+            }
+            $razaoCli = $this->utf8($cli['razao']);
+            if (!$provisionar) {
+                return ['conta' => ['id' => 0, 'perfil' => 'CLIENTE', 'email' => $emailCli, 'nome' => $razaoCli]];
+            }
+            $this->pdo->prepare("
+                INSERT INTO b2b_portal_contas (perfil, idcliforemp, cnpj_cpf, email, nome, senha_hash, status, idvendedor)
+                VALUES ('CLIENTE', :idcli, :doc, :em, :nome, '', 'ATIVO', :vend)
+            ")->execute([
+                'idcli' => (int)$cli['idcliforemp'],
+                'doc' => $cli['doc'] !== '' ? $cli['doc'] : (string)$cli['idcliforemp'],
+                'em' => $emailCli,
+                'nome' => $razaoCli,
+                'vend' => (int)$cli['idvendedor'],
+            ]);
+            $idNova = (int)$this->pdo->lastInsertId('b2b_portal_contas_id_seq');
+            $nova = $this->pdo->query("SELECT * FROM b2b_portal_contas WHERE id = {$idNova}")->fetch(PDO::FETCH_ASSOC);
+            return ['conta' => $nova];
+        }
+
+        return ['error' => 'Nenhum cliente ou representante ativo encontrado para este E-mail ou CNPJ/CPF.'];
     }
 
     /**
@@ -449,7 +574,7 @@ class PortalClienteController
         }
 
         $this->pdo->prepare("UPDATE b2b_portal_tokens SET usado = TRUE WHERE id = :id")->execute(['id' => $tok['id']]);
-        $this->pdo->prepare("UPDATE b2b_portal_contas SET senha_hash = :h, atualizado_em = NOW() WHERE id = :id")
+        $this->pdo->prepare("UPDATE b2b_portal_contas SET senha_hash = :h, status = CASE WHEN status = 'BLOQUEADO' THEN 'BLOQUEADO' ELSE 'ATIVO' END, atualizado_em = NOW() WHERE id = :id")
             ->execute(['h' => password_hash($novaSenha, PASSWORD_BCRYPT), 'id' => $idconta]);
 
         return $this->json($response, ['success' => true, 'message' => 'Senha redefinida com sucesso! Já pode acessar sua conta.']);
