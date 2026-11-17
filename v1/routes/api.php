@@ -120,6 +120,17 @@ $app->group('/v1', function ($group) {
     //    Adicionado em $publicRoutes do JwtMiddleware (não exige token).
     $group->get('/frota/health', [new HealthController(), 'check']);
 
+    // PORTAL DO CLIENTE B2B — AUTENTICAÇÃO PÚBLICA + TURNSTILE + 2FA E-MAIL (#66)
+    $group->group('/portal-cliente/auth', function ($pcAuth) {
+        $ctrl = new \Nutricional\Controllers\PortalClienteController();
+        $pcAuth->get('/config', [$ctrl, 'authConfig']);
+        $pcAuth->post('/login', [$ctrl, 'login']);
+        $pcAuth->post('/verificar-2fa', [$ctrl, 'verificar2fa']);
+        $pcAuth->post('/solicitar-cadastro', [$ctrl, 'solicitarCadastro']);
+        $pcAuth->post('/esqueceu-senha', [$ctrl, 'esqueceuSenha']);
+        $pcAuth->post('/redefinir-senha', [$ctrl, 'redefinirSenha']);
+    });
+
     // ==========================================================================
     // ⚙️ ROTAS DE CRON / DISPATCHER UNIFICADO (PROTEGIDAS POR CRON_TOKEN SEGURO)
     // Chamadas periodicamente pelo cPanel via curl com header X-Cron-Token ou ?token=
@@ -738,6 +749,17 @@ $protected->group('/contabil', function ($group) {
     $group->get('/notas/{tipo}/{idfilial}/{idnota}/espelho', [$controller, 'notaEspelho']);
     $group->get('/itens', [$controller, 'relatorioItens']);
 })->add(new ModulePermissionMiddleware(['contabil', 'financeiro']));
+
+        // ======================================================================
+        // PORTAL DO CLIENTE & HIERARQUIA COMERCIAL B2B (#66)
+        // ======================================================================
+$protected->group('/portal-cliente', function ($group) {
+    $ctrl = new \Nutricional\Controllers\PortalClienteController();
+    $group->get('/contexto', [$ctrl, 'contexto']);
+    $group->get('/cliente/{id}/resumo', [$ctrl, 'clienteResumo']);
+    $group->get('/nota/{idfilial}/{idnfs}/itens', [$ctrl, 'notaItens']);
+    $group->get('/pedido/{idfilial}/{idpedido}/itens', [$ctrl, 'pedidoItens']);
+});
 
         // ======================================================================
         // RECEITA FEDERAL - CONSULTA CNPJ
