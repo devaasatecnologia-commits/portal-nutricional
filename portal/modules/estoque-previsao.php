@@ -181,7 +181,7 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- FILTROS DE BUSCA E CONTROLES (STICKY APENAS NO DESKTOP) -->
-    <div class="ep-card p-3.5 sm:p-5 mb-5 lg:sticky lg:top-3 z-30 bg-white/95 backdrop-blur-md shadow-md border border-slate-200/80 transition-all">
+    <div id="ep-sticky-filtros" class="ep-card p-3.5 sm:p-5 mb-5 lg:sticky lg:top-0 z-30 bg-white shadow-md border border-slate-200 transition-all">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
             <!-- Busca Textual -->
             <div class="lg:col-span-4">
@@ -232,7 +232,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 
     <!-- TABELA / CARDS DE PRODUTOS -->
     <div class="ep-card mb-5">
-        <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sticky top-0 lg:top-[104px] z-20 bg-white/95 backdrop-blur-md rounded-t-2xl shadow-sm">
+        <div id="ep-sticky-titulo" style="top: var(--ep-top-titulo, 0px);" class="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sticky z-20 bg-white rounded-t-2xl shadow-sm">
             <div>
                 <h3 class="text-base font-extrabold text-slate-800 flex items-center gap-2">
                     <i class="fa-solid fa-boxes-packing text-emerald-600"></i> Produtos & Previsão de Entrega
@@ -271,9 +271,9 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- VISÃO DESKTOP: TABELA COMPLETA -->
-        <div class="ep-desktop-table-wrap overflow-auto max-h-[68vh] rounded-b-2xl">
-            <table class="w-full text-left text-xs sm:text-sm min-w-[900px]">
-                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
+        <div class="ep-desktop-table-wrap overflow-x-clip">
+            <table class="w-full text-left text-xs sm:text-sm">
+                <thead style="top: var(--ep-top-thead, 0px);" class="bg-slate-50 border-b border-slate-200 sticky z-10 shadow-sm">
                     <tr class="bg-slate-50 text-[0.7rem] uppercase tracking-wider text-slate-500 font-extrabold select-none">
                         <th class="py-3.5 px-4 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('produto')" data-tooltip="Produto & Referência|Nome do item, referência, ID interno e peso líquido unitário. Clique para ordenar.">
                             Produto & Referência <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
@@ -336,5 +336,30 @@ require_once __DIR__ . '/../estrutura/header.php';
     <div id="tooltipEstoqueTitle" class="font-black text-white text-xs mb-1">Título</div>
     <div id="tooltipEstoqueDesc" class="text-slate-300 text-[11px] font-medium leading-relaxed">Descrição detalhada ao passar o mouse.</div>
 </div>
+
+<script>
+(function () {
+    const syncStickyOffsets = () => {
+        const isDesktop = window.innerWidth >= 1024;
+        const filtros = document.getElementById('ep-sticky-filtros');
+        const titulo = document.getElementById('ep-sticky-titulo');
+        const topTitulo = (isDesktop && filtros) ? Math.round(filtros.getBoundingClientRect().height) : 0;
+        const topThead = topTitulo + (titulo ? Math.round(titulo.getBoundingClientRect().height) : 0);
+        document.documentElement.style.setProperty('--ep-top-titulo', topTitulo + 'px');
+        document.documentElement.style.setProperty('--ep-top-thead', topThead + 'px');
+    };
+    window.addEventListener('resize', syncStickyOffsets);
+    document.addEventListener('DOMContentLoaded', () => {
+        syncStickyOffsets();
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(syncStickyOffsets);
+            const f = document.getElementById('ep-sticky-filtros');
+            const t = document.getElementById('ep-sticky-titulo');
+            if (f) ro.observe(f);
+            if (t) ro.observe(t);
+        }
+    });
+})();
+</script>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>
