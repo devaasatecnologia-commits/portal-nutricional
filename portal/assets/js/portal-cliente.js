@@ -340,9 +340,30 @@ function portalClienteHandler(appBase = '') {
                 this.boletoDoc = d.boleto;
                 this.boletoBarcodeSvg = this.gerarSvgItf25(d.boleto?.codigobarra || '');
                 this.modalBoleto = true;
+                setTimeout(() => {
+                    const box = document.getElementById('boleto-qrcode-box');
+                    if (box) {
+                        box.innerHTML = '';
+                        const qr = d.boleto?.shipayqrcode || '';
+                        if (qr && typeof QRCode !== 'undefined') {
+                            new QRCode(box, { text: qr, width: 108, height: 108, correctLevel: QRCode.CorrectLevel.M });
+                        }
+                    }
+                }, 60);
             } catch (e) {
                 alert(e.message || 'Erro ao carregar boleto.');
             }
+        },
+
+        limparFone(f) {
+            return String(f || '').replace(/\D/g, '');
+        },
+
+        linkWhats(f, msg = '') {
+            const d = this.limparFone(f);
+            if (!d) return '#';
+            const num = d.startsWith('55') ? d : '55' + d;
+            return `https://wa.me/${num}` + (msg ? `?text=${encodeURIComponent(msg)}` : '');
         },
 
         imprimirDocumento(tipo) {

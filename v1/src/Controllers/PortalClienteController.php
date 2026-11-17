@@ -757,7 +757,11 @@ class PortalClienteController
                    COALESCE(cl.valorlimitecredito, 0)::numeric(14,2) AS limite_credito,
                    COALESCE(sc.descricao, 'Venda liberada') AS situacao_credito,
                    COALESCE(sc.bloqueia, 'N') AS credito_bloqueado,
-                   COALESCE(v.razao, '') AS vendedor_nome
+                   COALESCE(NULLIF(TRIM(v.fantasia),''), v.razao, '') AS vendedor_nome,
+                   COALESCE(v.razao, '') AS vendedor_razao,
+                   COALESCE(NULLIF(TRIM(v.fone),'.'), '') AS vendedor_fone,
+                   COALESCE(NULLIF(TRIM(v.fone),'.'), '') AS vendedor_celular,
+                   COALESCE(NULLIF(TRIM(v.email),'.'), '') AS vendedor_email
             FROM cliforemp c
             LEFT JOIN cliente cl ON cl.idcliforemp = c.idcliforemp
             LEFT JOIN situacaocredito sc ON sc.idsituacao = cl.idsituacaocredito
@@ -782,6 +786,7 @@ class PortalClienteController
                    COALESCE(NULLIF(TRIM(rb.nossonumeroatual::text),''), NULLIF(TRIM(rb.nossonumero::text),''), r.nossonumero::text, '') AS nossonumero,
                    COALESCE(rb.codigobarra, '') AS codigobarra,
                    COALESCE(rb.numeroboleto, '') AS linha_digitavel,
+                   COALESCE(NULLIF(TRIM(rb.shipayqrcode),'.'), '') AS shipayqrcode,
                    COALESCE(rb.idbanco, 0) AS idbanco,
                    COALESCE(p.descricao, 'Outros / Carteira') AS portador_nome,
                    COALESCE(NULLIF(TRIM(r.observacao),'.'), '') AS observacao,
@@ -789,7 +794,7 @@ class PortalClienteController
             FROM receber r
             LEFT JOIN portador p ON p.idportador = r.idportador
             LEFT JOIN LATERAL (
-                SELECT nossonumero, nossonumeroatual, codigobarra, numeroboleto, idbanco
+                SELECT nossonumero, nossonumeroatual, codigobarra, numeroboleto, shipayqrcode, idbanco
                 FROM receber_boleto b
                 WHERE b.idreceber = r.idreceber AND b.idfilial = r.idfilial AND COALESCE(b.excluido,'N') = 'N'
                 ORDER BY b.idboleto DESC LIMIT 1
@@ -823,6 +828,7 @@ class PortalClienteController
                 'nossonumero' => trim((string)$b['nossonumero']),
                 'codigobarra' => $codBar,
                 'linha_digitavel' => trim((string)$b['linha_digitavel']),
+                'shipayqrcode' => $this->utf8(trim((string)$b['shipayqrcode'])),
                 'idbanco' => (int)$b['idbanco'],
                 'portador_nome' => $this->utf8(trim((string)$b['portador_nome'])),
                 'observacao' => $this->utf8(trim((string)$b['observacao'])),
@@ -855,12 +861,22 @@ class PortalClienteController
             ];
         }
 
-        // 4. Pedidos (pedido)
+        // 4. Pedidos (pedido + nome fantasia do representante + vínculo NF / Embarque para rastreio)
         $stPed = $this->pdo->prepare("
             SELECT p.idfilial, p.idpedido, p.data, p.status, p.valortotalpedido::numeric(14,2) AS valortotal,
-                   COALESCE(v.razao,'') AS vendedor
+                   COALESCE(NULLIF(TRIM(v.fantasia),''), v.razao, '') AS vendedor,
+                   COALESCE(nf.idnfs, 0) AS idnfs, COALESCE(nf.numeronf, 0) AS numeronf,
+                   COALESCE(nf.idembarque, 0) AS idembarque
             FROM pedido p
             LEFT JOIN cliforemp v ON v.idcliforemp = p.idvendrepre
+            LEFT JOIN LATERAL (
+                SELECT n.idnfs, n.numeronf, n.idembarque
+                FROM nfs n
+                WHERE n.idfilial = p.idfilial AND n.idcliforemp = p.idcliforemp
+                  AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N'
+                  AND n.pedidos ~ ('\\y' || p.idpedido::text || '\\y')
+                ORDER BY n.idnfs DESC LIMIT 1
+            ) nf ON TRUE
             WHERE p.idcliforemp = :id
             ORDER BY p.data DESC, p.idpedido DESC
             LIMIT 80
@@ -868,13 +884,19 @@ class PortalClienteController
         $stPed->execute(['id' => $idCli]);
         $pedidos = [];
         foreach ($stPed->fetchAll(PDO::FETCH_ASSOC) as $p) {
+            $stCode = (int)$p['status'];
+            $stLabel = $stCode === 5 ? 'Faturado' : ($stCode === 3 ? 'Cancelado' : ($stCode === 1 ? 'Em Aberto' : 'Em Processamento'));
             $pedidos[] = [
                 'idfilial' => (int)$p['idfilial'],
                 'idpedido' => (int)$p['idpedido'],
                 'data' => $p['data'],
-                'status' => (int)$p['status'],
+                'status' => $stCode,
+                'status_label' => $stLabel,
                 'valortotal' => (float)$p['valortotal'],
-                'vendedor' => $this->utf8($p['vendedor']),
+                'vendedor' => $this->utf8(trim((string)$p['vendedor'])),
+                'idnfs' => (int)$p['idnfs'],
+                'numeronf' => (int)$p['numeronf'],
+                'idembarque' => (int)$p['idembarque'],
             ];
         }
 

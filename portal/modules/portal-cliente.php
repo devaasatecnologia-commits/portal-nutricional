@@ -11,6 +11,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     <title><?= htmlspecialchars($pageTitle) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="<?= $appBase ?>/portal/assets/js/config.js?v=<?= $version ?>"></script>
     <script src="<?= $appBase ?>/portal/assets/js/portal-cliente.js?v=<?= $version ?>"></script>
@@ -272,6 +273,65 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <div><span class="text-[10px] text-slate-400 block">Contato</span><strong class="text-slate-700" x-text="(clienteAtual?.email || '-') + ' • ' + (clienteAtual?.fone || '-')"></strong></div>
                 </div>
             </div>
+
+            <!-- 2 CARDS DE ATENDIMENTO DIRETO (CAPA DO CLIENTE: REPRESENTANTE + FINANCEIRO NUTRICIONAL) -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <!-- Card Representante -->
+                <div class="bg-gradient-to-br from-emerald-50 to-white rounded-2xl p-4 border border-emerald-200 shadow-sm flex flex-col justify-between gap-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <div class="text-[10px] font-black uppercase text-emerald-700 flex items-center gap-1.5">
+                                <i class="fa-solid fa-user-tie"></i> Seu Consultor / Representante
+                            </div>
+                            <div class="text-sm font-black text-slate-900 mt-1" x-text="clienteAtual?.vendedor_nome || 'Atendimento Comercial Nutricional'"></div>
+                            <div class="text-[11px] text-slate-600 mt-0.5" x-text="(clienteAtual?.vendedor_celular || clienteAtual?.vendedor_fone || '(48) 3524-6543') + (clienteAtual?.vendedor_email ? ' • ' + clienteAtual.vendedor_email : '')"></div>
+                        </div>
+                        <span class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-handshake"></i></span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a :href="linkWhats(clienteAtual?.vendedor_celular || clienteAtual?.vendedor_fone || '4835246543', 'Olá! Gostaria de falar sobre meus pedidos na Nutricional.')" target="_blank"
+                           class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
+                        </a>
+                        <a :href="'tel:' + limparFone(clienteAtual?.vendedor_celular || clienteAtual?.vendedor_fone || '4835246543')"
+                           class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-phone"></i> Ligar
+                        </a>
+                        <a x-show="clienteAtual?.vendedor_email" :href="'mailto:' + clienteAtual?.vendedor_email"
+                           class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-envelope"></i> E-mail
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Card Financeiro Nutricional -->
+                <div class="bg-gradient-to-br from-indigo-50 to-white rounded-2xl p-4 border border-indigo-200 shadow-sm flex flex-col justify-between gap-3">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <div class="text-[10px] font-black uppercase text-indigo-700 flex items-center gap-1.5">
+                                <i class="fa-solid fa-building-columns"></i> Financeiro Nutricional
+                            </div>
+                            <div class="text-sm font-black text-slate-900 mt-1">Setor Financeiro &amp; Cobrança</div>
+                            <div class="text-[11px] text-slate-600 mt-0.5">(48) 3524-6543 • financeiro@nutricionalbr.com</div>
+                        </div>
+                        <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-headset"></i></span>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a :href="linkWhats('4835246543', 'Olá Financeiro Nutricional! Preciso de suporte sobre um boleto/título.')" target="_blank"
+                           class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp Financeiro
+                        </a>
+                        <a href="tel:4835246543"
+                           class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-phone"></i> (48) 3524-6543
+                        </a>
+                        <a href="mailto:financeiro@nutricionalbr.com"
+                           class="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-300 text-slate-800 text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
+                            <i class="fa-solid fa-envelope"></i> E-mail
+                        </a>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- ABAS + FILTROS -->
@@ -413,7 +473,9 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <tr>
                             <th class="px-3 py-2 text-left">Pedido</th>
                             <th class="px-3 py-2 text-left">Data</th>
+                            <th class="px-3 py-2 text-center">Status</th>
                             <th class="px-3 py-2 text-left">Representante</th>
+                            <th class="px-3 py-2 text-left">Nota / Entrega (Frota)</th>
                             <th class="px-3 py-2 text-right">Valor Pedido</th>
                             <th class="px-3 py-2 text-center">Itens</th>
                         </tr>
@@ -423,14 +485,32 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                             <tr class="hover:bg-slate-50">
                                 <td class="px-3 py-2 font-mono font-extrabold" x-text="'#' + p.idpedido + ' (F' + p.idfilial + ')'"></td>
                                 <td class="px-3 py-2" x-text="fmtData(p.data)"></td>
-                                <td class="px-3 py-2" x-text="p.vendedor || '-'"></td>
+                                <td class="px-3 py-2 text-center">
+                                    <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase"
+                                          :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')"
+                                          x-text="p.status_label || (p.status === 5 ? 'Faturado' : (p.status === 3 ? 'Cancelado' : 'Em Aberto'))"></span>
+                                </td>
+                                <td class="px-3 py-2 font-semibold text-slate-700" x-text="p.vendedor || '-'"></td>
+                                <td class="px-3 py-2">
+                                    <template x-if="p.numeronf > 0">
+                                        <div class="flex flex-wrap items-center gap-1.5">
+                                            <button @click="abrirDanfe({idfilial: p.idfilial, idnfs: p.idnfs, numeronf: p.numeronf})"
+                                                    class="px-2 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-mono font-bold text-[10px]">
+                                                <i class="fa-solid fa-file-invoice mr-1"></i> NF <span x-text="p.numeronf"></span>
+                                            </button>
+                                            <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold"
+                                                  x-text="p.idembarque > 0 ? ('Embarque #' + p.idembarque) : 'Faturado • Logística'"></span>
+                                        </div>
+                                    </template>
+                                    <span x-show="!p.numeronf" class="text-[10px] text-slate-400" x-text="p.status === 3 ? 'Cancelado' : 'Aguardando faturamento'"></span>
+                                </td>
                                 <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(p.valortotal)"></td>
                                 <td class="px-3 py-2 text-center">
                                     <button @click="abrirItens('pedido', p)" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]">Ver Itens</button>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="pedidosFiltrados().length === 0"><td colspan="5" class="py-8 text-center text-slate-400">Nenhum pedido encontrado.</td></tr>
+                        <tr x-show="pedidosFiltrados().length === 0"><td colspan="7" class="py-8 text-center text-slate-400">Nenhum pedido encontrado.</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -604,9 +684,19 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                             </td>
                         </tr>
                     </table>
-                    <div class="mt-3 flex items-center justify-between gap-4">
+                    <div class="mt-3 flex flex-wrap items-center justify-between gap-4">
                         <div class="flex-1" x-html="boletoBarcodeSvg"></div>
-                        <div class="text-[9px] text-right text-slate-500 font-bold">Autenticação Mecânica / Ficha de Compensação</div>
+                        <div x-show="boletoDoc.shipayqrcode" class="flex items-center gap-3 border border-emerald-300 bg-emerald-50/50 rounded-xl p-2">
+                            <div id="boleto-qrcode-box" class="bg-white p-1 rounded border border-slate-200"></div>
+                            <div class="text-[9px]">
+                                <div class="font-black text-emerald-800 uppercase"><i class="fa-brands fa-pix mr-1"></i> Pague via PIX</div>
+                                <div class="text-slate-600 mt-0.5 max-w-[140px]">Escaneie o QR Code no app do seu banco.</div>
+                                <button @click="copiarTexto(boletoDoc.shipayqrcode)" class="no-print mt-1.5 px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[9px]">
+                                    Copiar PIX Copia e Cola
+                                </button>
+                            </div>
+                        </div>
+                        <div x-show="!boletoDoc.shipayqrcode" class="text-[9px] text-right text-slate-500 font-bold">Autenticação Mecânica / Ficha de Compensação</div>
                     </div>
                 </div>
             </div>
