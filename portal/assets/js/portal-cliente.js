@@ -37,11 +37,20 @@ function portalClienteHandler(appBase = '') {
         buscaCliente: '',
         clienteSelecionadoId: '',
         clienteAtual: null,
-        resumoCli: { boletos_qtd: 0, boletos_aberto: 0, boletos_vencido: 0, notas_qtd: 0, pedidos_qtd: 0 },
+        resumoCli: { boletos_qtd: 0, boletos_aberto: 0, boletos_vencido: 0, notas_qtd: 0, pedidos_qtd: 0, itens_qtd: 0, limite_credito: 0, limite_utilizado: 0, limite_disponivel: 0, total_comprado_12m: 0, ultima_compra: null },
         boletos: [],
         notas: [],
         pedidos: [],
+        itensComprados: [],
         aba: 'boletos',
+
+        filtroTexto: '',
+        filtroDataIni: '',
+        filtroDataFim: '',
+        filtroTituloTipo: 'todos',
+
+        modalTituloDetalhe: false,
+        tituloDetalhe: null,
 
         modalItens: false,
         modalTitulo: '',
@@ -249,6 +258,60 @@ function portalClienteHandler(appBase = '') {
             this.boletos = d.boletos || [];
             this.notas = d.notas || [];
             this.pedidos = d.pedidos || [];
+            this.itensComprados = d.itens_comprados || [];
+        },
+
+        formatarUrlImagem(pathFoto) {
+            if (!pathFoto || pathFoto === '.') return null;
+            const norm = String(pathFoto).trim().replace(/\\/g, '/');
+            const idx = norm.toLowerCase().indexOf('fotos para o site/');
+            if (idx === -1) return null;
+            const rel = norm.slice(idx + 'fotos para o site/'.length).replace(/^\/+/, '');
+            return rel ? 'https://acesso.nutricionalbr.com:2053/fotos/' + encodeURI(rel) : null;
+        },
+
+        abrirTituloDetalhe(b) {
+            this.tituloDetalhe = b;
+            this.modalTituloDetalhe = true;
+        },
+
+        boletosFiltrados() {
+            const q = this.filtroTexto.trim().toLowerCase();
+            return this.boletos.filter(b => {
+                if (this.filtroTituloTipo === 'vencidos' && b.dias_atraso <= 0) return false;
+                if (this.filtroTituloTipo === 'avencer' && b.dias_atraso > 0) return false;
+                if (this.filtroTituloTipo === 'boleto' && !b.tem_boleto) return false;
+                if (this.filtroTituloTipo === 'outros' && b.tem_boleto) return false;
+                if (this.filtroDataIni && String(b.vencimento || '') < this.filtroDataIni) return false;
+                if (this.filtroDataFim && String(b.vencimento || '') > this.filtroDataFim) return false;
+                if (q && !`${b.documento} ${b.nossonumero} ${b.portador_nome}`.toLowerCase().includes(q)) return false;
+                return true;
+            });
+        },
+
+        notasFiltradas() {
+            const q = this.filtroTexto.trim().toLowerCase();
+            return this.notas.filter(n => {
+                if (this.filtroDataIni && String(n.dataemissao || '') < this.filtroDataIni) return false;
+                if (this.filtroDataFim && String(n.dataemissao || '') > this.filtroDataFim) return false;
+                if (q && !`${n.numeronf} ${n.chave_nfe} ${n.pedidos}`.toLowerCase().includes(q)) return false;
+                return true;
+            });
+        },
+
+        pedidosFiltrados() {
+            const q = this.filtroTexto.trim().toLowerCase();
+            return this.pedidos.filter(p => {
+                if (this.filtroDataIni && String(p.data || '') < this.filtroDataIni) return false;
+                if (this.filtroDataFim && String(p.data || '') > this.filtroDataFim) return false;
+                if (q && !`${p.idpedido} ${p.vendedor}`.toLowerCase().includes(q)) return false;
+                return true;
+            });
+        },
+
+        itensFiltrados() {
+            const q = this.filtroTexto.trim().toLowerCase();
+            return this.itensComprados.filter(it => !q || `${it.iditem} ${it.referencia} ${it.descricao} ${it.marca}`.toLowerCase().includes(q));
         },
 
         async abrirItens(tipo, obj) {

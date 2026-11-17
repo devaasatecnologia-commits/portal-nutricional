@@ -747,12 +747,21 @@ class PortalClienteController
             return $this->json($response, ['success' => false, 'error' => 'Acesso negado: cliente fora da sua hierarquia comercial.'], 403);
         }
 
-        // 1. Dados do Cliente
+        // 1. Dados Cadastrais & Limite de Crédito do Cliente
         $stC = $this->pdo->prepare("
-            SELECT c.idcliforemp, c.razao, COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS doc,
-                   COALESCE(c.email,'') AS email, COALESCE(c.fone,'') AS fone,
-                   COALESCE(cid.descricao,'') AS cidade, COALESCE(c.uf,'') AS uf
+            SELECT c.idcliforemp, c.razao, COALESCE(c.fantasia,'') AS fantasia,
+                   COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS doc,
+                   COALESCE(c.ie,'') AS ie, COALESCE(c.email,'') AS email, COALESCE(c.fone,'') AS fone,
+                   COALESCE(c.endereco,'') AS endereco, COALESCE(c.bairro,'') AS bairro,
+                   COALESCE(c.cep,'') AS cep, COALESCE(cid.descricao,'') AS cidade, COALESCE(c.uf,'') AS uf,
+                   COALESCE(cl.valorlimitecredito, 0)::numeric(14,2) AS limite_credito,
+                   COALESCE(sc.descricao, 'Venda liberada') AS situacao_credito,
+                   COALESCE(sc.bloqueia, 'N') AS credito_bloqueado,
+                   COALESCE(v.razao, '') AS vendedor_nome
             FROM cliforemp c
+            LEFT JOIN cliente cl ON cl.idcliforemp = c.idcliforemp
+            LEFT JOIN situacaocredito sc ON sc.idsituacao = cl.idsituacaocredito
+            LEFT JOIN cliforemp v ON v.idcliforemp = cl.idvendedor
             LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
             WHERE c.idcliforemp = :id
         ");
@@ -762,20 +771,25 @@ class PortalClienteController
             return $this->json($response, ['success' => false, 'error' => 'Cliente não encontrado.'], 404);
         }
         foreach ($cli as $k => $v) {
-            if (is_string($v)) $cli[$k] = $this->utf8($v);
+            if (is_string($v)) $cli[$k] = $this->utf8(trim($v));
         }
 
-        // 2. Boletos em Aberto (receber + receber_boleto)
+        // 2. Títulos & Boletos em Aberto (receber + receber_boleto + portador)
         $stBol = $this->pdo->prepare("
             SELECT r.idreceber, r.idfilial, r.documento, r.parcela, r.dataemissao, r.vencimento,
                    COALESCE(r.valororiginal, r.valor, 0)::numeric(14,2) AS valororiginal,
                    COALESCE(r.valorsaldo, 0)::numeric(14,2) AS valorsaldo,
                    COALESCE(NULLIF(TRIM(rb.nossonumeroatual::text),''), NULLIF(TRIM(rb.nossonumero::text),''), r.nossonumero::text, '') AS nossonumero,
                    COALESCE(rb.codigobarra, '') AS codigobarra,
+                   COALESCE(rb.numeroboleto, '') AS linha_digitavel,
+                   COALESCE(rb.idbanco, 0) AS idbanco,
+                   COALESCE(p.descricao, 'Outros / Carteira') AS portador_nome,
+                   COALESCE(NULLIF(TRIM(r.observacao),'.'), '') AS observacao,
                    (CURRENT_DATE - r.vencimento) AS dias_atraso
             FROM receber r
+            LEFT JOIN portador p ON p.idportador = r.idportador
             LEFT JOIN LATERAL (
-                SELECT nossonumero, nossonumeroatual, codigobarra
+                SELECT nossonumero, nossonumeroatual, codigobarra, numeroboleto, idbanco
                 FROM receber_boleto b
                 WHERE b.idreceber = r.idreceber AND b.idfilial = r.idfilial AND COALESCE(b.excluido,'N') = 'N'
                 ORDER BY b.idboleto DESC LIMIT 1
@@ -785,7 +799,7 @@ class PortalClienteController
               AND COALESCE(r.excluido, 'N') = 'N'
               AND r.valorsaldo > 0
             ORDER BY r.vencimento ASC
-            LIMIT 100
+            LIMIT 120
         ");
         $stBol->execute(['id' => $idCli]);
         $boletos = [];
@@ -796,6 +810,7 @@ class PortalClienteController
             $atraso = (int)$b['dias_atraso'];
             $totalAberto += $saldo;
             if ($atraso > 0) $totalVencido += $saldo;
+            $codBar = trim((string)$b['codigobarra']);
             $boletos[] = [
                 'idreceber' => (int)$b['idreceber'],
                 'idfilial' => (int)$b['idfilial'],
@@ -806,7 +821,12 @@ class PortalClienteController
                 'valororiginal' => (float)$b['valororiginal'],
                 'valorsaldo' => $saldo,
                 'nossonumero' => trim((string)$b['nossonumero']),
-                'codigobarra' => trim((string)$b['codigobarra']),
+                'codigobarra' => $codBar,
+                'linha_digitavel' => trim((string)$b['linha_digitavel']),
+                'idbanco' => (int)$b['idbanco'],
+                'portador_nome' => $this->utf8(trim((string)$b['portador_nome'])),
+                'observacao' => $this->utf8(trim((string)$b['observacao'])),
+                'tem_boleto' => ($codBar !== '' && $codBar !== '.'),
                 'dias_atraso' => $atraso,
             ];
         }
@@ -819,7 +839,7 @@ class PortalClienteController
             WHERE n.idcliforemp = :id
               AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N' AND COALESCE(n.denegada,'N') = 'N'
             ORDER BY n.dataemissao DESC, n.idnfs DESC
-            LIMIT 50
+            LIMIT 80
         ");
         $stNf->execute(['id' => $idCli]);
         $notas = [];
@@ -843,7 +863,7 @@ class PortalClienteController
             LEFT JOIN cliforemp v ON v.idcliforemp = p.idvendrepre
             WHERE p.idcliforemp = :id
             ORDER BY p.data DESC, p.idpedido DESC
-            LIMIT 50
+            LIMIT 80
         ");
         $stPed->execute(['id' => $idCli]);
         $pedidos = [];
@@ -858,6 +878,48 @@ class PortalClienteController
             ];
         }
 
+        // 5. Itens Vendidos ao Cliente (com foto do produto) + Total 12M
+        $stItensCli = $this->pdo->prepare("
+            SELECT i.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                   COALESCE(m.descricao,'') AS marca, COALESCE(NULLIF(TRIM(i.path_foto_master),'.'), '') AS foto,
+                   SUM(ni.qt)::numeric(14,2) AS qtd_total,
+                   SUM(ni.valor_total)::numeric(14,2) AS valor_total,
+                   MAX(n.dataemissao) AS ultima_compra
+            FROM nfs_item ni
+            JOIN nfs n ON n.idfilial = ni.idfilial AND n.idnfs = ni.idnfs
+            JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
+            WHERE n.idcliforemp = :id
+              AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N' AND COALESCE(n.denegada,'N') = 'N'
+            GROUP BY i.iditem, i.referencia, i.descricao, m.descricao, i.path_foto_master
+            ORDER BY ultima_compra DESC, valor_total DESC
+            LIMIT 80
+        ");
+        $stItensCli->execute(['id' => $idCli]);
+        $itensComprados = [];
+        foreach ($stItensCli->fetchAll(PDO::FETCH_ASSOC) as $it) {
+            $itensComprados[] = [
+                'iditem' => (int)$it['iditem'],
+                'referencia' => trim((string)$it['referencia']),
+                'descricao' => $this->utf8($it['descricao']),
+                'marca' => $this->utf8($it['marca']),
+                'foto' => $this->utf8(trim((string)$it['foto'])),
+                'qtd_total' => (float)$it['qtd_total'],
+                'valor_total' => (float)$it['valor_total'],
+                'ultima_compra' => $it['ultima_compra'],
+            ];
+        }
+
+        $total12m = (float)$this->pdo->query("
+            SELECT COALESCE(SUM(valortotalnota), 0)
+            FROM nfs
+            WHERE idcliforemp = {$idCli} AND status = 2 AND COALESCE(cancelado_sefaz,'N')='N' AND COALESCE(denegada,'N')='N'
+              AND dataemissao >= (CURRENT_DATE - INTERVAL '12 months')
+        ")->fetchColumn();
+
+        $limiteTotal = (float)$cli['limite_credito'];
+        $limiteDisponivel = max(0.0, round($limiteTotal - $totalAberto, 2));
+
         return $this->json($response, [
             'success' => true,
             'cliente' => $cli,
@@ -867,10 +929,17 @@ class PortalClienteController
                 'boletos_vencido' => round($totalVencido, 2),
                 'notas_qtd' => count($notas),
                 'pedidos_qtd' => count($pedidos),
+                'itens_qtd' => count($itensComprados),
+                'limite_credito' => round($limiteTotal, 2),
+                'limite_utilizado' => round($totalAberto, 2),
+                'limite_disponivel' => $limiteDisponivel,
+                'total_comprado_12m' => round($total12m, 2),
+                'ultima_compra' => $notas[0]['dataemissao'] ?? null,
             ],
             'boletos' => $boletos,
             'notas' => $notas,
             'pedidos' => $pedidos,
+            'itens_comprados' => $itensComprados,
         ]);
     }
 
