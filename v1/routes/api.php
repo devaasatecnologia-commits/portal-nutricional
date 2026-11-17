@@ -758,6 +758,8 @@ $protected->group('/portal-cliente', function ($group) {
     $group->get('/contexto', [$ctrl, 'contexto']);
     $group->get('/cliente/{id}/resumo', [$ctrl, 'clienteResumo']);
     $group->get('/nota/{idfilial}/{idnfs}/itens', [$ctrl, 'notaItens']);
+    $group->get('/nota/{idfilial}/{idnfs}/danfe', [$ctrl, 'notaDanfe']);
+    $group->get('/boleto/{idfilial}/{idreceber}/detalhe', [$ctrl, 'boletoDetalhe']);
     $group->get('/pedido/{idfilial}/{idpedido}/itens', [$ctrl, 'pedidoItens']);
 });
 

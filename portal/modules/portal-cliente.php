@@ -14,7 +14,16 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="<?= $appBase ?>/portal/assets/js/config.js?v=<?= $version ?>"></script>
     <script src="<?= $appBase ?>/portal/assets/js/portal-cliente.js?v=<?= $version ?>"></script>
-    <style>[x-cloak]{display:none !important;}</style>
+    <style>
+        [x-cloak]{display:none !important;}
+        @media print {
+            body.print-danfe > *:not(#modal-danfe-b2b),
+            body.print-boleto > *:not(#modal-boleto-b2b) { display: none !important; }
+            #modal-danfe-b2b, #modal-boleto-b2b { position: static !important; background: #fff !important; padding: 0 !important; }
+            #modal-danfe-b2b .no-print, #modal-boleto-b2b .no-print { display: none !important; }
+            #modal-danfe-b2b .print-box, #modal-boleto-b2b .print-box { max-width: 100% !important; max-height: none !important; box-shadow: none !important; border: none !important; overflow: visible !important; }
+        }
+    </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen" x-data="portalClienteHandler('<?= $appBase ?>')" x-init="init()">
 
@@ -265,10 +274,14 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <td class="px-3 py-2 text-right font-mono font-extrabold" x-text="fmtMoeda(b.valorsaldo)"></td>
                                 <td class="px-3 py-2 font-mono text-[11px]" x-text="b.nossonumero || '-'"></td>
                                 <td class="px-3 py-2 text-center">
-                                    <button x-show="b.codigobarra" @click="copiarTexto(b.codigobarra)" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]">
-                                        <i class="fa-regular fa-copy mr-1"></i> Copiar Cód. Barras
-                                    </button>
-                                    <span x-show="!b.codigobarra" class="text-[10px] text-slate-400">Sem linha digitável</span>
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <button @click="abrirBoleto(b)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px]">
+                                            <i class="fa-solid fa-barcode mr-1"></i> Baixar Boleto
+                                        </button>
+                                        <button x-show="b.codigobarra" @click="copiarTexto(b.codigobarra)" class="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]" title="Copiar Código de Barras">
+                                            <i class="fa-regular fa-copy"></i>
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -300,7 +313,12 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 </td>
                                 <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(n.valortotal)"></td>
                                 <td class="px-3 py-2 text-center">
-                                    <button @click="abrirItens('nota', n)" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px]">Ver Itens</button>
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <button @click="abrirDanfe(n)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px]">
+                                            <i class="fa-solid fa-file-pdf mr-1"></i> Baixar DANFE
+                                        </button>
+                                        <button @click="abrirItens('nota', n)" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px]">Itens</button>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -362,6 +380,214 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         </template>
                     </tbody>
                 </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL BOLETO BANCÁRIO FEBRABAN (z-[70]) -->
+    <div id="modal-boleto-b2b" x-show="modalBoleto" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-4">
+        <div @click.away="modalBoleto = false" class="print-box bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="no-print bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+                <div class="text-xs font-extrabold flex items-center gap-2">
+                    <i class="fa-solid fa-barcode text-emerald-400"></i>
+                    <span x-text="boletoDoc ? ('Boleto ' + boletoDoc.banco_sigla + ' (' + boletoDoc.banco_codigo_dv + ') — Doc ' + boletoDoc.documento) : 'Boleto'"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button x-show="boletoDoc && boletoDoc.linha_digitavel" @click="copiarTexto(boletoDoc.linha_digitavel)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
+                        <i class="fa-regular fa-copy mr-1"></i> Copiar Linha Digitável
+                    </button>
+                    <button @click="imprimirDocumento('boleto')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold">
+                        <i class="fa-solid fa-print mr-1"></i> Imprimir / Salvar PDF
+                    </button>
+                    <button @click="modalBoleto = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans" x-if="boletoDoc">
+                <!-- Recibo do Pagador -->
+                <div class="mb-4 pb-3 border-b-2 border-dashed border-slate-400">
+                    <div class="flex items-center justify-between border-b-2 pb-1.5 mb-2" :style="'border-color:' + boletoDoc.banco_cor">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-0.5 text-white font-black text-xs rounded" :style="'background:' + boletoDoc.banco_cor" x-text="boletoDoc.banco_sigla"></span>
+                            <span class="text-base font-black border-l-2 border-r-2 border-black px-2.5" x-text="boletoDoc.banco_codigo_dv"></span>
+                            <span class="text-[11px] font-bold text-slate-600">RECIBO DO PAGADOR</span>
+                        </div>
+                        <div class="font-mono font-bold text-[11px]" x-text="boletoDoc.linha_digitavel || boletoDoc.codigobarra"></div>
+                    </div>
+                    <table class="w-full border-collapse border border-black text-[10px]">
+                        <tr>
+                            <td class="border border-black p-1.5 w-[55%]"><div class="text-[8px] uppercase text-slate-500">Beneficiário</div><div class="font-bold" x-text="boletoDoc.cedente + ' — CNPJ: ' + boletoDoc.cedente_cnpj"></div></td>
+                            <td class="border border-black p-1.5 w-[20%]"><div class="text-[8px] uppercase text-slate-500">Agência / Código Benef.</div><div class="font-mono font-bold" x-text="(boletoDoc.nragencia || '') + (boletoDoc.digitoagencia ? '-' + boletoDoc.digitoagencia : '') + ' / ' + (boletoDoc.nrconta || '') + (boletoDoc.digitoconta ? '-' + boletoDoc.digitoconta : '')"></div></td>
+                            <td class="border border-black p-1.5 w-[25%]"><div class="text-[8px] uppercase text-slate-500">Vencimento</div><div class="font-bold text-right text-xs" x-text="fmtData(boletoDoc.vencimento)"></div></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Pagador</div><div class="font-bold" x-text="boletoDoc.sacado_nome + ' — ' + boletoDoc.sacado_doc"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Nosso Número</div><div class="font-mono font-bold" x-text="boletoDoc.nossonumero || '-'"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Valor do Documento</div><div class="font-bold text-right text-xs" x-text="fmtMoeda(boletoDoc.valorsaldo)"></div></td>
+                        </tr>
+                    </table>
+                </div>
+
+                <!-- Ficha de Compensação -->
+                <div>
+                    <div class="flex items-center justify-between border-b-2 pb-1.5 mb-2" :style="'border-color:' + boletoDoc.banco_cor">
+                        <div class="flex items-center gap-3">
+                            <span class="px-2 py-0.5 text-white font-black text-xs rounded" :style="'background:' + boletoDoc.banco_cor" x-text="boletoDoc.banco_sigla"></span>
+                            <span class="text-lg font-black border-l-2 border-r-2 border-black px-2.5" x-text="boletoDoc.banco_codigo_dv"></span>
+                        </div>
+                        <div class="font-mono font-bold text-xs" x-text="boletoDoc.linha_digitavel || boletoDoc.codigobarra"></div>
+                    </div>
+                    <table class="w-full border-collapse border border-black text-[10px]">
+                        <tr>
+                            <td colspan="5" class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Local de Pagamento</div><div class="font-bold" x-text="boletoDoc.local_pagamento"></div></td>
+                            <td class="border border-black p-1.5 w-[24%] bg-slate-50"><div class="text-[8px] uppercase text-slate-500">Vencimento</div><div class="font-black text-right text-xs" x-text="fmtData(boletoDoc.vencimento)"></div></td>
+                        </tr>
+                        <tr>
+                            <td colspan="5" class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Beneficiário</div><div class="font-bold" x-text="boletoDoc.cedente + ' (' + boletoDoc.cedente_cnpj + ')'"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Agência / Código Beneficiário</div><div class="font-mono font-bold text-right" x-text="(boletoDoc.nragencia || '') + (boletoDoc.digitoagencia ? '-' + boletoDoc.digitoagencia : '') + ' / ' + (boletoDoc.nrconta || '') + (boletoDoc.digitoconta ? '-' + boletoDoc.digitoconta : '')"></div></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Data Documento</div><div class="font-bold" x-text="fmtData(boletoDoc.dataemissao)"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Nº Documento</div><div class="font-mono font-bold" x-text="boletoDoc.documento + '/' + boletoDoc.parcela"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Espécie Doc.</div><div class="font-bold">DM</div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Aceite</div><div class="font-bold">N</div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Carteira</div><div class="font-mono font-bold" x-text="boletoDoc.carteira || '-'"></div></td>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Nosso Número</div><div class="font-mono font-bold text-right" x-text="boletoDoc.nossonumero || '-'"></div></td>
+                        </tr>
+                        <tr>
+                            <td colspan="5" rowspan="2" class="border border-black p-2 align-top">
+                                <div class="text-[8px] uppercase text-slate-500 mb-1">Instruções (Texto de responsabilidade do Beneficiário)</div>
+                                <div class="font-semibold text-[10px]" x-text="boletoDoc.mensagem || 'Não receber após o vencimento sem atualização de encargos. Em caso de dúvidas contate o financeiro Nutricional.'"></div>
+                                <div x-show="boletoDoc.convenio" class="text-[9px] text-slate-500 mt-1" x-text="'Convênio: ' + boletoDoc.convenio"></div>
+                            </td>
+                            <td class="border border-black p-1.5 bg-slate-50"><div class="text-[8px] uppercase text-slate-500">(=) Valor do Documento</div><div class="font-black text-right text-xs" x-text="fmtMoeda(boletoDoc.valorsaldo)"></div></td>
+                        </tr>
+                        <tr>
+                            <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">(=) Valor Cobrado</div><div class="font-bold text-right">&nbsp;</div></td>
+                        </tr>
+                        <tr>
+                            <td colspan="6" class="border border-black p-2">
+                                <div class="text-[8px] uppercase text-slate-500">Pagador</div>
+                                <div class="font-bold" x-text="boletoDoc.sacado_nome + ' — CPF/CNPJ: ' + boletoDoc.sacado_doc"></div>
+                                <div class="text-[9px]" x-text="(boletoDoc.sacado_end || '') + ' - ' + (boletoDoc.sacado_bairro || '') + ' — ' + (boletoDoc.sacado_cidade || '') + '/' + (boletoDoc.sacado_uf || '') + ' CEP: ' + (boletoDoc.sacado_cep || '')"></div>
+                            </td>
+                        </tr>
+                    </table>
+                    <div class="mt-3 flex items-center justify-between gap-4">
+                        <div class="flex-1" x-html="boletoBarcodeSvg"></div>
+                        <div class="text-[9px] text-right text-slate-500 font-bold">Autenticação Mecânica / Ficha de Compensação</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DANFE ESPELHO (MESMO LAYOUT CONTÁBIL, z-[70]) -->
+    <div id="modal-danfe-b2b" x-show="modalDanfe" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-4">
+        <div @click.away="modalDanfe = false" class="print-box bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="no-print bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+                <div class="text-xs font-extrabold flex items-center gap-2">
+                    <i class="fa-solid fa-file-invoice text-emerald-400"></i>
+                    <span x-text="danfeNota ? ('DANFE Espelho — NF ' + danfeNota.numeronf + ' (Filial ' + danfeNota.idfilial + ')') : 'DANFE'"></span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="imprimirDocumento('danfe')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold">
+                        <i class="fa-solid fa-print mr-1"></i> Imprimir / Salvar PDF
+                    </button>
+                    <button @click="modalDanfe = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
+                </div>
+            </div>
+            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans" x-if="danfeNota">
+                <table class="w-full border-collapse border border-black mb-2">
+                    <tr>
+                        <td class="border border-black p-2 w-[40%] align-middle">
+                            <div class="flex items-center gap-3">
+                                <img src="<?= $appBase ?>/portal/assets/img/logo-danfe-nutricional.png" alt="Nutricional" class="h-11 w-auto max-w-[140px] object-contain shrink-0">
+                                <div class="text-[9px] leading-snug">
+                                    <div class="font-bold text-[10px]" x-text="danfeNota.filial_razao"></div>
+                                    <div x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
+                                    <div x-text="'CNPJ: ' + (danfeNota.filial_cnpj || '') + ' | IE: ' + (danfeNota.filial_ie || '')"></div>
+                                </div>
+                            </div>
+                        </td>
+                        <td class="border border-black p-2 w-[22%] text-center align-middle">
+                            <div class="font-black text-sm tracking-wide">DANFE</div>
+                            <div class="text-[8px] uppercase">Documento Auxiliar da NF-e</div>
+                            <div class="mt-1 font-bold text-xs" x-text="'Nº ' + danfeNota.numeronf + ' | Série ' + (danfeNota.idserie || '1')"></div>
+                        </td>
+                        <td class="border border-black p-2 w-[38%] align-middle">
+                            <div class="text-[8px] font-bold uppercase text-slate-500">Chave de Acesso</div>
+                            <div class="font-mono font-bold text-[10px] break-all mt-0.5" x-text="fmtChave(danfeNota.chave_nfe)"></div>
+                            <div class="text-[8px] font-bold uppercase text-slate-500 mt-1.5">Protocolo de Autorização SEFAZ</div>
+                            <div class="font-mono text-[9px]" x-text="(danfeNota.protocolo || '-') + (danfeNota.datahora_sefaz ? ' — ' + danfeNota.datahora_sefaz : '')"></div>
+                        </td>
+                    </tr>
+                </table>
+
+                <table class="w-full border-collapse border border-black mb-2">
+                    <tr>
+                        <td class="border border-black p-1.5 w-[65%]"><div class="text-[8px] uppercase text-slate-500">Natureza da Operação</div><div class="font-bold" x-text="danfeNota.natureza_operacao || '-'"></div></td>
+                        <td class="border border-black p-1.5 w-[35%]"><div class="text-[8px] uppercase text-slate-500">Data Emissão / Saída</div><div class="font-bold" x-text="fmtData(danfeNota.dataemissao) + ' / ' + fmtData(danfeNota.data_mov)"></div></td>
+                    </tr>
+                </table>
+
+                <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Destinatário / Remetente</div>
+                <table class="w-full border-collapse border border-black mb-2">
+                    <tr>
+                        <td class="border border-black p-1.5 w-[55%]"><div class="text-[8px] uppercase text-slate-500">Nome / Razão Social</div><div class="font-bold" x-text="danfeNota.parc_razao"></div></td>
+                        <td class="border border-black p-1.5 w-[25%]"><div class="text-[8px] uppercase text-slate-500">CNPJ / CPF</div><div class="font-mono font-bold" x-text="danfeNota.parc_doc"></div></td>
+                        <td class="border border-black p-1.5 w-[20%]"><div class="text-[8px] uppercase text-slate-500">Inscrição Estadual</div><div class="font-mono" x-text="danfeNota.parc_ie || '-'"></div></td>
+                    </tr>
+                    <tr>
+                        <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Endereço</div><div x-text="(danfeNota.parc_end || '') + ' - ' + (danfeNota.parc_bairro || '')"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Município / UF</div><div x-text="(danfeNota.parc_cidade || '') + ' / ' + (danfeNota.parc_uf || '')"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">CEP / Fone</div><div x-text="(danfeNota.parc_cep || '') + ' ' + (danfeNota.parc_fone || '')"></div></td>
+                    </tr>
+                </table>
+
+                <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Cálculo do Imposto</div>
+                <table class="w-full border-collapse border border-black mb-2 text-right">
+                    <tr>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Base ICMS</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.baseicms)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor ICMS</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valoricms)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor IPI</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valoripi)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor Frete</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valorfrete)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Desconto</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valortotaldesconto)"></div></td>
+                        <td class="border border-black p-1.5 bg-slate-50"><div class="text-[8px] text-left uppercase text-slate-500">Total da Nota</div><div class="font-mono font-black text-xs" x-text="fmtMoeda(danfeNota.valortotalnota)"></div></td>
+                    </tr>
+                </table>
+
+                <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Dados dos Produtos / Serviços</div>
+                <table class="w-full border-collapse border border-black mb-2 text-[9px]">
+                    <thead class="bg-slate-50">
+                        <tr>
+                            <th class="border border-black p-1 text-left">Código</th>
+                            <th class="border border-black p-1 text-left">Descrição do Produto</th>
+                            <th class="border border-black p-1 text-center">NCM</th>
+                            <th class="border border-black p-1 text-center">CFOP</th>
+                            <th class="border border-black p-1 text-right">Qtd</th>
+                            <th class="border border-black p-1 text-right">Vlr Unit</th>
+                            <th class="border border-black p-1 text-right">Vlr Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <template x-for="it in danfeItens" :key="it.iditem + '-' + it.valor_total">
+                            <tr>
+                                <td class="border border-black p-1 font-mono" x-text="it.referencia || it.iditem"></td>
+                                <td class="border border-black p-1" x-text="it.descricao"></td>
+                                <td class="border border-black p-1 text-center font-mono" x-text="it.ncm || '-'"></td>
+                                <td class="border border-black p-1 text-center font-mono" x-text="it.idcfop"></td>
+                                <td class="border border-black p-1 text-right font-mono" x-text="it.quantidade"></td>
+                                <td class="border border-black p-1 text-right font-mono" x-text="fmtMoeda(it.valor_unitario)"></td>
+                                <td class="border border-black p-1 text-right font-mono font-bold" x-text="fmtMoeda(it.valor_total)"></td>
+                            </tr>
+                        </template>
+                    </tbody>
+                </table>
+
+                <div x-show="danfeNota.observacao" class="border border-black p-2 text-[9px]">
+                    <div class="text-[8px] font-bold uppercase text-slate-500">Dados Adicionais / Observações</div>
+                    <div x-text="danfeNota.observacao"></div>
+                </div>
             </div>
         </div>
     </div>

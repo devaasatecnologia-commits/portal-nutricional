@@ -47,6 +47,14 @@ function portalClienteHandler(appBase = '') {
         modalTitulo: '',
         itensModal: [],
 
+        modalDanfe: false,
+        danfeNota: null,
+        danfeItens: [],
+
+        modalBoleto: false,
+        boletoDoc: null,
+        boletoBarcodeSvg: '',
+
         async init() {
             this.temTokenPortalInterno = Boolean(localStorage.getItem('authToken'));
             const b2bTok = localStorage.getItem('b2bToken') || '';
@@ -250,6 +258,61 @@ function portalClienteHandler(appBase = '') {
             this.modalItens = true;
             const d = await this.apiAuth(`/portal-cliente/${tipo}/${obj.idfilial}/${id}/itens`);
             this.itensModal = d.itens || [];
+        },
+
+        async abrirDanfe(n) {
+            try {
+                const d = await this.apiAuth(`/portal-cliente/nota/${n.idfilial}/${n.idnfs}/danfe`);
+                this.danfeNota = d.nota;
+                this.danfeItens = d.itens || [];
+                this.modalDanfe = true;
+            } catch (e) {
+                alert(e.message || 'Erro ao carregar DANFE.');
+            }
+        },
+
+        async abrirBoleto(b) {
+            try {
+                const d = await this.apiAuth(`/portal-cliente/boleto/${b.idfilial}/${b.idreceber}/detalhe`);
+                this.boletoDoc = d.boleto;
+                this.boletoBarcodeSvg = this.gerarSvgItf25(d.boleto?.codigobarra || '');
+                this.modalBoleto = true;
+            } catch (e) {
+                alert(e.message || 'Erro ao carregar boleto.');
+            }
+        },
+
+        imprimirDocumento(tipo) {
+            const cls = tipo === 'boleto' ? 'print-boleto' : 'print-danfe';
+            document.body.classList.add(cls);
+            window.print();
+            setTimeout(() => document.body.classList.remove(cls), 500);
+        },
+
+        gerarSvgItf25(codigo) {
+            const dig = String(codigo || '').replace(/\D/g, '');
+            if (dig.length < 44 || dig.length % 2 !== 0) return '';
+            const tbl = ['00110','10001','01001','11000','00101','10100','01100','00011','10010','01010'];
+            let bits = '0000';
+            for (let i = 0; i < dig.length; i += 2) {
+                const b = tbl[Number(dig[i])];
+                const s = tbl[Number(dig[i + 1])];
+                for (let j = 0; j < 5; j++) bits += b[j] + s[j];
+            }
+            bits += '100';
+            let x = 0;
+            let rects = '';
+            for (let i = 0; i < bits.length; i++) {
+                const w = bits[i] === '1' ? 3 : 1;
+                if (i % 2 === 0) rects += `<rect x="${x}" y="0" width="${w}" height="52" fill="#000"/>`;
+                x += w;
+            }
+            return `<svg viewBox="0 0 ${x} 52" class="w-full max-w-[420px] h-[52px]" preserveAspectRatio="none">${rects}</svg>`;
+        },
+
+        fmtChave(chave) {
+            const d = String(chave || '').replace(/\D/g, '');
+            return d ? d.replace(/(.{4})/g, '$1 ').trim() : '-';
         },
 
         copiarTexto(txt) {

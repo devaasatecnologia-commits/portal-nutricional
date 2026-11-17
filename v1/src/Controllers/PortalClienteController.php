@@ -912,6 +912,189 @@ class PortalClienteController
     }
 
     /**
+     * GET /v1/portal-cliente/nota/{idfilial}/{idnfs}/danfe (Protegida)
+     * Retorna o espelho completo da NF-e de saída para impressão/PDF (mesmo layout DANFE do Contábil).
+     */
+    public function notaDanfe(Request $request, Response $response, array $args): Response
+    {
+        $esc = $this->resolverEscopo($request);
+        $f = (int)($args['idfilial'] ?? 0);
+        $id = (int)($args['idnfs'] ?? 0);
+
+        $sql = "
+            SELECT n.idfilial, n.idnfs AS idnota, n.numeronf, n.idserie,
+                   n.dataemissao, n.datasaida AS data_mov,
+                   n.idcfop AS cfop_principal, COALESCE(cf.descricao,'') AS natureza_operacao,
+                   n.status, COALESCE(n.cancelado_sefaz,'N') AS cancelado_sefaz, COALESCE(n.denegada,'N') AS denegada,
+                   COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, COALESCE(n.numero_nf_e,'') AS chave_nfe,
+                   COALESCE(to_char(n.datahora_nf_e,'DD/MM/YYYY HH24:MI:SS'),'') AS datahora_sefaz,
+                   COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.observacao,'') AS observacao,
+                   f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
+                   f.endereco AS filial_end, f.bairro AS filial_bairro, f.uf AS filial_uf,
+                   c.idcliforemp, COALESCE(c.razao,'CONSUMIDOR') AS parc_razao,
+                   COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS parc_doc,
+                   COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
+                   COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
+                   COALESCE(c.uf, n.uf_destino, '') AS parc_uf,
+                   COALESCE(c.cep,'') AS parc_cep, COALESCE(c.fone,'') AS parc_fone,
+                   COALESCE(tr.razao,'') AS transp_razao, COALESCE(NULLIF(TRIM(tr.cnpj),''), TRIM(tr.cpf), '') AS transp_doc,
+                   COALESCE(n.tipofrete,0) AS tipofrete, COALESCE(n.placa,'') AS placa,
+                   COALESCE(n.quant_mercadorias,0) AS quant_volumes,
+                   COALESCE(n.pesobruto,0)::numeric(14,3) AS pesobruto,
+                   COALESCE(n.pesoliquido,0)::numeric(14,3) AS pesoliquido,
+                   COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
+                   COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
+                   COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
+                   COALESCE(n.valorseguro,0)::numeric(14,2) AS valorseguro,
+                   COALESCE(n.valoroutrasdespesas,0)::numeric(14,2) AS valoroutras,
+                   COALESCE(n.valortotalnota,0)::numeric(14,2) AS valortotalnota,
+                   COALESCE(n.baseicms,0)::numeric(14,2) AS baseicms,
+                   COALESCE(n.valoricms,0)::numeric(14,2) AS valoricms,
+                   COALESCE(n.base_substituicaotrib,0)::numeric(14,2) AS base_st,
+                   COALESCE(n.valor_substituicaotrib,0)::numeric(14,2) AS valor_st,
+                   COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi
+            FROM nfs n
+            LEFT JOIN filial f ON f.idfilial = n.idfilial
+            LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN cliforemp tr ON tr.idcliforemp = n.idtransportadora
+            LEFT JOIN cfop cf ON cf.idcfop = n.idcfop
+            WHERE n.idfilial = :f AND n.idnfs = :id
+        ";
+        $st = $this->pdo->prepare($sql);
+        $st->execute(['f' => $f, 'id' => $id]);
+        $nota = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$nota) {
+            return $this->json($response, ['success' => false, 'error' => 'Nota fiscal não encontrada.'], 404);
+        }
+        if (!$this->validarAcessoCliente($esc, (int)$nota['idcliforemp'])) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso negado.'], 403);
+        }
+        foreach ($nota as $k => $v) {
+            if (is_string($v)) $nota[$k] = $this->utf8($v);
+        }
+
+        $stI = $this->pdo->prepare("
+            SELECT ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                   'UN'::text AS unidade, COALESCE(i.idclassfiscal::text,'') AS ncm,
+                   ni.idcfop, COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
+                   ni.qt AS quantidade,
+                   CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS valor_unitario,
+                   ni.valor_total::numeric(14,2) AS valor_total,
+                   COALESCE(ni.valoricms,0)::numeric(14,2) AS icms_dest,
+                   COALESCE(ni.valor_ipi,0)::numeric(14,2) AS ipi
+            FROM nfs_item ni
+            LEFT JOIN item i ON i.iditem = ni.iditem
+            WHERE ni.idfilial = :f AND ni.idnfs = :id
+            ORDER BY ni.iditemnfs
+        ");
+        $stI->execute(['f' => $f, 'id' => $id]);
+        $itens = [];
+        foreach ($stI->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $itens[] = [
+                'iditem' => (int)$r['iditem'],
+                'referencia' => trim((string)$r['referencia']),
+                'descricao' => $this->utf8($r['descricao']),
+                'unidade' => 'UN',
+                'ncm' => trim((string)$r['ncm']),
+                'idcfop' => (int)$r['idcfop'],
+                'cst_icms' => trim((string)$r['cst_icms']),
+                'quantidade' => (float)$r['quantidade'],
+                'valor_unitario' => (float)$r['valor_unitario'],
+                'valor_total' => (float)$r['valor_total'],
+                'icms_dest' => (float)$r['icms_dest'],
+                'ipi' => (float)$r['ipi'],
+            ];
+        }
+
+        return $this->json($response, ['success' => true, 'nota' => $nota, 'itens' => $itens]);
+    }
+
+    /**
+     * GET /v1/portal-cliente/boleto/{idfilial}/{idreceber}/detalhe (Protegida)
+     * Retorna dados bancários completos para renderização do Boleto FEBRABAN conforme o banco registrador.
+     */
+    public function boletoDetalhe(Request $request, Response $response, array $args): Response
+    {
+        $esc = $this->resolverEscopo($request);
+        $f = (int)($args['idfilial'] ?? 0);
+        $id = (int)($args['idreceber'] ?? 0);
+
+        $sql = "
+            SELECT r.idreceber, r.idfilial, r.idcliforemp, r.documento, r.parcela, r.dataemissao, r.vencimento,
+                   COALESCE(r.valororiginal, r.valor, 0)::numeric(14,2) AS valororiginal,
+                   COALESCE(r.valorsaldo, 0)::numeric(14,2) AS valorsaldo,
+                   COALESCE(rb.idbanco, 0) AS idbanco,
+                   COALESCE(b.nome, '') AS banco_nome,
+                   COALESCE(rb.nragencia, '') AS nragencia, COALESCE(rb.digitoagencia, '') AS digitoagencia,
+                   COALESCE(rb.nrconta, '') AS nrconta, COALESCE(rb.digitoconta, '') AS digitoconta,
+                   COALESCE(rb.carteira, '') AS carteira, COALESCE(rb.convenio, '') AS convenio,
+                   COALESCE(NULLIF(TRIM(rb.cedente),''), f.razao, '') AS cedente,
+                   COALESCE(NULLIF(TRIM(rb.nossonumero),''), NULLIF(TRIM(rb.nossonumeroatual::text),''), r.nossonumero::text, '') AS nossonumero,
+                   COALESCE(rb.numeroboleto, '') AS linha_digitavel,
+                   COALESCE(rb.codigobarra, '') AS codigobarra,
+                   COALESCE(NULLIF(TRIM(rb.mensagem),'.'), '') AS mensagem,
+                   COALESCE(NULLIF(TRIM(rb.shipayqrcode),'.'), '') AS shipayqrcode,
+                   f.cnpj AS cedente_cnpj, f.endereco AS cedente_end, f.bairro AS cedente_bairro, f.uf AS cedente_uf,
+                   c.razao AS sacado_nome, COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS sacado_doc,
+                   COALESCE(c.endereco,'') AS sacado_end, COALESCE(c.bairro,'') AS sacado_bairro,
+                   COALESCE(cid.descricao,'') AS sacado_cidade, COALESCE(c.uf,'') AS sacado_uf, COALESCE(c.cep,'') AS sacado_cep
+            FROM receber r
+            LEFT JOIN LATERAL (
+                SELECT * FROM receber_boleto rb
+                WHERE rb.idreceber = r.idreceber AND rb.idfilial = r.idfilial AND COALESCE(rb.excluido,'N') = 'N'
+                ORDER BY rb.idboleto DESC LIMIT 1
+            ) rb ON TRUE
+            LEFT JOIN banco b ON b.idbanco = rb.idbanco
+            LEFT JOIN filial f ON f.idfilial = r.idfilial
+            LEFT JOIN cliforemp c ON c.idcliforemp = r.idcliforemp
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            WHERE r.idfilial = :f AND r.idreceber = :id AND COALESCE(r.excluido,'N') = 'N'
+        ";
+        $st = $this->pdo->prepare($sql);
+        $st->execute(['f' => $f, 'id' => $id]);
+        $bol = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$bol) {
+            return $this->json($response, ['success' => false, 'error' => 'Boleto não encontrado.'], 404);
+        }
+        if (!$this->validarAcessoCliente($esc, (int)$bol['idcliforemp'])) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso negado.'], 403);
+        }
+        foreach ($bol as $k => $v) {
+            if (is_string($v)) $bol[$k] = $this->utf8(trim($v));
+        }
+
+        // Metadados visuais FEBRABAN por banco registrador
+        $idBanco = (int)$bol['idbanco'];
+        if ($idBanco === 0 && strlen(preg_replace('/\D/', '', (string)$bol['codigobarra'])) >= 3) {
+            $idBanco = (int)substr(preg_replace('/\D/', '', (string)$bol['codigobarra']), 0, 3);
+        }
+        $mapaBancos = [
+            237 => ['codigo_dv' => '237-2', 'sigla' => 'BRADESCO', 'nome' => 'Banco Bradesco S.A.', 'cor' => '#cc092f', 'local_pagamento' => 'Pagável preferencialmente na Rede Bradesco ou Bradesco Expresso'],
+            748 => ['codigo_dv' => '748-X', 'sigla' => 'SICREDI', 'nome' => 'Banco Cooperativo Sicredi S.A.', 'cor' => '#33820d', 'local_pagamento' => 'Pagável preferencialmente nas cooperativas de crédito do Sicredi'],
+            1   => ['codigo_dv' => '001-9', 'sigla' => 'BANCO DO BRASIL', 'nome' => 'Banco do Brasil S.A.', 'cor' => '#003882', 'local_pagamento' => 'Pagável em qualquer banco até o vencimento'],
+            341 => ['codigo_dv' => '341-7', 'sigla' => 'ITAÚ', 'nome' => 'Itaú Unibanco S.A.', 'cor' => '#ec7000', 'local_pagamento' => 'Até o vencimento, preferencialmente no Itaú'],
+            756 => ['codigo_dv' => '756-0', 'sigla' => 'SICOOB', 'nome' => 'Banco Cooperativo Sicoob S.A.', 'cor' => '#003641', 'local_pagamento' => 'Pagável preferencialmente no Sicoob'],
+            33  => ['codigo_dv' => '033-7', 'sigla' => 'SANTANDER', 'nome' => 'Banco Santander (Brasil) S.A.', 'cor' => '#ec0000', 'local_pagamento' => 'Pagável preferencialmente no Banco Santander'],
+            104 => ['codigo_dv' => '104-0', 'sigla' => 'CAIXA', 'nome' => 'Caixa Econômica Federal', 'cor' => '#005ca9', 'local_pagamento' => 'Pagável em qualquer banco ou lotérica até o vencimento'],
+        ];
+        $meta = $mapaBancos[$idBanco] ?? [
+            'codigo_dv' => str_pad((string)$idBanco, 3, '0', STR_PAD_LEFT),
+            'sigla' => $bol['banco_nome'] ?: 'BANCO',
+            'nome' => $bol['banco_nome'] ?: 'Instituição Bancária',
+            'cor' => '#0f172a',
+            'local_pagamento' => 'Pagável em qualquer banco até o vencimento',
+        ];
+        $bol['idbanco'] = $idBanco;
+        $bol['banco_codigo_dv'] = $meta['codigo_dv'];
+        $bol['banco_sigla'] = $meta['sigla'];
+        $bol['banco_cor'] = $meta['cor'];
+        $bol['local_pagamento'] = $meta['local_pagamento'];
+
+        return $this->json($response, ['success' => true, 'boleto' => $bol]);
+    }
+
+    /**
      * GET /v1/portal-cliente/pedido/{idfilial}/{idpedido}/itens
      */
     public function pedidoItens(Request $request, Response $response, array $args): Response
