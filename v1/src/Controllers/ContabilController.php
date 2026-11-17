@@ -161,10 +161,16 @@ class ContabilController
         $idmarca = (int)($q['idmarca'] ?? 0);
         $subtipo = strtoupper(trim((string)($q['subtipo_nota'] ?? '')));
         $itemBusca = trim((string)($q['item_busca'] ?? ''));
+        $cfopGlobal = (int)($q['cfop'] ?? 0);
 
         $wS = '';
         $wE = '';
 
+        if ($cfopGlobal > 0) {
+            $params[$prefixo . 'cfop_g'] = $cfopGlobal;
+            $wS .= " AND ni.idcfop = :{$prefixo}cfop_g";
+            $wE .= " AND ni.idcfop = :{$prefixo}cfop_g";
+        }
         if ($transacaoS > 0) {
             $params[$prefixo . 'ts'] = $transacaoS;
             $wS .= " AND n.idtransacao = :{$prefixo}ts";
@@ -207,7 +213,7 @@ class ContabilController
         return [
             'wS' => $wS,
             'wE' => $wE,
-            'tem_filtro_item' => ($idgrupo > 0 || $idmarca > 0 || $itemBusca !== '' || $subtipo !== ''),
+            'tem_filtro_item' => ($idgrupo > 0 || $idmarca > 0 || $itemBusca !== '' || $subtipo !== '' || $cfopGlobal > 0),
         ];
     }
 
@@ -236,12 +242,18 @@ class ContabilController
             $marcas[] = ['id' => (int)$r['idmarca'], 'descricao' => $this->utf8($r['descricao'])];
         }
 
+        $cfops = [];
+        foreach ($this->pdo->query("SELECT idcfop, descricao FROM cfop WHERE COALESCE(inativo,'N')='N' ORDER BY idcfop")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $cfops[] = ['id' => (int)$r['idcfop'], 'descricao' => $this->utf8($r['descricao'])];
+        }
+
         return $this->json($response, [
             'success' => true,
             'transacoes_saida' => $ts,
             'transacoes_entrada' => $te,
             'grupos' => $grupos,
             'marcas' => $marcas,
+            'cfops' => $cfops,
         ]);
     }
 
@@ -774,9 +786,11 @@ class ContabilController
                 SELECT 'SAIDA'::text AS tipo, n.idfilial, n.idnfs AS idnota, n.numeronf, n.idserie,
                        n.dataemissao, n.datasaida AS data_mov, n.datahora AS datahora_geracao,
                        n.usuario AS usuario_geracao, n.idtransacao, COALESCE(t.descricao,'') AS transacao_desc,
+                       n.idcfop AS cfop_principal, COALESCE(cf.descricao,'') AS natureza_operacao,
                        n.status, COALESCE(n.cancelado_sefaz,'N') AS cancelado_sefaz, COALESCE(n.denegada,'N') AS denegada,
                        COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, ''::text AS chave_nfe,
-                       COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.observacao,'') AS observacao,
+                       COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.idembarque,0) AS idembarque,
+                       COALESCE(n.observacao,'') AS observacao,
                        COALESCE(n.observacao_fisco,'') AS observacao_fisco, COALESCE(n.observacao_pedido,'') AS observacao_origem,
                        f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
                        f.endereco AS filial_end, f.bairro AS filial_bairro, f.uf AS filial_uf,
@@ -785,6 +799,14 @@ class ContabilController
                        COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
                        COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
                        COALESCE(c.uf, n.uf_destino, '') AS parc_uf,
+                       COALESCE(c.cep,'') AS parc_cep, COALESCE(c.fone,'') AS parc_fone,
+                       COALESCE(tr.razao,'') AS transp_razao, COALESCE(NULLIF(TRIM(tr.cnpj),''), TRIM(tr.cpf), '') AS transp_doc,
+                       COALESCE(tr.ie,'') AS transp_ie, COALESCE(tr.endereco,'') AS transp_end,
+                       COALESCE(cidtr.descricao,'') AS transp_cidade, COALESCE(tr.uf,'') AS transp_uf,
+                       COALESCE(n.tipofrete,0) AS tipofrete, COALESCE(n.placa,'') AS placa,
+                       COALESCE(n.quant_mercadorias,0) AS quant_volumes,
+                       COALESCE(n.pesobruto,0)::numeric(14,3) AS pesobruto,
+                       COALESCE(n.pesoliquido,0)::numeric(14,3) AS pesoliquido,
                        COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
                        COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
                        COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
@@ -796,13 +818,18 @@ class ContabilController
                        COALESCE(n.base_substituicaotrib,0)::numeric(14,2) AS base_st,
                        COALESCE(n.valor_substituicaotrib,0)::numeric(14,2) AS valor_st,
                        COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi,
+                       COALESCE(n.valor_base_pis,0)::numeric(14,2) AS base_pis,
                        COALESCE(n.valorpis,0)::numeric(14,2) AS valorpis,
+                       COALESCE(n.valor_base_cofins,0)::numeric(14,2) AS base_cofins,
                        COALESCE(n.valorcofins,0)::numeric(14,2) AS valorcofins
                 FROM nfs n
                 LEFT JOIN filial f ON f.idfilial = n.idfilial
                 LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
                 LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+                LEFT JOIN cliforemp tr ON tr.idcliforemp = n.idtransportadora
+                LEFT JOIN cidade cidtr ON cidtr.idcidade = tr.idcidade
                 LEFT JOIN nfs_transacao t ON t.idtransacao = n.idtransacao
+                LEFT JOIN cfop cf ON cf.idcfop = n.idcfop
                 WHERE n.idfilial = :f AND n.idnfs = :id
             ";
         } elseif ($tipo === 'ENTRADA') {
@@ -810,9 +837,12 @@ class ContabilController
                 SELECT 'ENTRADA'::text AS tipo, n.idfilial, n.idnfe AS idnota, n.numero AS numeronf, n.idserie,
                        n.dataemissao, n.dataentrada AS data_mov, n.datahora AS datahora_geracao,
                        n.usuario AS usuario_geracao, n.idtransacao, COALESCE(t.descricao,'') AS transacao_desc,
+                       COALESCE((SELECT xi.idcfop FROM nfe_item xi WHERE xi.idnfe=n.idnfe AND xi.idfilial=n.idfilial LIMIT 1),0) AS cfop_principal,
+                       COALESCE((SELECT cf.descricao FROM nfe_item xi JOIN cfop cf ON cf.idcfop=xi.idcfop WHERE xi.idnfe=n.idnfe AND xi.idfilial=n.idfilial LIMIT 1),'') AS natureza_operacao,
                        n.status, 'N'::text AS cancelado_sefaz, 'N'::text AS denegada,
                        COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, COALESCE(n.chave_nf_e,'') AS chave_nfe,
                        COALESCE((SELECT string_agg(DISTINCT xi.idoc::text, ', ') FROM nfe_item xi WHERE xi.idnfe = n.idnfe AND xi.idfilial = n.idfilial AND xi.idoc > 0), '') AS pedidos,
+                       0 AS idembarque,
                        COALESCE(n.observacao,'') AS observacao,
                        COALESCE(n.observacao_fisco,'') AS observacao_fisco, COALESCE(n.motivo_diferenca_oc,'') AS observacao_origem,
                        f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
@@ -822,6 +852,10 @@ class ContabilController
                        COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
                        COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
                        COALESCE(c.uf, '') AS parc_uf,
+                       ''::text AS parc_cep, ''::text AS parc_fone,
+                       ''::text AS transp_razao, ''::text AS transp_doc, ''::text AS transp_ie,
+                       ''::text AS transp_end, ''::text AS transp_cidade, ''::text AS transp_uf,
+                       0 AS tipofrete, ''::text AS placa, 0 AS quant_volumes, 0::numeric(14,3) AS pesobruto, 0::numeric(14,3) AS pesoliquido,
                        COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
                        COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
                        COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
@@ -833,7 +867,9 @@ class ContabilController
                        COALESCE(n.valorbaseicmssubst,0)::numeric(14,2) AS base_st,
                        COALESCE(n.valoricmssubst,0)::numeric(14,2) AS valor_st,
                        COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi,
+                       COALESCE(n.valorbasepis,0)::numeric(14,2) AS base_pis,
                        COALESCE(n.valorpis,0)::numeric(14,2) AS valorpis,
+                       COALESCE(n.valorbasecofins,0)::numeric(14,2) AS base_cofins,
                        COALESCE(n.valorcofins,0)::numeric(14,2) AS valorcofins
                 FROM nfe n
                 LEFT JOIN filial f ON f.idfilial = n.idfilial
@@ -859,11 +895,31 @@ class ContabilController
             }
         }
 
+        $duplicatas = [];
+        if ($tipo === 'SAIDA') {
+            $stDup = $this->pdo->prepare("
+                SELECT documento, parcela, vencimento, COALESCE(valororiginal, valor, 0)::numeric(14,2) AS valor
+                FROM receber
+                WHERE idfilial = :f AND idnfs = :id
+                ORDER BY vencimento, parcela
+            ");
+            $stDup->execute(['f' => $idfilial, 'id' => $idnota]);
+            foreach ($stDup->fetchAll(PDO::FETCH_ASSOC) as $d) {
+                $duplicatas[] = [
+                    'documento' => $this->utf8($d['documento']),
+                    'parcela' => (string)$d['parcela'],
+                    'vencimento' => $d['vencimento'],
+                    'valor' => (float)$d['valor'],
+                ];
+            }
+        }
+
         $itens = $this->buscarItensNota($tipo, $idfilial, $idnota) ?? [];
 
         return $this->json($response, [
             'success' => true,
             'nota' => $cab,
+            'duplicatas' => $duplicatas,
             'itens' => $itens,
         ]);
     }
@@ -872,7 +928,11 @@ class ContabilController
     {
         if ($tipo === 'SAIDA') {
             $sql = "
-                SELECT ni.iditemnfs AS seq, ni.iditem, i.referencia, i.descricao, i.idclassfiscal AS ncm,
+                SELECT ni.iditemnfs AS seq, ni.iditem, i.referencia, i.descricao,
+                       COALESCE(i.descricaotecnica,'') AS descricaotecnica,
+                       COALESCE(NULLIF(TRIM(i.codigobarrastributavel),''), i.referencia, ni.iditem::text) AS ean,
+                       'UN'::text AS unidade,
+                       i.idclassfiscal AS ncm,
                        ni.idcfop, c.descricao AS cfop_desc,
                        ni.idsituacaotributaria AS cst_icms, ni.idsittrib_pis AS cst_pis, ni.idsittrib_cofins AS cst_cofins,
                        ni.qt AS quantidade, CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS valor_unitario, ni.valor_total,
@@ -888,7 +948,11 @@ class ContabilController
             ";
         } elseif ($tipo === 'ENTRADA') {
             $sql = "
-                SELECT ni.iditemnfe AS seq, ni.iditem, i.referencia, i.descricao, i.idclassfiscal AS ncm,
+                SELECT ni.iditemnfe AS seq, ni.iditem, i.referencia, i.descricao,
+                       COALESCE(i.descricaotecnica,'') AS descricaotecnica,
+                       COALESCE(NULLIF(TRIM(i.codigobarrastributavel),''), i.referencia, ni.iditem::text) AS ean,
+                       'UN'::text AS unidade,
+                       i.idclassfiscal AS ncm,
                        ni.idcfop, c.descricao AS cfop_desc,
                        ni.idsituacaotributaria AS cst_icms, ni.idsittrib_pis_entrada AS cst_pis, ni.idsittrib_cofins_entrada AS cst_cofins,
                        ni.qt AS quantidade, ni.valorunitariobruto AS valor_unitario, ni.valortotal AS valor_total,
@@ -914,7 +978,10 @@ class ContabilController
                 'seq' => (int)$r['seq'],
                 'iditem' => (int)$r['iditem'],
                 'referencia' => trim((string)$r['referencia']),
+                'ean' => trim((string)$r['ean']),
+                'unidade' => trim((string)$r['unidade']),
                 'descricao' => $this->utf8($r['descricao']),
+                'descricaotecnica' => $this->utf8($r['descricaotecnica']),
                 'ncm' => trim((string)$r['ncm']),
                 'idcfop' => (int)$r['idcfop'],
                 'cfop_desc' => $this->utf8($r['cfop_desc']),

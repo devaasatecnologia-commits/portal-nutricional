@@ -152,6 +152,17 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <option value="ENTRADA">Somente Entradas</option>
                     </select>
                 </div>
+
+                <div class="sm:col-span-2 lg:col-span-6">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Natureza da Operação (CFOP)</label>
+                    <select x-model="filtros.cfop" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0">Todas as Naturezas de Operação (CFOP)</option>
+                        <template x-for="c in opcoesFiltros.cfops" :key="'cf-'+c.id">
+                            <option :value="c.id" x-text="c.id + ' - ' + c.descricao"></option>
+                        </template>
+                    </select>
+                </div>
             </div>
 
             <!-- FILTROS AVANÇADOS (TRANSAÇÃO, GRUPO, MARCA, SUBTIPO, ITEM) -->
@@ -236,10 +247,11 @@ require_once __DIR__ . '/../estrutura/header.php';
         <!-- CARDS DE PROJEÇÃO COM TOOLTIP DETALHADO AO PASSAR O MOUSE -->
         <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 no-print" x-show="resumo">
             <!-- ICMS -->
-            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
+            <div @mouseenter="cardHover = 'icms'" @mouseleave="cardHover = null"
+                 class="relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                        ICMS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                        ICMS <i class="fa-solid fa-circle-info text-indigo-500 text-[11px]"></i>
                     </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.icms.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
@@ -256,8 +268,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.icms.credito)"></span>
                     </div>
                 </div>
-                <!-- HOVER TOOLTIP -->
-                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                <div x-show="cardHover === 'icms'" x-transition.opacity x-cloak
+                     class="absolute left-2 right-2 top-full mt-2 z-50 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
                     <div class="font-extrabold text-indigo-300 mb-1">Memória ICMS (Domínio Sistemas)</div>
                     <p class="text-slate-300 mb-2">Fórmula: <code>Débito Saídas − Crédito Entradas</code></p>
                     <div class="space-y-1 text-[10px]">
@@ -270,10 +282,11 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <!-- PIS -->
-            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
+            <div @mouseenter="cardHover = 'pis'" @mouseleave="cardHover = null"
+                 class="relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                        PIS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                        PIS <i class="fa-solid fa-circle-info text-indigo-500 text-[11px]"></i>
                     </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.pis.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
@@ -290,7 +303,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.pis.credito)"></span>
                     </div>
                 </div>
-                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                <div x-show="cardHover === 'pis'" x-transition.opacity x-cloak
+                     class="absolute left-2 right-2 top-full mt-2 z-50 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
                     <div class="font-extrabold text-indigo-300 mb-1">Memória PIS Não-Cumulativo</div>
                     <p class="text-slate-300 mb-2">Origem: <code>nfs_item.valor_pis</code> − <code>nfe_item.valorpiscreditado</code></p>
                     <div class="space-y-1 text-[10px]">
@@ -302,10 +316,11 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <!-- COFINS -->
-            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
+            <div @mouseenter="cardHover = 'cofins'" @mouseleave="cardHover = null"
+                 class="relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-400 hover:shadow-md transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                        COFINS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                        COFINS <i class="fa-solid fa-circle-info text-indigo-500 text-[11px]"></i>
                     </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.cofins.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
@@ -322,7 +337,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.cofins.credito)"></span>
                     </div>
                 </div>
-                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                <div x-show="cardHover === 'cofins'" x-transition.opacity x-cloak
+                     class="absolute left-2 right-2 top-full mt-2 z-50 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
                     <div class="font-extrabold text-indigo-300 mb-1">Memória COFINS Não-Cumulativa</div>
                     <p class="text-slate-300 mb-2">Origem: <code>nfs_item.valor_cofins</code> − <code>nfe_item.valorcofinscreditado</code></p>
                     <div class="space-y-1 text-[10px]">
@@ -334,7 +350,8 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
 
             <!-- TOTAL PROJETADO A PAGAR -->
-            <div class="group relative bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md cursor-help">
+            <div @mouseenter="cardHover = 'total'" @mouseleave="cardHover = null"
+                 class="relative bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md hover:shadow-xl transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
                         Projeção a Pagar <i class="fa-solid fa-circle-info text-indigo-300 text-[11px]"></i>
@@ -352,7 +369,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold font-mono" x-text="fmtMoeda(totaisEntrada.valor_contabil)"></span>
                     </div>
                 </div>
-                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
+                <div x-show="cardHover === 'total'" x-transition.opacity x-cloak
+                     class="absolute left-2 right-2 top-full mt-2 z-50 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
                     <div class="font-extrabold text-amber-300 mb-1">Resumo Executivo do Período</div>
                     <div class="space-y-1 text-[10px]">
                         <div class="flex justify-between"><span>Período ativo:</span><span class="font-bold" x-text="competenciaLabel"></span></div>
@@ -943,45 +961,292 @@ require_once __DIR__ . '/../estrutura/header.php';
                             </div>
                         </div>
 
-                        <!-- CABEÇALHO ESTILO DANFE -->
-                        <div class="border-2 border-slate-800 rounded-lg overflow-hidden">
+                        <!-- ============================================================ -->
+                        <!-- LAYOUT 1: DANFE OFICIAL NUTRICIONAL (SAÍDAS)                 -->
+                        <!-- ============================================================ -->
+                        <div x-show="danfeNota.tipo === 'SAIDA'" class="bg-white text-black font-sans text-[10px] leading-tight space-y-2">
+                            <!-- CANHOTO -->
+                            <table class="w-full border-collapse border border-black">
+                                <tr>
+                                    <td colspan="2" class="border border-black p-1.5 text-[9px]">
+                                        <span x-text="danfeNota.parc_razao"></span> Recebeu de <strong x-text="danfeNota.filial_razao"></strong> os produtos/serviços constantes na nota fiscal indicada ao lado
+                                    </td>
+                                    <td rowspan="2" class="border border-black p-1.5 text-center w-44 align-middle">
+                                        <div class="font-bold text-[10px]">NF-e</div>
+                                        <div class="font-bold text-xs" x-text="'Nº ' + fmtNfPad(danfeNota.numeronf)"></div>
+                                        <div class="flex justify-between text-[9px] mt-1 px-1">
+                                            <span x-text="'SÉRIE ' + (danfeNota.idserie || '1')"></span>
+                                            <span x-text="danfeNota.pedidos || ''"></span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="border border-black p-1.5 w-40 align-top text-[9px]">Data de recebimento<br>&nbsp;</td>
+                                    <td class="border border-black p-1.5 align-top text-[9px]">Identificação e assinatura do recebedor<br>&nbsp;</td>
+                                </tr>
+                            </table>
+
+                            <div class="border-t border-dashed border-slate-500 my-1"></div>
+
+                            <!-- CABEÇALHO 3 COLUNAS -->
+                            <table class="w-full border-collapse border border-black">
+                                <tr>
+                                    <!-- LOGO + EMITENTE -->
+                                    <td class="border border-black p-2 w-[38%] align-middle">
+                                        <div class="flex items-center gap-2.5">
+                                            <img src="<?= $appBase ?>/portal/assets/img/logo.png" alt="Nutricional" class="h-12 w-auto object-contain">
+                                            <div class="text-[9px] leading-snug">
+                                                <div class="font-bold text-[10px]" x-text="danfeNota.filial_razao"></div>
+                                                <div x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
+                                                <div class="mt-0.5"><i class="fa-solid fa-envelope mr-1"></i> nfe@nutricionalbr.com</div>
+                                                <div><i class="fa-brands fa-instagram mr-1"></i> @nutricionalbr</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <!-- DANFE -->
+                                    <td class="border border-black p-2 w-[18%] text-center align-middle">
+                                        <div class="font-bold text-sm">DANFE</div>
+                                        <div class="text-[8px]">Documento Auxiliar da Nota Fiscal Eletrônica</div>
+                                        <div class="flex items-center justify-center gap-2 my-1 text-[9px]">
+                                            <div class="text-left leading-tight">0 - Entrada<br>1 - Saída</div>
+                                            <div class="border border-black px-2 py-0.5 font-bold text-xs">1</div>
+                                        </div>
+                                        <div class="font-bold text-[10px]" x-text="'Nº ' + fmtNfPad(danfeNota.numeronf)"></div>
+                                        <div class="font-bold text-[9px]" x-text="'SÉRIE: ' + (danfeNota.idserie || '1')"></div>
+                                    </td>
+                                    <!-- BARCODE + CHAVE + PROTOCOLO -->
+                                    <td class="border border-black p-0 w-[44%] align-top">
+                                        <div class="p-1.5 border-b border-black text-center">
+                                            <!-- Barras visuais estilizadas -->
+                                            <div class="h-8 mx-auto w-11/12 opacity-85" style="background: repeating-linear-gradient(90deg, #000 0px, #000 2px, #fff 2px, #fff 4px, #000 4px, #000 5px, #fff 5px, #fff 8px);"></div>
+                                        </div>
+                                        <div class="p-1.5 border-b border-black">
+                                            <div class="text-[8px] font-bold uppercase">CHAVE DE ACESSO</div>
+                                            <div class="font-mono text-[9px] font-bold tracking-wider" x-text="danfeNota.chave_nfe || danfeNota.protocolo || 'Consulte chave no XML/SEFAZ'"></div>
+                                        </div>
+                                        <div class="p-1.5 border-b border-black text-center text-[8px]">
+                                            Consulta de autenticidade no portal nacional da NF-e<br>
+                                            <strong>www.nfe.fazenda.gov.br/portal</strong> ou no site da Sefaz autorizadora
+                                        </div>
+                                        <div class="p-1.5">
+                                            <div class="text-[8px] font-bold uppercase">PROTOCOLO DE AUTORIZAÇÃO DE USO</div>
+                                            <div class="font-mono text-[9px] font-bold" x-text="(danfeNota.protocolo || '-') + '  ' + (danfeNota.datahora_geracao || '')"></div>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- NATUREZA + IE/CNPJ -->
+                            <table class="w-full border-collapse border border-black -mt-[1px]">
+                                <tr>
+                                    <td colspan="2" class="border border-black p-1">
+                                        <div class="text-[8px]">Natureza da Operação</div>
+                                        <div class="font-bold text-[10px]" x-text="danfeNota.natureza_operacao || danfeNota.transacao_desc"></div>
+                                    </td>
+                                    <td class="border border-black p-1 w-24">
+                                        <div class="text-[8px]">CFOP</div>
+                                        <div class="font-bold font-mono text-[10px]" x-text="danfeNota.cfop_principal || '-'"></div>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="border border-black p-1 w-1/3">
+                                        <div class="text-[8px]">Inscrição estadual</div>
+                                        <div class="font-mono" x-text="danfeNota.filial_ie || '-'"></div>
+                                    </td>
+                                    <td class="border border-black p-1 w-1/3">
+                                        <div class="text-[8px]">Inscrição estadual subst. tributária</div>
+                                        <div>&nbsp;</div>
+                                    </td>
+                                    <td class="border border-black p-1 w-1/3">
+                                        <div class="text-[8px]">CNPJ</div>
+                                        <div class="font-mono" x-text="danfeNota.filial_cnpj || '-'"></div>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- DESTINATÁRIO / REMETENTE -->
+                            <div class="font-bold text-[9px] pt-0.5">Destinatário / Remetente</div>
+                            <table class="w-full border-collapse border border-black">
+                                <tr>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Nome/Razão Social</div><div class="font-bold" x-text="danfeNota.parc_razao"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">CNPJ/CPF</div><div class="font-mono" x-text="danfeNota.parc_doc || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Inscrição Estadual</div><div class="font-mono" x-text="danfeNota.parc_ie || '-'"></div></td>
+                                    <td class="border border-black p-1 w-24"><div class="text-[8px]">Data da Emissão</div><div x-text="fmtData(danfeNota.dataemissao)"></div></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Endereço</div><div x-text="danfeNota.parc_end || '-'"></div></td>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Bairro</div><div x-text="danfeNota.parc_bairro || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Data Saída</div><div x-text="fmtData(danfeNota.data_mov)"></div></td>
+                                </tr>
+                                <tr>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Fone/Fax</div><div x-text="danfeNota.parc_fone || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Município</div><div x-text="danfeNota.parc_cidade || '-'"></div></td>
+                                    <td class="border border-black p-1 w-12"><div class="text-[8px]">UF</div><div x-text="danfeNota.parc_uf || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">CEP</div><div x-text="danfeNota.parc_cep || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Hora Saída</div><div x-text="(danfeNota.datahora_geracao || '').slice(11,19)"></div></td>
+                                </tr>
+                            </table>
+
+                            <!-- FATURA / DUPLICATAS -->
+                            <div x-show="danfeDuplicatas.length > 0">
+                                <div class="font-bold text-[9px] pt-0.5">Fatura</div>
+                                <div class="border border-black flex flex-wrap">
+                                    <template x-for="d in danfeDuplicatas" :key="d.documento + '-' + d.parcela">
+                                        <div class="border-r border-black p-1.5 text-[8.5px] min-w-[110px]">
+                                            <div class="font-bold font-mono" x-text="d.documento + '-' + d.parcela"></div>
+                                            <div class="font-mono" x-text="fmtMoeda(d.valor)"></div>
+                                            <div x-text="fmtData(d.vencimento)"></div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+
+                            <!-- CÁLCULO DO IMPOSTO (COM BASE PIS/COFINS IGUAL AO PDF) -->
+                            <div class="font-bold text-[9px] pt-0.5">Cálculo do imposto</div>
+                            <table class="w-full border-collapse border border-black text-right">
+                                <tr>
+                                    <td class="border border-black p-1 text-left"><div class="text-[8px]">Base Cálculo ICMS</div><div class="font-mono font-bold" x-text="fmtNum(danfeNota.baseicms)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor do ICMS</div><div class="font-mono font-bold" x-text="fmtNum(danfeNota.valoricms)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Base ICMS ST</div><div class="font-mono" x-text="fmtNum(danfeNota.base_st)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor ICMS Subst</div><div class="font-mono" x-text="fmtNum(danfeNota.valor_st)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Base PIS</div><div class="font-mono" x-text="fmtNum(danfeNota.base_pis)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor PIS</div><div class="font-mono" x-text="fmtNum(danfeNota.valorpis)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Base COFINS</div><div class="font-mono" x-text="fmtNum(danfeNota.base_cofins)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor COFINS</div><div class="font-mono" x-text="fmtNum(danfeNota.valorcofins)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor Total Produtos</div><div class="font-mono font-bold" x-text="fmtNum(danfeNota.valortotalitens)"></div></td>
+                                </tr>
+                                <tr>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor do Frete</div><div class="font-mono" x-text="fmtNum(danfeNota.valorfrete)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Valor do Seguro</div><div class="font-mono" x-text="fmtNum(danfeNota.valorseguro)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Desconto</div><div class="font-mono" x-text="fmtNum(danfeNota.valortotaldesconto)"></div></td>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Outras Despesas Acessórias</div><div class="font-mono" x-text="fmtNum(danfeNota.valoroutras)"></div></td>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Valor Total do IPI</div><div class="font-mono" x-text="fmtNum(danfeNota.valoripi)"></div></td>
+                                    <td colspan="2" class="border border-black p-1 bg-slate-100"><div class="text-[8px] font-bold">Valor Total da Nota</div><div class="font-mono font-extrabold text-xs" x-text="fmtNum(danfeNota.valortotalnota)"></div></td>
+                                </tr>
+                            </table>
+
+                            <!-- TRANSPORTADOR / VOLUMES -->
+                            <div class="font-bold text-[9px] pt-0.5">Transportador / Volumes transportados</div>
+                            <table class="w-full border-collapse border border-black">
+                                <tr>
+                                    <td colspan="2" class="border border-black p-1"><div class="text-[8px]">Nome/Razão Social</div><div x-text="danfeNota.transp_razao || 'PROPRIO / NAO INFORMADO'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Frete por Conta</div><div x-text="danfeNota.tipofrete + ' (0-Emit / 1-Dest)'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Placa Veículo</div><div class="font-mono" x-text="danfeNota.placa || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">UF</div><div x-text="danfeNota.transp_uf || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">CNPJ/CPF</div><div class="font-mono" x-text="danfeNota.transp_doc || '-'"></div></td>
+                                </tr>
+                                <tr>
+                                    <td colspan="3" class="border border-black p-1"><div class="text-[8px]">Endereço</div><div x-text="danfeNota.transp_end || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Município</div><div x-text="danfeNota.transp_cidade || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">UF</div><div x-text="danfeNota.transp_uf || '-'"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Inscrição Estadual</div><div class="font-mono" x-text="danfeNota.transp_ie || '-'"></div></td>
+                                </tr>
+                                <tr>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Quantidade</div><div class="font-mono" x-text="danfeNota.quant_volumes || 0"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Espécie</div><div>.</div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Marca</div><div>.</div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Número</div><div>0</div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Peso Bruto</div><div class="font-mono" x-text="fmtNum(danfeNota.pesobruto)"></div></td>
+                                    <td class="border border-black p-1"><div class="text-[8px]">Peso Líquido</div><div class="font-mono" x-text="fmtNum(danfeNota.pesoliquido)"></div></td>
+                                </tr>
+                            </table>
+
+                            <!-- DADOS DOS PRODUTOS -->
+                            <div class="font-bold text-[9px] pt-0.5">Dados dos Produtos</div>
+                            <table class="w-full border-collapse border border-black text-[9px]">
+                                <thead>
+                                    <tr class="bg-slate-100">
+                                        <th class="border border-black p-1 text-left">Código Barras</th>
+                                        <th class="border border-black p-1 text-left">Descrição</th>
+                                        <th class="border border-black p-1 text-left">NCM/SH</th>
+                                        <th class="border border-black p-1 text-center">CST</th>
+                                        <th class="border border-black p-1 text-center">CFOP</th>
+                                        <th class="border border-black p-1 text-center">UN.</th>
+                                        <th class="border border-black p-1 text-right">Qtde</th>
+                                        <th class="border border-black p-1 text-right">Valor unit.</th>
+                                        <th class="border border-black p-1 text-right">Valor total</th>
+                                        <th class="border border-black p-1 text-right">B. ICMS</th>
+                                        <th class="border border-black p-1 text-right">%ICMS</th>
+                                        <th class="border border-black p-1 text-right">V. ICMS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="it in danfeItens" :key="'dfs-'+it.seq">
+                                        <tr>
+                                            <td class="border border-black p-1 font-mono" x-text="it.ean || it.iditem"></td>
+                                            <td class="border border-black p-1">
+                                                <div class="font-bold" x-text="it.descricao"></div>
+                                                <div x-show="it.descricaotecnica" class="text-[8px] text-slate-600" x-text="it.descricaotecnica"></div>
+                                            </td>
+                                            <td class="border border-black p-1 font-mono" x-text="it.ncm"></td>
+                                            <td class="border border-black p-1 font-mono text-center" x-text="it.cst_icms"></td>
+                                            <td class="border border-black p-1 font-mono text-center" x-text="it.idcfop"></td>
+                                            <td class="border border-black p-1 text-center" x-text="it.unidade"></td>
+                                            <td class="border border-black p-1 text-right font-mono" x-text="fmtNum(it.quantidade)"></td>
+                                            <td class="border border-black p-1 text-right font-mono" x-text="fmtNum(it.valor_unitario)"></td>
+                                            <td class="border border-black p-1 text-right font-mono font-bold" x-text="fmtNum(it.valor_total)"></td>
+                                            <td class="border border-black p-1 text-right font-mono" x-text="fmtNum(it.base_icms)"></td>
+                                            <td class="border border-black p-1 text-right font-mono" x-text="fmtNum(it.aliq_icms)"></td>
+                                            <td class="border border-black p-1 text-right font-mono" x-text="fmtNum(it.icms_dest)"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+
+                            <!-- DADOS ADICIONAIS -->
+                            <div class="font-bold text-[9px] pt-0.5">Dados adicionais</div>
+                            <table class="w-full border-collapse border border-black">
+                                <tr>
+                                    <td class="border border-black p-1.5 w-2/3 align-top text-[9px] whitespace-pre-line">
+                                        <div class="text-[8px] font-bold">Informações complementares</div>
+                                        <div x-text="(danfeNota.observacao || '') + (danfeNota.idembarque ? '\nEMBARQUE: ' + danfeNota.idembarque : '')"></div>
+                                    </td>
+                                    <td class="border border-black p-1.5 w-1/3 align-top text-[9px]">
+                                        <div class="text-[8px] font-bold">Reservado ao Fisco</div>
+                                        <div x-text="danfeNota.observacao_fisco || ''"></div>
+                                    </td>
+                                </tr>
+                            </table>
+                        </div>
+
+                        <!-- ============================================================ -->
+                        <!-- LAYOUT 2: DANFE TRADICIONAL SEFAZ (ENTRADAS)                 -->
+                        <!-- ============================================================ -->
+                        <div x-show="danfeNota.tipo === 'ENTRADA'" class="border-2 border-slate-800 rounded-lg overflow-hidden bg-white">
                             <div class="grid grid-cols-1 md:grid-cols-3 border-b-2 border-slate-800">
                                 <div class="p-3 border-b md:border-b-0 md:border-r-2 border-slate-800">
-                                    <div class="text-[10px] font-bold uppercase text-slate-500">Filial (Empresa)</div>
-                                    <div class="font-extrabold text-sm" x-text="danfeNota.filial_razao"></div>
-                                    <div class="text-[11px]" x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
-                                    <div class="font-mono text-[11px] mt-1" x-text="'CNPJ: ' + (danfeNota.filial_cnpj || '-') + ' | IE: ' + (danfeNota.filial_ie || '-')"></div>
+                                    <div class="text-[10px] font-bold uppercase text-slate-500">Emitente (Fornecedor)</div>
+                                    <div class="font-extrabold text-sm" x-text="danfeNota.parc_razao"></div>
+                                    <div class="text-[11px]" x-text="(danfeNota.parc_end || '') + ' - ' + (danfeNota.parc_bairro || '') + ' • ' + (danfeNota.parc_cidade || '') + '/' + (danfeNota.parc_uf || '')"></div>
+                                    <div class="font-mono text-[11px] mt-1" x-text="'CNPJ/CPF: ' + (danfeNota.parc_doc || '-') + ' | IE: ' + (danfeNota.parc_ie || '-')"></div>
                                 </div>
                                 <div class="p-3 text-center border-b md:border-b-0 md:border-r-2 border-slate-800 flex flex-col justify-center">
-                                    <div class="font-black text-base tracking-wide">DANFE ESPELHO</div>
-                                    <div class="text-[10px] font-bold uppercase" x-text="danfeNota.tipo === 'SAIDA' ? '1 - SAÍDA' : '0 - ENTRADA'"></div>
-                                    <div class="font-mono font-black text-lg text-slate-900 mt-1" x-text="'Nº ' + danfeNota.numeronf"></div>
+                                    <div class="font-black text-base tracking-wide">DANFE TRADICIONAL</div>
+                                    <div class="text-[10px] font-bold uppercase">0 - ENTRADA</div>
+                                    <div class="font-mono font-black text-lg text-slate-900 mt-1" x-text="'Nº ' + fmtNfPad(danfeNota.numeronf)"></div>
                                     <div class="text-[10px] font-mono" x-text="'Série: ' + (danfeNota.idserie || '-')"></div>
                                 </div>
                                 <div class="p-3 flex flex-col justify-center">
                                     <div class="text-[10px] font-bold uppercase text-slate-500">Chave de Acesso NF-e</div>
-                                    <div class="font-mono text-[10px] break-all font-bold mt-1" x-text="danfeNota.chave_nfe || 'Não gravada na tabela legada (consultar protocolo SEFAZ)'"></div>
+                                    <div class="font-mono text-[10px] break-all font-bold mt-1" x-text="danfeNota.chave_nfe || 'Não informada'"></div>
                                     <div class="mt-2 grid grid-cols-2 gap-2 text-[10px]">
                                         <div><span class="text-slate-500">Emissão:</span> <strong x-text="fmtData(danfeNota.dataemissao)"></strong></div>
-                                        <div><span class="text-slate-500" x-text="danfeNota.tipo === 'SAIDA' ? 'Saída:' : 'Entrada:'"></span> <strong x-text="fmtData(danfeNota.data_mov)"></strong></div>
+                                        <div><span class="text-slate-500">Entrada:</span> <strong x-text="fmtData(danfeNota.data_mov)"></strong></div>
                                     </div>
                                 </div>
                             </div>
 
-                            <!-- DESTINATÁRIO / REMETENTE -->
                             <div class="p-3 border-b-2 border-slate-800 bg-slate-50/70">
-                                <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1"
-                                     x-text="danfeNota.tipo === 'SAIDA' ? 'Destinatário (Cliente)' : 'Remetente / Emitente (Fornecedor)'"></div>
+                                <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1">Destinatário (Filial Nutricional)</div>
                                 <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
-                                    <div><strong>Razão:</strong> <span x-text="danfeNota.parc_razao"></span></div>
-                                    <div><strong>CNPJ/CPF:</strong> <span class="font-mono" x-text="danfeNota.parc_doc || '-'"></span></div>
-                                    <div><strong>IE:</strong> <span class="font-mono" x-text="danfeNota.parc_ie || '-'"></span></div>
-                                    <div class="sm:col-span-2"><strong>Endereço:</strong> <span x-text="(danfeNota.parc_end || '') + ' - ' + (danfeNota.parc_bairro || '')"></span></div>
-                                    <div><strong>Município / UF:</strong> <span x-text="(danfeNota.parc_cidade || '') + ' / ' + (danfeNota.parc_uf || '')"></span></div>
+                                    <div><strong>Razão:</strong> <span x-text="danfeNota.filial_razao"></span></div>
+                                    <div><strong>CNPJ:</strong> <span class="font-mono" x-text="danfeNota.filial_cnpj || '-'"></span></div>
+                                    <div><strong>IE:</strong> <span class="font-mono" x-text="danfeNota.filial_ie || '-'"></span></div>
+                                    <div class="sm:col-span-2"><strong>Endereço:</strong> <span x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '')"></span></div>
+                                    <div><strong>UF:</strong> <span x-text="danfeNota.filial_uf || '-'"></span></div>
                                 </div>
                             </div>
 
-                            <!-- CÁLCULO DO IMPOSTO -->
                             <div class="p-3 border-b-2 border-slate-800">
                                 <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1.5">Cálculo do Imposto</div>
                                 <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-[11px]">
@@ -994,7 +1259,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 </div>
                             </div>
 
-                            <!-- DADOS DOS PRODUTOS -->
                             <div class="p-3">
                                 <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1.5">Dados dos Produtos / Serviços</div>
                                 <table class="w-full text-[10px] border border-slate-300">
@@ -1008,12 +1272,12 @@ require_once __DIR__ . '/../estrutura/header.php';
                                             <th class="px-2 py-1 text-right">V. Unit</th>
                                             <th class="px-2 py-1 text-right">V. Total</th>
                                             <th class="px-2 py-1 text-right">BC ICMS</th>
-                                            <th class="px-2 py-1 text-right">ICMS</th>
+                                            <th class="px-2 py-1 text-right">ICMS (Dest/Cred)</th>
                                             <th class="px-2 py-1 text-right">IPI</th>
                                         </tr>
                                     </thead>
                                     <tbody class="divide-y divide-slate-200">
-                                        <template x-for="it in danfeItens" :key="'df-'+it.seq">
+                                        <template x-for="it in danfeItens" :key="'dfe-'+it.seq">
                                             <tr>
                                                 <td class="px-2 py-1 font-medium" x-text="it.iditem + ' - ' + it.descricao"></td>
                                                 <td class="px-2 py-1 font-mono" x-text="it.ncm"></td>
@@ -1023,7 +1287,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                                 <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.valor_unitario)"></td>
                                                 <td class="px-2 py-1 text-right font-mono font-bold" x-text="fmtMoeda(it.valor_total)"></td>
                                                 <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.base_icms)"></td>
-                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.icms_dest) + ' (' + it.aliq_icms + '%)'"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.icms_dest) + ' / Cred: ' + fmtMoeda(it.icms_cred)"></td>
                                                 <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.ipi)"></td>
                                             </tr>
                                         </template>
@@ -1031,10 +1295,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 </table>
                             </div>
 
-                            <!-- DADOS ADICIONAIS -->
                             <div class="p-3 border-t-2 border-slate-800 bg-slate-50 text-[10px]" x-show="danfeNota.observacao || danfeNota.observacao_fisco">
-                                <div class="font-extrabold uppercase text-slate-500 mb-1">Dados Adicionais / Informações Complementares</div>
-                                <div x-show="danfeNota.observacao"><strong>Obs. Contribuinte:</strong> <span x-text="danfeNota.observacao"></span></div>
+                                <div class="font-extrabold uppercase text-slate-500 mb-1">Dados Adicionais</div>
+                                <div x-show="danfeNota.observacao"><strong>Obs.:</strong> <span x-text="danfeNota.observacao"></span></div>
                                 <div x-show="danfeNota.observacao_fisco"><strong>Obs. Fisco:</strong> <span x-text="danfeNota.observacao_fisco"></span></div>
                             </div>
                         </div>

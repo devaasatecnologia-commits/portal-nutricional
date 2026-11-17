@@ -24,6 +24,7 @@ function contabilHandler() {
         erro: '',
         abaAtiva: 'cfop',
         filtrosAvancadosAbertos: false,
+        cardHover: null,
 
         filtros: {
             modoPeriodo: 'mensal',
@@ -33,6 +34,7 @@ function contabilHandler() {
             filial: '0',
             modoCredito: 'creditado',
             tipoNota: 'TODAS',
+            cfop: '0',
             subtipoNota: '',
             transacaoSaida: '0',
             transacaoEntrada: '0',
@@ -45,7 +47,8 @@ function contabilHandler() {
             transacoes_saida: [],
             transacoes_entrada: [],
             grupos: [],
-            marcas: []
+            marcas: [],
+            cfops: []
         },
 
         filiaisDisponiveis: [],
@@ -95,6 +98,7 @@ function contabilHandler() {
         modalDanfeAberto: false,
         loadingDanfe: false,
         danfeNota: null,
+        danfeDuplicatas: [],
         danfeItens: [],
 
         async init() {
@@ -139,7 +143,8 @@ function contabilHandler() {
                     transacoes_saida: d.transacoes_saida || [],
                     transacoes_entrada: d.transacoes_entrada || [],
                     grupos: d.grupos || [],
-                    marcas: d.marcas || []
+                    marcas: d.marcas || [],
+                    cfops: d.cfops || []
                 };
             } catch (e) {
                 // Silencioso para não bloquear carregamento principal
@@ -151,6 +156,7 @@ function contabilHandler() {
                 filial: this.filtros.filial,
                 modo_credito: this.filtros.modoCredito,
                 tipo_nota: this.filtros.tipoNota,
+                cfop: this.filtros.cfop,
                 subtipo_nota: this.filtros.subtipoNota,
                 transacao_saida: this.filtros.transacaoSaida,
                 transacao_entrada: this.filtros.transacaoEntrada,
@@ -169,6 +175,7 @@ function contabilHandler() {
 
         temFiltroAvancado() {
             return (
+                this.filtros.cfop !== '0' ||
                 this.filtros.subtipoNota !== '' ||
                 this.filtros.transacaoSaida !== '0' ||
                 this.filtros.transacaoEntrada !== '0' ||
@@ -179,6 +186,7 @@ function contabilHandler() {
         },
 
         async limparFiltrosAvancados() {
+            this.filtros.cfop = '0';
             this.filtros.subtipoNota = '';
             this.filtros.transacaoSaida = '0';
             this.filtros.transacaoEntrada = '0';
@@ -307,12 +315,14 @@ function contabilHandler() {
 
         async abrirDanfeEspelho(tipo, idfilial, idnota) {
             this.danfeNota = null;
+            this.danfeDuplicatas = [];
             this.danfeItens = [];
             this.modalDanfeAberto = true;
             this.loadingDanfe = true;
             try {
                 const data = await this.apiGet(`/contabil/notas/${tipo}/${idfilial}/${idnota}/espelho`);
                 this.danfeNota = data.nota;
+                this.danfeDuplicatas = data.duplicatas || [];
                 this.danfeItens = data.itens || [];
             } catch (e) {
                 this.erro = e.message;
@@ -320,6 +330,11 @@ function contabilHandler() {
             } finally {
                 this.loadingDanfe = false;
             }
+        },
+
+        fmtNfPad(num) {
+            const s = String(num || 0).padStart(9, '0');
+            return s.slice(0, 3) + '.' + s.slice(3, 6) + '.' + s.slice(6, 9);
         },
 
         imprimirDanfe() {
