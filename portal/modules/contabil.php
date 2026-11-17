@@ -22,9 +22,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <i class="fa-solid fa-arrow-left"></i> VOLTAR
             </a>
             <span class="text-xs font-black tracking-wide">CONTÁBIL &amp; FISCAL</span>
-            <button @click="carregarTudo()" class="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-bold">
-                <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i>
-            </button>
+            <div class="flex items-center gap-2">
+                <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=contabil" class="px-2 py-1 rounded-lg bg-amber-400 text-slate-900 text-[10px] font-extrabold no-underline" title="Treinamento do Módulo">
+                    <i class="fa-solid fa-graduation-cap"></i>
+                </a>
+                <button @click="carregarTudo()" class="px-2.5 py-1 rounded-lg bg-white/15 text-xs font-bold">
+                    <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i>
+                </button>
+            </div>
         </div>
     </div>
     <div class="lg:hidden h-12"></div>
@@ -90,6 +95,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i>
                         <span>Atualizar</span>
                     </button>
+
+                    <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=contabil"
+                       class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xs font-extrabold shadow-lg transition flex items-center justify-center gap-1.5 no-underline"
+                       title="Abrir Treinamento & Manual na Academia">
+                        <i class="fa-solid fa-graduation-cap"></i>
+                        <span>Treinamento</span>
+                    </a>
                 </div>
             </div>
         </div>
