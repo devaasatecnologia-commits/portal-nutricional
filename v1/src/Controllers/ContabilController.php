@@ -9,9 +9,9 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 /**
  * Módulo Contábil & Fiscal (Conferência Domínio Sistemas).
  *
- * Apuração mensal de ICMS, PIS, COFINS, IPI e ST por Filial (hierarquia usuario.dash_filiais),
- * detalhamento por CFOP, projeção de impostos a pagar (Saídas - Entradas),
- * consulta analítica de notas fiscais e relatório completo por itens x notas x CFOP.
+ * Apuração por competência ou período personalizado de ICMS, PIS, COFINS, IPI e ST,
+ * com hierarquia de filiais (usuario.dash_filiais), filtros por Transação, Grupo, Marca,
+ * Tipo de Nota e Item, além de DANFE Espelho + Rastreio de Origem da Geração.
  */
 class ContabilController
 {
@@ -97,9 +97,6 @@ class ContabilController
         ];
     }
 
-    /**
-     * Valida e retorna os IDs de filial filtrados dentro da hierarquia permitida.
-     */
     private function filtrarFiliais(array $ctx, int $filialParam): array
     {
         $permitidas = $ctx['filiais_permitidas'];
@@ -112,196 +109,330 @@ class ContabilController
         return $permitidas;
     }
 
-    private function parseCompetencia(string $mesParam): array
+    /**
+     * Aceita competência (mes=YYYY-MM) ou período personalizado (data_inicio + data_fim).
+     */
+    private function parsePeriodo(array $q): array
     {
-        if (!preg_match('/^(\d{4})-(\d{2})$/', trim($mesParam), $m)) {
+        $di = trim((string)($q['data_inicio'] ?? ''));
+        $df = trim((string)($q['data_fim'] ?? ''));
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $di) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $df)) {
+            $dtIni = \DateTimeImmutable::createFromFormat('Y-m-d', $di);
+            $dtFim = \DateTimeImmutable::createFromFormat('Y-m-d', $df);
+            if ($dtIni && $dtFim && $dtIni <= $dtFim) {
+                return [
+                    'modo' => 'personalizado',
+                    'mes' => $dtIni->format('Y-m'),
+                    'inicio' => $dtIni->format('Y-m-d'),
+                    'fim_inclusivo' => $dtFim->format('Y-m-d'),
+                    'fim' => $dtFim->modify('+1 day')->format('Y-m-d'),
+                    'label' => $dtIni->format('d/m/Y') . ' a ' . $dtFim->format('d/m/Y'),
+                ];
+            }
+        }
+
+        $mesParam = trim((string)($q['mes'] ?? ''));
+        if (!preg_match('/^(\d{4})-(\d{2})$/', $mesParam, $m)) {
             $dt = new \DateTimeImmutable('first day of this month');
         } else {
             $dt = \DateTimeImmutable::createFromFormat('Y-m-d', "{$m[1]}-{$m[2]}-01")
                 ?: new \DateTimeImmutable('first day of this month');
         }
-        $inicio = $dt->format('Y-m-d');
-        $fim = $dt->modify('first day of next month')->format('Y-m-d');
+
         return [
+            'modo' => 'mensal',
             'mes' => $dt->format('Y-m'),
-            'inicio' => $inicio,
-            'fim' => $fim,
+            'inicio' => $dt->format('Y-m-d'),
+            'fim_inclusivo' => $dt->modify('last day of this month')->format('Y-m-d'),
+            'fim' => $dt->modify('first day of next month')->format('Y-m-d'),
             'label' => $dt->format('m/Y'),
         ];
     }
 
     /**
+     * Constrói cláusulas SQL adicionais para filtros contábeis avançados em nível de item/nota.
+     */
+    private function buildFiltrosAvancados(array $q, array &$params, string $prefixo = ''): array
+    {
+        $transacaoS = (int)($q['transacao_saida'] ?? 0);
+        $transacaoE = (int)($q['transacao_entrada'] ?? 0);
+        $idgrupo = (int)($q['idgrupo'] ?? 0);
+        $idmarca = (int)($q['idmarca'] ?? 0);
+        $subtipo = strtoupper(trim((string)($q['subtipo_nota'] ?? '')));
+        $itemBusca = trim((string)($q['item_busca'] ?? ''));
+
+        $wS = '';
+        $wE = '';
+
+        if ($transacaoS > 0) {
+            $params[$prefixo . 'ts'] = $transacaoS;
+            $wS .= " AND n.idtransacao = :{$prefixo}ts";
+        }
+        if ($transacaoE > 0) {
+            $params[$prefixo . 'te'] = $transacaoE;
+            $wE .= " AND n.idtransacao = :{$prefixo}te";
+        }
+        if ($idgrupo > 0) {
+            $params[$prefixo . 'grp'] = $idgrupo;
+            $wS .= " AND i.idgrupo = :{$prefixo}grp";
+            $wE .= " AND i.idgrupo = :{$prefixo}grp";
+        }
+        if ($idmarca > 0) {
+            $params[$prefixo . 'mrc'] = $idmarca;
+            $wS .= " AND i.idmarca = :{$prefixo}mrc";
+            $wE .= " AND i.idmarca = :{$prefixo}mrc";
+        }
+        if ($itemBusca !== '') {
+            $params[$prefixo . 'ib'] = '%' . $itemBusca . '%';
+            $condItem = " AND (ni.iditem::text ILIKE :{$prefixo}ib OR COALESCE(i.referencia,'') ILIKE :{$prefixo}ib OR COALESCE(i.descricao,'') ILIKE :{$prefixo}ib OR COALESCE(i.idclassfiscal::text,'') ILIKE :{$prefixo}ib)";
+            $wS .= $condItem;
+            $wE .= $condItem;
+        }
+
+        if ($subtipo === 'VENDA_COMPRA') {
+            $wS .= " AND ni.idcfop IN (5101,5102,5103,5104,5405,6101,6102,6108,6403,6404)";
+            $wE .= " AND ni.idcfop IN (1101,1102,1403,2101,2102,2403)";
+        } elseif ($subtipo === 'DEVOLUCAO') {
+            $wS .= " AND ni.idcfop IN (5201,5202,5411,6201,6202,6411)";
+            $wE .= " AND ni.idcfop IN (1201,1202,1411,2201,2202,2411)";
+        } elseif ($subtipo === 'TRANSFERENCIA') {
+            $wS .= " AND ni.idcfop IN (5151,5152,5409,6151,6152,6409)";
+            $wE .= " AND ni.idcfop IN (1151,1152,1409,2151,2152,2409)";
+        } elseif ($subtipo === 'BONIFICACAO') {
+            $wS .= " AND ni.idcfop IN (5910,5911,6910,6911)";
+            $wE .= " AND ni.idcfop IN (1910,1911,2910,2911)";
+        }
+
+        return [
+            'wS' => $wS,
+            'wE' => $wE,
+            'tem_filtro_item' => ($idgrupo > 0 || $idmarca > 0 || $itemBusca !== '' || $subtipo !== ''),
+        ];
+    }
+
+    /**
+     * GET /v1/contabil/filtros
+     */
+    public function filtros(Request $request, Response $response): Response
+    {
+        $ts = [];
+        foreach ($this->pdo->query("SELECT idtransacao, descricao FROM nfs_transacao ORDER BY idtransacao")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $ts[] = ['id' => (int)$r['idtransacao'], 'descricao' => $this->utf8($r['descricao'])];
+        }
+
+        $te = [];
+        foreach ($this->pdo->query("SELECT idtransacao, descricao FROM nfe_transacao ORDER BY idtransacao")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $te[] = ['id' => (int)$r['idtransacao'], 'descricao' => $this->utf8($r['descricao'])];
+        }
+
+        $grupos = [];
+        foreach ($this->pdo->query("SELECT idgrupo, descricao FROM grupo WHERE COALESCE(inativo,'N')='N' AND COALESCE(descricao,'') <> '' ORDER BY descricao")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $grupos[] = ['id' => (int)$r['idgrupo'], 'descricao' => $this->utf8($r['descricao'])];
+        }
+
+        $marcas = [];
+        foreach ($this->pdo->query("SELECT idmarca, descricao FROM marca WHERE COALESCE(inativo,'N')='N' AND COALESCE(descricao,'') <> '' ORDER BY descricao")->fetchAll(PDO::FETCH_ASSOC) as $r) {
+            $marcas[] = ['id' => (int)$r['idmarca'], 'descricao' => $this->utf8($r['descricao'])];
+        }
+
+        return $this->json($response, [
+            'success' => true,
+            'transacoes_saida' => $ts,
+            'transacoes_entrada' => $te,
+            'grupos' => $grupos,
+            'marcas' => $marcas,
+        ]);
+    }
+
+    /**
      * GET /v1/contabil/resumo
-     * Projeção mensal ICMS / PIS / COFINS / IPI, detalhamento por CFOP, série histórica 6 meses e auditoria.
      */
     public function resumo(Request $request, Response $response): Response
     {
         $ctx = $this->resolveContextoUsuario($request);
         $q = $request->getQueryParams();
-        $comp = $this->parseCompetencia((string)($q['mes'] ?? ''));
+        $comp = $this->parsePeriodo($q);
         $filialParam = (int)($q['filial'] ?? 0);
         $filiais = $this->filtrarFiliais($ctx, $filialParam);
         $modoCredito = (($q['modo_credito'] ?? 'creditado') === 'destacado') ? 'destacado' : 'creditado';
+        $tipoOp = strtoupper(trim((string)($q['tipo_nota'] ?? 'TODAS')));
 
         $inFiliais = implode(',', $filiais);
+        $paramsBase = ['inicio' => $comp['inicio'], 'fim' => $comp['fim']];
+        $adv = $this->buildFiltrosAvancados($q, $paramsBase);
 
-        // 1. Apuração por CFOP — SAÍDAS (nfs + nfs_item)
-        $sqlSaidasCfop = "
-            SELECT
-                ni.idcfop,
-                COALESCE(NULLIF(TRIM(c.descricao), ''), 'CFOP ' || ni.idcfop::text) AS cfop_desc,
-                COUNT(DISTINCT (n.idfilial, n.idnfs)) AS qtd_notas,
-                COUNT(*) AS qtd_itens,
-                COALESCE(SUM(ni.valor_total), 0)::numeric(14,2) AS valor_contabil,
-                COALESCE(SUM(ni.valor_basecalculo), 0)::numeric(14,2) AS base_icms,
-                COALESCE(SUM(ni.valoricms), 0)::numeric(14,2) AS valor_icms,
-                COALESCE(SUM(ni.valorsubsttrib), 0)::numeric(14,2) AS valor_st,
-                COALESCE(SUM(ni.valorbase_ipi), 0)::numeric(14,2) AS base_ipi,
-                COALESCE(SUM(ni.valor_ipi), 0)::numeric(14,2) AS valor_ipi,
-                COALESCE(SUM(ni.valorbase_pis), 0)::numeric(14,2) AS base_pis,
-                COALESCE(SUM(ni.valor_pis), 0)::numeric(14,2) AS valor_pis,
-                COALESCE(SUM(ni.valorbase_cofins), 0)::numeric(14,2) AS base_cofins,
-                COALESCE(SUM(ni.valor_cofins), 0)::numeric(14,2) AS valor_cofins,
-                COALESCE(SUM(ni.valoricmsufdestino), 0)::numeric(14,2) AS valor_difal,
-                COALESCE(SUM(ni.valorfcp), 0)::numeric(14,2) AS valor_fcp
-            FROM nfs_item ni
-            JOIN nfs n ON n.idnfs = ni.idnfs AND n.idfilial = ni.idfilial
-            LEFT JOIN cfop c ON c.idcfop = ni.idcfop
-            WHERE n.idfilial IN ($inFiliais)
-              AND n.dataemissao >= :inicio AND n.dataemissao < :fim
-              AND n.status = 2
-              AND COALESCE(n.cancelado_sefaz, 'N') = 'N'
-              AND COALESCE(n.denegada, 'N') = 'N'
-            GROUP BY ni.idcfop, c.descricao
-            ORDER BY valor_contabil DESC
-        ";
-        $stS = $this->pdo->prepare($sqlSaidasCfop);
-        $stS->execute(['inicio' => $comp['inicio'], 'fim' => $comp['fim']]);
         $cfopsSaida = [];
         $totSaida = $this->novoAcumulador();
-        foreach ($stS->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $item = [
-                'tipo' => 'SAIDA',
-                'idcfop' => (int)$r['idcfop'],
-                'descricao' => $this->utf8($r['cfop_desc']),
-                'qtd_notas' => (int)$r['qtd_notas'],
-                'qtd_itens' => (int)$r['qtd_itens'],
-                'valor_contabil' => (float)$r['valor_contabil'],
-                'base_icms' => (float)$r['base_icms'],
-                'icms_destacado' => (float)$r['valor_icms'],
-                'icms_apurado' => (float)$r['valor_icms'],
-                'valor_st' => (float)$r['valor_st'],
-                'ipi_destacado' => (float)$r['valor_ipi'],
-                'ipi_apurado' => (float)$r['valor_ipi'],
-                'base_pis' => (float)$r['base_pis'],
-                'pis_destacado' => (float)$r['valor_pis'],
-                'pis_apurado' => (float)$r['valor_pis'],
-                'base_cofins' => (float)$r['base_cofins'],
-                'cofins_destacado' => (float)$r['valor_cofins'],
-                'cofins_apurado' => (float)$r['valor_cofins'],
-                'valor_difal' => (float)$r['valor_difal'],
-                'valor_fcp' => (float)$r['valor_fcp'],
-            ];
-            $cfopsSaida[] = $item;
-            $this->somarAcumulador($totSaida, $item);
+
+        if ($tipoOp !== 'ENTRADA') {
+            $sqlSaidasCfop = "
+                SELECT
+                    ni.idcfop,
+                    COALESCE(NULLIF(TRIM(c.descricao), ''), 'CFOP ' || ni.idcfop::text) AS cfop_desc,
+                    COUNT(DISTINCT (n.idfilial, n.idnfs)) AS qtd_notas,
+                    COUNT(*) AS qtd_itens,
+                    COALESCE(SUM(ni.valor_total), 0)::numeric(14,2) AS valor_contabil,
+                    COALESCE(SUM(ni.valor_basecalculo), 0)::numeric(14,2) AS base_icms,
+                    COALESCE(SUM(ni.valoricms), 0)::numeric(14,2) AS valor_icms,
+                    COALESCE(SUM(ni.valorsubsttrib), 0)::numeric(14,2) AS valor_st,
+                    COALESCE(SUM(ni.valorbase_ipi), 0)::numeric(14,2) AS base_ipi,
+                    COALESCE(SUM(ni.valor_ipi), 0)::numeric(14,2) AS valor_ipi,
+                    COALESCE(SUM(ni.valorbase_pis), 0)::numeric(14,2) AS base_pis,
+                    COALESCE(SUM(ni.valor_pis), 0)::numeric(14,2) AS valor_pis,
+                    COALESCE(SUM(ni.valorbase_cofins), 0)::numeric(14,2) AS base_cofins,
+                    COALESCE(SUM(ni.valor_cofins), 0)::numeric(14,2) AS valor_cofins,
+                    COALESCE(SUM(ni.valoricmsufdestino), 0)::numeric(14,2) AS valor_difal,
+                    COALESCE(SUM(ni.valorfcp), 0)::numeric(14,2) AS valor_fcp
+                FROM nfs_item ni
+                JOIN nfs n ON n.idnfs = ni.idnfs AND n.idfilial = ni.idfilial
+                LEFT JOIN item i ON i.iditem = ni.iditem
+                LEFT JOIN cfop c ON c.idcfop = ni.idcfop
+                WHERE n.idfilial IN ($inFiliais)
+                  AND n.dataemissao >= :inicio AND n.dataemissao < :fim
+                  AND n.status = 2
+                  AND COALESCE(n.cancelado_sefaz, 'N') = 'N'
+                  AND COALESCE(n.denegada, 'N') = 'N'
+                  {$adv['wS']}
+                GROUP BY ni.idcfop, c.descricao
+                ORDER BY valor_contabil DESC
+            ";
+            $stS = $this->pdo->prepare($sqlSaidasCfop);
+            $stS->execute($this->filtrarParamsSql($sqlSaidasCfop, $paramsBase));
+            foreach ($stS->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $item = [
+                    'tipo' => 'SAIDA',
+                    'idcfop' => (int)$r['idcfop'],
+                    'descricao' => $this->utf8($r['cfop_desc']),
+                    'qtd_notas' => (int)$r['qtd_notas'],
+                    'qtd_itens' => (int)$r['qtd_itens'],
+                    'valor_contabil' => (float)$r['valor_contabil'],
+                    'base_icms' => (float)$r['base_icms'],
+                    'icms_destacado' => (float)$r['valor_icms'],
+                    'icms_apurado' => (float)$r['valor_icms'],
+                    'valor_st' => (float)$r['valor_st'],
+                    'ipi_destacado' => (float)$r['valor_ipi'],
+                    'ipi_apurado' => (float)$r['valor_ipi'],
+                    'base_pis' => (float)$r['base_pis'],
+                    'pis_destacado' => (float)$r['valor_pis'],
+                    'pis_apurado' => (float)$r['valor_pis'],
+                    'base_cofins' => (float)$r['base_cofins'],
+                    'cofins_destacado' => (float)$r['valor_cofins'],
+                    'cofins_apurado' => (float)$r['valor_cofins'],
+                    'valor_difal' => (float)$r['valor_difal'],
+                    'valor_fcp' => (float)$r['valor_fcp'],
+                ];
+                $cfopsSaida[] = $item;
+                $this->somarAcumulador($totSaida, $item);
+            }
+
+            $sqlCntS = "
+                SELECT COUNT(DISTINCT (n.idfilial, n.idnfs))
+                FROM nfs n
+                JOIN nfs_item ni ON ni.idnfs = n.idnfs AND ni.idfilial = n.idfilial
+                LEFT JOIN item i ON i.iditem = ni.iditem
+                WHERE n.idfilial IN ($inFiliais) AND n.dataemissao >= :inicio AND n.dataemissao < :fim
+                  AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N' AND COALESCE(n.denegada,'N') = 'N'
+                  {$adv['wS']}
+            ";
+            $stCntS = $this->pdo->prepare($sqlCntS);
+            $stCntS->execute($this->filtrarParamsSql($sqlCntS, $paramsBase));
+            $totSaida['qtd_notas'] = (int)$stCntS->fetchColumn();
         }
 
-        // 2. Apuração por CFOP — ENTRADAS (nfe + nfe_item)
-        $sqlEntradasCfop = "
-            SELECT
-                ni.idcfop,
-                COALESCE(NULLIF(TRIM(c.descricao), ''), 'CFOP ' || ni.idcfop::text) AS cfop_desc,
-                COUNT(DISTINCT (n.idfilial, n.idnfe)) AS qtd_notas,
-                COUNT(*) AS qtd_itens,
-                COALESCE(SUM(ni.valortotal), 0)::numeric(14,2) AS valor_contabil,
-                COALESCE(SUM(ni.valorbase_icms), 0)::numeric(14,2) AS base_icms,
-                COALESCE(SUM(ni.valoricms), 0)::numeric(14,2) AS icms_destacado,
-                COALESCE(SUM(ni.valoricmscreditado), 0)::numeric(14,2) AS icms_creditado,
-                COALESCE(SUM(ni.valorsubsttribicms), 0)::numeric(14,2) AS valor_st,
-                COALESCE(SUM(ni.valorbase_ipi), 0)::numeric(14,2) AS base_ipi,
-                COALESCE(SUM(ni.valoripi), 0)::numeric(14,2) AS ipi_destacado,
-                COALESCE(SUM(ni.valoripicreditado), 0)::numeric(14,2) AS ipi_creditado,
-                COALESCE(SUM(ni.valorbase_pis), 0)::numeric(14,2) AS base_pis,
-                COALESCE(SUM(ni.valorpis), 0)::numeric(14,2) AS pis_destacado,
-                COALESCE(SUM(ni.valorpiscreditado), 0)::numeric(14,2) AS pis_creditado,
-                COALESCE(SUM(ni.valorbase_cofins), 0)::numeric(14,2) AS base_cofins,
-                COALESCE(SUM(ni.valorcofins), 0)::numeric(14,2) AS cofins_destacado,
-                COALESCE(SUM(ni.valorcofinscreditado), 0)::numeric(14,2) AS cofins_creditado
-            FROM nfe_item ni
-            JOIN nfe n ON n.idnfe = ni.idnfe AND n.idfilial = ni.idfilial
-            LEFT JOIN cfop c ON c.idcfop = ni.idcfop
-            WHERE n.idfilial IN ($inFiliais)
-              AND n.dataentrada >= :inicio AND n.dataentrada < :fim
-              AND n.status = 2
-            GROUP BY ni.idcfop, c.descricao
-            ORDER BY valor_contabil DESC
-        ";
-        $stE = $this->pdo->prepare($sqlEntradasCfop);
-        $stE->execute(['inicio' => $comp['inicio'], 'fim' => $comp['fim']]);
         $cfopsEntrada = [];
         $totEntrada = $this->novoAcumulador();
-        foreach ($stE->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $icmsAp = $modoCredito === 'creditado' ? (float)$r['icms_creditado'] : (float)$r['icms_destacado'];
-            $pisAp = $modoCredito === 'creditado' ? (float)$r['pis_creditado'] : (float)$r['pis_destacado'];
-            $cofinsAp = $modoCredito === 'creditado' ? (float)$r['cofins_creditado'] : (float)$r['cofins_destacado'];
-            $ipiAp = $modoCredito === 'creditado' ? (float)$r['ipi_creditado'] : (float)$r['ipi_destacado'];
 
-            $item = [
-                'tipo' => 'ENTRADA',
-                'idcfop' => (int)$r['idcfop'],
-                'descricao' => $this->utf8($r['cfop_desc']),
-                'qtd_notas' => (int)$r['qtd_notas'],
-                'qtd_itens' => (int)$r['qtd_itens'],
-                'valor_contabil' => (float)$r['valor_contabil'],
-                'base_icms' => (float)$r['base_icms'],
-                'icms_destacado' => (float)$r['icms_destacado'],
-                'icms_creditado' => (float)$r['icms_creditado'],
-                'icms_apurado' => $icmsAp,
-                'valor_st' => (float)$r['valor_st'],
-                'ipi_destacado' => (float)$r['ipi_destacado'],
-                'ipi_creditado' => (float)$r['ipi_creditado'],
-                'ipi_apurado' => $ipiAp,
-                'base_pis' => (float)$r['base_pis'],
-                'pis_destacado' => (float)$r['pis_destacado'],
-                'pis_creditado' => (float)$r['pis_creditado'],
-                'pis_apurado' => $pisAp,
-                'base_cofins' => (float)$r['base_cofins'],
-                'cofins_destacado' => (float)$r['cofins_destacado'],
-                'cofins_creditado' => (float)$r['cofins_creditado'],
-                'cofins_apurado' => $cofinsAp,
-                'valor_difal' => 0.0,
-                'valor_fcp' => 0.0,
-            ];
-            $cfopsEntrada[] = $item;
-            $this->somarAcumulador($totEntrada, $item);
+        if ($tipoOp !== 'SAIDA') {
+            $sqlEntradasCfop = "
+                SELECT
+                    ni.idcfop,
+                    COALESCE(NULLIF(TRIM(c.descricao), ''), 'CFOP ' || ni.idcfop::text) AS cfop_desc,
+                    COUNT(DISTINCT (n.idfilial, n.idnfe)) AS qtd_notas,
+                    COUNT(*) AS qtd_itens,
+                    COALESCE(SUM(ni.valortotal), 0)::numeric(14,2) AS valor_contabil,
+                    COALESCE(SUM(ni.valorbase_icms), 0)::numeric(14,2) AS base_icms,
+                    COALESCE(SUM(ni.valoricms), 0)::numeric(14,2) AS icms_destacado,
+                    COALESCE(SUM(ni.valoricmscreditado), 0)::numeric(14,2) AS icms_creditado,
+                    COALESCE(SUM(ni.valorsubsttribicms), 0)::numeric(14,2) AS valor_st,
+                    COALESCE(SUM(ni.valorbase_ipi), 0)::numeric(14,2) AS base_ipi,
+                    COALESCE(SUM(ni.valoripi), 0)::numeric(14,2) AS ipi_destacado,
+                    COALESCE(SUM(ni.valoripicreditado), 0)::numeric(14,2) AS ipi_creditado,
+                    COALESCE(SUM(ni.valorbase_pis), 0)::numeric(14,2) AS base_pis,
+                    COALESCE(SUM(ni.valorpis), 0)::numeric(14,2) AS pis_destacado,
+                    COALESCE(SUM(ni.valorpiscreditado), 0)::numeric(14,2) AS pis_creditado,
+                    COALESCE(SUM(ni.valorbase_cofins), 0)::numeric(14,2) AS base_cofins,
+                    COALESCE(SUM(ni.valorcofins), 0)::numeric(14,2) AS cofins_destacado,
+                    COALESCE(SUM(ni.valorcofinscreditado), 0)::numeric(14,2) AS cofins_creditado
+                FROM nfe_item ni
+                JOIN nfe n ON n.idnfe = ni.idnfe AND n.idfilial = ni.idfilial
+                LEFT JOIN item i ON i.iditem = ni.iditem
+                LEFT JOIN cfop c ON c.idcfop = ni.idcfop
+                WHERE n.idfilial IN ($inFiliais)
+                  AND n.dataentrada >= :inicio AND n.dataentrada < :fim
+                  AND n.status = 2
+                  {$adv['wE']}
+                GROUP BY ni.idcfop, c.descricao
+                ORDER BY valor_contabil DESC
+            ";
+            $stE = $this->pdo->prepare($sqlEntradasCfop);
+            $stE->execute($this->filtrarParamsSql($sqlEntradasCfop, $paramsBase));
+            foreach ($stE->fetchAll(PDO::FETCH_ASSOC) as $r) {
+                $icmsAp = $modoCredito === 'creditado' ? (float)$r['icms_creditado'] : (float)$r['icms_destacado'];
+                $pisAp = $modoCredito === 'creditado' ? (float)$r['pis_creditado'] : (float)$r['pis_destacado'];
+                $cofinsAp = $modoCredito === 'creditado' ? (float)$r['cofins_creditado'] : (float)$r['cofins_destacado'];
+                $ipiAp = $modoCredito === 'creditado' ? (float)$r['ipi_creditado'] : (float)$r['ipi_destacado'];
+
+                $item = [
+                    'tipo' => 'ENTRADA',
+                    'idcfop' => (int)$r['idcfop'],
+                    'descricao' => $this->utf8($r['cfop_desc']),
+                    'qtd_notas' => (int)$r['qtd_notas'],
+                    'qtd_itens' => (int)$r['qtd_itens'],
+                    'valor_contabil' => (float)$r['valor_contabil'],
+                    'base_icms' => (float)$r['base_icms'],
+                    'icms_destacado' => (float)$r['icms_destacado'],
+                    'icms_creditado' => (float)$r['icms_creditado'],
+                    'icms_apurado' => $icmsAp,
+                    'valor_st' => (float)$r['valor_st'],
+                    'ipi_destacado' => (float)$r['ipi_destacado'],
+                    'ipi_creditado' => (float)$r['ipi_creditado'],
+                    'ipi_apurado' => $ipiAp,
+                    'base_pis' => (float)$r['base_pis'],
+                    'pis_destacado' => (float)$r['pis_destacado'],
+                    'pis_creditado' => (float)$r['pis_creditado'],
+                    'pis_apurado' => $pisAp,
+                    'base_cofins' => (float)$r['base_cofins'],
+                    'cofins_destacado' => (float)$r['cofins_destacado'],
+                    'cofins_creditado' => (float)$r['cofins_creditado'],
+                    'cofins_apurado' => $cofinsAp,
+                    'valor_difal' => 0.0,
+                    'valor_fcp' => 0.0,
+                ];
+                $cfopsEntrada[] = $item;
+                $this->somarAcumulador($totEntrada, $item);
+            }
+
+            $sqlCntE = "
+                SELECT COUNT(DISTINCT (n.idfilial, n.idnfe))
+                FROM nfe n
+                JOIN nfe_item ni ON ni.idnfe = n.idnfe AND ni.idfilial = n.idfilial
+                LEFT JOIN item i ON i.iditem = ni.iditem
+                WHERE n.idfilial IN ($inFiliais) AND n.dataentrada >= :inicio AND n.dataentrada < :fim
+                  AND n.status = 2
+                  {$adv['wE']}
+            ";
+            $stCntE = $this->pdo->prepare($sqlCntE);
+            $stCntE->execute($this->filtrarParamsSql($sqlCntE, $paramsBase));
+            $totEntrada['qtd_notas'] = (int)$stCntE->fetchColumn();
         }
 
-        // Contagem distinta real de notas no período (uma nota pode ter múltiplos CFOPs)
-        $stCntS = $this->pdo->prepare("
-            SELECT COUNT(*) FROM nfs
-            WHERE idfilial IN ($inFiliais) AND dataemissao >= :inicio AND dataemissao < :fim
-              AND status = 2 AND COALESCE(cancelado_sefaz,'N') = 'N' AND COALESCE(denegada,'N') = 'N'
-        ");
-        $stCntS->execute(['inicio' => $comp['inicio'], 'fim' => $comp['fim']]);
-        $totSaida['qtd_notas'] = (int)$stCntS->fetchColumn();
-
-        $stCntE = $this->pdo->prepare("
-            SELECT COUNT(*) FROM nfe
-            WHERE idfilial IN ($inFiliais) AND dataentrada >= :inicio AND dataentrada < :fim
-              AND status = 2
-        ");
-        $stCntE->execute(['inicio' => $comp['inicio'], 'fim' => $comp['fim']]);
-        $totEntrada['qtd_notas'] = (int)$stCntE->fetchColumn();
-
-        // 3. Projeção de Impostos a Pagar (Saídas - Entradas)
         $icmsSaldo = round($totSaida['icms_apurado'] - $totEntrada['icms_apurado'], 2);
         $pisSaldo = round($totSaida['pis_apurado'] - $totEntrada['pis_apurado'], 2);
         $cofinsSaldo = round($totSaida['cofins_apurado'] - $totEntrada['cofins_apurado'], 2);
         $ipiSaldo = round($totSaida['ipi_apurado'] - $totEntrada['ipi_apurado'], 2);
-
         $totalAPagar = round(max(0, $icmsSaldo) + max(0, $pisSaldo) + max(0, $cofinsSaldo), 2);
 
-        // 4. Auditoria pré-fechamento (notas canceladas e créditos divergentes)
         $stCancS = $this->pdo->prepare("
             SELECT COUNT(*) AS qtd, COALESCE(SUM(valortotalnota),0)::numeric(14,2) AS val
             FROM nfs
@@ -325,16 +456,16 @@ class ContabilController
         $stDivCred->execute(['inicio' => $comp['inicio'], 'fim' => $comp['fim']]);
         $divCred = $stDivCred->fetch(PDO::FETCH_ASSOC) ?: ['qtd_notas' => 0, 'diff_icms' => 0, 'diff_pis' => 0, 'diff_cofins' => 0];
 
-        // 5. Série histórica dos últimos 6 meses (para gráfico de evolução)
-        $dtRef = \DateTimeImmutable::createFromFormat('Y-m-d', $comp['inicio']);
+        $dtRef = \DateTimeImmutable::createFromFormat('Y-m-d', substr($comp['inicio'], 0, 7) . '-01');
         $histInicio = $dtRef->modify('-5 months')->format('Y-m-d');
+        $histFim = $dtRef->modify('first day of next month')->format('Y-m-d');
         $colIcmsE = $modoCredito === 'creditado' ? 'ni.valoricmscreditado' : 'ni.valoricms';
         $colPisE = $modoCredito === 'creditado' ? 'ni.valorpiscreditado' : 'ni.valorpis';
         $colCofinsE = $modoCredito === 'creditado' ? 'ni.valorcofinscreditado' : 'ni.valorcofins';
 
         $sqlHist = "
             WITH meses AS (
-                SELECT to_char(gs, 'YYYY-MM') AS ym, gs::date AS ini, (gs + interval '1 month')::date AS fim
+                SELECT to_char(gs, 'YYYY-MM') AS ym
                 FROM generate_series(:h_ini::date, :c_ini::date, interval '1 month') gs
             ),
             s AS (
@@ -368,7 +499,7 @@ class ContabilController
             ORDER BY m.ym
         ";
         $stH = $this->pdo->prepare($sqlHist);
-        $stH->execute(['h_ini' => $histInicio, 'c_ini' => $comp['inicio'], 'c_fim' => $comp['fim']]);
+        $stH->execute(['h_ini' => $histInicio, 'c_ini' => $dtRef->format('Y-m-d'), 'c_fim' => $histFim]);
         $historico = [];
         foreach ($stH->fetchAll(PDO::FETCH_ASSOC) as $h) {
             $sTot = (float)$h['s_icms'] + (float)$h['s_pis'] + (float)$h['s_cofins'];
@@ -394,6 +525,8 @@ class ContabilController
                     'debito' => round($totSaida['icms_apurado'], 2),
                     'credito' => round($totEntrada['icms_apurado'], 2),
                     'credito_destacado' => round($totEntrada['icms_destacado'], 2),
+                    'base_saida' => round($totSaida['base_icms'], 2),
+                    'base_entrada' => round($totEntrada['base_icms'], 2),
                     'saldo' => $icmsSaldo,
                     'situacao' => $icmsSaldo >= 0 ? 'A PAGAR' : 'SALDO CREDOR',
                 ],
@@ -401,6 +534,8 @@ class ContabilController
                     'debito' => round($totSaida['pis_apurado'], 2),
                     'credito' => round($totEntrada['pis_apurado'], 2),
                     'credito_destacado' => round($totEntrada['pis_destacado'], 2),
+                    'base_saida' => round($totSaida['base_pis'], 2),
+                    'base_entrada' => round($totEntrada['base_pis'], 2),
                     'saldo' => $pisSaldo,
                     'situacao' => $pisSaldo >= 0 ? 'A PAGAR' : 'SALDO CREDOR',
                 ],
@@ -408,6 +543,8 @@ class ContabilController
                     'debito' => round($totSaida['cofins_apurado'], 2),
                     'credito' => round($totEntrada['cofins_apurado'], 2),
                     'credito_destacado' => round($totEntrada['cofins_destacado'], 2),
+                    'base_saida' => round($totSaida['base_cofins'], 2),
+                    'base_entrada' => round($totEntrada['base_cofins'], 2),
                     'saldo' => $cofinsSaldo,
                     'situacao' => $cofinsSaldo >= 0 ? 'A PAGAR' : 'SALDO CREDOR',
                 ],
@@ -437,17 +574,16 @@ class ContabilController
 
     /**
      * GET /v1/contabil/notas
-     * Lista analítica de notas fiscais (Saída + Entrada) com impostos e filtro por CFOP/parceiro/número.
      */
     public function notas(Request $request, Response $response): Response
     {
         $ctx = $this->resolveContextoUsuario($request);
         $q = $request->getQueryParams();
-        $comp = $this->parseCompetencia((string)($q['mes'] ?? ''));
+        $comp = $this->parsePeriodo($q);
         $filiais = $this->filtrarFiliais($ctx, (int)($q['filial'] ?? 0));
         $inFiliais = implode(',', $filiais);
 
-        $tipo = strtoupper(trim((string)($q['tipo'] ?? 'TODAS')));
+        $tipo = strtoupper(trim((string)($q['tipo'] ?? $q['tipo_nota'] ?? 'TODAS')));
         $cfop = (int)($q['cfop'] ?? 0);
         $busca = trim((string)($q['busca'] ?? ''));
         $page = max(1, (int)($q['page'] ?? 1));
@@ -455,13 +591,27 @@ class ContabilController
         $offset = ($page - 1) * $limit;
 
         $params = ['inicio' => $comp['inicio'], 'fim' => $comp['fim']];
+        $adv = $this->buildFiltrosAvancados($q, $params);
+
         $whereS = '';
         $whereE = '';
-
         if ($cfop > 0) {
             $params['cfop'] = $cfop;
-            $whereS .= " AND EXISTS (SELECT 1 FROM nfs_item xi WHERE xi.idnfs = n.idnfs AND xi.idfilial = n.idfilial AND xi.idcfop = :cfop)";
-            $whereE .= " AND EXISTS (SELECT 1 FROM nfe_item xi WHERE xi.idnfe = n.idnfe AND xi.idfilial = n.idfilial AND xi.idcfop = :cfop)";
+            $whereS .= " AND xi.idcfop = :cfop";
+            $whereE .= " AND xi.idcfop = :cfop";
+        }
+        if ($adv['tem_filtro_item'] || $cfop > 0) {
+            $subS = str_replace('ni.', 'xi.', $adv['wS']);
+            $subE = str_replace('ni.', 'xi.', $adv['wE']);
+            $whereS = " AND EXISTS (SELECT 1 FROM nfs_item xi LEFT JOIN item i ON i.iditem = xi.iditem WHERE xi.idnfs = n.idnfs AND xi.idfilial = n.idfilial $whereS $subS)";
+            $whereE = " AND EXISTS (SELECT 1 FROM nfe_item xi LEFT JOIN item i ON i.iditem = xi.iditem WHERE xi.idnfe = n.idnfe AND xi.idfilial = n.idfilial $whereE $subE)";
+        } else {
+            if (!empty($params['ts'])) {
+                $whereS .= " AND n.idtransacao = :ts";
+            }
+            if (!empty($params['te'])) {
+                $whereE .= " AND n.idtransacao = :te";
+            }
         }
 
         if ($busca !== '') {
@@ -473,6 +623,8 @@ class ContabilController
         $sqlSaida = "
             SELECT 'SAIDA'::text AS tipo, n.idfilial, COALESCE(f.nome, 'Filial '||n.idfilial) AS filial_nome,
                    n.idnfs AS idnota, n.numeronf, n.dataemissao AS data_doc,
+                   n.idtransacao, COALESCE(t.descricao, '') AS transacao_desc,
+                   n.usuario AS usuario_geracao, COALESCE(n.pedidos, '') AS origem_doc,
                    n.idcliforemp, COALESCE(c.razao, 'CONSUMIDOR') AS parceiro,
                    COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS doc_parceiro,
                    COALESCE(c.uf, n.uf_destino, '') AS uf,
@@ -490,6 +642,7 @@ class ContabilController
             FROM nfs n
             LEFT JOIN filial f ON f.idfilial = n.idfilial
             LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN nfs_transacao t ON t.idtransacao = n.idtransacao
             WHERE n.idfilial IN ($inFiliais)
               AND n.dataemissao >= :inicio AND n.dataemissao < :fim
               AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N' AND COALESCE(n.denegada,'N') = 'N'
@@ -499,6 +652,9 @@ class ContabilController
         $sqlEntrada = "
             SELECT 'ENTRADA'::text AS tipo, n.idfilial, COALESCE(f.nome, 'Filial '||n.idfilial) AS filial_nome,
                    n.idnfe AS idnota, n.numero AS numeronf, n.dataentrada AS data_doc,
+                   n.idtransacao, COALESCE(t.descricao, '') AS transacao_desc,
+                   n.usuario AS usuario_geracao,
+                   COALESCE((SELECT string_agg(DISTINCT xi.idoc::text, ', ') FROM nfe_item xi WHERE xi.idnfe = n.idnfe AND xi.idfilial = n.idfilial AND xi.idoc > 0), '') AS origem_doc,
                    n.idcliforemp, COALESCE(c.razao, 'FORNECEDOR') AS parceiro,
                    COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS doc_parceiro,
                    COALESCE(c.uf, '') AS uf,
@@ -516,6 +672,7 @@ class ContabilController
             FROM nfe n
             LEFT JOIN filial f ON f.idfilial = n.idfilial
             LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN nfe_transacao t ON t.idtransacao = n.idtransacao
             WHERE n.idfilial IN ($inFiliais)
               AND n.dataentrada >= :inicio AND n.dataentrada < :fim
               AND n.status = 2
@@ -528,12 +685,13 @@ class ContabilController
             default => "($sqlSaida) UNION ALL ($sqlEntrada)",
         };
 
+        $execParams = $this->filtrarParamsSql($union, $params);
         $stCnt = $this->pdo->prepare("SELECT COUNT(*) FROM ($union) t");
-        $stCnt->execute($params);
+        $stCnt->execute($execParams);
         $total = (int)$stCnt->fetchColumn();
 
         $stList = $this->pdo->prepare("SELECT * FROM ($union) t ORDER BY data_doc DESC, numeronf DESC LIMIT $limit OFFSET $offset");
-        $stList->execute($params);
+        $stList->execute($execParams);
         $rows = [];
         foreach ($stList->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $rows[] = [
@@ -543,6 +701,10 @@ class ContabilController
                 'idnota' => (int)$r['idnota'],
                 'numeronf' => (int)$r['numeronf'],
                 'data_doc' => $r['data_doc'],
+                'idtransacao' => (int)$r['idtransacao'],
+                'transacao_desc' => $this->utf8($r['transacao_desc']),
+                'usuario_geracao' => $this->utf8($r['usuario_geracao']),
+                'origem_doc' => trim((string)$r['origem_doc']),
                 'idcliforemp' => (int)$r['idcliforemp'],
                 'parceiro' => $this->utf8($r['parceiro']),
                 'doc_parceiro' => trim((string)$r['doc_parceiro']),
@@ -572,7 +734,6 @@ class ContabilController
 
     /**
      * GET /v1/contabil/notas/{tipo}/{idfilial}/{idnota}/itens
-     * Drill-down de itens e tributação completa de uma nota específica.
      */
     public function notaItens(Request $request, Response $response, array $args): Response
     {
@@ -585,6 +746,130 @@ class ContabilController
             return $this->json($response, ['success' => false, 'error' => 'Filial fora da hierarquia permitida.'], 403);
         }
 
+        $itens = $this->buscarItensNota($tipo, $idfilial, $idnota);
+        if ($itens === null) {
+            return $this->json($response, ['success' => false, 'error' => 'Tipo inválido.'], 400);
+        }
+
+        return $this->json($response, ['success' => true, 'itens' => $itens]);
+    }
+
+    /**
+     * GET /v1/contabil/notas/{tipo}/{idfilial}/{idnota}/espelho
+     * Retorna layout completo da Nota Fiscal (DANFE Espelho) + rastreabilidade de como foi gerada.
+     */
+    public function notaEspelho(Request $request, Response $response, array $args): Response
+    {
+        $ctx = $this->resolveContextoUsuario($request);
+        $tipo = strtoupper(trim((string)($args['tipo'] ?? '')));
+        $idfilial = (int)($args['idfilial'] ?? 0);
+        $idnota = (int)($args['idnota'] ?? 0);
+
+        if (!in_array($idfilial, $ctx['filiais_permitidas'], true)) {
+            return $this->json($response, ['success' => false, 'error' => 'Filial fora da hierarquia permitida.'], 403);
+        }
+
+        if ($tipo === 'SAIDA') {
+            $sql = "
+                SELECT 'SAIDA'::text AS tipo, n.idfilial, n.idnfs AS idnota, n.numeronf, n.idserie,
+                       n.dataemissao, n.datasaida AS data_mov, n.datahora AS datahora_geracao,
+                       n.usuario AS usuario_geracao, n.idtransacao, COALESCE(t.descricao,'') AS transacao_desc,
+                       n.status, COALESCE(n.cancelado_sefaz,'N') AS cancelado_sefaz, COALESCE(n.denegada,'N') AS denegada,
+                       COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, ''::text AS chave_nfe,
+                       COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.observacao,'') AS observacao,
+                       COALESCE(n.observacao_fisco,'') AS observacao_fisco, COALESCE(n.observacao_pedido,'') AS observacao_origem,
+                       f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
+                       f.endereco AS filial_end, f.bairro AS filial_bairro, f.uf AS filial_uf,
+                       c.idcliforemp, COALESCE(c.razao,'CONSUMIDOR') AS parc_razao,
+                       COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS parc_doc,
+                       COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
+                       COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
+                       COALESCE(c.uf, n.uf_destino, '') AS parc_uf,
+                       COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
+                       COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
+                       COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
+                       COALESCE(n.valorseguro,0)::numeric(14,2) AS valorseguro,
+                       COALESCE(n.valoroutrasdespesas,0)::numeric(14,2) AS valoroutras,
+                       COALESCE(n.valortotalnota,0)::numeric(14,2) AS valortotalnota,
+                       COALESCE(n.baseicms,0)::numeric(14,2) AS baseicms,
+                       COALESCE(n.valoricms,0)::numeric(14,2) AS valoricms,
+                       COALESCE(n.base_substituicaotrib,0)::numeric(14,2) AS base_st,
+                       COALESCE(n.valor_substituicaotrib,0)::numeric(14,2) AS valor_st,
+                       COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi,
+                       COALESCE(n.valorpis,0)::numeric(14,2) AS valorpis,
+                       COALESCE(n.valorcofins,0)::numeric(14,2) AS valorcofins
+                FROM nfs n
+                LEFT JOIN filial f ON f.idfilial = n.idfilial
+                LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+                LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+                LEFT JOIN nfs_transacao t ON t.idtransacao = n.idtransacao
+                WHERE n.idfilial = :f AND n.idnfs = :id
+            ";
+        } elseif ($tipo === 'ENTRADA') {
+            $sql = "
+                SELECT 'ENTRADA'::text AS tipo, n.idfilial, n.idnfe AS idnota, n.numero AS numeronf, n.idserie,
+                       n.dataemissao, n.dataentrada AS data_mov, n.datahora AS datahora_geracao,
+                       n.usuario AS usuario_geracao, n.idtransacao, COALESCE(t.descricao,'') AS transacao_desc,
+                       n.status, 'N'::text AS cancelado_sefaz, 'N'::text AS denegada,
+                       COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, COALESCE(n.chave_nf_e,'') AS chave_nfe,
+                       COALESCE((SELECT string_agg(DISTINCT xi.idoc::text, ', ') FROM nfe_item xi WHERE xi.idnfe = n.idnfe AND xi.idfilial = n.idfilial AND xi.idoc > 0), '') AS pedidos,
+                       COALESCE(n.observacao,'') AS observacao,
+                       COALESCE(n.observacao_fisco,'') AS observacao_fisco, COALESCE(n.motivo_diferenca_oc,'') AS observacao_origem,
+                       f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
+                       f.endereco AS filial_end, f.bairro AS filial_bairro, f.uf AS filial_uf,
+                       c.idcliforemp, COALESCE(c.razao,'FORNECEDOR') AS parc_razao,
+                       COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS parc_doc,
+                       COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
+                       COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
+                       COALESCE(c.uf, '') AS parc_uf,
+                       COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
+                       COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
+                       COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
+                       COALESCE(n.valorseguro,0)::numeric(14,2) AS valorseguro,
+                       COALESCE(n.valoroutrasdespesas,0)::numeric(14,2) AS valoroutras,
+                       COALESCE(n.valortotalnota,0)::numeric(14,2) AS valortotalnota,
+                       COALESCE(n.valorbaseicms,0)::numeric(14,2) AS baseicms,
+                       COALESCE(n.valoricms,0)::numeric(14,2) AS valoricms,
+                       COALESCE(n.valorbaseicmssubst,0)::numeric(14,2) AS base_st,
+                       COALESCE(n.valoricmssubst,0)::numeric(14,2) AS valor_st,
+                       COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi,
+                       COALESCE(n.valorpis,0)::numeric(14,2) AS valorpis,
+                       COALESCE(n.valorcofins,0)::numeric(14,2) AS valorcofins
+                FROM nfe n
+                LEFT JOIN filial f ON f.idfilial = n.idfilial
+                LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+                LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+                LEFT JOIN nfe_transacao t ON t.idtransacao = n.idtransacao
+                WHERE n.idfilial = :f AND n.idnfe = :id
+            ";
+        } else {
+            return $this->json($response, ['success' => false, 'error' => 'Tipo inválido.'], 400);
+        }
+
+        $st = $this->pdo->prepare($sql);
+        $st->execute(['f' => $idfilial, 'id' => $idnota]);
+        $cab = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$cab) {
+            return $this->json($response, ['success' => false, 'error' => 'Nota fiscal não encontrada.'], 404);
+        }
+
+        foreach ($cab as $k => $v) {
+            if (is_string($v)) {
+                $cab[$k] = $this->utf8($v);
+            }
+        }
+
+        $itens = $this->buscarItensNota($tipo, $idfilial, $idnota) ?? [];
+
+        return $this->json($response, [
+            'success' => true,
+            'nota' => $cab,
+            'itens' => $itens,
+        ]);
+    }
+
+    private function buscarItensNota(string $tipo, int $idfilial, int $idnota): ?array
+    {
         if ($tipo === 'SAIDA') {
             $sql = "
                 SELECT ni.iditemnfs AS seq, ni.iditem, i.referencia, i.descricao, i.idclassfiscal AS ncm,
@@ -618,7 +903,7 @@ class ContabilController
                 ORDER BY ni.iditemnfe
             ";
         } else {
-            return $this->json($response, ['success' => false, 'error' => 'Tipo inválido.'], 400);
+            return null;
         }
 
         $st = $this->pdo->prepare($sql);
@@ -655,23 +940,21 @@ class ContabilController
                 'st' => (float)$r['st'],
             ];
         }
-
-        return $this->json($response, ['success' => true, 'itens' => $itens]);
+        return $itens;
     }
 
     /**
      * GET /v1/contabil/itens
-     * Relatório completo por Itens x Notas x Impostos x CFOP (com suporte a exportação CSV).
      */
     public function relatorioItens(Request $request, Response $response): Response
     {
         $ctx = $this->resolveContextoUsuario($request);
         $q = $request->getQueryParams();
-        $comp = $this->parseCompetencia((string)($q['mes'] ?? ''));
+        $comp = $this->parsePeriodo($q);
         $filiais = $this->filtrarFiliais($ctx, (int)($q['filial'] ?? 0));
         $inFiliais = implode(',', $filiais);
 
-        $tipo = strtoupper(trim((string)($q['tipo'] ?? 'TODAS')));
+        $tipo = strtoupper(trim((string)($q['tipo'] ?? $q['tipo_nota'] ?? 'TODAS')));
         $cfop = (int)($q['cfop'] ?? 0);
         $busca = trim((string)($q['busca'] ?? ''));
         $exportar = strtolower(trim((string)($q['exportar'] ?? '')));
@@ -680,8 +963,9 @@ class ContabilController
         $offset = $exportar === 'csv' ? 0 : ($page - 1) * $limit;
 
         $params = ['inicio' => $comp['inicio'], 'fim' => $comp['fim']];
-        $wS = '';
-        $wE = '';
+        $adv = $this->buildFiltrosAvancados($q, $params);
+        $wS = $adv['wS'];
+        $wE = $adv['wE'];
 
         if ($cfop > 0) {
             $params['cfop'] = $cfop;
@@ -699,6 +983,7 @@ class ContabilController
                    n.idnfs AS idnota, n.numeronf, n.dataemissao AS data_doc,
                    COALESCE(p.razao, 'CONSUMIDOR') AS parceiro, COALESCE(p.uf, n.uf_destino, '') AS uf,
                    ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS item_desc,
+                   COALESCE(g.descricao,'') AS grupo_desc, COALESCE(m.descricao,'') AS marca_desc,
                    COALESCE(i.idclassfiscal::text,'') AS ncm, ni.idcfop,
                    COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
                    ni.qt AS quantidade, ni.valor_total,
@@ -709,6 +994,8 @@ class ContabilController
             FROM nfs_item ni
             JOIN nfs n ON n.idnfs = ni.idnfs AND n.idfilial = ni.idfilial
             LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
             LEFT JOIN filial f ON f.idfilial = n.idfilial
             LEFT JOIN cliforemp p ON p.idcliforemp = n.idcliforemp
             WHERE n.idfilial IN ($inFiliais)
@@ -722,6 +1009,7 @@ class ContabilController
                    n.idnfe AS idnota, n.numero AS numeronf, n.dataentrada AS data_doc,
                    COALESCE(p.razao, 'FORNECEDOR') AS parceiro, COALESCE(p.uf, '') AS uf,
                    ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS item_desc,
+                   COALESCE(g.descricao,'') AS grupo_desc, COALESCE(m.descricao,'') AS marca_desc,
                    COALESCE(i.idclassfiscal::text,'') AS ncm, ni.idcfop,
                    COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
                    ni.qt AS quantidade, ni.valortotal AS valor_total,
@@ -732,6 +1020,8 @@ class ContabilController
             FROM nfe_item ni
             JOIN nfe n ON n.idnfe = ni.idnfe AND n.idfilial = ni.idfilial
             LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
+            LEFT JOIN marca m ON m.idmarca = i.idmarca
             LEFT JOIN filial f ON f.idfilial = n.idfilial
             LEFT JOIN cliforemp p ON p.idcliforemp = n.idcliforemp
             WHERE n.idfilial IN ($inFiliais)
@@ -745,44 +1035,28 @@ class ContabilController
             'ENTRADA' => $sqlEntrada,
             default => "($sqlSaida) UNION ALL ($sqlEntrada)",
         };
+        $execParams = $this->filtrarParamsSql($union, $params);
 
         if ($exportar === 'csv') {
             $stCsv = $this->pdo->prepare("SELECT * FROM ($union) t ORDER BY data_doc DESC, numeronf DESC, iditem ASC LIMIT $limit");
-            $stCsv->execute($params);
+            $stCsv->execute($execParams);
             $fh = fopen('php://temp', 'r+');
             fwrite($fh, "\xEF\xBB\xBF");
             fputcsv($fh, [
-                'Tipo', 'Filial', 'NF', 'Data', 'Parceiro', 'UF', 'ID Item', 'Referencia', 'Produto', 'NCM',
+                'Tipo', 'Filial', 'NF', 'Data', 'Parceiro', 'UF', 'ID Item', 'Referencia', 'Produto', 'Grupo', 'Marca', 'NCM',
                 'CFOP', 'CST ICMS', 'Qtd', 'Valor Total', 'Base ICMS', 'Aliq ICMS', 'ICMS Destacado', 'ICMS Creditado',
                 'PIS Destacado', 'PIS Creditado', 'COFINS Destacado', 'COFINS Creditado', 'IPI', 'ICMS ST'
             ], ';');
             $fmt = static fn($v) => number_format((float)$v, 2, ',', '');
             foreach ($stCsv->fetchAll(PDO::FETCH_ASSOC) as $r) {
                 fputcsv($fh, [
-                    $r['tipo'],
-                    $this->utf8($r['filial_nome']),
-                    $r['numeronf'],
-                    $r['data_doc'],
-                    $this->utf8($r['parceiro']),
-                    $r['uf'],
-                    $r['iditem'],
-                    $r['referencia'],
-                    $this->utf8($r['item_desc']),
-                    $r['ncm'],
-                    $r['idcfop'],
-                    $r['cst_icms'],
-                    $fmt($r['quantidade']),
-                    $fmt($r['valor_total']),
-                    $fmt($r['base_icms']),
-                    $fmt($r['aliq_icms']),
-                    $fmt($r['icms_dest']),
-                    $fmt($r['icms_cred']),
-                    $fmt($r['pis_dest']),
-                    $fmt($r['pis_cred']),
-                    $fmt($r['cofins_dest']),
-                    $fmt($r['cofins_cred']),
-                    $fmt($r['ipi']),
-                    $fmt($r['st']),
+                    $r['tipo'], $this->utf8($r['filial_nome']), $r['numeronf'], $r['data_doc'],
+                    $this->utf8($r['parceiro']), $r['uf'], $r['iditem'], $r['referencia'],
+                    $this->utf8($r['item_desc']), $this->utf8($r['grupo_desc']), $this->utf8($r['marca_desc']),
+                    $r['ncm'], $r['idcfop'], $r['cst_icms'], $fmt($r['quantidade']), $fmt($r['valor_total']),
+                    $fmt($r['base_icms']), $fmt($r['aliq_icms']), $fmt($r['icms_dest']), $fmt($r['icms_cred']),
+                    $fmt($r['pis_dest']), $fmt($r['pis_cred']), $fmt($r['cofins_dest']), $fmt($r['cofins_cred']),
+                    $fmt($r['ipi']), $fmt($r['st']),
                 ], ';');
             }
             rewind($fh);
@@ -792,7 +1066,7 @@ class ContabilController
             $response->getBody()->write($csv);
             return $response
                 ->withHeader('Content-Type', 'text/csv; charset=utf-8')
-                ->withHeader('Content-Disposition', 'attachment; filename="relatorio_contabil_itens_' . $comp['mes'] . '.csv"');
+                ->withHeader('Content-Disposition', 'attachment; filename="relatorio_contabil_itens_' . $comp['inicio'] . '.csv"');
         }
 
         $stTot = $this->pdo->prepare("
@@ -804,12 +1078,12 @@ class ContabilController
                    COALESCE(SUM(cofins_cred),0)::numeric(14,2) AS cofins_cred
             FROM ($union) t
         ");
-        $stTot->execute($params);
+        $stTot->execute($execParams);
         $totais = $stTot->fetch(PDO::FETCH_ASSOC) ?: [];
         $total = (int)($totais['qtd'] ?? 0);
 
         $stRows = $this->pdo->prepare("SELECT * FROM ($union) t ORDER BY data_doc DESC, numeronf DESC, iditem ASC LIMIT $limit OFFSET $offset");
-        $stRows->execute($params);
+        $stRows->execute($execParams);
         $itens = [];
         foreach ($stRows->fetchAll(PDO::FETCH_ASSOC) as $r) {
             $itens[] = [
@@ -824,6 +1098,8 @@ class ContabilController
                 'iditem' => (int)$r['iditem'],
                 'referencia' => trim((string)$r['referencia']),
                 'item_desc' => $this->utf8($r['item_desc']),
+                'grupo_desc' => $this->utf8($r['grupo_desc']),
+                'marca_desc' => $this->utf8($r['marca_desc']),
                 'ncm' => trim((string)$r['ncm']),
                 'idcfop' => (int)$r['idcfop'],
                 'cst_icms' => trim((string)$r['cst_icms']),
@@ -856,6 +1132,20 @@ class ContabilController
             ],
             'itens' => $itens,
         ]);
+    }
+
+    /**
+     * Filtra o array associativo de parâmetros para conter apenas placeholders presentes na query.
+     */
+    private function filtrarParamsSql(string $sql, array $params): array
+    {
+        $out = [];
+        foreach ($params as $k => $v) {
+            if (preg_match('/:' . preg_quote($k, '/') . '\b/', $sql)) {
+                $out[$k] = $v;
+            }
+        }
+        return $out;
     }
 
     private function novoAcumulador(): array

@@ -1,6 +1,6 @@
 // ==========================================================================
 // MÓDULO CONTÁBIL & FISCAL — CONFERÊNCIA DOMÍNIO SISTEMAS (CHAMADO #50)
-// Portal Nutricional — ICMS, PIS, COFINS, IPI, ST por CFOP, Notas e Itens
+// Portal Nutricional — Filtros Avançados, Período Personalizado, DANFE Espelho
 // ==========================================================================
 
 function contabilHandler() {
@@ -11,17 +11,41 @@ function contabilHandler() {
         return d.toISOString().slice(0, 7);
     };
 
+    const primeiroDiaMes = (ym) => `${ym}-01`;
+    const ultimoDiaMes = (ym) => {
+        const [y, m] = ym.split('-').map(Number);
+        return new Date(y, m, 0).toISOString().slice(0, 10);
+    };
+
     const apiBase = () => (typeof API_BASE_URL !== 'undefined' ? API_BASE_URL : '/v1');
 
     return {
         loading: false,
         erro: '',
         abaAtiva: 'cfop',
+        filtrosAvancadosAbertos: false,
 
         filtros: {
+            modoPeriodo: 'mensal',
             mes: mesAnterior(),
+            dataInicio: primeiroDiaMes(mesAnterior()),
+            dataFim: ultimoDiaMes(mesAnterior()),
             filial: '0',
-            modoCredito: 'creditado'
+            modoCredito: 'creditado',
+            tipoNota: 'TODAS',
+            subtipoNota: '',
+            transacaoSaida: '0',
+            transacaoEntrada: '0',
+            idgrupo: '0',
+            idmarca: '0',
+            itemBusca: ''
+        },
+
+        opcoesFiltros: {
+            transacoes_saida: [],
+            transacoes_entrada: [],
+            grupos: [],
+            marcas: []
         },
 
         filiaisDisponiveis: [],
@@ -29,14 +53,14 @@ function contabilHandler() {
         resumo: false,
 
         projecao: {
-            icms: { debito: 0, credito: 0, credito_destacado: 0, saldo: 0, situacao: 'A PAGAR' },
-            pis: { debito: 0, credito: 0, credito_destacado: 0, saldo: 0, situacao: 'A PAGAR' },
-            cofins: { debito: 0, credito: 0, credito_destacado: 0, saldo: 0, situacao: 'A PAGAR' },
+            icms: { debito: 0, credito: 0, credito_destacado: 0, base_saida: 0, base_entrada: 0, saldo: 0, situacao: 'A PAGAR' },
+            pis: { debito: 0, credito: 0, credito_destacado: 0, base_saida: 0, base_entrada: 0, saldo: 0, situacao: 'A PAGAR' },
+            cofins: { debito: 0, credito: 0, credito_destacado: 0, base_saida: 0, base_entrada: 0, saldo: 0, situacao: 'A PAGAR' },
             ipi: { debito: 0, credito: 0, destacado_entrada: 0, saldo: 0 },
             total_a_pagar: 0
         },
         totaisSaida: { qtd_notas: 0, valor_contabil: 0, base_icms: 0, icms_apurado: 0, pis_apurado: 0, cofins_apurado: 0, ipi_apurado: 0, valor_st: 0 },
-        totaisEntrada: { qtd_notas: 0, valor_contabil: 0, icms_destacado: 0, icms_apurado: 0, pis_apurado: 0, cofins_apurado: 0, ipi_destacado: 0 },
+        totaisEntrada: { qtd_notas: 0, valor_contabil: 0, icms_destacado: 0, icms_apurado: 0, pis_apurado: 0, cofins_apurado: 0, ipi_destacado: 0, valor_st: 0 },
         cfopsSaida: [],
         cfopsEntrada: [],
         auditoria: {
@@ -50,13 +74,13 @@ function contabilHandler() {
 
         // Aba Notas
         notasCarregadas: false,
-        filtroNotas: { tipo: 'TODAS', cfop: '', busca: '' },
+        filtroNotas: { cfop: '', busca: '' },
         notasLista: [],
         notasPag: { total: 0, page: 1, pages: 1 },
 
         // Aba Itens
         itensCarregados: false,
-        filtroItens: { tipo: 'TODAS', cfop: '', busca: '' },
+        filtroItens: { cfop: '', busca: '' },
         itensLista: [],
         itensPag: { total: 0, page: 1, pages: 1 },
         itensTotais: { valor_total: 0, icms_dest: 0, icms_cred: 0, pis_cred: 0, cofins_cred: 0 },
@@ -67,8 +91,14 @@ function contabilHandler() {
         notaSelecionada: null,
         notaItensLista: [],
 
+        // Modal DANFE Espelho + Origem
+        modalDanfeAberto: false,
+        loadingDanfe: false,
+        danfeNota: null,
+        danfeItens: [],
+
         async init() {
-            await this.carregarResumo();
+            await Promise.all([this.carregarOpcoesFiltros(), this.carregarResumo()]);
         },
 
         getToken() {
@@ -81,7 +111,11 @@ function contabilHandler() {
                 window.location.href = (typeof PORTAL_BASE !== 'undefined' ? PORTAL_BASE : '/portal') + '/login.php';
                 throw new Error('Sessão não autenticada');
             }
-            const qs = new URLSearchParams(params).toString();
+            const clean = {};
+            Object.entries(params).forEach(([k, v]) => {
+                if (v !== '' && v !== null && v !== undefined) clean[k] = v;
+            });
+            const qs = new URLSearchParams(clean).toString();
             const url = `${apiBase()}${path}${qs ? '?' + qs : ''}`;
             const resp = await fetch(url, {
                 headers: { 'Authorization': `Bearer ${token}` }
@@ -96,6 +130,70 @@ function contabilHandler() {
                 throw new Error(data?.error || `Erro HTTP ${resp.status}`);
             }
             return data;
+        },
+
+        async carregarOpcoesFiltros() {
+            try {
+                const d = await this.apiGet('/contabil/filtros');
+                this.opcoesFiltros = {
+                    transacoes_saida: d.transacoes_saida || [],
+                    transacoes_entrada: d.transacoes_entrada || [],
+                    grupos: d.grupos || [],
+                    marcas: d.marcas || []
+                };
+            } catch (e) {
+                // Silencioso para não bloquear carregamento principal
+            }
+        },
+
+        paramsGlobais() {
+            const p = {
+                filial: this.filtros.filial,
+                modo_credito: this.filtros.modoCredito,
+                tipo_nota: this.filtros.tipoNota,
+                subtipo_nota: this.filtros.subtipoNota,
+                transacao_saida: this.filtros.transacaoSaida,
+                transacao_entrada: this.filtros.transacaoEntrada,
+                idgrupo: this.filtros.idgrupo,
+                idmarca: this.filtros.idmarca,
+                item_busca: this.filtros.itemBusca
+            };
+            if (this.filtros.modoPeriodo === 'personalizado') {
+                p.data_inicio = this.filtros.dataInicio;
+                p.data_fim = this.filtros.dataFim;
+            } else {
+                p.mes = this.filtros.mes;
+            }
+            return p;
+        },
+
+        temFiltroAvancado() {
+            return (
+                this.filtros.subtipoNota !== '' ||
+                this.filtros.transacaoSaida !== '0' ||
+                this.filtros.transacaoEntrada !== '0' ||
+                this.filtros.idgrupo !== '0' ||
+                this.filtros.idmarca !== '0' ||
+                this.filtros.itemBusca.trim() !== ''
+            );
+        },
+
+        async limparFiltrosAvancados() {
+            this.filtros.subtipoNota = '';
+            this.filtros.transacaoSaida = '0';
+            this.filtros.transacaoEntrada = '0';
+            this.filtros.idgrupo = '0';
+            this.filtros.idmarca = '0';
+            this.filtros.itemBusca = '';
+            await this.onFiltroChange();
+        },
+
+        async onModoPeriodoChange() {
+            if (this.filtros.modoPeriodo === 'personalizado') {
+                this.filtros.dataInicio = primeiroDiaMes(this.filtros.mes);
+                this.filtros.dataFim = ultimoDiaMes(this.filtros.mes);
+            }
+            await this.onFiltroChange();
         },
 
         async onFiltroChange() {
@@ -114,11 +212,7 @@ function contabilHandler() {
             this.loading = true;
             this.erro = '';
             try {
-                const data = await this.apiGet('/contabil/resumo', {
-                    mes: this.filtros.mes,
-                    filial: this.filtros.filial,
-                    modo_credito: this.filtros.modoCredito
-                });
+                const data = await this.apiGet('/contabil/resumo', this.paramsGlobais());
                 this.filiaisDisponiveis = data.filiais_disponiveis || [];
                 if (this.filiaisDisponiveis.length === 1) {
                     this.filtros.filial = String(this.filiaisDisponiveis[0].idfilial);
@@ -146,9 +240,7 @@ function contabilHandler() {
             this.erro = '';
             try {
                 const data = await this.apiGet('/contabil/notas', {
-                    mes: this.filtros.mes,
-                    filial: this.filtros.filial,
-                    tipo: this.filtroNotas.tipo,
+                    ...this.paramsGlobais(),
                     cfop: this.filtroNotas.cfop,
                     busca: this.filtroNotas.busca,
                     page
@@ -169,9 +261,7 @@ function contabilHandler() {
             this.erro = '';
             try {
                 const data = await this.apiGet('/contabil/itens', {
-                    mes: this.filtros.mes,
-                    filial: this.filtros.filial,
-                    tipo: this.filtroItens.tipo,
+                    ...this.paramsGlobais(),
                     cfop: this.filtroItens.cfop,
                     busca: this.filtroItens.busca,
                     page
@@ -188,13 +278,12 @@ function contabilHandler() {
         },
 
         async rastrearCfop(tipo, cfop, abaDestino) {
+            this.filtros.tipoNota = tipo;
             if (abaDestino === 'notas') {
-                this.filtroNotas.tipo = tipo;
                 this.filtroNotas.cfop = String(cfop);
                 this.abaAtiva = 'notas';
                 await this.carregarNotas(1);
             } else {
-                this.filtroItens.tipo = tipo;
                 this.filtroItens.cfop = String(cfop);
                 this.abaAtiva = 'itens';
                 await this.carregarItens(1);
@@ -216,16 +305,42 @@ function contabilHandler() {
             }
         },
 
+        async abrirDanfeEspelho(tipo, idfilial, idnota) {
+            this.danfeNota = null;
+            this.danfeItens = [];
+            this.modalDanfeAberto = true;
+            this.loadingDanfe = true;
+            try {
+                const data = await this.apiGet(`/contabil/notas/${tipo}/${idfilial}/${idnota}/espelho`);
+                this.danfeNota = data.nota;
+                this.danfeItens = data.itens || [];
+            } catch (e) {
+                this.erro = e.message;
+                this.modalDanfeAberto = false;
+            } finally {
+                this.loadingDanfe = false;
+            }
+        },
+
+        imprimirDanfe() {
+            document.body.classList.add('imprimindo-danfe');
+            window.print();
+            setTimeout(() => document.body.classList.remove('imprimindo-danfe'), 500);
+        },
+
         async exportarItensCsv() {
             const token = this.getToken();
-            const qs = new URLSearchParams({
-                mes: this.filtros.mes,
-                filial: this.filtros.filial,
-                tipo: this.filtroItens.tipo,
+            const params = {
+                ...this.paramsGlobais(),
                 cfop: this.filtroItens.cfop,
                 busca: this.filtroItens.busca,
                 exportar: 'csv'
-            }).toString();
+            };
+            const clean = {};
+            Object.entries(params).forEach(([k, v]) => {
+                if (v !== '' && v !== null && v !== undefined) clean[k] = v;
+            });
+            const qs = new URLSearchParams(clean).toString();
             const resp = await fetch(`${apiBase()}/contabil/itens?${qs}`, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -279,6 +394,11 @@ function contabilHandler() {
                     }
                 }
             });
+        },
+
+        calcAliq(imposto, base) {
+            if (!base || Number(base) <= 0) return '0,00%';
+            return ((Number(imposto) / Number(base)) * 100).toFixed(2).replace('.', ',') + '%';
         },
 
         fmtMoeda(v) {

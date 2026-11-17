@@ -731,9 +731,11 @@ $protected->group('/financeiro/limite-credito', function ($group) {
         // ======================================================================
 $protected->group('/contabil', function ($group) {
     $controller = new \Nutricional\Controllers\ContabilController();
+    $group->get('/filtros', [$controller, 'filtros']);
     $group->get('/resumo', [$controller, 'resumo']);
     $group->get('/notas', [$controller, 'notas']);
     $group->get('/notas/{tipo}/{idfilial}/{idnota}/itens', [$controller, 'notaItens']);
+    $group->get('/notas/{tipo}/{idfilial}/{idnota}/espelho', [$controller, 'notaEspelho']);
     $group->get('/itens', [$controller, 'relatorioItens']);
 })->add(new ModulePermissionMiddleware(['contabil', 'financeiro']));
 

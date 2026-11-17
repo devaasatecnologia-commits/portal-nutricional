@@ -8,6 +8,17 @@ $extraCss = '
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 <link rel="stylesheet" href="' . $appBase . '/portal/assets/css/module-base.css?v=' . $version . '">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+@media print {
+    body.imprimindo-danfe * { visibility: hidden; }
+    body.imprimindo-danfe #modalDanfePrintArea,
+    body.imprimindo-danfe #modalDanfePrintArea * { visibility: visible; }
+    body.imprimindo-danfe #modalDanfePrintArea {
+        position: absolute; left: 0; top: 0; width: 100%; background: #fff; padding: 0; margin: 0;
+    }
+    .no-print { display: none !important; }
+}
+</style>
 ';
 
 require_once __DIR__ . '/../estrutura/header.php';
@@ -16,7 +27,7 @@ require_once __DIR__ . '/../estrutura/header.php';
 <div class="min-h-screen bg-slate-50 pb-14" x-data="contabilHandler()" x-init="init()">
 
     <!-- HEADER MOBILE -->
-    <div class="lg:hidden fixed top-0 left-0 right-0 z-50 bg-indigo-950 text-white shadow-lg">
+    <div class="lg:hidden fixed top-0 left-0 right-0 z-50 bg-indigo-950 text-white shadow-lg no-print">
         <div class="flex items-center justify-between px-4 py-3">
             <a href="<?= $appBase ?>/portal/" class="flex items-center gap-1.5 text-white no-underline text-xs font-extrabold">
                 <i class="fa-solid fa-arrow-left"></i> VOLTAR
@@ -32,92 +43,204 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
     </div>
-    <div class="lg:hidden h-12"></div>
+    <div class="lg:hidden h-12 no-print"></div>
 
     <div class="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-5">
 
         <!-- TOP BAR DESKTOP -->
-        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-indigo-900 rounded-2xl p-5 sm:p-6 text-white shadow-xl border border-indigo-800/40">
-            <div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                <div class="flex items-start gap-4">
-                    <a href="<?= $appBase ?>/portal/"
-                       class="hidden lg:inline-flex items-center justify-center w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 text-white transition no-underline shrink-0"
-                       title="Voltar ao Portal">
-                        <i class="fa-solid fa-arrow-left"></i>
-                    </a>
-                    <div>
-                        <div class="flex flex-wrap items-center gap-2 mb-1">
-                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
-                                Conferência Domínio Sistemas
-                            </span>
-                            <span class="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
-                                  x-text="filiaisDisponiveis.length + ' filial(is) na hierarquia'"></span>
-                        </div>
-                        <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">
-                            Apuração Contábil &amp; Rastreio Fiscal (ICMS · PIS · COFINS)
-                        </h1>
-                        <p class="text-xs sm:text-sm text-indigo-200/80 mt-0.5">
-                            Projeção mensal de impostos a pagar (Saídas − Entradas), detalhamento por CFOP, notas fiscais e relatório completo por itens.
-                        </p>
+        <div class="bg-gradient-to-r from-slate-900 via-indigo-950 to-indigo-900 rounded-2xl p-5 sm:p-6 text-white shadow-xl border border-indigo-800/40 no-print">
+            <div class="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
+                <div class="space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <a href="<?= $appBase ?>/portal/"
+                           class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/15 hover:bg-white/25 text-white text-xs font-extrabold transition no-underline border border-white/20">
+                            <i class="fa-solid fa-arrow-left"></i>
+                            <span>Voltar ao Portal</span>
+                        </a>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-indigo-500/30 text-indigo-200 border border-indigo-400/30">
+                            Conferência Domínio Sistemas
+                        </span>
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-200 border border-emerald-400/30"
+                              x-text="filiaisDisponiveis.length + ' filial(is) na hierarquia'"></span>
                     </div>
+                    <h1 class="text-xl sm:text-2xl font-extrabold tracking-tight">
+                        Apuração Contábil &amp; Rastreio Fiscal (ICMS · PIS · COFINS)
+                    </h1>
+                    <p class="text-xs sm:text-sm text-indigo-200/80">
+                        Projeção de impostos a pagar (Saídas − Entradas), filtros por período, transação, grupo e marca, além de DANFE Espelho e origem da nota.
+                    </p>
                 </div>
 
-                <!-- FILTROS GLOBAIS -->
-                <div class="grid grid-cols-2 sm:flex sm:flex-wrap items-end gap-2.5">
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Competência</label>
-                        <input type="month" x-model="filtros.mes" @change="onFiltroChange()"
-                               class="px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                    </div>
-
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Filial (Hierarquia)</label>
-                        <select x-model="filtros.filial" @change="onFiltroChange()"
-                                class="px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400 min-w-[170px]">
-                            <option value="0" x-show="filiaisDisponiveis.length > 1">Todas Permitidas</option>
-                            <template x-for="f in filiaisDisponiveis" :key="f.idfilial">
-                                <option :value="f.idfilial" x-text="f.idfilial + ' - ' + f.nome + ' (' + f.uf + ')'"></option>
-                            </template>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Crédito Entrada</label>
-                        <select x-model="filtros.modoCredito" @change="onFiltroChange()"
-                                class="px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold focus:outline-none focus:ring-2 focus:ring-indigo-400">
-                            <option value="creditado">Creditado (Domínio)</option>
-                            <option value="destacado">Destacado NF</option>
-                        </select>
-                    </div>
+                <!-- AÇÕES PRINCIPAIS -->
+                <div class="flex flex-wrap items-center gap-2.5 shrink-0">
+                    <button @click="filtrosAvancadosAbertos = !filtrosAvancadosAbertos"
+                            class="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white text-xs font-extrabold transition flex items-center gap-2">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>Filtros Avançados</span>
+                        <span x-show="temFiltroAvancado()" class="w-2 h-2 rounded-full bg-amber-400"></span>
+                    </button>
 
                     <button @click="carregarTudo()" :disabled="loading"
-                            class="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-extrabold shadow-lg transition flex items-center justify-center gap-2">
+                            class="px-4 py-2 rounded-xl bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-extrabold shadow-lg transition flex items-center gap-2">
                         <i class="fa-solid fa-rotate" :class="{ 'fa-spin': loading }"></i>
                         <span>Atualizar</span>
                     </button>
 
                     <a href="<?= $appBase ?>/portal/modules/treinamentos.php?modulo=contabil"
-                       class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xs font-extrabold shadow-lg transition flex items-center justify-center gap-1.5 no-underline"
-                       title="Abrir Treinamento & Manual na Academia">
+                       class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-slate-900 text-xs font-extrabold shadow-lg transition flex items-center gap-1.5 no-underline">
                         <i class="fa-solid fa-graduation-cap"></i>
                         <span>Treinamento</span>
                     </a>
                 </div>
             </div>
+
+            <!-- BARRA DE FILTROS PRIMÁRIOS -->
+            <div class="mt-4 pt-4 border-t border-white/15 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 items-end">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Tipo de Período</label>
+                    <select x-model="filtros.modoPeriodo" @change="onModoPeriodoChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="mensal">Competência (Mês)</option>
+                        <option value="personalizado">Período Personalizado</option>
+                    </select>
+                </div>
+
+                <div x-show="filtros.modoPeriodo === 'mensal'">
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Competência</label>
+                    <input type="month" x-model="filtros.mes" @change="onFiltroChange()"
+                           class="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-bold">
+                </div>
+
+                <div x-show="filtros.modoPeriodo === 'personalizado'" x-cloak>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Data Início</label>
+                    <input type="date" x-model="filtros.dataInicio" @change="onFiltroChange()"
+                           class="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-bold">
+                </div>
+
+                <div x-show="filtros.modoPeriodo === 'personalizado'" x-cloak>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Data Fim</label>
+                    <input type="date" x-model="filtros.dataFim" @change="onFiltroChange()"
+                           class="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs font-bold">
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Filial (Hierarquia)</label>
+                    <select x-model="filtros.filial" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0" x-show="filiaisDisponiveis.length > 1">Todas Permitidas</option>
+                        <template x-for="f in filiaisDisponiveis" :key="f.idfilial">
+                            <option :value="f.idfilial" x-text="f.idfilial + ' - ' + f.nome + ' (' + f.uf + ')'"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Crédito Entrada</label>
+                    <select x-model="filtros.modoCredito" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="creditado">Creditado (Domínio)</option>
+                        <option value="destacado">Destacado NF</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Tipo de Nota</label>
+                    <select x-model="filtros.tipoNota" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="TODAS">Todas (Saídas + Entradas)</option>
+                        <option value="SAIDA">Somente Saídas</option>
+                        <option value="ENTRADA">Somente Entradas</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- FILTROS AVANÇADOS (TRANSAÇÃO, GRUPO, MARCA, SUBTIPO, ITEM) -->
+            <div x-show="filtrosAvancadosAbertos" x-collapse x-cloak
+                 class="mt-3 pt-3 border-t border-white/10 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5 items-end">
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Natureza / Tipo</label>
+                    <select x-model="filtros.subtipoNota" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="">Todas as Naturezas</option>
+                        <option value="VENDA_COMPRA">Vendas &amp; Compras</option>
+                        <option value="DEVOLUCAO">Devoluções</option>
+                        <option value="TRANSFERENCIA">Transferências</option>
+                        <option value="BONIFICACAO">Bonificações / Amostras</option>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Transação Saída</label>
+                    <select x-model="filtros.transacaoSaida" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0">Todas Saídas</option>
+                        <template x-for="t in opcoesFiltros.transacoes_saida" :key="'ts-'+t.id">
+                            <option :value="t.id" x-text="t.id + ' - ' + t.descricao"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Transação Entrada</label>
+                    <select x-model="filtros.transacaoEntrada" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0">Todas Entradas</option>
+                        <template x-for="t in opcoesFiltros.transacoes_entrada" :key="'te-'+t.id">
+                            <option :value="t.id" x-text="t.id + ' - ' + t.descricao"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Grupo de Item</label>
+                    <select x-model="filtros.idgrupo" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0">Todos os Grupos</option>
+                        <template x-for="g in opcoesFiltros.grupos" :key="'g-'+g.id">
+                            <option :value="g.id" x-text="g.descricao"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div>
+                    <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Marca</label>
+                    <select x-model="filtros.idmarca" @change="onFiltroChange()"
+                            class="w-full px-3 py-2 rounded-xl bg-slate-900/80 border border-white/20 text-white text-xs font-bold">
+                        <option value="0">Todas as Marcas</option>
+                        <template x-for="m in opcoesFiltros.marcas" :key="'m-'+m.id">
+                            <option :value="m.id" x-text="m.descricao"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <div class="flex gap-1.5 items-end">
+                    <div class="flex-1">
+                        <label class="block text-[10px] font-bold uppercase tracking-wider text-indigo-200 mb-1">Item / Ref / NCM</label>
+                        <input type="text" x-model="filtros.itemBusca" @keyup.enter="onFiltroChange()" placeholder="Código, ref, NCM..."
+                               class="w-full px-3 py-2 rounded-xl bg-white/10 border border-white/20 text-white text-xs placeholder-indigo-200/50">
+                    </div>
+                    <button @click="limparFiltrosAvancados()" title="Limpar filtros avançados"
+                            class="px-3 py-2 rounded-xl bg-rose-500/30 hover:bg-rose-500/50 text-white text-xs font-bold">
+                        <i class="fa-solid fa-eraser"></i>
+                    </button>
+                </div>
+            </div>
         </div>
 
         <!-- ALERTA DE ERRO -->
-        <div x-show="erro" x-cloak class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2">
+        <div x-show="erro" x-cloak class="bg-rose-50 border border-rose-200 text-rose-800 px-4 py-3 rounded-xl text-sm font-semibold flex items-center gap-2 no-print">
             <i class="fa-solid fa-triangle-exclamation text-rose-600"></i>
             <span x-text="erro"></span>
         </div>
 
-        <!-- CARDS DE PROJEÇÃO DE IMPOSTOS A PAGAR -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4" x-show="resumo">
+        <!-- CARDS DE PROJEÇÃO COM TOOLTIP DETALHADO AO PASSAR O MOUSE -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 no-print" x-show="resumo">
             <!-- ICMS -->
-            <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm relative overflow-hidden">
+            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">ICMS Mensal</span>
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        ICMS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                    </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.icms.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
                           x-text="projecao.icms.situacao"></span>
@@ -132,17 +255,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span>Crédito Entradas:</span>
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.icms.credito)"></span>
                     </div>
-                    <div class="flex justify-between text-[11px] text-slate-400" x-show="Math.abs(projecao.icms.credito_destacado - projecao.icms.credito) > 0.01">
-                        <span>Destacado Entradas:</span>
-                        <span class="font-mono" x-text="fmtMoeda(projecao.icms.credito_destacado)"></span>
+                </div>
+                <!-- HOVER TOOLTIP -->
+                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                    <div class="font-extrabold text-indigo-300 mb-1">Memória ICMS (Domínio Sistemas)</div>
+                    <p class="text-slate-300 mb-2">Fórmula: <code>Débito Saídas − Crédito Entradas</code></p>
+                    <div class="space-y-1 text-[10px]">
+                        <div class="flex justify-between"><span>Base ICMS Saídas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.icms.base_saida)"></span></div>
+                        <div class="flex justify-between"><span>Base ICMS Entradas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.icms.base_entrada)"></span></div>
+                        <div class="flex justify-between"><span>Alíquota Efetiva Saída:</span><span class="font-mono font-bold" x-text="calcAliq(projecao.icms.debito, projecao.icms.base_saida)"></span></div>
+                        <div class="flex justify-between text-amber-300"><span>Destacado na Entrada:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.icms.credito_destacado)"></span></div>
                     </div>
                 </div>
             </div>
 
             <!-- PIS -->
-            <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">PIS Mensal</span>
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        PIS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                    </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.pis.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
                           x-text="projecao.pis.situacao"></span>
@@ -158,12 +290,23 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.pis.credito)"></span>
                     </div>
                 </div>
+                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                    <div class="font-extrabold text-indigo-300 mb-1">Memória PIS Não-Cumulativo</div>
+                    <p class="text-slate-300 mb-2">Origem: <code>nfs_item.valor_pis</code> − <code>nfe_item.valorpiscreditado</code></p>
+                    <div class="space-y-1 text-[10px]">
+                        <div class="flex justify-between"><span>Base PIS Saídas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.pis.base_saida)"></span></div>
+                        <div class="flex justify-between"><span>Base PIS Entradas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.pis.base_entrada)"></span></div>
+                        <div class="flex justify-between"><span>Alíquota Efetiva Saída:</span><span class="font-mono font-bold" x-text="calcAliq(projecao.pis.debito, projecao.pis.base_saida)"></span></div>
+                    </div>
+                </div>
             </div>
 
             <!-- COFINS -->
-            <div class="bg-white rounded-2xl p-5 border border-slate-200 shadow-sm">
+            <div class="group relative bg-white rounded-2xl p-5 border border-slate-200 shadow-sm hover:border-indigo-300 transition cursor-help">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500">COFINS Mensal</span>
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        COFINS <i class="fa-solid fa-circle-info text-indigo-400 text-[11px]"></i>
+                    </span>
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                           :class="projecao.cofins.saldo >= 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'"
                           x-text="projecao.cofins.situacao"></span>
@@ -179,12 +322,23 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span class="font-bold text-emerald-600 font-mono" x-text="fmtMoeda(projecao.cofins.credito)"></span>
                     </div>
                 </div>
+                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-500/40 pointer-events-none">
+                    <div class="font-extrabold text-indigo-300 mb-1">Memória COFINS Não-Cumulativa</div>
+                    <p class="text-slate-300 mb-2">Origem: <code>nfs_item.valor_cofins</code> − <code>nfe_item.valorcofinscreditado</code></p>
+                    <div class="space-y-1 text-[10px]">
+                        <div class="flex justify-between"><span>Base COFINS Saídas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.cofins.base_saida)"></span></div>
+                        <div class="flex justify-between"><span>Base COFINS Entradas:</span><span class="font-mono font-bold" x-text="fmtMoeda(projecao.cofins.base_entrada)"></span></div>
+                        <div class="flex justify-between"><span>Alíquota Efetiva Saída:</span><span class="font-mono font-bold" x-text="calcAliq(projecao.cofins.debito, projecao.cofins.base_saida)"></span></div>
+                    </div>
+                </div>
             </div>
 
             <!-- TOTAL PROJETADO A PAGAR -->
-            <div class="bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md">
+            <div class="group relative bg-gradient-to-br from-indigo-900 to-slate-900 text-white rounded-2xl p-5 shadow-md cursor-help">
                 <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-200">Projeção Total a Pagar</span>
+                    <span class="text-xs font-extrabold uppercase tracking-wider text-indigo-200 flex items-center gap-1.5">
+                        Projeção a Pagar <i class="fa-solid fa-circle-info text-indigo-300 text-[11px]"></i>
+                    </span>
                     <i class="fa-solid fa-scale-balanced text-indigo-300"></i>
                 </div>
                 <div class="text-2xl font-extrabold font-mono" x-text="fmtMoeda(projecao.total_a_pagar)"></div>
@@ -197,34 +351,38 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <span>Entradas (<span x-text="totaisEntrada.qtd_notas"></span> NFs):</span>
                         <span class="font-bold font-mono" x-text="fmtMoeda(totaisEntrada.valor_contabil)"></span>
                     </div>
-                    <div class="flex justify-between text-[11px] text-amber-300" x-show="auditoria.saidas_canceladas_qtd > 0">
-                        <span>Canceladas excluídas:</span>
-                        <span class="font-bold" x-text="auditoria.saidas_canceladas_qtd + ' NFs'"></span>
+                </div>
+                <div class="hidden group-hover:block absolute left-3 right-3 top-full mt-2 z-40 bg-slate-900 text-white text-[11px] rounded-xl p-3.5 shadow-2xl border border-indigo-400/50 pointer-events-none">
+                    <div class="font-extrabold text-amber-300 mb-1">Resumo Executivo do Período</div>
+                    <div class="space-y-1 text-[10px]">
+                        <div class="flex justify-between"><span>Período ativo:</span><span class="font-bold" x-text="competenciaLabel"></span></div>
+                        <div class="flex justify-between"><span>IPI Saídas / Entradas:</span><span class="font-mono" x-text="fmtMoeda(projecao.ipi.debito) + ' / ' + fmtMoeda(projecao.ipi.destacado_entrada)"></span></div>
+                        <div class="flex justify-between"><span>ICMS ST (Saída / Entrada):</span><span class="font-mono" x-text="fmtMoeda(totaisSaida.valor_st) + ' / ' + fmtMoeda(totaisEntrada.valor_st)"></span></div>
+                        <div class="flex justify-between text-rose-300"><span>Canceladas excluídas:</span><span class="font-bold" x-text="auditoria.saidas_canceladas_qtd + ' NFs (' + fmtMoeda(auditoria.saidas_canceladas_valor) + ')'"></span></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- ALERTA AUDITORIA PRÉ-FECHAMENTO (CRÉDITO PARCIAL / DEVOLUÇÕES) -->
+        <!-- ALERTA AUDITORIA PRÉ-FECHAMENTO -->
         <div x-show="auditoria.entradas_credito_parcial_notas > 0" x-cloak
-             class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900">
+             class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-amber-900 no-print">
             <div class="flex items-start sm:items-center gap-2.5">
                 <i class="fa-solid fa-magnifying-glass-chart text-amber-600 text-base mt-0.5 sm:mt-0"></i>
                 <div>
                     <strong>Auditoria Pré-Fechamento:</strong>
                     Existem <strong x-text="auditoria.entradas_credito_parcial_notas"></strong> nota(s) de entrada onde o imposto destacado difere do creditado
-                    (ex.: devoluções 1202 ou itens sem aproveitamento de crédito) — diferença de
-                    <strong class="font-mono" x-text="fmtMoeda(auditoria.entradas_icms_nao_creditado)"></strong> em ICMS.
+                    (ex.: devoluções 1202) — diferença de <strong class="font-mono" x-text="fmtMoeda(auditoria.entradas_icms_nao_creditado)"></strong> em ICMS.
                 </div>
             </div>
-            <button @click="abaAtiva = 'notas'; filtroNotas.tipo = 'ENTRADA'; carregarNotas(1)"
+            <button @click="abaAtiva = 'notas'; filtros.tipoNota = 'ENTRADA'; carregarNotas(1)"
                     class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold shrink-0">
                 Conferir Entradas
             </button>
         </div>
 
         <!-- NAVEGAÇÃO POR ABAS -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden no-print">
             <div class="flex flex-wrap border-b border-slate-200 bg-slate-50/70 px-3 pt-2 gap-1">
                 <button @click="abaAtiva = 'cfop'"
                         :class="abaAtiva === 'cfop' ? 'bg-white text-indigo-700 border-slate-200 border-b-white shadow-sm' : 'text-slate-600 hover:text-slate-900 border-transparent'"
@@ -234,7 +392,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <button @click="abaAtiva = 'notas'; if(!notasCarregadas) carregarNotas(1)"
                         :class="abaAtiva === 'notas' ? 'bg-white text-indigo-700 border-slate-200 border-b-white shadow-sm' : 'text-slate-600 hover:text-slate-900 border-transparent'"
                         class="px-4 py-2.5 text-xs font-extrabold rounded-t-xl border border-b-0 transition flex items-center gap-2">
-                    <i class="fa-solid fa-file-invoice"></i> Notas Fiscais (Raio-X)
+                    <i class="fa-solid fa-file-invoice"></i> Notas Fiscais (Raio-X &amp; DANFE)
                 </button>
                 <button @click="abaAtiva = 'itens'; if(!itensCarregados) carregarItens(1)"
                         :class="abaAtiva === 'itens' ? 'bg-white text-indigo-700 border-slate-200 border-b-white shadow-sm' : 'text-slate-600 hover:text-slate-900 border-transparent'"
@@ -250,7 +408,6 @@ require_once __DIR__ . '/../estrutura/header.php';
 
             <!-- ABA 1: APURAÇÃO POR CFOP & GRÁFICO -->
             <div x-show="abaAtiva === 'cfop'" class="p-5 space-y-6">
-                <!-- GRÁFICO 6 MESES -->
                 <div class="bg-slate-50 rounded-xl p-4 border border-slate-200">
                     <div class="flex items-center justify-between mb-3">
                         <h3 class="text-xs font-extrabold uppercase tracking-wider text-slate-700">
@@ -263,7 +420,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
-                <!-- TABELA CFOP SAÍDAS -->
                 <div>
                     <div class="flex items-center justify-between mb-2">
                         <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
@@ -309,7 +465,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </tr>
                                 </template>
                                 <tr x-show="cfopsSaida.length === 0">
-                                    <td colspan="11" class="px-4 py-6 text-center text-slate-400">Nenhuma saída registrada na competência.</td>
+                                    <td colspan="11" class="px-4 py-6 text-center text-slate-400">Nenhuma saída registrada para os filtros atuais.</td>
                                 </tr>
                             </tbody>
                             <tfoot class="bg-slate-100 font-extrabold text-slate-800" x-show="cfopsSaida.length > 0">
@@ -328,12 +484,11 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </div>
                 </div>
 
-                <!-- TABELA CFOP ENTRADAS -->
                 <div>
                     <div class="flex items-center justify-between mb-2">
                         <h3 class="text-sm font-extrabold text-slate-800 flex items-center gap-2">
                             <span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-                            ENTRADAS POR CFOP (Créditos de Impostos — Modo: <span class="text-indigo-700" x-text="filtros.modoCredito === 'creditado' ? 'Creditado Domínio' : 'Destacado NF'"></span>)
+                            ENTRADAS POR CFOP (Créditos — Modo: <span class="text-indigo-700" x-text="filtros.modoCredito === 'creditado' ? 'Creditado Domínio' : 'Destacado NF'"></span>)
                         </h3>
                     </div>
                     <div class="overflow-x-auto border border-slate-200 rounded-xl">
@@ -373,7 +528,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     </tr>
                                 </template>
                                 <tr x-show="cfopsEntrada.length === 0">
-                                    <td colspan="11" class="px-4 py-6 text-center text-slate-400">Nenhuma entrada registrada na competência.</td>
+                                    <td colspan="11" class="px-4 py-6 text-center text-slate-400">Nenhuma entrada registrada para os filtros atuais.</td>
                                 </tr>
                             </tbody>
                             <tfoot class="bg-slate-100 font-extrabold text-slate-800" x-show="cfopsEntrada.length > 0">
@@ -393,17 +548,9 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </div>
             </div>
 
-            <!-- ABA 2: NOTAS FISCAIS (RAIO-X) -->
+            <!-- ABA 2: NOTAS FISCAIS (RAIO-X & DANFE) -->
             <div x-show="abaAtiva === 'notas'" x-cloak class="p-5 space-y-4">
                 <div class="flex flex-wrap items-end gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Operação</label>
-                        <select x-model="filtroNotas.tipo" @change="carregarNotas(1)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold bg-white">
-                            <option value="TODAS">Todas (Saídas + Entradas)</option>
-                            <option value="SAIDA">Somente Saídas</option>
-                            <option value="ENTRADA">Somente Entradas</option>
-                        </select>
-                    </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">CFOP</label>
                         <input type="text" x-model="filtroNotas.cfop" @keyup.enter="carregarNotas(1)" placeholder="Ex: 5102"
@@ -423,7 +570,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                     <table class="w-full text-xs">
                         <thead class="bg-slate-800 text-white">
                             <tr>
-                                <th class="px-3 py-2.5 text-left">Tipo</th>
+                                <th class="px-3 py-2.5 text-left">Tipo / Transação</th>
                                 <th class="px-3 py-2.5 text-left">NF / Data</th>
                                 <th class="px-3 py-2.5 text-left">Filial</th>
                                 <th class="px-3 py-2.5 text-left">Cliente / Fornecedor</th>
@@ -431,9 +578,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <th class="px-3 py-2.5 text-right">Total NF</th>
                                 <th class="px-3 py-2.5 text-right">Base ICMS</th>
                                 <th class="px-3 py-2.5 text-right">ICMS</th>
-                                <th class="px-3 py-2.5 text-right">PIS</th>
-                                <th class="px-3 py-2.5 text-right">COFINS</th>
-                                <th class="px-3 py-2.5 text-center">Itens</th>
+                                <th class="px-3 py-2.5 text-right">PIS / COFINS</th>
+                                <th class="px-3 py-2.5 text-center">Auditoria</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100">
@@ -443,13 +589,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold"
                                               :class="n.tipo === 'SAIDA' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
                                               x-text="n.tipo"></span>
+                                        <div class="text-[10px] text-slate-500 truncate max-w-[140px] mt-0.5" :title="n.transacao_desc" x-text="n.idtransacao + ' - ' + n.transacao_desc"></div>
                                     </td>
                                     <td class="px-3 py-2 whitespace-nowrap">
                                         <div class="font-mono font-extrabold text-slate-900" x-text="'NF ' + n.numeronf"></div>
                                         <div class="text-[11px] text-slate-500" x-text="fmtData(n.data_doc)"></div>
                                     </td>
                                     <td class="px-3 py-2 text-[11px] text-slate-600" x-text="'F' + n.idfilial"></td>
-                                    <td class="px-3 py-2 max-w-[260px]">
+                                    <td class="px-3 py-2 max-w-[240px]">
                                         <div class="font-semibold text-slate-800 truncate" :title="n.parceiro" x-text="n.parceiro"></div>
                                         <div class="text-[10px] text-slate-400 font-mono" x-text="(n.doc_parceiro || '-') + ' • ' + n.uf"></div>
                                     </td>
@@ -457,23 +604,26 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(n.valortotal)"></td>
                                     <td class="px-3 py-2 text-right font-mono text-slate-600" x-text="fmtMoeda(n.base_icms)"></td>
                                     <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(n.tipo === 'ENTRADA' && filtros.modoCredito === 'creditado' ? n.icms_cred : n.icms_dest)"></td>
-                                    <td class="px-3 py-2 text-right font-mono" x-text="fmtMoeda(n.tipo === 'ENTRADA' && filtros.modoCredito === 'creditado' ? n.pis_cred : n.pis_dest)"></td>
-                                    <td class="px-3 py-2 text-right font-mono" x-text="fmtMoeda(n.tipo === 'ENTRADA' && filtros.modoCredito === 'creditado' ? n.cofins_cred : n.cofins_dest)"></td>
-                                    <td class="px-3 py-2 text-center">
-                                        <button @click="abrirItensNota(n)" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px]">
-                                            <i class="fa-solid fa-list-ul mr-1"></i> Itens
+                                    <td class="px-3 py-2 text-right font-mono text-[11px]"
+                                        x-text="fmtMoeda((n.tipo === 'ENTRADA' && filtros.modoCredito === 'creditado' ? n.pis_cred + n.cofins_cred : n.pis_dest + n.cofins_dest))"></td>
+                                    <td class="px-3 py-2 text-center whitespace-nowrap">
+                                        <button @click="abrirDanfeEspelho(n.tipo, n.idfilial, n.idnota)"
+                                                class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-indigo-700 text-white font-bold text-[10px] mr-1" title="Ver DANFE Espelho e Origem">
+                                            <i class="fa-solid fa-print mr-1"></i> DANFE / Origem
+                                        </button>
+                                        <button @click="abrirItensNota(n)" class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px]">
+                                            Itens
                                         </button>
                                     </td>
                                 </tr>
                             </template>
                             <tr x-show="notasLista.length === 0">
-                                <td colspan="11" class="px-4 py-8 text-center text-slate-400">Nenhuma nota encontrada para os filtros aplicados.</td>
+                                <td colspan="10" class="px-4 py-8 text-center text-slate-400">Nenhuma nota encontrada para os filtros aplicados.</td>
                             </tr>
                         </tbody>
                     </table>
                 </div>
 
-                <!-- PAGINAÇÃO NOTAS -->
                 <div class="flex items-center justify-between text-xs text-slate-600">
                     <span>Total: <strong x-text="notasPag.total"></strong> notas (Página <span x-text="notasPag.page"></span> de <span x-text="notasPag.pages || 1"></span>)</span>
                     <div class="flex gap-1.5">
@@ -488,14 +638,6 @@ require_once __DIR__ . '/../estrutura/header.php';
             <!-- ABA 3: RELATÓRIO COMPLETO POR ITENS -->
             <div x-show="abaAtiva === 'itens'" x-cloak class="p-5 space-y-4">
                 <div class="flex flex-wrap items-end gap-3 bg-slate-50 p-3.5 rounded-xl border border-slate-200">
-                    <div>
-                        <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Operação</label>
-                        <select x-model="filtroItens.tipo" @change="carregarItens(1)" class="px-3 py-2 rounded-lg border border-slate-300 text-xs font-bold bg-white">
-                            <option value="TODAS">Todas (Saídas + Entradas)</option>
-                            <option value="SAIDA">Somente Saídas</option>
-                            <option value="ENTRADA">Somente Entradas</option>
-                        </select>
-                    </div>
                     <div>
                         <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">CFOP</label>
                         <input type="text" x-model="filtroItens.cfop" @keyup.enter="carregarItens(1)" placeholder="Ex: 5102"
@@ -514,7 +656,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </button>
                 </div>
 
-                <!-- TOTAIS DO FILTRO DE ITENS -->
                 <div class="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
                     <div class="bg-slate-50 border border-slate-200 rounded-xl p-3">
                         <div class="text-[10px] font-bold uppercase text-slate-500">Valor Itens</div>
@@ -544,7 +685,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                             <tr>
                                 <th class="px-2.5 py-2 text-left">Tipo / NF</th>
                                 <th class="px-2.5 py-2 text-left">Data / Filial</th>
-                                <th class="px-2.5 py-2 text-left">Item / Ref / NCM</th>
+                                <th class="px-2.5 py-2 text-left">Item / Grupo / Marca / NCM</th>
                                 <th class="px-2.5 py-2 text-left">CFOP / CST</th>
                                 <th class="px-2.5 py-2 text-right">Qtd</th>
                                 <th class="px-2.5 py-2 text-right">V. Total</th>
@@ -563,15 +704,15 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         <span class="px-1.5 py-0.5 rounded text-[9px] font-extrabold mr-1"
                                               :class="it.tipo === 'SAIDA' ? 'bg-rose-100 text-rose-800' : 'bg-emerald-100 text-emerald-800'"
                                               x-text="it.tipo === 'SAIDA' ? 'S' : 'E'"></span>
-                                        <span class="font-mono font-bold text-slate-900" x-text="it.numeronf"></span>
+                                        <button @click="abrirDanfeEspelho(it.tipo, it.idfilial, it.idnota)" class="font-mono font-bold text-indigo-700 hover:underline" x-text="it.numeronf"></button>
                                     </td>
                                     <td class="px-2.5 py-2 whitespace-nowrap">
                                         <div x-text="fmtData(it.data_doc)"></div>
                                         <div class="text-[10px] text-slate-400" x-text="'F' + it.idfilial + ' • ' + it.uf"></div>
                                     </td>
-                                    <td class="px-2.5 py-2 max-w-[260px]">
+                                    <td class="px-2.5 py-2 max-w-[270px]">
                                         <div class="font-semibold text-slate-800 truncate" :title="it.item_desc" x-text="it.iditem + ' - ' + it.item_desc"></div>
-                                        <div class="text-[10px] text-slate-400 font-mono" x-text="'Ref: ' + (it.referencia || '-') + ' | NCM: ' + (it.ncm || '-')"></div>
+                                        <div class="text-[10px] text-slate-400 font-mono truncate" x-text="(it.grupo_desc || '-') + ' • ' + (it.marca_desc || '-') + ' | NCM: ' + (it.ncm || '-')"></div>
                                     </td>
                                     <td class="px-2.5 py-2 whitespace-nowrap font-mono">
                                         <span class="font-extrabold text-indigo-700" x-text="it.idcfop"></span>
@@ -594,7 +735,6 @@ require_once __DIR__ . '/../estrutura/header.php';
                     </table>
                 </div>
 
-                <!-- PAGINAÇÃO ITENS -->
                 <div class="flex items-center justify-between text-xs text-slate-600">
                     <span>Total: <strong x-text="itensPag.total"></strong> registros (Página <span x-text="itensPag.page"></span> de <span x-text="itensPag.pages || 1"></span>)</span>
                     <div class="flex gap-1.5">
@@ -611,7 +751,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                 <div class="flex items-center justify-between">
                     <div>
                         <h3 class="text-sm font-extrabold text-slate-900">Demonstrativo de Apuração Contábil — Espelho Domínio Sistemas</h3>
-                        <p class="text-xs text-slate-500">Competência <strong x-text="competenciaLabel"></strong> · Base para conferência mensal de guias.</p>
+                        <p class="text-xs text-slate-500">Período <strong x-text="competenciaLabel"></strong> · Base para conferência mensal de guias.</p>
                     </div>
                     <button onclick="window.print()" class="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold">
                         <i class="fa-solid fa-print mr-1"></i> Imprimir Conferência
@@ -684,8 +824,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- MODAL DETALHES DOS ITENS DA NOTA (z-[70]) -->
-    <div x-show="modalNotaAberto" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm">
+    <!-- MODAL ITENS DA NOTA (z-[70]) -->
+    <div x-show="modalNotaAberto" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4 backdrop-blur-sm no-print">
         <div @click.away="modalNotaAberto = false" class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] flex flex-col overflow-hidden">
             <div class="bg-slate-900 text-white px-5 py-4 flex items-center justify-between">
                 <div>
@@ -746,6 +886,160 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </tbody>
                     </table>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DANFE ESPELHO & RASTREABILIDADE DE ORIGEM (z-[75]) -->
+    <div x-show="modalDanfeAberto" x-cloak class="fixed inset-0 z-[75] flex items-center justify-center bg-slate-900/75 p-3 sm:p-5 backdrop-blur-sm">
+        <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[94vh] flex flex-col overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between no-print">
+                <div class="flex items-center gap-2.5">
+                    <i class="fa-solid fa-file-invoice text-indigo-300"></i>
+                    <h3 class="text-sm sm:text-base font-extrabold">DANFE Espelho &amp; Rastreio de Geração da Nota</h3>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button @click="imprimirDanfe()" class="px-3.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-xs font-extrabold">
+                        <i class="fa-solid fa-print mr-1"></i> Imprimir Nota
+                    </button>
+                    <button @click="modalDanfeAberto = false" class="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+            </div>
+
+            <div id="modalDanfePrintArea" class="p-5 overflow-y-auto flex-1 space-y-4 text-xs text-slate-800">
+                <div x-show="loadingDanfe" class="py-12 text-center text-slate-500 font-bold">
+                    <i class="fa-solid fa-spinner fa-spin mr-2"></i> Montando espelho da Nota Fiscal...
+                </div>
+
+                <template x-if="!loadingDanfe && danfeNota">
+                    <div class="space-y-4">
+                        <!-- BLOCO: COMO FOI GERADA (RASTREABILIDADE) -->
+                        <div class="bg-indigo-50 border border-indigo-200 rounded-xl p-3.5">
+                            <div class="text-[11px] font-extrabold uppercase tracking-wider text-indigo-900 mb-2 flex items-center gap-1.5">
+                                <i class="fa-solid fa-route"></i> Rastreabilidade — Como Esta Nota Foi Gerada
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px]">
+                                <div>
+                                    <span class="text-slate-500 block text-[10px]">Transação Utilizada</span>
+                                    <strong x-text="danfeNota.idtransacao + ' - ' + (danfeNota.transacao_desc || '-')"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 block text-[10px]">Usuário / Data-Hora Geração</span>
+                                    <strong x-text="(danfeNota.usuario_geracao || '-') + ' em ' + (danfeNota.datahora_geracao || '-')"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 block text-[10px]" x-text="danfeNota.tipo === 'SAIDA' ? 'Pedido(s) de Origem' : 'Ordem(ns) de Compra (OC)'"></span>
+                                    <strong class="font-mono text-indigo-700" x-text="danfeNota.pedidos || 'Lançamento Direto / Sem vínculo'"></strong>
+                                </div>
+                                <div>
+                                    <span class="text-slate-500 block text-[10px]">Protocolo SEFAZ</span>
+                                    <strong class="font-mono" x-text="danfeNota.protocolo || '-'"></strong>
+                                </div>
+                            </div>
+                            <div x-show="danfeNota.observacao_origem" class="mt-2 pt-2 border-t border-indigo-200/70 text-[11px] text-indigo-950">
+                                <strong>Obs. Origem:</strong> <span x-text="danfeNota.observacao_origem"></span>
+                            </div>
+                        </div>
+
+                        <!-- CABEÇALHO ESTILO DANFE -->
+                        <div class="border-2 border-slate-800 rounded-lg overflow-hidden">
+                            <div class="grid grid-cols-1 md:grid-cols-3 border-b-2 border-slate-800">
+                                <div class="p-3 border-b md:border-b-0 md:border-r-2 border-slate-800">
+                                    <div class="text-[10px] font-bold uppercase text-slate-500">Filial (Empresa)</div>
+                                    <div class="font-extrabold text-sm" x-text="danfeNota.filial_razao"></div>
+                                    <div class="text-[11px]" x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
+                                    <div class="font-mono text-[11px] mt-1" x-text="'CNPJ: ' + (danfeNota.filial_cnpj || '-') + ' | IE: ' + (danfeNota.filial_ie || '-')"></div>
+                                </div>
+                                <div class="p-3 text-center border-b md:border-b-0 md:border-r-2 border-slate-800 flex flex-col justify-center">
+                                    <div class="font-black text-base tracking-wide">DANFE ESPELHO</div>
+                                    <div class="text-[10px] font-bold uppercase" x-text="danfeNota.tipo === 'SAIDA' ? '1 - SAÍDA' : '0 - ENTRADA'"></div>
+                                    <div class="font-mono font-black text-lg text-slate-900 mt-1" x-text="'Nº ' + danfeNota.numeronf"></div>
+                                    <div class="text-[10px] font-mono" x-text="'Série: ' + (danfeNota.idserie || '-')"></div>
+                                </div>
+                                <div class="p-3 flex flex-col justify-center">
+                                    <div class="text-[10px] font-bold uppercase text-slate-500">Chave de Acesso NF-e</div>
+                                    <div class="font-mono text-[10px] break-all font-bold mt-1" x-text="danfeNota.chave_nfe || 'Não gravada na tabela legada (consultar protocolo SEFAZ)'"></div>
+                                    <div class="mt-2 grid grid-cols-2 gap-2 text-[10px]">
+                                        <div><span class="text-slate-500">Emissão:</span> <strong x-text="fmtData(danfeNota.dataemissao)"></strong></div>
+                                        <div><span class="text-slate-500" x-text="danfeNota.tipo === 'SAIDA' ? 'Saída:' : 'Entrada:'"></span> <strong x-text="fmtData(danfeNota.data_mov)"></strong></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- DESTINATÁRIO / REMETENTE -->
+                            <div class="p-3 border-b-2 border-slate-800 bg-slate-50/70">
+                                <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1"
+                                     x-text="danfeNota.tipo === 'SAIDA' ? 'Destinatário (Cliente)' : 'Remetente / Emitente (Fornecedor)'"></div>
+                                <div class="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11px]">
+                                    <div><strong>Razão:</strong> <span x-text="danfeNota.parc_razao"></span></div>
+                                    <div><strong>CNPJ/CPF:</strong> <span class="font-mono" x-text="danfeNota.parc_doc || '-'"></span></div>
+                                    <div><strong>IE:</strong> <span class="font-mono" x-text="danfeNota.parc_ie || '-'"></span></div>
+                                    <div class="sm:col-span-2"><strong>Endereço:</strong> <span x-text="(danfeNota.parc_end || '') + ' - ' + (danfeNota.parc_bairro || '')"></span></div>
+                                    <div><strong>Município / UF:</strong> <span x-text="(danfeNota.parc_cidade || '') + ' / ' + (danfeNota.parc_uf || '')"></span></div>
+                                </div>
+                            </div>
+
+                            <!-- CÁLCULO DO IMPOSTO -->
+                            <div class="p-3 border-b-2 border-slate-800">
+                                <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1.5">Cálculo do Imposto</div>
+                                <div class="grid grid-cols-2 sm:grid-cols-6 gap-2 text-[11px]">
+                                    <div class="border border-slate-300 rounded p-1.5"><span class="block text-[9px] text-slate-500">Base ICMS</span><strong class="font-mono" x-text="fmtMoeda(danfeNota.baseicms)"></strong></div>
+                                    <div class="border border-slate-300 rounded p-1.5"><span class="block text-[9px] text-slate-500">Valor ICMS</span><strong class="font-mono" x-text="fmtMoeda(danfeNota.valoricms)"></strong></div>
+                                    <div class="border border-slate-300 rounded p-1.5"><span class="block text-[9px] text-slate-500">Valor ICMS ST</span><strong class="font-mono" x-text="fmtMoeda(danfeNota.valor_st)"></strong></div>
+                                    <div class="border border-slate-300 rounded p-1.5"><span class="block text-[9px] text-slate-500">Valor PIS</span><strong class="font-mono" x-text="fmtMoeda(danfeNota.valorpis)"></strong></div>
+                                    <div class="border border-slate-300 rounded p-1.5"><span class="block text-[9px] text-slate-500">Valor COFINS</span><strong class="font-mono" x-text="fmtMoeda(danfeNota.valorcofins)"></strong></div>
+                                    <div class="border border-slate-800 bg-slate-100 rounded p-1.5"><span class="block text-[9px] text-slate-700 font-bold">Total da Nota</span><strong class="font-mono text-sm" x-text="fmtMoeda(danfeNota.valortotalnota)"></strong></div>
+                                </div>
+                            </div>
+
+                            <!-- DADOS DOS PRODUTOS -->
+                            <div class="p-3">
+                                <div class="text-[10px] font-extrabold uppercase text-slate-500 mb-1.5">Dados dos Produtos / Serviços</div>
+                                <table class="w-full text-[10px] border border-slate-300">
+                                    <thead class="bg-slate-200 text-slate-800">
+                                        <tr>
+                                            <th class="px-2 py-1 text-left">Cód / Descrição</th>
+                                            <th class="px-2 py-1 text-left">NCM</th>
+                                            <th class="px-2 py-1 text-left">CST</th>
+                                            <th class="px-2 py-1 text-left">CFOP</th>
+                                            <th class="px-2 py-1 text-right">Qtd</th>
+                                            <th class="px-2 py-1 text-right">V. Unit</th>
+                                            <th class="px-2 py-1 text-right">V. Total</th>
+                                            <th class="px-2 py-1 text-right">BC ICMS</th>
+                                            <th class="px-2 py-1 text-right">ICMS</th>
+                                            <th class="px-2 py-1 text-right">IPI</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-slate-200">
+                                        <template x-for="it in danfeItens" :key="'df-'+it.seq">
+                                            <tr>
+                                                <td class="px-2 py-1 font-medium" x-text="it.iditem + ' - ' + it.descricao"></td>
+                                                <td class="px-2 py-1 font-mono" x-text="it.ncm"></td>
+                                                <td class="px-2 py-1 font-mono" x-text="it.cst_icms"></td>
+                                                <td class="px-2 py-1 font-mono font-bold" x-text="it.idcfop"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtNum(it.quantidade)"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.valor_unitario)"></td>
+                                                <td class="px-2 py-1 text-right font-mono font-bold" x-text="fmtMoeda(it.valor_total)"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.base_icms)"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.icms_dest) + ' (' + it.aliq_icms + '%)'"></td>
+                                                <td class="px-2 py-1 text-right font-mono" x-text="fmtMoeda(it.ipi)"></td>
+                                            </tr>
+                                        </template>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- DADOS ADICIONAIS -->
+                            <div class="p-3 border-t-2 border-slate-800 bg-slate-50 text-[10px]" x-show="danfeNota.observacao || danfeNota.observacao_fisco">
+                                <div class="font-extrabold uppercase text-slate-500 mb-1">Dados Adicionais / Informações Complementares</div>
+                                <div x-show="danfeNota.observacao"><strong>Obs. Contribuinte:</strong> <span x-text="danfeNota.observacao"></span></div>
+                                <div x-show="danfeNota.observacao_fisco"><strong>Obs. Fisco:</strong> <span x-text="danfeNota.observacao_fisco"></span></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
