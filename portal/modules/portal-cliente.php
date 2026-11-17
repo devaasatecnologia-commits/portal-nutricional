@@ -545,7 +545,9 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
 
     <!-- MODAL DETALHES DE TÍTULO SEM BOLETO (RENEGOCIAÇÃO / OUTRAS FORMAS, z-[70]) -->
     <div x-show="modalTituloDetalhe" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4">
-        <div @click.away="modalTituloDetalhe = false" class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl" x-if="tituloDetalhe">
+        <div @click.away="modalTituloDetalhe = false" class="bg-white rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl">
+            <template x-if="tituloDetalhe">
+                <div>
             <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
                 <h3 class="text-sm font-extrabold"><i class="fa-solid fa-circle-info text-amber-400 mr-1.5"></i> Detalhes do Título</h3>
                 <button @click="modalTituloDetalhe = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
@@ -567,6 +569,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <div class="text-slate-700" x-text="tituloDetalhe.observacao"></div>
                 </div>
             </div>
+                </div>
+            </template>
         </div>
     </div>
 
@@ -614,7 +618,9 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <button @click="modalBoleto = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans" x-if="boletoDoc">
+            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans">
+                <template x-if="boletoDoc">
+                    <div>
                 <!-- Recibo do Pagador -->
                 <div class="mb-4 pb-3 border-b-2 border-dashed border-slate-400">
                     <div class="flex items-center justify-between border-b-2 pb-1.5 mb-2" :style="'border-color:' + boletoDoc.banco_cor">
@@ -699,6 +705,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <div x-show="!boletoDoc.shipayqrcode" class="text-[9px] text-right text-slate-500 font-bold">Autenticação Mecânica / Ficha de Compensação</div>
                     </div>
                 </div>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
@@ -718,7 +726,9 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <button @click="modalDanfe = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans" x-if="danfeNota">
+            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans">
+                <template x-if="danfeNota">
+                    <div>
                 <table class="w-full border-collapse border border-black mb-2">
                     <tr>
                         <td class="border border-black p-2 w-[40%] align-middle">
@@ -810,6 +820,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <div class="text-[8px] font-bold uppercase text-slate-500">Dados Adicionais / Observações</div>
                     <div x-text="danfeNota.observacao"></div>
                 </div>
+                    </div>
+                </template>
             </div>
         </div>
     </div>
