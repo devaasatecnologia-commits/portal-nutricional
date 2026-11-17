@@ -231,8 +231,8 @@ require_once __DIR__ . '/../estrutura/header.php';
     </div>
 
     <!-- TABELA / CARDS DE PRODUTOS -->
-    <div class="ep-card overflow-hidden mb-5">
-        <div class="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+    <div class="ep-card mb-5">
+        <div class="p-4 sm:p-5 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sticky top-0 lg:top-[104px] z-20 bg-white/95 backdrop-blur-md rounded-t-2xl shadow-sm">
             <div>
                 <h3 class="text-base font-extrabold text-slate-800 flex items-center gap-2">
                     <i class="fa-solid fa-boxes-packing text-emerald-600"></i> Produtos & Previsão de Entrega
@@ -271,9 +271,9 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- VISÃO DESKTOP: TABELA COMPLETA -->
-        <div class="ep-desktop-table-wrap overflow-x-auto">
+        <div class="ep-desktop-table-wrap overflow-auto max-h-[68vh] rounded-b-2xl">
             <table class="w-full text-left text-xs sm:text-sm min-w-[900px]">
-                <thead class="bg-slate-50 border-b border-slate-200">
+                <thead class="bg-slate-50 border-b border-slate-200 sticky top-0 z-10 shadow-sm">
                     <tr class="bg-slate-50 text-[0.7rem] uppercase tracking-wider text-slate-500 font-extrabold select-none">
                         <th class="py-3.5 px-4 cursor-pointer hover:text-emerald-700 transition" onclick="estoquePrevisaoApp.ordenar('produto')" data-tooltip="Produto & Referência|Nome do item, referência, ID interno e peso líquido unitário. Clique para ordenar.">
                             Produto & Referência <i class="fa-solid fa-sort ml-1 text-slate-300"></i>
