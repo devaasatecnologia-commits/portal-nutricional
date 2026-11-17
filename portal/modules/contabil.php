@@ -1022,7 +1022,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         </div>
                                         <div class="p-1.5 border-b border-black">
                                             <div class="text-[8px] font-bold uppercase">CHAVE DE ACESSO</div>
-                                            <div class="font-mono text-[9px] font-bold tracking-wider" x-text="danfeNota.chave_nfe || danfeNota.protocolo || 'Consulte chave no XML/SEFAZ'"></div>
+                                            <div class="font-mono text-[9px] font-bold tracking-wider" x-text="danfeNota.chave_nfe || 'Chave não disponível'"></div>
                                         </div>
                                         <div class="p-1.5 border-b border-black text-center text-[8px]">
                                             Consulta de autenticidade no portal nacional da NF-e<br>
@@ -1030,7 +1030,7 @@ require_once __DIR__ . '/../estrutura/header.php';
                                         </div>
                                         <div class="p-1.5">
                                             <div class="text-[8px] font-bold uppercase">PROTOCOLO DE AUTORIZAÇÃO DE USO</div>
-                                            <div class="font-mono text-[9px] font-bold" x-text="(danfeNota.protocolo || '-') + '  ' + (danfeNota.datahora_geracao || '')"></div>
+                                            <div class="font-mono text-[9px] font-bold" x-text="(danfeNota.protocolo || '-') + '  ' + (danfeNota.datahora_sefaz || danfeNota.datahora_geracao || '')"></div>
                                         </div>
                                     </td>
                                 </tr>
