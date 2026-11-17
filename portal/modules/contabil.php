@@ -993,8 +993,8 @@ require_once __DIR__ . '/../estrutura/header.php';
                                 <tr>
                                     <!-- LOGO + EMITENTE -->
                                     <td class="border border-black p-2 w-[38%] align-middle">
-                                        <div class="flex items-center gap-2.5">
-                                            <img src="<?= $appBase ?>/portal/assets/img/logo.png" alt="Nutricional" class="h-12 w-auto object-contain">
+                                        <div class="flex items-center gap-3">
+                                            <img src="<?= $appBase ?>/portal/assets/img/logo-danfe-nutricional.png" alt="Nutricional" class="h-11 w-auto max-w-[145px] object-contain shrink-0">
                                             <div class="text-[9px] leading-snug">
                                                 <div class="font-bold text-[10px]" x-text="danfeNota.filial_razao"></div>
                                                 <div x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
