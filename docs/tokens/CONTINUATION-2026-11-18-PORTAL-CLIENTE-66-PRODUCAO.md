@@ -12,7 +12,11 @@
   - **Representantes:** `/representante` (`representante/index.php` -> `portal-cliente.php?modo=representante`)
   - **Gestores / Admin / Usuários:** `/portal/login.php` (limpo, apenas equipe interna) -> módulo Portal do Cliente no menu.
 
-## Lista Completa de Arquivos (Deploy FTP — Chamado #66)
+## Chamados Registrados
+- **Chamado #66 (`Em Correção`):** Portal do Cliente & Parceiro (Auth 2FA + Turnstile + Hierarquia Comercial + Boletos FEBRABAN + DANFE + Dashboard Transparência + `/cliente` & `/representante`). Manual v1.1 em `sistema_manuais` (`id = 97`) + PDF `portal/uploads/chamados/manual_portal_cliente_hierarquia_2fa_chamado_66.pdf`.
+- **Chamado #72 (`Concluído`):** Implantação de API WhatsApp Própria (Evolution API v2.3.7 no servidor Windows 24h `SERVER`, Node 22 + PostgreSQL `evolution` + PM2 `EvolutionAPI-AutoStart` + Cloudflare Tunnel `https://whats.nutricionalbr.com` + `SecretVault`/`WhatsAppService`). Manual em `sistema_manuais` (`modulo_slug = whatsapp-evolution`) + PDF `portal/uploads/chamados/manual_api_whatsapp_evolution_chamado_72.pdf`.
+
+## Lista Completa de Arquivos (Deploy FTP — Chamado #66 + #72)
 - `v1/routes/api.php`
 - `v1/src/Controllers/PortalClienteController.php`
 - `v1/src/Middleware/JwtMiddleware.php`
