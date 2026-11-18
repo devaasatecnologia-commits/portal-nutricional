@@ -110,12 +110,13 @@ class PortalClienteController
      */
     private function enviarEmail(string $para, string $nomePara, string $assunto, string $html): bool
     {
-        $host = trim((string)($_ENV['MAIL_HOST'] ?? ''));
-        $user = trim((string)($_ENV['MAIL_USER'] ?? ''));
+        $host = trim((string)($_ENV['MAIL_HOST'] ?? ($_SERVER['MAIL_HOST'] ?? (getenv('MAIL_HOST') ?: ''))));
+        $user = trim((string)($_ENV['MAIL_USER'] ?? ($_SERVER['MAIL_USER'] ?? (getenv('MAIL_USER') ?: ''))));
         $pass = trim(\Nutricional\Services\SecretVault::get('MAIL_PASS'));
-        $port = (int)($_ENV['MAIL_PORT'] ?? 465);
+        $port = (int)($_ENV['MAIL_PORT'] ?? ($_SERVER['MAIL_PORT'] ?? (getenv('MAIL_PORT') ?: 465)));
 
         if ($host === '' || $user === '' || $pass === '' || !filter_var($para, FILTER_VALIDATE_EMAIL)) {
+            error_log("[PortalCliente] SMTP config incompleta: host=" . ($host ?: 'VAZIO') . " user=" . ($user ?: 'VAZIO') . " pass_len=" . strlen($pass) . " para={$para}");
             return false;
         }
 
