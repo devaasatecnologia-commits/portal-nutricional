@@ -282,6 +282,9 @@ class PortalClienteController
             $codigo = $this->gerarOtp((int)$conta['id'], $numNorm, 'OTP_LOGIN');
             $enviado = \Nutricional\Services\WhatsAppService::enviarCodigo($numNorm, $codigo);
             $masc = \Nutricional\Services\WhatsAppService::mascarar($numNorm);
+            $detErro = !$enviado && \Nutricional\Services\WhatsAppService::$ultimoErro
+                ? ' (' . \Nutricional\Services\WhatsAppService::$ultimoErro . ')'
+                : '';
             return $this->json($response, [
                 'success' => true,
                 'requires_2fa' => true,
@@ -289,7 +292,7 @@ class PortalClienteController
                 'desafio_id' => (int)$conta['id'],
                 'email_mascarado' => $masc,
                 'email_enviado' => $enviado,
-                'message' => $enviado ? "Código de 6 dígitos enviado via WhatsApp para {$masc}" : 'Falha ao enviar WhatsApp. Tente por E-mail.',
+                'message' => $enviado ? "Código de 6 dígitos enviado via WhatsApp para {$masc}" : "Falha ao enviar WhatsApp{$detErro}. Tente por E-mail.",
             ]);
         }
 
