@@ -24,6 +24,9 @@ class SecretVault
         'WHATSAPP_META_PHONE_ID' => ['WhatsApp Meta - Phone Number ID', 'WhatsApp', 'Cloud API oficial da Meta'],
         'WHATSAPP_META_TOKEN'  => ['WhatsApp Meta - Token permanente', 'WhatsApp', 'Token de acesso do usuario do sistema'],
         'WHATSAPP_META_TEMPLATE' => ['WhatsApp Meta - Nome do template', 'WhatsApp', 'Template de autenticacao aprovado (pt_BR, com 1 variavel e botao copiar codigo)'],
+        'EVOLUTION_API_URL'    => ['Evolution API - URL base', 'WhatsApp', 'URL publica da Evolution API (ex: https://whats.nutricionalbr.com)'],
+        'EVOLUTION_API_KEY'    => ['Evolution API - API Key', 'WhatsApp', 'Chave AUTHENTICATION_API_KEY configurada na Evolution API'],
+        'EVOLUTION_INSTANCE'   => ['Evolution API - Instancia', 'WhatsApp', 'Nome da instancia conectada no WhatsApp (ex: nutricional)'],
         'TURNSTILE_SITE_KEY'   => ['Cloudflare Turnstile - Site Key', 'Portal B2B', 'Chave publica (Site Key) do widget Cloudflare Turnstile no Portal do Cliente'],
         'TURNSTILE_SECRET_KEY' => ['Cloudflare Turnstile - Secret Key', 'Portal B2B', 'Chave secreta (Secret Key) para validacao siteverify no backend'],
     ];

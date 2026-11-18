@@ -10,6 +10,10 @@ class WhatsAppService
 {
     public static function provedor(): ?string
     {
+        if (SecretVault::get('EVOLUTION_API_URL') !== '' && SecretVault::get('EVOLUTION_API_KEY') !== ''
+            && SecretVault::get('EVOLUTION_INSTANCE') !== '') {
+            return 'evolution';
+        }
         if (SecretVault::get('ZAPI_INSTANCE_ID') !== '' && SecretVault::get('ZAPI_TOKEN') !== '') {
             return 'zapi';
         }
@@ -39,6 +43,16 @@ class WhatsAppService
     public static function enviarCodigo(string $numero, string $codigo): bool
     {
         switch (self::provedor()) {
+            case 'evolution':
+                $base = rtrim(SecretVault::get('EVOLUTION_API_URL'), '/');
+                $inst = rawurlencode(SecretVault::get('EVOLUTION_INSTANCE'));
+                $url = "{$base}/message/sendText/{$inst}";
+                $headers = ['Content-Type: application/json', 'apikey: ' . SecretVault::get('EVOLUTION_API_KEY')];
+                $body = [
+                    'number' => $numero,
+                    'text' => "*Portal Nutricional*\nSeu código de verificação 2FA é: *{$codigo}*\nVálido por 10 minutos.",
+                ];
+                return self::post($url, $headers, $body);
             case 'zapi':
                 $url = 'https://api.z-api.io/instances/' . rawurlencode(SecretVault::get('ZAPI_INSTANCE_ID'))
                     . '/token/' . rawurlencode(SecretVault::get('ZAPI_TOKEN')) . '/send-text';
