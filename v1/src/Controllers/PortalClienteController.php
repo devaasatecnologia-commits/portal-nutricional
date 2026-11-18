@@ -122,6 +122,7 @@ class PortalClienteController
         try {
             $mail = new PHPMailer(true);
             $mail->CharSet = 'UTF-8';
+            $mail->Hostname = 'nutricionalbr.com';
             $mail->isSMTP();
             $mail->Host = $host;
             $mail->SMTPAuth = true;
@@ -129,11 +130,13 @@ class PortalClienteController
             $mail->Password = $pass;
             $mail->Port = $port;
             $mail->SMTPSecure = $port === 465 ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->Sender = $user;
             $mail->setFrom($user, 'Portal do Cliente - Nutricional');
             $mail->addAddress($para, $nomePara ?: $para);
             $mail->isHTML(true);
             $mail->Subject = $assunto;
             $mail->Body = $html;
+            $mail->AltBody = trim(strip_tags(str_replace(['<br>', '</p>', '</h2>'], "\n", $html)));
             $mail->send();
             return true;
         } catch (\Throwable $e) {
