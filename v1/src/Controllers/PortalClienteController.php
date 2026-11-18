@@ -76,9 +76,9 @@ class PortalClienteController
      */
     private function validarTurnstile(string $token): bool
     {
-        $secret = trim((string)($_ENV['TURNSTILE_SECRET_KEY'] ?? ''));
+        $secret = trim(\Nutricional\Services\SecretVault::get('TURNSTILE_SECRET_KEY'));
         if ($secret === '') {
-            // Chave ainda não configurada no .env (ambiente local/homologação)
+            // Chave ainda não configurada no Cofre de Segredos nem no .env (ambiente local/homologação)
             return true;
         }
         if ($token === '') {
@@ -181,7 +181,7 @@ class PortalClienteController
      */
     public function authConfig(Request $request, Response $response): Response
     {
-        $siteKey = trim((string)($_ENV['TURNSTILE_SITE_KEY'] ?? ''));
+        $siteKey = trim(\Nutricional\Services\SecretVault::get('TURNSTILE_SITE_KEY'));
         return $this->json($response, [
             'success' => true,
             'turnstile_ativo' => $siteKey !== '',

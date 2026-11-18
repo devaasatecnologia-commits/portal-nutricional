@@ -74,7 +74,6 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <input type="password" x-model="formLogin.senha" @keyup.enter="enviarLogin()" placeholder="••••••••"
                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold">
                             </div>
-                            <div id="turnstile-container" class="pt-1" x-show="turnstileAtivo"></div>
                             <button @click="enviarLogin()" :disabled="loadingAuth"
                                     class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold transition">
                                 <i class="fa-solid fa-right-to-bracket mr-1"></i> Entrar &amp; Enviar Código 2FA
@@ -161,6 +160,9 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         </div>
                     </template>
                 </div>
+
+                <!-- Widget Cloudflare Turnstile compartilhado entre Entrar / Primeiro Acesso / Cadastro -->
+                <div id="turnstile-container" class="pt-3" x-show="turnstileAtivo && !etapa2fa && !etapaReset"></div>
             </div>
         </div>
     </div>

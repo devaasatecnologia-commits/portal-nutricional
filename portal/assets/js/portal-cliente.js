@@ -111,6 +111,10 @@ function portalClienteHandler(appBase = '') {
                 body: JSON.stringify({ ...body, cf_turnstile_response: this.turnstileToken })
             });
             const data = await resp.json().catch(() => ({}));
+            if (this.turnstileAtivo && window.turnstile) {
+                this.turnstileToken = '';
+                try { window.turnstile.reset(); } catch (_) {}
+            }
             if (!resp.ok || data.success === false) {
                 throw new Error(data.error || `Erro HTTP ${resp.status}`);
             }
