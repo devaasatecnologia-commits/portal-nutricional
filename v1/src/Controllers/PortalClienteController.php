@@ -112,7 +112,7 @@ class PortalClienteController
     {
         $host = trim((string)($_ENV['MAIL_HOST'] ?? ''));
         $user = trim((string)($_ENV['MAIL_USER'] ?? ''));
-        $pass = trim((string)($_ENV['MAIL_PASS'] ?? ''));
+        $pass = trim(\Nutricional\Services\SecretVault::get('MAIL_PASS'));
         $port = (int)($_ENV['MAIL_PORT'] ?? 465);
 
         if ($host === '' || $user === '' || $pass === '' || !filter_var($para, FILTER_VALIDATE_EMAIL)) {
@@ -432,7 +432,7 @@ class PortalClienteController
         $tituloEmail = trim((string)($conta['senha_hash'] ?? '')) === ''
             ? "Primeiro Acesso ({$codigo}) — Portal do Cliente Nutricional"
             : "Redefinição de Senha ({$codigo}) — Portal do Cliente Nutricional";
-        $this->enviarEmail(
+        $enviado = $this->enviarEmail(
             (string)$conta['email'],
             (string)$conta['nome'],
             $tituloEmail,
@@ -446,7 +446,10 @@ class PortalClienteController
             'desafio_id' => (int)$conta['id'],
             'perfil' => $conta['perfil'],
             'email_mascarado' => $this->mascararEmail((string)$conta['email']),
-            'message' => 'Código enviado para o e-mail cadastrado: ' . $this->mascararEmail((string)$conta['email']),
+            'email_enviado' => $enviado,
+            'message' => $enviado
+                ? 'Código enviado para o e-mail cadastrado: ' . $this->mascararEmail((string)$conta['email'])
+                : 'Não foi possível enviar o e-mail SMTP agora. Contate o suporte TI.',
         ]);
     }
 
