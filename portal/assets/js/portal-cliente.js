@@ -105,13 +105,17 @@ function portalClienteHandler(appBase = '') {
         },
 
         async apiPublic(path, body) {
+            const exigeTurnstile = this.turnstileAtivo && !path.includes('verificar-2fa') && !path.includes('redefinir-senha');
+            if (exigeTurnstile && !this.turnstileToken) {
+                throw new Error('Aguarde a verificação de segurança (Cloudflare) concluir antes de continuar.');
+            }
             const resp = await fetch(`${apiBase()}${path}`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ...body, cf_turnstile_response: this.turnstileToken })
             });
             const data = await resp.json().catch(() => ({}));
-            if (this.turnstileAtivo && window.turnstile) {
+            if (exigeTurnstile && window.turnstile) {
                 this.turnstileToken = '';
                 try { window.turnstile.reset(); } catch (_) {}
             }

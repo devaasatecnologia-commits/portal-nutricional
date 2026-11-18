@@ -84,17 +84,25 @@ class PortalClienteController
         if ($token === '') {
             return false;
         }
-        $ctx = stream_context_create([
-            'http' => [
-                'method' => 'POST',
-                'header' => "Content-type: application/x-www-form-urlencoded\r\n",
-                'content' => http_build_query(['secret' => $secret, 'response' => $token]),
-                'timeout' => 5,
-            ],
+        $ch = curl_init('https://challenges.cloudflare.com/turnstile/v0/siteverify');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => http_build_query([
+                'secret' => $secret,
+                'response' => $token,
+                'remoteip' => $_SERVER['REMOTE_ADDR'] ?? '',
+            ]),
+            CURLOPT_TIMEOUT => 8,
         ]);
-        $raw = @file_get_contents('https://challenges.cloudflare.com/turnstile/v0/siteverify', false, $ctx);
+        $raw = curl_exec($ch);
+        $err = curl_error($ch);
         $res = $raw ? json_decode($raw, true) : null;
-        return !empty($res['success']);
+        if (empty($res['success'])) {
+            error_log('[PortalCliente][Turnstile] Falha siteverify: err=' . $err . ' resp=' . ($raw ?: 'empty'));
+            return false;
+        }
+        return true;
     }
 
     /**
