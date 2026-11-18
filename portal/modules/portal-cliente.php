@@ -1,6 +1,10 @@
 <?php
-$modoCliente = (($_GET['modo'] ?? '') === 'cliente');
-$pageTitle = $modoCliente ? 'Portal do Cliente | Nutricional' : 'Portal do Cliente & Carteira Comercial | Nutricional';
+$modo = $_GET['modo'] ?? '';
+$modoCliente = ($modo === 'cliente');
+$modoRep = ($modo === 'representante');
+$pageTitle = $modoCliente
+    ? 'Portal do Cliente | Nutricional'
+    : ($modoRep ? 'Portal do Representante | Nutricional' : 'Carteira Comercial | Nutricional');
 $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
 ?>
@@ -38,9 +42,13 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             <div class="bg-gradient-to-br from-emerald-900 to-slate-900 text-white p-8 flex flex-col justify-between">
                 <div>
                     <img src="<?= $appBase ?>/portal/assets/img/logo-danfe-nutricional.png" alt="Nutricional" class="h-12 bg-white px-3 py-1.5 rounded-xl mb-6">
-                    <h1 class="text-2xl font-black tracking-tight mb-2"><?= $modoCliente ? 'Portal do Cliente Nutricional' : 'Portal do Cliente &amp; Parceiro' ?></h1>
+                    <h1 class="text-2xl font-black tracking-tight mb-2">
+                        <?= $modoCliente ? 'Portal do Cliente Nutricional' : ($modoRep ? 'Portal do Representante Nutricional' : 'Portal do Cliente &amp; Parceiro') ?>
+                    </h1>
                     <p class="text-xs text-emerald-100/80 leading-relaxed">
-                        Consulte seus <strong>Boletos em Aberto</strong> (com código de barras para pagamento), <strong>Notas Fiscais</strong> e acompanhamento de <strong>Pedidos</strong> em tempo real.
+                        <?= $modoRep
+                            ? 'Acompanhe exclusivamente a <strong>sua carteira de clientes</strong>: boletos em aberto, DANFEs, pedidos e limite de crédito em tempo real.'
+                            : 'Consulte seus <strong>Boletos em Aberto</strong> (com código de barras para pagamento), <strong>Notas Fiscais</strong> e acompanhamento de <strong>Pedidos</strong> em tempo real.' ?>
                     </p>
                 </div>
                 <div class="space-y-2.5 text-xs text-emerald-100/90 mt-8">
