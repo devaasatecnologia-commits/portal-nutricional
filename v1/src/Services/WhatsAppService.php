@@ -8,6 +8,8 @@ namespace Nutricional\Services;
  */
 class WhatsAppService
 {
+    public static ?string $ultimoErro = null;
+
     public static function provedor(): ?string
     {
         if (SecretVault::get('EVOLUTION_API_URL') !== '' && SecretVault::get('EVOLUTION_API_KEY') !== ''
@@ -100,9 +102,11 @@ class WhatsAppService
         $err = curl_error($ch);
         curl_close($ch);
         if ($http < 200 || $http >= 300) {
-            error_log('[WhatsApp] envio falhou HTTP ' . $http . ' ' . $err . ' ' . substr((string)$resp, 0, 200));
+            self::$ultimoErro = "HTTP {$http} {$err} " . substr((string)$resp, 0, 160);
+            error_log('[WhatsApp] envio falhou ' . self::$ultimoErro);
             return false;
         }
+        self::$ultimoErro = null;
         return true;
     }
 }

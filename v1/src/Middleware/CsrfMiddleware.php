@@ -26,6 +26,7 @@ class CsrfMiddleware
      */
     private $excludedPrefixes = [
         '/v1/frota/',                // módulo Frota inteiro (embarques, entregas, motoristas, cobli, acerto, importar)
+        '/v1/portal-cliente/',       // Portal do Cliente B2B usa Bearer JWT (não cookie de sessão)
     ];
 
     public function __invoke(Request $request, RequestHandler $handler): Response
