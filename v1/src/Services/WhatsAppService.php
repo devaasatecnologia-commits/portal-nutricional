@@ -90,6 +90,7 @@ class WhatsAppService
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => json_encode($body),
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_USERAGENT => 'Nutricional-Portal/1.0',
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_CONNECTTIMEOUT => 8,
