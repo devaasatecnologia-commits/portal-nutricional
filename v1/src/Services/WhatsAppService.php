@@ -94,6 +94,8 @@ class WhatsAppService
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_USERAGENT => 'Nutricional-Portal/1.0',
             CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
             CURLOPT_TIMEOUT => 15,
             CURLOPT_CONNECTTIMEOUT => 8,
         ]);
