@@ -84,10 +84,10 @@
         </form>
 
         <div class="mt-5 pt-4 border-t border-slate-100">
-            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2">Acesso Externo B2B</p>
-            <a href="modules/portal-cliente.php"
+            <p class="text-[11px] font-bold uppercase tracking-wider text-slate-400 text-center mb-2">Área do Cliente</p>
+            <a href="modules/portal-cliente.php?modo=cliente"
                class="w-full flex justify-center items-center gap-2 py-3 px-4 border-2 border-emerald-600/30 rounded-xl text-sm font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-600 transition-all no-underline">
-                <i class="fa-solid fa-building-user"></i> Entrar como CLIENTE / Representante
+                <i class="fa-solid fa-building-user"></i> Sou Cliente — Acessar Boletos e Notas
             </a>
         </div>
     </div>

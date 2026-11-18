@@ -1,5 +1,6 @@
 <?php
-$pageTitle = 'Portal do Cliente & Hierarquia Comercial | Nutricional';
+$modoCliente = (($_GET['modo'] ?? '') === 'cliente');
+$pageTitle = $modoCliente ? 'Portal do Cliente | Nutricional' : 'Portal do Cliente & Carteira Comercial | Nutricional';
 $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
 ?>
@@ -37,15 +38,19 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             <div class="bg-gradient-to-br from-emerald-900 to-slate-900 text-white p-8 flex flex-col justify-between">
                 <div>
                     <img src="<?= $appBase ?>/portal/assets/img/logo-danfe-nutricional.png" alt="Nutricional" class="h-12 bg-white px-3 py-1.5 rounded-xl mb-6">
-                    <h1 class="text-2xl font-black tracking-tight mb-2">Portal do Cliente &amp; Parceiro</h1>
+                    <h1 class="text-2xl font-black tracking-tight mb-2"><?= $modoCliente ? 'Portal do Cliente Nutricional' : 'Portal do Cliente &amp; Parceiro' ?></h1>
                     <p class="text-xs text-emerald-100/80 leading-relaxed">
                         Consulte seus <strong>Boletos em Aberto</strong> (com código de barras para pagamento), <strong>Notas Fiscais</strong> e acompanhamento de <strong>Pedidos</strong> em tempo real.
                     </p>
                 </div>
                 <div class="space-y-2.5 text-xs text-emerald-100/90 mt-8">
-                    <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Proteção Cloudflare Turnstile &amp; 2FA por E-mail</div>
-                    <div class="flex items-center gap-2"><i class="fa-solid fa-sitemap text-emerald-400"></i> Hierarquia Gestor → Representante → Cliente</div>
-                    <div class="flex items-center gap-2"><i class="fa-solid fa-barcode text-emerald-400"></i> Segunda via rápida de boletos e chaves NF-e</div>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-shield-halved text-emerald-400"></i> Segurança em 2 etapas (E-mail ou WhatsApp)</div>
+                    <?php if ($modoCliente): ?>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-wallet text-emerald-400"></i> Limite de crédito, produtos comprados e dados cadastrais</div>
+                    <?php else: ?>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-sitemap text-emerald-400"></i> Carteira separada por perfil (Gestor / Representante / Cliente)</div>
+                    <?php endif; ?>
+                    <div class="flex items-center gap-2"><i class="fa-solid fa-barcode text-emerald-400"></i> Segunda via rápida de boletos e DANFEs</div>
                 </div>
             </div>
 
@@ -107,11 +112,13 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         </div>
                     </template>
 
+                    <?php if (!$modoCliente): ?>
                     <div x-show="temTokenPortalInterno" class="pt-3 border-t border-slate-200 text-center">
                         <button @click="entrarComSessaoPortal()" class="w-full py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold">
                             <i class="fa-solid fa-user-tie mr-1"></i> Acessar como Gestor / Representante (Sessão Portal)
                         </button>
                     </div>
+                    <?php endif; ?>
                 </div>
 
                 <!-- SOLICITAR CADASTRO -->
@@ -140,7 +147,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 <!-- PRIMEIRO ACESSO / ESQUECEU A SENHA -->
                 <div x-show="modoAuth === 'esqueci'" class="space-y-3">
                     <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
-                        <strong>Cliente ou Representante ativo:</strong> informe seu <strong>CNPJ/CPF</strong> ou <strong>E-mail cadastrado</strong> para receber o código de 6 dígitos e criar ou redefinir sua senha.
+                        <strong><?= $modoCliente ? 'Cliente Nutricional:' : 'Primeiro Acesso:' ?></strong> informe seu <strong>CNPJ/CPF</strong> ou <strong>E-mail cadastrado</strong> para receber o código de 6 dígitos e criar ou redefinir sua senha.
                     </div>
                     <template x-if="!etapaReset">
                         <div class="space-y-3">
@@ -189,7 +196,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/30 border border-emerald-400/40" x-text="'PERFIL: ' + (escopo.perfil || 'CLIENTE')"></span>
                     <span class="text-xs font-bold text-emerald-200" x-text="escopo.nome"></span>
                 </div>
-                <h1 class="text-xl font-black tracking-tight">Portal do Cliente &amp; Carteira Comercial</h1>
+                <h1 class="text-xl font-black tracking-tight"
+                    x-text="escopo.perfil === 'CLIENTE' ? 'Minha Área do Cliente — Nutricional' : (escopo.perfil === 'REPRESENTANTE' ? 'Minha Carteira de Clientes' : 'Gestão de Carteira Comercial')"></h1>
             </div>
             <div class="flex items-center gap-2 self-start md:self-auto">
                 <button x-show="escopo.perfil === 'CLIENTE' || escopo.perfil === 'REPRESENTANTE'" @click="modalPref2fa = true; msgPref2fa = ''"
