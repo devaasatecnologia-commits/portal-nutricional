@@ -70,14 +70,13 @@ function portalClienteHandler(appBase = '') {
 
         async init() {
             this.temTokenPortalInterno = Boolean(localStorage.getItem('authToken'));
+            await this.carregarAuthConfig();
             const b2bTok = localStorage.getItem('b2bToken') || '';
             if (b2bTok) {
                 this.tokenAtivo = b2bTok;
                 this.autenticado = true;
                 await this.carregarContexto();
-                return;
             }
-            await this.carregarAuthConfig();
         },
 
         async carregarAuthConfig() {
@@ -436,6 +435,9 @@ function portalClienteHandler(appBase = '') {
             localStorage.removeItem('b2bToken');
             this.tokenAtivo = '';
             this.autenticado = false;
+            if (!this.turnstileSiteKey) {
+                this.carregarAuthConfig();
+            }
         },
 
         fmtMoeda(v) {
