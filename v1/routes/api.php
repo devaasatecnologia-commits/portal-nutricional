@@ -756,6 +756,7 @@ $protected->group('/contabil', function ($group) {
 $protected->group('/portal-cliente', function ($group) {
     $ctrl = new \Nutricional\Controllers\PortalClienteController();
     $group->get('/contexto', [$ctrl, 'contexto']);
+    $group->post('/preferencias-2fa', [$ctrl, 'atualizarPreferencias2fa']);
     $group->get('/cliente/{id}/resumo', [$ctrl, 'clienteResumo']);
     $group->get('/nota/{idfilial}/{idnfs}/itens', [$ctrl, 'notaItens']);
     $group->get('/nota/{idfilial}/{idnfs}/danfe', [$ctrl, 'notaDanfe']);

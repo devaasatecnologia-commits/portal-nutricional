@@ -23,8 +23,12 @@ function portalClienteHandler(appBase = '') {
         turnstileAtivo: false,
         turnstileSiteKey: '',
         turnstileToken: '',
+        whatsappAtivo: false,
 
-        formLogin: { identificador: '', senha: '' },
+        formLogin: { identificador: '', senha: '', canal_2fa: 'auto' },
+        modalPref2fa: false,
+        formPref2fa: { whatsapp: '', preferencia_2fa: 'email' },
+        msgPref2fa: '',
         form2fa: { codigo: '' },
         formCadastro: { cnpj_cpf: '', email: '', senha: '' },
         formReset: { identificador: '', codigo: '', nova_senha: '' },
@@ -82,6 +86,7 @@ function portalClienteHandler(appBase = '') {
                 const d = await r.json();
                 this.turnstileAtivo = Boolean(d.turnstile_ativo && d.turnstile_site_key);
                 this.turnstileSiteKey = d.turnstile_site_key || '';
+                this.whatsappAtivo = Boolean(d.whatsapp_ativo);
                 if (this.turnstileAtivo) {
                     this.montarTurnstile();
                 }
@@ -405,6 +410,21 @@ function portalClienteHandler(appBase = '') {
         fmtChave(chave) {
             const d = String(chave || '').replace(/\D/g, '');
             return d ? d.replace(/(.{4})/g, '$1 ').trim() : '-';
+        },
+
+        async salvarPref2fa() {
+            this.msgPref2fa = '';
+            const resp = await fetch(`${apiBase()}/portal-cliente/preferencias-2fa`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${this.tokenAtivo}` },
+                body: JSON.stringify(this.formPref2fa)
+            });
+            const d = await resp.json().catch(() => ({}));
+            if (!resp.ok || d.success === false) {
+                alert(d.error || 'Erro ao salvar preferências.');
+                return;
+            }
+            this.msgPref2fa = d.message;
         },
 
         copiarTexto(txt) {

@@ -74,6 +74,14 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <input type="password" x-model="formLogin.senha" @keyup.enter="enviarLogin()" placeholder="••••••••"
                                        class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs font-semibold">
                             </div>
+                            <div x-show="whatsappAtivo" class="pt-0.5">
+                                <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Receber código 2FA via</label>
+                                <div class="grid grid-cols-3 gap-1.5 text-[11px] font-bold">
+                                    <button type="button" @click="formLogin.canal_2fa = 'auto'" :class="formLogin.canal_2fa === 'auto' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'" class="py-1.5 rounded-lg">Padrão</button>
+                                    <button type="button" @click="formLogin.canal_2fa = 'email'" :class="formLogin.canal_2fa === 'email' ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600'" class="py-1.5 rounded-lg"><i class="fa-solid fa-envelope mr-1"></i>E-mail</button>
+                                    <button type="button" @click="formLogin.canal_2fa = 'whatsapp'" :class="formLogin.canal_2fa === 'whatsapp' ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-600'" class="py-1.5 rounded-lg"><i class="fa-brands fa-whatsapp mr-1"></i>WhatsApp</button>
+                                </div>
+                            </div>
                             <button @click="enviarLogin()" :disabled="loadingAuth"
                                     class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold transition">
                                 <i class="fa-solid fa-right-to-bracket mr-1"></i> Entrar &amp; Enviar Código 2FA
@@ -183,9 +191,15 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 </div>
                 <h1 class="text-xl font-black tracking-tight">Portal do Cliente &amp; Carteira Comercial</h1>
             </div>
-            <button @click="sair()" class="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 border border-rose-400/30 text-white text-xs font-extrabold self-start md:self-auto">
-                <i class="fa-solid fa-right-from-bracket mr-1"></i> Sair
-            </button>
+            <div class="flex items-center gap-2 self-start md:self-auto">
+                <button x-show="escopo.perfil === 'CLIENTE' || escopo.perfil === 'REPRESENTANTE'" @click="modalPref2fa = true; msgPref2fa = ''"
+                        class="px-3 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/30 text-white text-xs font-extrabold">
+                    <i class="fa-brands fa-whatsapp mr-1"></i> 2FA WhatsApp
+                </button>
+                <button @click="sair()" class="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 border border-rose-400/30 text-white text-xs font-extrabold">
+                    <i class="fa-solid fa-right-from-bracket mr-1"></i> Sair
+                </button>
+            </div>
         </div>
 
         <!-- SELETOR DE HIERARQUIA (GESTOR / REPRESENTANTE) -->
@@ -824,6 +838,32 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 </div>
                     </div>
                 </template>
+            </div>
+        </div>
+    </div>
+    <!-- MODAL PREFERÊNCIAS 2FA WHATSAPP (z-[70]) -->
+    <div x-show="modalPref2fa" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4">
+        <div @click.away="modalPref2fa = false" class="bg-white rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
+            <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+                <h3 class="text-sm font-extrabold"><i class="fa-brands fa-whatsapp text-emerald-400 mr-1.5"></i> Configurar 2FA por WhatsApp</h3>
+                <button @click="modalPref2fa = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <div x-show="msgPref2fa" class="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 font-bold" x-text="msgPref2fa"></div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">WhatsApp com DDD</label>
+                    <input type="text" x-model="formPref2fa.whatsapp" placeholder="(48) 99999-8888" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-semibold">
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Canal Padrão no Login</label>
+                    <select x-model="formPref2fa.preferencia_2fa" class="w-full px-3 py-2 rounded-xl border border-slate-300 font-bold">
+                        <option value="email">E-mail Cadastrado</option>
+                        <option value="whatsapp">WhatsApp (instantâneo)</option>
+                    </select>
+                </div>
+                <button @click="salvarPref2fa()" class="w-full py-2.5 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold">
+                    Salvar Preferência 2FA
+                </button>
             </div>
         </div>
     </div>

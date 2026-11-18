@@ -197,6 +197,7 @@ class PortalClienteController
             'success' => true,
             'turnstile_ativo' => $siteKey !== '',
             'turnstile_site_key' => $siteKey,
+            'whatsapp_ativo' => \Nutricional\Services\WhatsAppService::provedor() !== null,
         ]);
     }
 
@@ -252,6 +253,38 @@ class PortalClienteController
             return $this->json($response, ['success' => false, 'error' => 'Cadastro aguardando aprovação ou bloqueado (' . $conta['status'] . ').'], 403);
         }
 
+        $canalReq = strtolower(trim((string)($b['canal_2fa'] ?? 'auto')));
+        $canal = ($canalReq === '' || $canalReq === 'auto')
+            ? strtolower(trim((string)($conta['preferencia_2fa'] ?? 'email')))
+            : $canalReq;
+        if ($canal === 'whatsapp') {
+            if (\Nutricional\Services\WhatsAppService::provedor() === null) {
+                return $this->json($response, ['success' => false, 'error' => 'Envio de 2FA por WhatsApp ainda não configurado no servidor. Selecione E-mail.'], 400);
+            }
+            $rawFone = trim((string)($conta['whatsapp'] ?? ''));
+            if ($rawFone === '') {
+                $stF = $this->pdo->prepare("SELECT fone FROM cliforemp WHERE idcliforemp = :id");
+                $stF->execute(['id' => (int)$conta['idcliforemp']]);
+                $rawFone = trim((string)$stF->fetchColumn());
+            }
+            $numNorm = \Nutricional\Services\WhatsAppService::normalizarNumero($rawFone);
+            if (!$numNorm) {
+                return $this->json($response, ['success' => false, 'error' => 'Nenhum WhatsApp válido cadastrado. Entre por E-mail e cadastre seu WhatsApp no painel.'], 400);
+            }
+            $codigo = $this->gerarOtp((int)$conta['id'], $numNorm, 'OTP_LOGIN');
+            $enviado = \Nutricional\Services\WhatsAppService::enviarCodigo($numNorm, $codigo);
+            $masc = \Nutricional\Services\WhatsAppService::mascarar($numNorm);
+            return $this->json($response, [
+                'success' => true,
+                'requires_2fa' => true,
+                'canal_2fa' => 'whatsapp',
+                'desafio_id' => (int)$conta['id'],
+                'email_mascarado' => $masc,
+                'email_enviado' => $enviado,
+                'message' => $enviado ? "Código de 6 dígitos enviado via WhatsApp para {$masc}" : 'Falha ao enviar WhatsApp. Tente por E-mail.',
+            ]);
+        }
+
         $emailDestino = trim((string)$conta['email']);
         $codigo = $this->gerarOtp((int)$conta['id'], $emailDestino, 'OTP_LOGIN');
         $enviado = $this->enviarEmail(
@@ -267,6 +300,7 @@ class PortalClienteController
         return $this->json($response, [
             'success' => true,
             'requires_2fa' => true,
+            'canal_2fa' => 'email',
             'desafio_id' => (int)$conta['id'],
             'email_mascarado' => $this->mascararEmail($emailDestino),
             'email_enviado' => $enviado,
@@ -1014,6 +1048,48 @@ class PortalClienteController
         ], $stI->fetchAll(PDO::FETCH_ASSOC));
 
         return $this->json($response, ['success' => true, 'itens' => $itens]);
+    }
+
+    /**
+     * POST /v1/portal-cliente/preferencias-2fa (Protegida)
+     * Permite que a conta B2B logada cadastre seu WhatsApp e escolha o canal padrão de 2FA (email/whatsapp).
+     */
+    public function atualizarPreferencias2fa(Request $request, Response $response): Response
+    {
+        $u = (array)($request->getAttribute('user') ?? []);
+        $b2bId = (int)($u['b2b_id'] ?? 0);
+        if (empty($u['b2b']) || $b2bId <= 0) {
+            return $this->json($response, ['success' => false, 'error' => 'Disponível apenas para contas B2B.'], 400);
+        }
+
+        $b = $this->body($request);
+        $canal = strtolower(trim((string)($b['preferencia_2fa'] ?? 'email')));
+        if (!in_array($canal, ['email', 'whatsapp'], true)) {
+            $canal = 'email';
+        }
+        $rawFone = trim((string)($b['whatsapp'] ?? ''));
+        $numNorm = '';
+        if ($rawFone !== '') {
+            $numNorm = \Nutricional\Services\WhatsAppService::normalizarNumero($rawFone) ?: '';
+            if ($numNorm === '') {
+                return $this->json($response, ['success' => false, 'error' => 'Número de WhatsApp inválido. Informe DDD + número (ex: 48999998888).'], 400);
+            }
+        }
+        if ($canal === 'whatsapp' && $numNorm === '') {
+            return $this->json($response, ['success' => false, 'error' => 'Informe um número de WhatsApp para ativar o 2FA por WhatsApp.'], 400);
+        }
+
+        $this->pdo->exec("ALTER TABLE b2b_portal_contas ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(30) DEFAULT ''");
+        $this->pdo->exec("ALTER TABLE b2b_portal_contas ADD COLUMN IF NOT EXISTS preferencia_2fa VARCHAR(20) DEFAULT 'email'");
+        $this->pdo->prepare("UPDATE b2b_portal_contas SET whatsapp = :w, preferencia_2fa = :p, atualizado_em = NOW() WHERE id = :id")
+            ->execute(['w' => $numNorm, 'p' => $canal, 'id' => $b2bId]);
+
+        return $this->json($response, [
+            'success' => true,
+            'whatsapp' => $numNorm,
+            'preferencia_2fa' => $canal,
+            'message' => 'Preferências de 2FA atualizadas com sucesso!',
+        ]);
     }
 
     /**
