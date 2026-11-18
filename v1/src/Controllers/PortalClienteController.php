@@ -110,8 +110,8 @@ class PortalClienteController
      */
     private function enviarEmail(string $para, string $nomePara, string $assunto, string $html): bool
     {
-        $host = trim((string)($_ENV['MAIL_HOST'] ?? ($_SERVER['MAIL_HOST'] ?? (getenv('MAIL_HOST') ?: ''))));
-        $user = trim((string)($_ENV['MAIL_USER'] ?? ($_SERVER['MAIL_USER'] ?? (getenv('MAIL_USER') ?: ''))));
+        $host = trim((string)($_ENV['MAIL_HOST'] ?? ($_SERVER['MAIL_HOST'] ?? (getenv('MAIL_HOST') ?: 'mail.nutricionalbr.com'))));
+        $user = trim((string)($_ENV['MAIL_USER'] ?? ($_SERVER['MAIL_USER'] ?? (getenv('MAIL_USER') ?: 'nao-responder@nutricionalbr.com'))));
         $pass = trim(\Nutricional\Services\SecretVault::get('MAIL_PASS'));
         $port = (int)($_ENV['MAIL_PORT'] ?? ($_SERVER['MAIL_PORT'] ?? (getenv('MAIL_PORT') ?: 465)));
 
@@ -131,6 +131,13 @@ class PortalClienteController
             $mail->Password = $pass;
             $mail->Port = $port;
             $mail->SMTPSecure = $port === 465 ? PHPMailer::ENCRYPTION_SMTPS : PHPMailer::ENCRYPTION_STARTTLS;
+            $mail->SMTPOptions = [
+                'ssl' => [
+                    'verify_peer' => false,
+                    'verify_peer_name' => false,
+                    'allow_self_signed' => true,
+                ],
+            ];
             $mail->Sender = $user;
             $mail->setFrom($user, 'Portal do Cliente - Nutricional');
             $mail->addAddress($para, $nomePara ?: $para);
