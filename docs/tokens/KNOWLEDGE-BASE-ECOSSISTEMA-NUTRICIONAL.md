@@ -11,7 +11,7 @@
   - **Filial `6` — NUTRICIONAL (FILIAL 6):** `NUTRICIONAL DISTRIBUIDORA LTDA` (`PR`).
   - *(Filiais `3` e `5` constam como baixadas no ERP).*
 - **Escala Atual Medida (`ema`):** **2.726 clientes ativos**, **33 representantes ativos**, **27 usuários internos ativos no Portal**, **45 módulos ativos** em `sistema_modulos`.
-- **História, Missão, Visão, Valores & Diferenciais:** `[A PREENCHER COM O ALAN]`
+- **História, Missão, Visão, Valores & Social:** Sob gestão independente do setor de **Marketing + Gestor** (documentação detalhada mantida fora do escopo técnico prioritário até definição futura).
 - **Mapa Organizacional & RBAC Real:**
   `Diretoria / Admin (usuarios_admin)` → `Gestores (usuario.dash_gestores)` → `Supervisores (idsupervisor)` → `Representantes (cliforemp / cliente.idvendedor / usuarios_mercos)` → `Clientes (cliforemp + cliente, B2B)` ↔ `Fornecedores (cliforemp)`.
 
@@ -56,7 +56,10 @@
 | **Cloudflare Tunnel (`Servidor-Principal`)** | Exposição HTTPS sem abrir porta no roteador | `https://whats.nutricionalbr.com` → `http://localhost:8080` | Também possui rota `remoto.nutricionalbr.com`. |
 | **Desenvolvimento Local** | XAMPP (Apache + PHP 8.2) + Git | `c:\xampp\htdocs\API` | Gateway `?api_route=` em `index.php` espelha produção. |
 
-- **Inventário Físico Detalhado (Nobreaks, Switches, APs, Câmeras/NVR, Impressoras, RPO/RTO alvo):** `[A PREENCHER COM O ALAN]`
+- **Rede & Energia Física Real (`SERVER`):**
+  - **Energia:** Nobreak + bateria adicional protegendo o servidor principal e o equipamento/sinal de internet.
+  - **Switch & Topologia:** Switch **não gerenciável** (rede LAN plana sem segmentação VLAN); gerenciamento via IP tradicional do Windows. Todos os PCs da rede acessam pastas compartilhadas no `SERVER` (incluindo o ERP instalado nele) mediante usuário e senha Windows.
+  - **Risco Arquitetural Detectado (Rede Plana):** PCs de operação, câmeras/impressoras e o servidor ERP (`86 GB`) compartilham a mesma LAN sem isolamento de VLAN — ponto de atenção para segurança contra propagação lateral/ransomware.
 
 ---
 
@@ -102,7 +105,15 @@ Controles ativos verificados no código:
 ## CAMADA 8 — Backup & Continuidade (DRP)
 - **Ativos que dependem do Servidor `SERVER` (`200.53.15.132`):** Banco PostgreSQL `ema` (**86 GB**), banco `evolution`, Firebird `DE_PARA_MERCOS.FDB`, sessão WhatsApp (`C:\evolution-api\instances`), pastas de fotos do HFS, integrador Mercos `.exe` e serviço `cloudflared`.
 - **Se `SERVER` cair agora:** param o ERP desktop, toda a API/Portal PHP (sem conexão ao Postgres `5432`), Mercos, HFS Fotos e Evolution WhatsApp. Permanece no ar apenas a página estática inicial do cPanel até o Postgres voltar.
-- **Rotina de Backup & Metas de RPO / RTO / Backup Offsite:** `[A CONFIRMAR E AUDITAR COM O ALAN]` (prioridade máxima validar onde está salvo o backup diário dos `86 GB` do `ema` + `DE_PARA_MERCOS.FDB` + `.env` + `SecretVault`!).
+- **Se `SERVER` cair agora:** param o ERP desktop, toda a API/Portal PHP (sem conexão ao Postgres `5432`), Mercos, HFS Fotos e Evolution WhatsApp. Permanece no ar apenas a página estática inicial do cPanel até o Postgres voltar.
+- **Rotina Atual de Backup Informada (`19/11/2026`):**
+  1. Cópia local no próprio `SERVER`.
+  2. HD externo conectado **1x por semana** manualmente para captura.
+  3. Cópia adicional via **Google Drive** instalado no `SERVER`.
+- **Riscos Críticos de Continuidade & DRP Detectados:**
+  1. **Risco de Ransomware em Cópia Sincronizada:** Como o Google Drive roda instalado no próprio `SERVER` (e PCs da rede mapeiam compartilhamentos do `SERVER`), um ransomware no servidor ou em uma estação pode criptografar os arquivos do servidor **e** propagar a criptografia/exclusão para o Drive (e para o HD externo se estiver plugado no momento). Mitigação recomendada: conta de backup em nuvem **Write-Only / versionada sem sincronização bidirecional mapeada** (ex: `rclone` agendado pós-dump para bucket/pasta isolada) + histórico imutável.
+  2. **RPO Semanal no HD Físico:** Intervalo de 7 dias no HD offline gera risco de perda de até 1 semana se depender apenas dele em falha grave sem sucesso do Drive.
+  3. **Itens Críticos Obrigatórios no Pacote de Backup:** além do `ema` (`86 GB`), garantir inclusão diária de `evolution` (Postgres), `C:\evolution-api\.env` + `instances\`, `DE_PARA_MERCOS.FDB`, fotos HFS, `.env.api` e `CHAVE_SECRETA` (necessária para decifrar `sistema_segredos`).
 
 ---
 
@@ -123,7 +134,7 @@ Controles ativos verificados no código:
 - **Instagram oficial:** `@nutricionalbr` (presente no layout da DANFE).
 - **E-mail fiscal / atendimento:** `nfe@nutricionalbr.com`, `financeiro@nutricionalbr.com`, `nao-responder@nutricionalbr.com`.
 - **WhatsApp Comercial Conectado (Evolution):** `554884686401` (`Distribuidora Nutricional`) + telefone financeiro `(48) 3524-6543`.
-- **Demais contas (Facebook, LinkedIn, YouTube, Google Business, gestores e campanhas):** `[A PREENCHER COM O ALAN]`
+- **Demais contas e campanhas:** Geridas separadamente pelo setor de **Marketing + Gestor** (mapeamento detalhado sob demanda futura).
 
 ---
 
