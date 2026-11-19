@@ -21,6 +21,8 @@ final class UserScope
     public array $filiais = [];
     /** @var int[] */
     public array $gestores = [];
+    /** @var int[] */
+    public array $representantes = [];
 
     private function __construct() {}
 
@@ -35,12 +37,16 @@ final class UserScope
         $s->isAdmin = !empty($user['is_admin']) || in_array('admin', (array)($user['permissoes'] ?? []), true);
 
         if ($s->uid > 0 || $s->idusuario > 0) {
-            $stmt = $pdo->prepare('SELECT idcliforemp, idusuario, dash_filiais, dash_gestores, permite_ver_usuarios FROM usuario WHERE idcliforemp = :uid OR idusuario = :idusuario LIMIT 1');
+            $stmt = $pdo->prepare("SELECT idcliforemp, idusuario, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes, permite_ver_usuarios FROM usuario WHERE idcliforemp = :uid OR idusuario = :idusuario LIMIT 1");
             $stmt->execute(['uid' => $s->uid, 'idusuario' => $s->idusuario]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
+            if ($s->uid <= 0 && !empty($row['idcliforemp'])) {
+                $s->uid = (int)$row['idcliforemp'];
+            }
             $s->permiteVerUsuarios = $s->isAdmin || (($row['permite_ver_usuarios'] ?? '') === 'S');
             $s->filiais = self::lista($row['dash_filiais'] ?? '');
             $s->gestores = self::lista($row['dash_gestores'] ?? '');
+            $s->representantes = self::lista($row['dash_representantes'] ?? '');
 
             // SE NÃO É ADMINISTRADOR: APLICA HIERARQUIA E RESTRIÇÃO ESTRITA
             if (!$s->isAdmin) {
@@ -49,22 +55,33 @@ final class UserScope
                     $stF = $pdo->prepare('SELECT idfilial FROM cliforemp WHERE idcliforemp = :uid LIMIT 1');
                     $stF->execute(['uid' => $s->uid]);
                     $filialPadrao = (int)($stF->fetchColumn() ?: 0);
-                    $s->filiais = $filialPadrao > 0 ? [$filialPadrao] : [-1];
+                    $s->filiais = $filialPadrao > 0 ? [$filialPadrao] : [1, 6];
                 } elseif (empty($s->filiais)) {
                     $s->filiais = [-1]; // Sem permissão de filial -> bloqueia acesso geral
                 }
 
-                // 2. Gestores/Supervisores: se não configurado no dash_gestores
-                if (empty($s->gestores) && $s->uid > 0) {
-                    // Verifica se o usuário é gestor ou representante no ERP
-                    $stG = $pdo->prepare("SELECT 1 FROM vw_gestor_repre WHERE idgestor = :uid OR idrepresentante = :uid LIMIT 1");
+                // 2. Gestores / Representantes: se não configurados explicitamente em dash_gestores / dash_representantes
+                if (empty($s->gestores) && empty($s->representantes) && $s->uid > 0) {
+                    $stG = $pdo->prepare("SELECT 1 FROM vw_gestor_repre WHERE idgestor = :uid LIMIT 1");
                     $stG->execute(['uid' => $s->uid]);
                     if ($stG->fetchColumn()) {
-                        $s->gestores = [$s->uid]; // Escopo restrito a ele mesmo
+                        $s->gestores = [$s->uid];
                     } else {
-                        $s->gestores = [-1]; // Usuário comum sem permissão de gestor -> não pode ver outros
+                        $stR = $pdo->prepare("SELECT 1 FROM cliente WHERE idvendedor = :uid LIMIT 1");
+                        $stR->execute(['uid' => $s->uid]);
+                        $ehRep = (bool)$stR->fetchColumn();
+                        if (!$ehRep) {
+                            $stR2 = $pdo->prepare("SELECT 1 FROM vw_gestor_repre WHERE idrepresentante = :uid LIMIT 1");
+                            $stR2->execute(['uid' => $s->uid]);
+                            $ehRep = (bool)$stR2->fetchColumn();
+                        }
+                        if ($ehRep) {
+                            $s->representantes = [$s->uid];
+                        } else {
+                            $s->gestores = [-1]; // Usuário comum sem carteira/gestor -> não pode ver outros
+                        }
                     }
-                } elseif (empty($s->gestores)) {
+                } elseif (empty($s->gestores) && empty($s->representantes)) {
                     $s->gestores = [-1];
                 }
             }
@@ -101,7 +118,12 @@ final class UserScope
 
     public function gestorRestrito(): bool
     {
-        return !$this->isAdmin;
+        return !$this->isAdmin && (!empty($this->gestores) || empty($this->representantes));
+    }
+
+    public function repRestrito(): bool
+    {
+        return !$this->isAdmin && !empty($this->representantes);
     }
 
     /**
@@ -113,7 +135,7 @@ final class UserScope
         if ($this->isAdmin) {
             return true;
         }
-        if ($this->permiteVerUsuarios) {
+        if ($this->permiteVerUsuarios && empty($this->representantes)) {
             $f = $this->filiais;
             if (in_array(1, $f, true) && in_array(6, $f, true)) {
                 return true;
@@ -140,7 +162,25 @@ final class UserScope
      */
     public function resolverGestores($pedidos = null): array
     {
-        return $this->interseccao(self::lista($pedidos), $this->gestorRestrito() ? $this->gestores : [], 'gestor');
+        if (!$this->gestorRestrito()) {
+            return self::lista($pedidos);
+        }
+        return $this->interseccao(self::lista($pedidos), $this->gestores, 'gestor');
+    }
+
+    /**
+     * Representantes efetivos da consulta: quando o usuário possui escopo de representante (dash_representantes ou próprio idcliforemp),
+     * restringe estritamente aos representantes liberados (e seus respectivos clientes).
+     *
+     * @param mixed $pedidos id, lista ou 0/null/'' para "todos os permitidos"
+     * @return int[]
+     */
+    public function resolverRepresentantes($pedidos = null): array
+    {
+        if (!$this->repRestrito()) {
+            return self::lista($pedidos);
+        }
+        return $this->interseccao(self::lista($pedidos), $this->representantes, 'representante');
     }
 
     private function interseccao(array $pedidos, array $permitidos, string $rotulo): array

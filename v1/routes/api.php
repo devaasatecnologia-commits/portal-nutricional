@@ -1272,9 +1272,11 @@ $protected->group('/admin', function ($group) {
     $group->get('/usuarios/{id}/visualizacao', [$controller, 'getVisualizacao']);
     $group->post('/usuarios/visualizacao', [$controller, 'salvarVisualizacao']);
     $group->post('/usuarios/{id}/toggle', [$controller, 'toggleUsuario']);
+    $group->post('/usuarios/criar', [$controller, 'criarUsuario']);
     $group->post('/usuarios/editar', [$controller, 'editarUsuario']);
     $group->post('/permissoes', [$controller, 'salvarPermissoes']);
     $group->get('/gestores', [$controller, 'getGestores']);
+    $group->get('/representantes', [$controller, 'getRepresentantes']);
     $group->get('/setores', [$controller, 'getSetores']);
     $group->get('/setores/{id}/modulos', [$controller, 'getModulosPorSetor']);
     $group->post('/permissoes-por-setor', [$controller, 'salvarPermissoesPorSetor']);

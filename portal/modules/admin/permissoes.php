@@ -49,13 +49,13 @@ require_once __DIR__ . '/components/sidebar.php';
         <i class="fa-solid fa-building mr-2"></i>Configurações Avançadas
     </h5>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         <!-- Filiais -->
         <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
                 <i class="fa-solid fa-store mr-1"></i> Filiais Permitidas
             </label>
-            <div class="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-3" id="checkFiliais">
+            <div class="space-y-2 max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-3" id="checkFiliais">
                 <p class="text-sm text-slate-400">Selecione um usuário</p>
             </div>
         </div>
@@ -63,11 +63,24 @@ require_once __DIR__ . '/components/sidebar.php';
         <!-- Gestores -->
         <div>
             <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-                <i class="fa-solid fa-user-tie mr-1"></i> Gestores Vinculados
+                <i class="fa-solid fa-user-tie mr-1"></i> Gestores Vinculados (Supervisão)
             </label>
-            <div id="checkGestores" class="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-3">
+            <div id="checkGestores" class="space-y-2 max-h-56 overflow-y-auto border border-slate-200 rounded-xl p-3">
                 <p class="text-sm text-slate-400">Selecione um usuário</p>
             </div>
+        </div>
+
+        <!-- Representantes (Hierarquia por Carteira Própria de Clientes) -->
+        <div>
+            <label class="block text-xs font-bold text-emerald-700 uppercase tracking-wider mb-2">
+                <i class="fa-solid fa-briefcase mr-1"></i> Representantes (Carteira de Clientes)
+            </label>
+            <input type="text" id="filtroRepPermissoes" oninput="filtrarListaRepsPermissoes()" placeholder="Filtrar representante..."
+                   class="w-full mb-2 px-3 py-1.5 border border-slate-200 rounded-lg text-xs">
+            <div id="checkRepresentantes" class="space-y-1.5 max-h-44 overflow-y-auto border border-emerald-200 bg-emerald-50/20 rounded-xl p-3">
+                <p class="text-sm text-slate-400">Selecione um usuário</p>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-1">Quando marcado, restringe todos os módulos liberados exclusivamente aos clientes e vendas do(s) representante(s).</p>
         </div>
     </div>
 
@@ -210,8 +223,20 @@ function toggleSelecaoTiposChamados() {
 let permissoesAtuais = [];
 let todosModulos = [];
 let gestoresDisponiveis = [];
+let representantesDisponiveis = [];
 let todosUsuariosDisponiveis = []; // 🔥 NOVA VARIÁVEL
 let usuariosVisualizarSelecionados = []; // 🔥 NOVA VARIÁVEL
+
+// ✅ Carrega lista de representantes ativos do ERP
+async function carregarRepresentantes() {
+    try {
+        const resp = await apiFetch('/admin/representantes', 'GET');
+        representantesDisponiveis = resp.representantes || [];
+    } catch (e) {
+        console.error('Erro ao carregar representantes:', e);
+        representantesDisponiveis = [];
+    }
+}
 
 // ✅ Carrega lista de gestores (com nomes)
 async function carregarGestores() {
@@ -372,7 +397,8 @@ async function carregarPermissoes() {
             idcliforemp: data.usuario.idcliforemp,
             username: data.usuario.username,
             filiais: data.usuario.dash_filiais || '',
-            gestores: data.usuario.dash_gestores || ''
+            gestores: data.usuario.dash_gestores || '',
+            representantes: data.usuario.dash_representantes || ''
         };
         
         permissoesAtuais = data.permissoes_atuais || [];
@@ -498,6 +524,40 @@ function renderizarFiliaisGestores() {
             </label>
         `;
     }).join('');
+
+    // ✅ Representantes (Hierarquia por Carteira Própria de Clientes)
+    const divReps = document.getElementById('checkRepresentantes');
+    if (divReps) {
+        const repsDoUsuario = usuarioSelecionado.representantes
+            ? usuarioSelecionado.representantes.split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id))
+            : [];
+        if (representantesDisponiveis.length === 0) {
+            divReps.innerHTML = '<p class="text-xs text-slate-400">Nenhum representante encontrado</p>';
+        } else {
+            divReps.innerHTML = representantesDisponiveis.map(r => {
+                const checked = repsDoUsuario.includes(r.idcliforemp);
+                const ehProprio = Number(usuarioSelecionado.idcliforemp) === Number(r.idcliforemp);
+                return `
+                    <label data-rep-nome="${(r.nome + ' ' + r.idcliforemp).toLowerCase()}" class="rep-item-perm flex items-center gap-2.5 p-1.5 hover:bg-emerald-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" value="${r.idcliforemp}" ${checked ? 'checked' : ''}
+                               class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                        <div class="min-w-0 flex-1">
+                            <div class="text-xs font-semibold text-slate-700 truncate">${r.nome} ${ehProprio ? '<span class="px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px] font-bold">PRÓPRIO</span>' : ''}</div>
+                            <div class="text-[10px] text-slate-400 font-mono">ID: ${r.idcliforemp} • ${r.total_clientes || 0} clientes</div>
+                        </div>
+                    </label>
+                `;
+            }).join('');
+        }
+    }
+}
+
+function filtrarListaRepsPermissoes() {
+    const q = (document.getElementById('filtroRepPermissoes')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('#checkRepresentantes .rep-item-perm').forEach(el => {
+        const txt = el.getAttribute('data-rep-nome') || '';
+        el.style.display = (!q || txt.includes(q)) ? 'flex' : 'none';
+    });
 }
 
 async function salvarPermissoes() {
@@ -513,6 +573,10 @@ async function salvarPermissoes() {
     // Coletar gestores
     const checkboxesGestores = document.querySelectorAll('#checkGestores input[type="checkbox"]:checked');
     const gestores = Array.from(checkboxesGestores).map(cb => cb.value).join(',');
+
+    // Coletar representantes (hierarquia carteira própria)
+    const checkboxesReps = document.querySelectorAll('#checkRepresentantes input[type="checkbox"]:checked');
+    const representantes = Array.from(checkboxesReps).map(cb => cb.value).join(',');
     
     // 🔥 Dados de visualização
     const permiteTodos = document.getElementById('permiteVerTodos')?.checked || false;
@@ -524,6 +588,7 @@ async function salvarPermissoes() {
         modulos: permissoesAtuais,
         dash_filiais: filiais,
         dash_gestores: gestores,
+        dash_representantes: representantes,
         permite_ver_usuarios: permiteTodos ? 'S' : 'N',
         chamados_ver_todos: document.getElementById('chamadosVerTodos')?.checked ? 'S' : 'N',
         chamados_tipos_permitidos: document.getElementById('chamadosTodosTipos')?.checked ? 'TODOS' : (Array.from(document.querySelectorAll('#selecaoTiposChamados input[type="checkbox"]:checked')).map(cb => cb.value).join(',') || 'PORTAL')
@@ -586,7 +651,7 @@ function checkUrlUser() {
 
 // Modifica a inicialização para verificar URL
 document.addEventListener('DOMContentLoaded', async () => {
-    await carregarGestores();
+    await Promise.all([carregarGestores(), carregarRepresentantes()]);
     await carregarUsuarios();
 	await carregarUsuariosDisponiveis(); 
     checkUrlUser();

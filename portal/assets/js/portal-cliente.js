@@ -73,15 +73,39 @@ function portalClienteHandler(appBase = '') {
 
         async init() {
             this.temTokenPortalInterno = Boolean(localStorage.getItem('authToken'));
-            await this.carregarAuthConfig();
+            const params = new URLSearchParams(window.location.search);
+            const modo = (params.get('modo') || '').toLowerCase();
             const b2bTok = localStorage.getItem('b2bToken') || '';
-            if (b2bTok) {
-                this.tokenAtivo = b2bTok;
-                this.autenticado = true;
-                await this.carregarContexto();
-            } else if (this.temTokenPortalInterno && new URLSearchParams(window.location.search).get('sessao') === 'portal') {
-                await this.entrarComSessaoPortal();
+
+            // 1. Se abriu o módulo pelo Portal Interno (Admin, Gestor ou Representante já autenticado) e não está forçando modo=cliente: entra direto!
+            if (this.temTokenPortalInterno && modo !== 'cliente') {
+                try {
+                    this.tokenAtivo = localStorage.getItem('authToken') || '';
+                    this.autenticado = true;
+                    await this.carregarContexto();
+                    return;
+                } catch (_) {
+                    this.autenticado = false;
+                    this.tokenAtivo = '';
+                }
             }
+
+            // 2. Se já possui sessão B2B ativa (Cliente ou Representante logado via /cliente ou /representante): entra direto!
+            if (b2bTok) {
+                try {
+                    this.tokenAtivo = b2bTok;
+                    this.autenticado = true;
+                    await this.carregarContexto();
+                    return;
+                } catch (_) {
+                    localStorage.removeItem('b2bToken');
+                    this.autenticado = false;
+                    this.tokenAtivo = '';
+                }
+            }
+
+            // 3. Caso ainda não esteja autenticado, carrega configurações de login (Turnstile / WhatsApp)
+            await this.carregarAuthConfig();
         },
 
         async carregarAuthConfig() {
@@ -163,6 +187,18 @@ function portalClienteHandler(appBase = '') {
             this.loadingAuth = true;
             try {
                 const d = await this.apiPublic('/portal-cliente/auth/login', this.formLogin);
+                if (d.direct_token) {
+                    localStorage.setItem('authToken', d.direct_token);
+                    if (d.portal_user) {
+                        localStorage.setItem('userData', JSON.stringify(d.portal_user));
+                    }
+                    this.temTokenPortalInterno = true;
+                    this.tokenAtivo = d.direct_token;
+                    this.autenticado = true;
+                    this.etapa2fa = false;
+                    await this.carregarContexto();
+                    return;
+                }
                 this.desafioId = d.desafio_id;
                 this.emailMascarado = d.email_mascarado;
                 this.etapa2fa = true;
@@ -183,7 +219,14 @@ function portalClienteHandler(appBase = '') {
                     codigo: this.form2fa.codigo
                 });
                 localStorage.setItem('b2bToken', d.token);
-                this.tokenAtivo = d.token;
+                if (d.portal_token) {
+                    localStorage.setItem('authToken', d.portal_token);
+                    if (d.portal_user) {
+                        localStorage.setItem('userData', JSON.stringify(d.portal_user));
+                    }
+                    this.temTokenPortalInterno = true;
+                }
+                this.tokenAtivo = d.portal_token || d.token;
                 this.autenticado = true;
                 this.etapa2fa = false;
                 await this.carregarContexto();

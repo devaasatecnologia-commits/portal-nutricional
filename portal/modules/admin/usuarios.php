@@ -46,7 +46,7 @@ require_once __DIR__ . '/components/sidebar.php';
                 <i class="fa-solid fa-eye"></i> <span id="textoToggle">Ver Inativos</span>
             </button>
             <button onclick="novoUsuario()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 transition-all flex items-center gap-2">
-                <i class="fa-solid fa-plus"></i> Novo Usuário
+                <i class="fa-solid fa-plus"></i> Novo Usuário / Representante
             </button>
         </div>
     </div>
@@ -71,7 +71,7 @@ require_once __DIR__ . '/components/sidebar.php';
                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">ID</th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Usuário</th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Filiais</th>
-                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Gestores</th>
+                        <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Hierarquia (Gestor / Rep)</th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Módulos</th>
                         <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Status</th>
                         <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Ações</th>
@@ -154,11 +154,23 @@ require_once __DIR__ . '/components/sidebar.php';
                     
                     <div>
                         <label class="block text-xs font-bold text-slate-400 uppercase mb-2">
-                            <i class="fa-solid fa-user-tie mr-1"></i> Gestores Vinculados
+                            <i class="fa-solid fa-user-tie mr-1"></i> Gestores Vinculados (Visão Supervisão)
                         </label>
-                        <div id="checkGestoresEdit" class="space-y-2 max-h-48 overflow-y-auto border border-slate-200 rounded-xl p-3">
+                        <div id="checkGestoresEdit" class="space-y-2 max-h-40 overflow-y-auto border border-slate-200 rounded-xl p-3">
                             <p class="text-sm text-slate-400">Carregando gestores...</p>
                         </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-bold text-emerald-700 uppercase mb-2">
+                            <i class="fa-solid fa-briefcase mr-1"></i> Representantes Vinculados (Hierarquia Carteira Própria)
+                        </label>
+                        <input type="text" id="filtroRepEdit" oninput="filtrarListaRepsEdit()" placeholder="Filtrar representante por nome ou ID..."
+                               class="w-full mb-2 px-3 py-1.5 border border-slate-200 rounded-lg text-xs">
+                        <div id="checkRepresentantesEdit" class="space-y-1.5 max-h-44 overflow-y-auto border border-emerald-200 bg-emerald-50/20 rounded-xl p-3">
+                            <p class="text-sm text-slate-400">Carregando representantes...</p>
+                        </div>
+                        <p class="text-[10px] text-slate-400 mt-1">Quando selecionado, o usuário enxerga nos módulos apenas os clientes e pedidos da carteira do(s) representante(s) marcado(s).</p>
                     </div>
                     <!-- Dentro do modal, após os gestores -->
 <div class="pt-4 border-t border-slate-100">
@@ -223,6 +235,7 @@ setInterval(() => {
 
 let todosUsuarios = [];
 let gestoresDisponiveis = [];
+let representantesDisponiveis = [];
 let mostrarInativos = false;
 let fotoFile = null;
 let editandoIdCliforemp = null;
@@ -471,14 +484,43 @@ function toggleInativos() {
     filtrarUsuarios();
 }
 
-function getNomesGestores(idsString) {
-    if (!idsString) return '-';
-    const ids = idsString.split(',').map(id => parseInt(id.trim()));
-    const nomes = ids.map(id => {
-        const gestor = gestoresDisponiveis.find(g => g.idcliforemp == id);
-        return gestor ? gestor.nome.split(' ')[0] : `ID:${id}`;
+function getNomesGestores(idsString, repsString = '') {
+    const partes = [];
+    if (idsString) {
+        const ids = idsString.split(',').map(id => parseInt(id.trim())).filter(Boolean);
+        const nomes = ids.map(id => {
+            const gestor = gestoresDisponiveis.find(g => g.idcliforemp == id);
+            return gestor ? gestor.nome.split(' ')[0] : `G:${id}`;
+        });
+        if (nomes.length) partes.push(`<span class="text-slate-700">${nomes.join(', ')}</span>`);
+    }
+    if (repsString) {
+        const rIds = repsString.split(',').map(id => parseInt(id.trim())).filter(Boolean);
+        const rNomes = rIds.map(id => {
+            const rep = representantesDisponiveis.find(r => r.idcliforemp == id);
+            return rep ? rep.nome.split(' ').slice(0, 2).join(' ') : `REP #${id}`;
+        });
+        if (rNomes.length) partes.push(`<span class="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-full text-[10px] font-bold">REP: ${rNomes.join(', ')}</span>`);
+    }
+    return partes.length ? partes.join('<br>') : '-';
+}
+
+async function carregarRepresentantes() {
+    try {
+        const resp = await apiFetch('/admin/representantes', 'GET');
+        representantesDisponiveis = resp.representantes || [];
+    } catch (e) {
+        console.error('Erro ao carregar representantes:', e);
+        representantesDisponiveis = [];
+    }
+}
+
+function filtrarListaRepsEdit() {
+    const q = (document.getElementById('filtroRepEdit')?.value || '').trim().toLowerCase();
+    document.querySelectorAll('#checkRepresentantesEdit .rep-item-edit').forEach(el => {
+        const txt = el.getAttribute('data-rep-nome') || '';
+        el.style.display = (!q || txt.includes(q)) ? 'flex' : 'none';
     });
-    return nomes.join(', ');
 }
 
 // ======================================================================
@@ -575,7 +617,7 @@ function renderizarUsuarios(lista) {
             ? `<span class="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold ml-1">${u.nivel_admin}</span>` 
             : '';
         
-        const gestoresNomes = getNomesGestores(u.dash_gestores);
+        const gestoresNomes = getNomesGestores(u.dash_gestores, u.dash_representantes);
         const fotoUrl = getFotoUrl(u.foto_perfil);
         
         return `
@@ -830,6 +872,34 @@ async function editarUsuario(idcliforemp) {
         } else if (divGestores) {
             divGestores.innerHTML = '<p class="text-sm text-slate-400">Nenhum gestor disponível</p>';
         }
+
+        // 9b. CARREGAR REPRESENTANTES (CARTEIRA PRÓPRIA)
+        if (representantesDisponiveis.length === 0) {
+            await carregarRepresentantes();
+        }
+        const repsUsuario = (usuario.dash_representantes || '').split(',').map(id => parseInt(id.trim())).filter(id => !isNaN(id));
+        const divReps = document.getElementById('checkRepresentantesEdit');
+        const filtroRepInput = document.getElementById('filtroRepEdit');
+        if (filtroRepInput) filtroRepInput.value = '';
+        if (divReps && representantesDisponiveis.length > 0) {
+            divReps.innerHTML = representantesDisponiveis.map(r => {
+                const checked = repsUsuario.includes(r.idcliforemp);
+                const ehProprio = Number(usuario.idcliforemp) === Number(r.idcliforemp);
+                return `
+                    <label data-rep-nome="${(r.nome + ' ' + r.idcliforemp).toLowerCase()}" class="rep-item-edit flex items-center gap-3 p-1.5 hover:bg-emerald-50 rounded-lg cursor-pointer">
+                        <input type="checkbox" value="${r.idcliforemp}" ${checked ? 'checked' : ''}
+                               class="w-4 h-4 text-emerald-600 border-slate-300 rounded focus:ring-emerald-500">
+                        <div class="min-w-0 flex-1">
+                            <span class="text-xs font-semibold text-slate-700">${r.nome}</span>
+                            ${ehProprio ? '<span class="ml-1 px-1.5 py-0.5 bg-emerald-100 text-emerald-800 rounded text-[9px] font-bold">PRÓPRIO</span>' : ''}
+                            <span class="text-[10px] text-slate-400 font-mono block">ID: ${r.idcliforemp} • ${r.total_clientes || 0} clientes</span>
+                        </div>
+                    </label>
+                `;
+            }).join('');
+        } else if (divReps) {
+            divReps.innerHTML = '<p class="text-sm text-slate-400">Nenhum representante disponível</p>';
+        }
         
         // 10. Título do modal
         const titulo = document.getElementById('modalTitulo');
@@ -889,6 +959,9 @@ async function salvarEdicao() {
     
     const checkboxesGestores = document.querySelectorAll('#checkGestoresEdit input[type="checkbox"]:checked');
     const gestores = Array.from(checkboxesGestores).map(cb => cb.value).join(',');
+
+    const checkboxesReps = document.querySelectorAll('#checkRepresentantesEdit input[type="checkbox"]:checked');
+    const representantes = Array.from(checkboxesReps).map(cb => cb.value).join(',');
     
     // 🔥 Dados de visualização
     const permiteTodos = document.getElementById('editPermiteVerTodos')?.checked || false;
@@ -899,6 +972,7 @@ async function salvarEdicao() {
         idcliforemp: idcliforemp,
         dash_filiais: filiais.join(','),
         dash_gestores: gestores,
+        dash_representantes: representantes,
         permite_ver_usuarios: permiteTodos ? 'S' : 'N'
     };
     
@@ -982,8 +1056,114 @@ async function toggleUsuario(id, statusAtual, nivelAdmin) {
 // NOVO USUÁRIO
 // ======================================================================
 
-function novoUsuario() {
-    showToast('Funcionalidade em desenvolvimento', 'info');
+async function novoUsuario() {
+    if (representantesDisponiveis.length === 0) {
+        await carregarRepresentantes();
+    }
+    const opcoesRep = representantesDisponiveis.map(r => {
+        const tag = r.ja_tem_usuario ? ` [Já possui login: ${r.username_atual}]` : ` (${r.total_clientes || 0} clientes)`;
+        return `<option value="${r.idcliforemp}" data-nome="${escapeHtml(r.nome)}" data-user="${escapeHtml(r.username_atual || '')}">${escapeHtml(r.nome)} — ID #${r.idcliforemp}${escapeHtml(tag)}</option>`;
+    }).join('');
+
+    const r = await Swal.fire({
+        title: 'Novo Usuário / Liberar Representante',
+        width: 560,
+        html: `
+            <div style="text-align:left;font-size:.82rem;display:grid;gap:10px">
+                <div>
+                    <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px">1. Selecionar Representante Comercial do ERP (ou Colaborador)</label>
+                    <select id="nv_rep_select" class="swal2-input" style="margin:0;width:100%;height:auto;padding:9px 12px;font-size:13px">
+                        <option value="">-- Escolha um Representante Ativo ou digite o ID abaixo --</option>
+                        ${opcoesRep}
+                    </select>
+                </div>
+                <div style="display:grid;grid-template-columns:140px 1fr;gap:10px">
+                    <div>
+                        <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px">ID ERP (cliforemp)</label>
+                        <input id="nv_idcli" type="number" class="swal2-input" style="margin:0;width:100%;height:auto;padding:8px 10px;font-size:13px" placeholder="Ex: 13799">
+                    </div>
+                    <div>
+                        <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px">Username de Login no Portal</label>
+                        <input id="nv_user" type="text" class="swal2-input" style="margin:0;width:100%;height:auto;padding:8px 10px;font-size:13px;text-transform:uppercase" placeholder="Ex: TIAGO-REP">
+                    </div>
+                </div>
+                <div>
+                    <label style="font-weight:700;color:#334155;display:block;margin-bottom:4px">Senha de Acesso (Portal e /representante)</label>
+                    <input id="nv_senha" type="password" class="swal2-input" style="margin:0;width:100%;height:auto;padding:8px 10px;font-size:13px" placeholder="Mínimo 4 caracteres">
+                </div>
+                <div style="display:flex;gap:16px;align-items:center;padding:8px 12px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+                    <span style="font-weight:700;color:#334155">Filiais:</span>
+                    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="nv_f1" checked> Filial 1 (SC)</label>
+                    <label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="nv_f6" checked> Filial 6 (PR)</label>
+                </div>
+                <label style="display:flex;gap:8px;align-items:flex-start;padding:10px 12px;background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;color:#065f46;cursor:pointer">
+                    <input type="checkbox" id="nv_vincular_rep" checked style="margin-top:3px">
+                    <span><b>Restringir hierarquia à carteira própria de clientes deste Representante</b><br><small style="color:#047857">Ao acessar qualquer módulo liberado (Portal do Cliente B2B, Dashboard, Cubo, CRM, Carteira, Flex), verá apenas os seus próprios clientes.</small></span>
+                </label>
+            </div>
+        `,
+        didOpen: () => {
+            const sel = document.getElementById('nv_rep_select');
+            const inpId = document.getElementById('nv_idcli');
+            const inpUser = document.getElementById('nv_user');
+            sel.onchange = () => {
+                const opt = sel.options[sel.selectedIndex];
+                if (!opt || !opt.value) return;
+                inpId.value = opt.value;
+                const uAtual = opt.getAttribute('data-user') || '';
+                if (uAtual) {
+                    inpUser.value = uAtual;
+                } else {
+                    const nome = (opt.getAttribute('data-nome') || '')
+                        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                        .replace(/[^A-Za-z0-9 ]/g, ' ').trim().split(/\s+/).slice(0, 2).join('-').toUpperCase();
+                    inpUser.value = nome || ('REP-' + opt.value);
+                }
+            };
+        },
+        showCancelButton: true,
+        confirmButtonText: 'Criar & Configurar Módulos',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#059669',
+        preConfirm: () => {
+            const idcliforemp = parseInt(document.getElementById('nv_idcli').value, 10);
+            const username = (document.getElementById('nv_user').value || '').trim().toUpperCase();
+            const senha = (document.getElementById('nv_senha').value || '').trim();
+            const f = [];
+            if (document.getElementById('nv_f1').checked) f.push('1');
+            if (document.getElementById('nv_f6').checked) f.push('6');
+            const vincRep = document.getElementById('nv_vincular_rep').checked;
+            if (!idcliforemp || idcliforemp <= 0) return Swal.showValidationMessage('Selecione um representante ou informe o ID ERP');
+            if (username.length < 2) return Swal.showValidationMessage('Informe o Username de login');
+            if (senha.length < 3) return Swal.showValidationMessage('Informe uma senha com pelo menos 3 caracteres');
+            if (f.length === 0) return Swal.showValidationMessage('Marque ao menos uma filial');
+            return {
+                idcliforemp,
+                username,
+                senha,
+                dash_filiais: f.join(','),
+                dash_representantes: vincRep ? String(idcliforemp) : '',
+                modulos: ['portal-cliente']
+            };
+        }
+    });
+
+    if (!r.isConfirmed || !r.value) return;
+    try {
+        showLoading('Configurando usuário...');
+        const res = await apiFetch('/admin/usuarios/criar', 'POST', r.value);
+        Swal.close();
+        if (!res.success) {
+            return showError('Erro', res.error || 'Não foi possível criar o usuário');
+        }
+        showToast('Usuário configurado! Redirecionando para Permissões de Módulos...');
+        setTimeout(() => {
+            window.location.href = `permissoes.php?user=${r.value.idcliforemp}`;
+        }, 700);
+    } catch (e) {
+        Swal.close();
+        showError('Erro', e.message);
+    }
 }
 
 // ======================================================================
@@ -992,7 +1172,7 @@ function novoUsuario() {
 
 document.addEventListener('DOMContentLoaded', async () => {
   
-    await carregarGestores();
+    await Promise.all([carregarGestores(), carregarRepresentantes()]);
     await carregarUsuarios();
     await carregarUsuariosDisponiveis();
     // Fechar modal com ESC

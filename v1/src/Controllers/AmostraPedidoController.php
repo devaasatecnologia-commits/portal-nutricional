@@ -44,7 +44,7 @@ class AmostraPedidoController
         $idusuario = (int)($user['idusuario'] ?? 0);
         $isAdmin = !empty($user['is_admin']) || in_array('admin', (array)($user['permissoes'] ?? []), true);
 
-        $stmt = $this->pdo->prepare('SELECT username, dash_filiais, dash_gestores FROM usuario WHERE idusuario = :id');
+        $stmt = $this->pdo->prepare("SELECT idcliforemp, username, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes FROM usuario WHERE idusuario = :id");
         $stmt->execute(['id' => $idusuario]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
@@ -56,20 +56,34 @@ class AmostraPedidoController
         if ($filiais === [] && $isAdmin) {
             $filiais = self::FILIAIS_ADMIN;
         }
+        $gestores = $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? ''));
+        $reps = $isAdmin ? [] : $ints((string)($row['dash_representantes'] ?? ''));
+        if (!$isAdmin && $gestores === [] && $reps === [] && (int)($row['idcliforemp'] ?? 0) > 0) {
+            $idCli = (int)$row['idcliforemp'];
+            $stR = $this->pdo->prepare('SELECT 1 FROM cliente WHERE idvendedor = :id LIMIT 1');
+            $stR->execute(['id' => $idCli]);
+            if ($stR->fetchColumn()) {
+                $reps = [$idCli];
+            }
+        }
 
         return [
             'idusuario' => $idusuario,
             'username' => (string)($row['username'] ?? ($user['username'] ?? '')),
             'filiais' => $filiais,
-            'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
+            'gestores' => $gestores,
+            'representantes' => $reps,
         ];
     }
 
-    /** Cliente tipo 5 e, se o usuario tem gestores, com pedidos de algum deles. */
-    private function clienteWhere(array $gestores, string $alias = 'c'): string
+    /** Cliente tipo 5 e, se o usuario tem gestores ou representantes, restrito à carteira dele. */
+    private function clienteWhere(array $gestores, string $alias = 'c', array $representantes = []): string
     {
         $sql = "EXISTS (SELECT 1 FROM cliente tc WHERE tc.idcliforemp = $alias.idcliforemp AND tc.idtipocliente = 5)";
-        if ($gestores !== []) {
+        if ($representantes !== []) {
+            $sql .= " AND EXISTS (SELECT 1 FROM cliente cr WHERE cr.idcliforemp = $alias.idcliforemp AND cr.idvendedor IN ("
+                . implode(',', array_map('intval', $representantes)) . '))';
+        } elseif ($gestores !== []) {
             $sql .= " AND EXISTS (SELECT 1 FROM pedido pg WHERE pg.idcliforemp = $alias.idcliforemp AND pg.idsupervisor IN ("
                 . implode(',', $gestores) . '))';
         }
@@ -287,7 +301,7 @@ class AmostraPedidoController
                    OR c.cnpj = :exato
                    OR c.fantasia ILIKE :parcial
                    OR c.razao ILIKE :parcial)
-                  AND " . $this->clienteWhere($usuario['gestores']) . "
+                  AND " . $this->clienteWhere($usuario['gestores'], 'c', $usuario['representantes'] ?? []) . "
                 ORDER BY (c.idcliforemp::text = :exato) DESC, c.fantasia
                 LIMIT 20");
             $stmt->execute(['exato' => $q, 'parcial' => '%' . $q . '%']);
@@ -346,7 +360,7 @@ class AmostraPedidoController
                   AND pedido.status IN (1, 5)
                   AND COALESCE(pp.status, 0) <> " . self::PALMTOP_STATUS_CANCELADO . "
                   AND pedido.idfilial IN ($filiais)
-                  AND " . $this->clienteWhere($usuario['gestores'], 'cli') . "
+                  AND " . $this->clienteWhere($usuario['gestores'], 'cli', $usuario['representantes'] ?? []) . "
                 GROUP BY pedido.data, pedido.idpedido, pedido.idfilial, fil.razao, cli.idcliforemp, cli.fantasia, cli.razao, sup.fantasia,
                          pp.usuario, pedido.usuario, pedido.idpedidopda, pp.idpedidopda, pedido.observacao, pedido.status, pedido.valortotalpedido
                 ORDER BY pedido.idpedido DESC
@@ -557,7 +571,7 @@ class AmostraPedidoController
                 return $this->json($response, ['success' => false, 'error' => 'Transação não permitida'], 403);
             }
 
-            $clienteOk = $this->pdo->prepare('SELECT 1 FROM cliforemp c WHERE c.idcliforemp = :id AND ' . $this->clienteWhere($usuario['gestores']));
+            $clienteOk = $this->pdo->prepare('SELECT 1 FROM cliforemp c WHERE c.idcliforemp = :id AND ' . $this->clienteWhere($usuario['gestores'], 'c', $usuario['representantes'] ?? []));
             $clienteOk->execute(['id' => $idcliente]);
             if (!$clienteOk->fetchColumn()) {
                 return $this->json($response, ['success' => false, 'error' => 'Cliente não permitido para o seu usuário'], 403);

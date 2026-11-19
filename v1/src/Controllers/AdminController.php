@@ -183,6 +183,214 @@ public function getGestores(Request $request, Response $response): Response
         ], 500);
     }
 }
+
+/**
+ * GET /v1/admin/representantes
+ * Lista representantes comerciais ativos do ERP (com carteira em cliente.idvendedor ou vw_gestor_repre)
+ */
+public function getRepresentantes(Request $request, Response $response): Response
+{
+    try {
+        $sql = "
+            SELECT DISTINCT ON (c.idcliforemp)
+                   c.idcliforemp,
+                   TRIM(REPLACE(COALESCE(NULLIF(TRIM(c.fantasia), ''), c.razao), '*', '')) AS nome,
+                   TRIM(COALESCE(c.razao, '')) AS razao,
+                   COALESCE(NULLIF(TRIM(c.email), ''), (SELECT TRIM(um.email) FROM usuarios_mercos um WHERE um.idcolaborador = c.idcliforemp AND COALESCE(TRIM(um.email), '') <> '' LIMIT 1), '') AS email,
+                   COALESCE(TRIM(c.fone), '') AS fone,
+                   COALESCE(c.idfilial, 1) AS idfilial,
+                   u.idusuario,
+                   COALESCE(u.username, '') AS username_atual,
+                   (u.idusuario IS NOT NULL) AS ja_tem_usuario,
+                   (SELECT COUNT(*) FROM cliente cl WHERE cl.idvendedor = c.idcliforemp) AS total_clientes
+            FROM cliforemp c
+            LEFT JOIN usuario u ON u.idcliforemp = c.idcliforemp
+            WHERE COALESCE(c.inativo, 'N') = 'N'
+              AND (
+                  EXISTS (SELECT 1 FROM cliente cl WHERE cl.idvendedor = c.idcliforemp)
+                  OR EXISTS (SELECT 1 FROM vw_gestor_repre gr WHERE gr.idrepresentante = c.idcliforemp)
+              )
+            ORDER BY c.idcliforemp
+        ";
+        $rows = $this->pdo->query($sql)->fetchAll(\PDO::FETCH_ASSOC);
+        usort($rows, static fn($a, $b) => strcasecmp((string)$a['nome'], (string)$b['nome']));
+        foreach ($rows as &$r) {
+            $r['idcliforemp'] = (int)$r['idcliforemp'];
+            $r['idfilial'] = (int)$r['idfilial'];
+            $r['idusuario'] = $r['idusuario'] !== null ? (int)$r['idusuario'] : null;
+            $r['ja_tem_usuario'] = (bool)$r['ja_tem_usuario'];
+            $r['total_clientes'] = (int)$r['total_clientes'];
+        }
+        unset($r);
+        return $this->jsonResponse($response, ['representantes' => $rows]);
+    } catch (\Exception $e) {
+        error_log('Erro em getRepresentantes: ' . $e->getMessage());
+        return $this->jsonResponse($response, ['error' => 'Erro ao carregar representantes', 'representantes' => []], 500);
+    }
+}
+
+/**
+ * POST /v1/admin/usuarios/criar
+ * Cria ou ativa um login no Portal (ex: Representante Comercial ou colaborador do ERP) com hierarquia de clientes e módulos.
+ */
+public function criarUsuario(Request $request, Response $response): Response
+{
+    if ($r = $this->exigirAdmin($request, $response)) return $r;
+    try {
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $idcliforemp = (int)($input['idcliforemp'] ?? 0);
+        $username = strtoupper(trim((string)($input['username'] ?? '')));
+        $senha = trim((string)($input['senha'] ?? ''));
+        $dashFiliais = trim((string)($input['dash_filiais'] ?? '1,6'));
+        $dashGestores = trim((string)($input['dash_gestores'] ?? ''));
+        $dashReps = trim((string)($input['dash_representantes'] ?? ''));
+        $modulos = is_array($input['modulos'] ?? null) ? $input['modulos'] : ['portal-cliente'];
+
+        if ($idcliforemp <= 0) {
+            return $this->jsonResponse($response, ['error' => 'Selecione o Representante ou Colaborador (ID ERP).'], 400);
+        }
+        if ($username === '' || strlen($username) < 2) {
+            return $this->jsonResponse($response, ['error' => 'Informe um Username válido (mín. 2 caracteres).'], 400);
+        }
+
+        $stCli = $this->pdo->prepare("SELECT idcliforemp, razao, fantasia, email, cnpj, cpf FROM cliforemp WHERE idcliforemp = :id LIMIT 1");
+        $stCli->execute(['id' => $idcliforemp]);
+        $cliRow = $stCli->fetch(\PDO::FETCH_ASSOC);
+        if (!$cliRow) {
+            return $this->jsonResponse($response, ['error' => "Cadastro ERP #$idcliforemp não encontrado em cliforemp."], 404);
+        }
+
+        $stConflito = $this->pdo->prepare("SELECT idcliforemp FROM usuario WHERE UPPER(username) = UPPER(:u) AND idcliforemp <> :id LIMIT 1");
+        $stConflito->execute(['u' => $username, 'id' => $idcliforemp]);
+        if ($stConflito->fetchColumn()) {
+            return $this->jsonResponse($response, ['error' => "O username '$username' já está em uso por outro usuário."], 400);
+        }
+
+        $ownTx = !$this->pdo->inTransaction();
+        if ($ownTx) {
+            $this->pdo->beginTransaction();
+        }
+
+        $stExist = $this->pdo->prepare("SELECT idusuario, senha FROM usuario WHERE idcliforemp = :id LIMIT 1");
+        $stExist->execute(['id' => $idcliforemp]);
+        $uExist = $stExist->fetch(\PDO::FETCH_ASSOC);
+
+        if (!$uExist && $senha === '') {
+            if ($ownTx && $this->pdo->inTransaction()) {
+                $this->pdo->rollBack();
+            }
+            return $this->jsonResponse($response, ['error' => 'Informe uma senha inicial para criar o usuário.'], 400);
+        }
+
+        $hashSenha = $senha !== '' ? strtoupper(md5($username . $senha)) : (string)($uExist['senha'] ?? '.');
+
+        if ($uExist) {
+            $idusuario = (int)$uExist['idusuario'];
+            $this->pdo->prepare("
+                UPDATE usuario
+                   SET username = :u,
+                       usuario = :u,
+                       senha = :s,
+                       inativo = 'N',
+                       permiteportal = 'S',
+                       dash_filiais = :f,
+                       dash_gestores = :g,
+                       dash_representantes = :r,
+                       updated_at = NOW()
+                 WHERE idusuario = :id
+            ")->execute([
+                'u' => $username,
+                's' => $hashSenha,
+                'f' => $dashFiliais !== '' ? $dashFiliais : null,
+                'g' => $dashGestores !== '' ? $dashGestores : null,
+                'r' => $dashReps !== '' ? $dashReps : null,
+                'id' => $idusuario,
+            ]);
+        } else {
+            $idusuario = (int)$this->pdo->query("SELECT COALESCE(MAX(idusuario), 0) + 1 FROM usuario")->fetchColumn();
+            $this->pdo->prepare("
+                INSERT INTO usuario (
+                    idusuario, idcliforemp, usuario, username, senha, inativo,
+                    permiteportal, permitepex, dash_filiais, dash_gestores, dash_representantes,
+                    permite_ver_usuarios, chamados_ver_todos, chamados_tipos_permitidos, updated_at
+                ) VALUES (
+                    :id, :cli, :u, :u, :s, 'N',
+                    'S', 'N', :f, :g, :r,
+                    'N', 'N', 'PORTAL,MERCOS', NOW()
+                )
+            ")->execute([
+                'id' => $idusuario,
+                'cli' => $idcliforemp,
+                'u' => $username,
+                's' => $hashSenha,
+                'f' => $dashFiliais !== '' ? $dashFiliais : null,
+                'g' => $dashGestores !== '' ? $dashGestores : null,
+                'r' => $dashReps !== '' ? $dashReps : null,
+            ]);
+        }
+
+        if (!empty($modulos)) {
+            $stMod = $this->pdo->prepare("SELECT id FROM sistema_modulos WHERE slug = :slug");
+            $stIns = $this->pdo->prepare("
+                INSERT INTO usuario_permissoes (idusuario, idmodulo)
+                SELECT :idu, :idm
+                WHERE NOT EXISTS (SELECT 1 FROM usuario_permissoes WHERE idusuario = :idu2 AND idmodulo = :idm2)
+            ");
+            foreach ($modulos as $slug) {
+                $stMod->execute(['slug' => trim((string)$slug)]);
+                $idMod = (int)$stMod->fetchColumn();
+                if ($idMod > 0) {
+                    $stIns->execute(['idu' => $idusuario, 'idm' => $idMod, 'idu2' => $idusuario, 'idm2' => $idMod]);
+                }
+            }
+        }
+
+        if ($senha !== '' && $this->pdo->query("SELECT to_regclass('b2b_portal_contas') IS NOT NULL")->fetchColumn()) {
+            $ehRep = (bool)$this->pdo->query("SELECT 1 FROM cliente WHERE idvendedor = {$idcliforemp} LIMIT 1")->fetchColumn();
+            if ($ehRep) {
+                $hashB2b = password_hash($senha, PASSWORD_DEFAULT);
+                $stB2b = $this->pdo->prepare("SELECT id FROM b2b_portal_contas WHERE idcliforemp = :cli AND UPPER(perfil) = 'REPRESENTANTE' ORDER BY id DESC LIMIT 1");
+                $stB2b->execute(['cli' => $idcliforemp]);
+                $idB2b = (int)$stB2b->fetchColumn();
+                if ($idB2b > 0) {
+                    $this->pdo->prepare("UPDATE b2b_portal_contas SET senha_hash = :h, status = 'ATIVO', atualizado_em = NOW() WHERE id = :id")
+                        ->execute(['h' => $hashB2b, 'id' => $idB2b]);
+                } else {
+                    $doc = preg_replace('/\D/', '', (string)($cliRow['cnpj'] ?: $cliRow['cpf'] ?: $idcliforemp));
+                    $email = mb_strtolower(trim((string)($cliRow['email'] ?? '')), 'UTF-8');
+                    $nome = trim((string)($cliRow['razao'] ?: $cliRow['fantasia'] ?: $username));
+                    $this->pdo->prepare("
+                        INSERT INTO b2b_portal_contas (perfil, idcliforemp, cnpj_cpf, email, nome, senha_hash, status, idvendedor)
+                        VALUES ('REPRESENTANTE', :cli, :doc, :em, :nome, :h, 'ATIVO', :cli)
+                    ")->execute([
+                        'cli' => $idcliforemp,
+                        'doc' => $doc !== '' ? $doc : (string)$idcliforemp,
+                        'em' => $email,
+                        'nome' => $nome,
+                        'h' => $hashB2b,
+                    ]);
+                }
+            }
+        }
+
+        if ($ownTx && $this->pdo->inTransaction()) {
+            $this->pdo->commit();
+        }
+        return $this->jsonResponse($response, [
+            'success' => true,
+            'idusuario' => $idusuario,
+            'idcliforemp' => $idcliforemp,
+            'username' => $username,
+            'message' => 'Usuário configurado com sucesso!',
+        ]);
+    } catch (\Exception $e) {
+        if (!empty($ownTx) && $this->pdo->inTransaction()) {
+            $this->pdo->rollBack();
+        }
+        error_log('Erro em criarUsuario: ' . $e->getMessage());
+        return $this->jsonResponse($response, ['error' => 'Falha ao criar usuário: ' . $e->getMessage()], 500);
+    }
+}
 /**
  * POST /v1/admin/upload-foto
  * Upload de foto de perfil do usuário
@@ -318,6 +526,7 @@ public function editarUsuario(Request $request, Response $response): Response
         $idcliforemp = (int)($input['idcliforemp'] ?? 0);
         $dashFiliais = $input['dash_filiais'] ?? '';
         $dashGestores = $input['dash_gestores'] ?? '';
+        $dashRepresentantes = $input['dash_representantes'] ?? null;
         $senha = $input['senha'] ?? '';
         $permiteVerUsuarios = $input['permite_ver_usuarios'] ?? 'N';
         $chamadosVerTodos = ($input['chamados_ver_todos'] ?? 'N') === 'S' ? 'S' : 'N';
@@ -338,27 +547,29 @@ public function editarUsuario(Request $request, Response $response): Response
         $this->pdo->beginTransaction();
 
         // Busca o idusuario
-        $stmtId = $this->pdo->prepare("SELECT idusuario FROM usuario WHERE idcliforemp = :idcliforemp");
+        $stmtId = $this->pdo->prepare("SELECT idusuario, COALESCE(dash_representantes, '') AS dash_representantes FROM usuario WHERE idcliforemp = :idcliforemp");
         $stmtId->execute(['idcliforemp' => $idcliforemp]);
-        $idusuario = $stmtId->fetchColumn();
+        $uAtual = $stmtId->fetch(\PDO::FETCH_ASSOC);
+        $idusuario = $uAtual ? (int)$uAtual['idusuario'] : 0;
 
         if (!$idusuario) {
             throw new \Exception("Usuário não encontrado");
         }
+        $repFinal = $dashRepresentantes !== null ? trim((string)$dashRepresentantes) : (string)($uAtual['dash_representantes'] ?? '');
 
-        // Atualiza filiais, gestores e permite_ver_usuarios
+        // Atualiza filiais, gestores, representantes e permite_ver_usuarios
         $sql = "UPDATE usuario SET 
                     dash_filiais = :filiais, 
                     dash_gestores = :gestores,
+                    dash_representantes = :representantes,
                     permite_ver_usuarios = :permite_ver
                 WHERE idusuario = :idusuario";
         
         $params = [
             'filiais' => $dashFiliais ?: null,
             'gestores' => $dashGestores ?: null,
+            'representantes' => $repFinal !== '' ? $repFinal : null,
             'permite_ver' => $permiteVerUsuarios === 'S' ? 'S' : 'N',
-            'chamados_ver_todos' => $chamadosVerTodos,
-            'chamados_tipos_permitidos' => $chamadosTiposPermitidos,
             'idusuario' => $idusuario
         ];
 
@@ -372,7 +583,8 @@ public function editarUsuario(Request $request, Response $response): Response
                 $novaSenhaHash = strtoupper(md5(strtoupper($username) . $senha));
                 $sql = "UPDATE usuario SET 
                             dash_filiais = :filiais, 
-                            dash_gestores = :gestores, 
+                            dash_gestores = :gestores,
+                            dash_representantes = :representantes,
                             senha = :senha,
                             permite_ver_usuarios = :permite_ver
                         WHERE idusuario = :idusuario";
@@ -741,6 +953,7 @@ public function getUsuarios(Request $request, Response $response): Response
                     u.inativo,
                     u.dash_filiais, 
                     u.dash_gestores,
+                    COALESCE(u.dash_representantes, '') as dash_representantes,
                     u.foto_perfil,
                     u.permite_ver_usuarios,
                     COALESCE(
@@ -753,7 +966,7 @@ public function getUsuarios(Request $request, Response $response): Response
                 FROM usuario u
                 LEFT JOIN api_tokens at ON at.criado_por = u.idusuario AND at.ativo = true
                 WHERE u.idcliforemp IS NOT NULL
-                GROUP BY u.idcliforemp, u.idusuario, u.username, u.inativo, u.dash_filiais, u.dash_gestores, u.foto_perfil, u.permite_ver_usuarios
+                GROUP BY u.idcliforemp, u.idusuario, u.username, u.inativo, u.dash_filiais, u.dash_gestores, u.dash_representantes, u.foto_perfil, u.permite_ver_usuarios
                 ORDER BY u.inativo ASC, u.username ASC";
         
         $stmt = $this->pdo->query($sql);
@@ -808,7 +1021,7 @@ public function getPermissoesUsuario(Request $request, Response $response, array
         
         // Dados do usuário
         $stmtUser = $this->pdo->prepare(
-            "SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, inativo, permite_ver_usuarios, chamados_ver_todos, chamados_tipos_permitidos
+            "SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes, inativo, permite_ver_usuarios, chamados_ver_todos, chamados_tipos_permitidos
              FROM usuario WHERE idcliforemp = :idcliforemp"
         );
         $stmtUser->execute(['idcliforemp' => $idcliforemp]);
@@ -840,6 +1053,7 @@ public function salvarPermissoes(Request $request, Response $response): Response
         $modulosPermitidos = $input['modulos'] ?? [];
         $dashFiliais = $input['dash_filiais'] ?? '';
         $dashGestores = $input['dash_gestores'] ?? '';
+        $dashRepresentantes = isset($input['dash_representantes']) ? trim((string)$input['dash_representantes']) : null;
         $permiteVerUsuarios = $input['permite_ver_usuarios'] ?? 'N';
         $chamadosVerTodos = ($input['chamados_ver_todos'] ?? 'N') === 'S' ? 'S' : 'N';
         $chamadosTiposPermitidos = !empty($input['chamados_tipos_permitidos']) ? trim((string)$input['chamados_tipos_permitidos']) : 'TODOS';
@@ -891,11 +1105,12 @@ public function salvarPermissoes(Request $request, Response $response): Response
             }
         }
 
-        // Atualiza filiais, gestores e permissão de ver usuários
+        // Atualiza filiais, gestores, representantes e permissão de ver usuários
         $stmtUp = $this->pdo->prepare(
             "UPDATE usuario SET 
                 dash_filiais = :filiais, 
                 dash_gestores = :gestores,
+                dash_representantes = COALESCE(:representantes, dash_representantes),
                 permite_ver_usuarios = :permite_ver,
                 chamados_ver_todos = :chamados_ver_todos,
                 chamados_tipos_permitidos = :chamados_tipos_permitidos
@@ -904,11 +1119,15 @@ public function salvarPermissoes(Request $request, Response $response): Response
         $stmtUp->execute([
             'filiais' => $dashFiliais ?: null,
             'gestores' => $dashGestores ?: null,
+            'representantes' => $dashRepresentantes !== null ? ($dashRepresentantes !== '' ? $dashRepresentantes : null) : null,
             'permite_ver' => $permiteVerUsuarios === 'S' ? 'S' : 'N',
             'chamados_ver_todos' => $chamadosVerTodos,
             'chamados_tipos_permitidos' => $chamadosTiposPermitidos,
             'idusuario' => $idusuario
         ]);
+        if ($dashRepresentantes === '') {
+            $this->pdo->prepare("UPDATE usuario SET dash_representantes = NULL WHERE idusuario = :id")->execute(['id' => $idusuario]);
+        }
 
         $this->pdo->commit();
 

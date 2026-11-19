@@ -230,7 +230,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
 
         <!-- SELETOR DE HIERARQUIA (GESTOR / REPRESENTANTE) -->
         <div x-show="escopo.perfil !== 'CLIENTE'" class="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3 items-end">
-            <div x-show="escopo.perfil === 'ADMIN' || escopo.perfil === 'GESTOR'">
+            <div x-show="escopo.perfil === 'ADMIN' || escopo.perfil === 'GESTOR' || representantes.length > 1">
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Filtrar Representante</label>
                 <select x-model="filtroRep" @change="carregarContexto()" class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 text-sm sm:text-xs font-bold bg-white">
                     <option value="0">Todos os Representantes Liberados</option>

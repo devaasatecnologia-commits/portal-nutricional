@@ -2230,6 +2230,14 @@ public function consultarClientesUnificadoOtimizado(Request $request, Response $
     }
 
     $p_vendedor = isset($params['representante']) && (int)$params['representante'] > 0 ? (int)$params['representante'] : null;
+    if ($scope->repRestrito()) {
+        try {
+            $repsEfetivos = $scope->resolverRepresentantes($p_vendedor);
+            $p_vendedor = !empty($repsEfetivos) ? (int)$repsEfetivos[0] : -1;
+        } catch (\Exception $e) {
+            $p_vendedor = !empty($scope->representantes) ? (int)$scope->representantes[0] : -1;
+        }
+    }
     $p_status_pedido = isset($params['status_pedido']) && trim($params['status_pedido']) !== '' ? trim($params['status_pedido']) : 'abertos_ou_faturados';
 
     try {
@@ -5522,6 +5530,10 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
             $inGestores = implode(',', array_map('intval', $scope->gestores));
             $where .= " AND g.idcliforemp IN ($inGestores)";
         }
+        if ($scope->repRestrito()) {
+            $inReps = implode(',', array_map('intval', $scope->representantes));
+            $where .= " AND EXISTS (SELECT 1 FROM vw_gestor_repre gr WHERE gr.idgestor = g.idcliforemp AND gr.idrepresentante IN ($inReps))";
+        }
 
         if ($filial !== null) {
             $where .= " AND (EXISTS (SELECT 1 FROM usuarios_mercos um WHERE um.cdgestor = g.idcliforemp AND um.filial = :filial) OR g.idcliforemp IN (11371, 13878, 15520, 5297, 11258))";
@@ -5572,6 +5584,9 @@ public function mesclarClienteComERP(Request $request, Response $response): Resp
 
         if (!empty($gestores)) {
             $where .= " AND um.cdgestor IN (" . implode(',', array_map('intval', $gestores)) . ")";
+        }
+        if ($scope->repRestrito()) {
+            $where .= " AND um.idcolaborador IN (" . implode(',', array_map('intval', $scope->representantes)) . ")";
         }
 
         $sql = "

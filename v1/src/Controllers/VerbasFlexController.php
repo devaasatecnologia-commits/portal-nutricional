@@ -40,7 +40,7 @@ class VerbasFlexController
         $user = $request->getAttribute('user') ?? [];
         $isAdmin = (bool)($user['is_admin'] ?? false) || in_array('admin', $user['permissoes'] ?? [], true);
 
-        $stmt = $this->pdo->prepare('SELECT dash_filiais, dash_gestores FROM usuario WHERE idusuario = :id');
+        $stmt = $this->pdo->prepare("SELECT idcliforemp, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes FROM usuario WHERE idusuario = :id");
         $stmt->execute(['id' => (int)($user['idusuario'] ?? 0)]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC) ?: [];
 
@@ -52,12 +52,23 @@ class VerbasFlexController
         if ($filiais === [] && $isAdmin) {
             $filiais = self::FILIAIS_ADMIN;
         }
+        $gestores = $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? ''));
+        $reps = $isAdmin ? [] : $ints((string)($row['dash_representantes'] ?? ''));
+        if (!$isAdmin && $gestores === [] && $reps === [] && (int)($row['idcliforemp'] ?? 0) > 0) {
+            $idCli = (int)$row['idcliforemp'];
+            $stR = $this->pdo->prepare('SELECT 1 FROM cliente WHERE idvendedor = :id LIMIT 1');
+            $stR->execute(['id' => $idCli]);
+            if ($stR->fetchColumn()) {
+                $reps = [$idCli];
+            }
+        }
 
         return [
             'is_admin' => $isAdmin,
             'idusuario' => (int)($user['idusuario'] ?? 0),
             'filiais' => $filiais,
-            'gestores' => $isAdmin ? [] : $ints((string)($row['dash_gestores'] ?? '')),
+            'gestores' => $gestores,
+            'representantes' => $reps,
         ];
     }
 
@@ -115,6 +126,9 @@ class VerbasFlexController
 
         if ($usuario['gestores'] !== []) {
             $sql .= ' AND nfs.idsupervisor IN (' . implode(',', $usuario['gestores']) . ')';
+        }
+        if (!empty($usuario['representantes'])) {
+            $sql .= ' AND lfb.idvendrepre IN (' . implode(',', array_map('intval', $usuario['representantes'])) . ')';
         }
         if ($comRepresentante && $f['representante'] > 0) {
             $sql .= ' AND lfb.idvendrepre = :rep';

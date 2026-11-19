@@ -33,7 +33,7 @@ class AdminSegurancaUsuariosController extends AdminSegredosController
                    COALESCE(a.ativo, false) AS tem_2fa,
                    {$sqlAdminCol} AS is_admin,
                    (COALESCE(TRIM(u.dash_gestores), '') <> '') AS eh_gestor,
-                   EXISTS(SELECT 1 FROM cliente cl WHERE cl.idvendedor = u.idcliforemp AND COALESCE(u.idcliforemp, 0) > 0) AS eh_rep,
+                   ((COALESCE(TRIM(u.dash_representantes), '') <> '') OR EXISTS(SELECT 1 FROM cliente cl WHERE cl.idvendedor = u.idcliforemp AND COALESCE(u.idcliforemp, 0) > 0)) AS eh_rep,
                    s.atualizado_por, s.atualizado_em, COALESCE(s.whatsapp, '') AS whatsapp
             FROM usuario u
             LEFT JOIN usuario_seguranca s ON s.idusuario = u.idusuario

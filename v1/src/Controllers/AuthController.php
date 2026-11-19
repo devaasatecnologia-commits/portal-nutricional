@@ -43,7 +43,8 @@ class AuthController
             }
 
             $stmt = $this->pdo->prepare("
-                SELECT idcliforemp, idusuario, username, senha, dash_filiais, dash_gestores, inativo, foto_perfil
+                SELECT idcliforemp, idusuario, username, senha, dash_filiais, dash_gestores,
+                       COALESCE(dash_representantes, '') AS dash_representantes, inativo, foto_perfil
                 FROM usuario 
                 WHERE UPPER(username) = UPPER(:username)
             ");
@@ -81,6 +82,7 @@ class AuthController
             
             $dashFiliais = !empty($usuario['dash_filiais']) ? explode(',', $usuario['dash_filiais']) : [];
             $dashGestores = !empty($usuario['dash_gestores']) ? explode(',', $usuario['dash_gestores']) : [];
+            $dashReps = !empty($usuario['dash_representantes']) ? explode(',', $usuario['dash_representantes']) : [];
 
             // ✅ PAYLOAD COM JTI (ID único do token)
             $payload = [
@@ -91,6 +93,7 @@ class AuthController
                 'foto_perfil' => $usuario['foto_perfil'] ?? null,
                 'dash_filiais' => $dashFiliais,
                 'dash_gestores' => $dashGestores,
+                'dash_representantes' => $dashReps,
                 'permissoes' => $permissoes,
                 'motorista_id' => $motoristaId,
                 'iat' => time(),
@@ -132,6 +135,7 @@ class AuthController
                     'foto_perfil' => $payload['foto_perfil'],
                     'dash_filiais' => $payload['dash_filiais'],
                     'dash_gestores' => $payload['dash_gestores'],
+                    'dash_representantes' => $payload['dash_representantes'],
                     'permissoes' => $payload['permissoes'],
                     'motorista_id' => $payload['motorista_id'],
                     'inatividade_min' => $seg['inatividade_min'],

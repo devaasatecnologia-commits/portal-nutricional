@@ -147,6 +147,9 @@ class VendasCuboController
             if ($scope->gestorRestrito()) {
                 $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
             }
+            if ($scope->repRestrito()) {
+                $sql .= ' AND idrepresentante IN (' . $this->inList($scope->representantes) . ')';
+            }
             $sql .= ' ORDER BY nome';
 
             $stmt = $this->pdo->query($sql);
@@ -176,6 +179,9 @@ class VendasCuboController
             }
             if (!empty($gestores)) {
                 $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
+            }
+            if ($scope->repRestrito()) {
+                $sql .= ' AND idrepresentante IN (' . $this->inList($scope->representantes) . ')';
             }
             $sql .= ' ORDER BY nome';
 
@@ -207,6 +213,9 @@ class VendasCuboController
             }
             if (!empty($gestores)) {
                 $sql .= ' AND idgestor IN (' . $this->inList($gestores) . ')';
+            }
+            if ($scope->repRestrito()) {
+                $sql .= ' AND idrepresentante IN (' . $this->inList($scope->representantes) . ')';
             }
             $sql .= ' ORDER BY nome LIMIT 1000';
 
@@ -1166,7 +1175,7 @@ class VendasCuboController
         $f = $this->filtrosVazios($di, $df);
         $f['filiais'] = $scope->resolverFiliais($this->ids($filters['filial'] ?? null, 'filial'));
         $f['gestores'] = $scope->resolverGestores($this->ids($filters['supervisor'] ?? ($filters['gestor'] ?? null), 'supervisor'));
-        $f['representantes'] = $this->ids($filters['representante'] ?? null, 'representante');
+        $f['representantes'] = $scope->resolverRepresentantes($this->ids($filters['representante'] ?? null, 'representante'));
         $f['clientes'] = $this->ids($filters['cliente'] ?? null, 'cliente');
         $f['regioes'] = $this->ids($filters['regiao'] ?? null, 'região');
         $f['cidades'] = $this->ids($filters['cidade'] ?? null, 'cidade');

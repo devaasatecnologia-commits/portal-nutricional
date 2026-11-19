@@ -1027,9 +1027,10 @@ class VendasDashboardController
 
         $filiais = $s->resolverFiliais($in['filial'] ?? null);
         $gestores = $s->resolverGestores($in['gestor'] ?? null);
-        $rep = (int)($in[$repKey] ?? 0);
+        $reps = $s->resolverRepresentantes($in[$repKey] ?? null);
+        $rep = count($reps) === 1 ? (int)$reps[0] : (int)($in[$repKey] ?? 0);
 
-        if ($rep > 0 && ($s->filialRestrita() || $s->gestorRestrito())) {
+        if ($rep > 0 && ($s->filialRestrita() || $s->gestorRestrito()) && !$s->repRestrito()) {
             $sql = 'SELECT 1 FROM vw_gestor_repre WHERE idrepresentante = ' . $rep;
             if ($s->gestorRestrito()) {
                 $sql .= ' AND idgestor IN (' . implode(',', $gestores) . ')';
@@ -1048,6 +1049,7 @@ class VendasDashboardController
         return [
             'filiais' => $filiais,
             'gestores' => $gestores,
+            'reps' => $reps,
             'rep' => $rep,
             'pode_ver_redes' => $podeVerRedes,
             'scope' => $s,
@@ -1063,7 +1065,9 @@ class VendasDashboardController
         if ($e['gestores']) {
             $s .= " AND $a.idsupervisor IN (" . implode(',', array_map('intval', $e['gestores'])) . ')';
         }
-        if ($e['rep'] > 0) {
+        if (!empty($e['reps'])) {
+            $s .= " AND $a.idvendrepre IN (" . implode(',', array_map('intval', $e['reps'])) . ')';
+        } elseif ($e['rep'] > 0) {
             $s .= " AND $a.idvendrepre = " . (int)$e['rep'];
         }
         return $s;
@@ -1268,6 +1272,11 @@ class VendasDashboardController
 
     private function baseClientesSql(array $e): string
     {
+        $sql = "SELECT cl.idcliforemp FROM cliente cl JOIN cliforemp cf ON cf.idcliforemp = cl.idcliforemp AND cf.inativo = 'N'";
+        if (!empty($e['reps'])) {
+            $inReps = implode(',', array_map('intval', $e['reps']));
+            return $sql . " WHERE cl.idvendedor IN ($inReps)";
+        }
         $vw = '';
         if ($e['gestores']) {
             $vw .= ' AND idgestor IN (' . implode(',', array_map('intval', $e['gestores'])) . ')';
@@ -1278,7 +1287,6 @@ class VendasDashboardController
         if ($e['rep'] > 0) {
             $vw .= ' AND idrepresentante = ' . (int)$e['rep'];
         }
-        $sql = "SELECT cl.idcliforemp FROM cliente cl JOIN cliforemp cf ON cf.idcliforemp = cl.idcliforemp AND cf.inativo = 'N'";
         if ($vw !== '') {
             $sql .= " WHERE cl.idvendedor IN (SELECT idrepresentante FROM vw_gestor_repre WHERE 1=1$vw)";
         }
@@ -2100,7 +2108,10 @@ class VendasDashboardController
         $limite = $hoje->modify('-' . self::DIAS_RISCO . ' day');
         $repFiltroSql = '';
         $params = ['ji' => $jIni->format('Y-m-d'), 'ref' => $hoje->format('Y-m-d'), 'lim' => $limite->format('Y-m-d')];
-        if (!empty($e['rep']) && (int)$e['rep'] > 0) {
+        if (!empty($e['reps'])) {
+            $inReps = implode(',', array_map('intval', $e['reps']));
+            $repFiltroSql = " AND COALESCE(cl.idvendedor, u.ult_rep) IN ($inReps) ";
+        } elseif (!empty($e['rep']) && (int)$e['rep'] > 0) {
             $repFiltroSql = ' AND COALESCE(cl.idvendedor, u.ult_rep) = :rep_escopo ';
             $params['rep_escopo'] = (int)$e['rep'];
         } elseif (!empty($e['gestores'])) {

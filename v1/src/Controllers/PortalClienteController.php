@@ -239,6 +239,41 @@ class PortalClienteController
         $conta = $st->fetch(PDO::FETCH_ASSOC);
 
         if (!$conta) {
+            // Verifica também se o identificador corresponde a um usuário interno do Portal (Admin, Gestor ou Representante com usuário)
+            $stUsr = $this->pdo->prepare("
+                SELECT idusuario, idcliforemp, username, senha, dash_filiais, dash_gestores,
+                       COALESCE(dash_representantes, '') AS dash_representantes, foto_perfil
+                FROM usuario
+                WHERE UPPER(username) = UPPER(:u) AND COALESCE(inativo, 'N') <> 'S'
+                LIMIT 1
+            ");
+            $stUsr->execute(['u' => $identificador]);
+            $usrPortal = $stUsr->fetch(PDO::FETCH_ASSOC);
+            if ($usrPortal) {
+                $hashCalc = strtoupper(md5(strtoupper((string)$usrPortal['username']) . $senha));
+                if (!hash_equals(strtoupper((string)$usrPortal['senha']), $hashCalc)) {
+                    return $this->json($response, ['success' => false, 'error' => 'Credenciais inválidas.'], 401);
+                }
+                // Verifica se possui conta B2B vinculada ao idcliforemp; caso contrário, autentica via sessão do Portal Interno
+                if ((int)$usrPortal['idcliforemp'] > 0) {
+                    $stB2b = $this->pdo->prepare("SELECT * FROM b2b_portal_contas WHERE idcliforemp = :cli ORDER BY id DESC LIMIT 1");
+                    $stB2b->execute(['cli' => (int)$usrPortal['idcliforemp']]);
+                    $conta = $stB2b->fetch(PDO::FETCH_ASSOC) ?: null;
+                }
+                if (!$conta) {
+                    $portalAuth = $this->emitirSessaoPortalInterno((int)$usrPortal['idcliforemp'], (int)$usrPortal['idusuario']);
+                    if ($portalAuth) {
+                        return $this->json($response, [
+                            'success' => true,
+                            'direct_token' => $portalAuth['token'],
+                            'portal_user' => $portalAuth['user'],
+                        ]);
+                    }
+                }
+            }
+        }
+
+        if (!$conta) {
             $prov = $this->localizarOuProvisionarContaErp($identificador, false);
             if (!empty($prov['conta'])) {
                 return $this->json($response, [
@@ -248,13 +283,23 @@ class PortalClienteController
             }
             return $this->json($response, ['success' => false, 'error' => 'Credenciais inválidas.'], 401);
         }
-        if (trim((string)$conta['senha_hash']) === '') {
+        $senhaValidaB2b = trim((string)$conta['senha_hash']) !== '' && password_verify($senha, (string)$conta['senha_hash']);
+        if (!$senhaValidaB2b && (int)$conta['idcliforemp'] > 0) {
+            // Permite também a senha do usuário interno vinculado ao mesmo idcliforemp (quando Representante possui login no Portal)
+            $stUP = $this->pdo->prepare("SELECT username, senha FROM usuario WHERE idcliforemp = :cli AND COALESCE(inativo, 'N') <> 'S' LIMIT 1");
+            $stUP->execute(['cli' => (int)$conta['idcliforemp']]);
+            $uRow = $stUP->fetch(PDO::FETCH_ASSOC);
+            if ($uRow && hash_equals(strtoupper((string)$uRow['senha']), strtoupper(md5(strtoupper((string)$uRow['username']) . $senha)))) {
+                $senhaValidaB2b = true;
+            }
+        }
+        if (!$senhaValidaB2b && trim((string)$conta['senha_hash']) === '') {
             return $this->json($response, [
                 'success' => false,
                 'error' => 'Senha ainda não definida. Use "Primeiro Acesso / Esqueceu a Senha" para receber o código no e-mail cadastrado e criar sua senha.',
             ], 403);
         }
-        if (!password_verify($senha, (string)$conta['senha_hash'])) {
+        if (!$senhaValidaB2b) {
             return $this->json($response, ['success' => false, 'error' => 'Credenciais inválidas.'], 401);
         }
         if (strtoupper((string)$conta['status']) !== 'ATIVO') {
@@ -361,8 +406,12 @@ class PortalClienteController
         $conta = $stC->fetch(PDO::FETCH_ASSOC);
 
         $jwt = $this->emitirJwtB2B($conta);
+        $portalSessao = null;
+        if (strtoupper((string)$conta['perfil']) !== 'CLIENTE' && (int)$conta['idcliforemp'] > 0) {
+            $portalSessao = $this->emitirSessaoPortalInterno((int)$conta['idcliforemp'], 0);
+        }
 
-        return $this->json($response, [
+        $resPayload = [
             'success' => true,
             'token' => $jwt,
             'usuario' => [
@@ -371,7 +420,89 @@ class PortalClienteController
                 'email' => $conta['email'],
                 'idcliforemp' => (int)$conta['idcliforemp'],
             ],
-        ]);
+        ];
+        if ($portalSessao) {
+            $resPayload['portal_token'] = $portalSessao['token'];
+            $resPayload['portal_user'] = $portalSessao['user'];
+        }
+
+        return $this->json($response, $resPayload);
+    }
+
+    /**
+     * Emite token e payload de sessão do Portal Interno quando o Representante/Gestor/Admin possui registro ativo na tabela `usuario`.
+     */
+    private function emitirSessaoPortalInterno(int $idcliforemp, int $idusuario = 0): ?array
+    {
+        try {
+            if ($idusuario > 0) {
+                $st = $this->pdo->prepare("SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes, foto_perfil FROM usuario WHERE idusuario = :id AND COALESCE(inativo, 'N') <> 'S' LIMIT 1");
+                $st->execute(['id' => $idusuario]);
+            } elseif ($idcliforemp > 0) {
+                $st = $this->pdo->prepare("SELECT idcliforemp, idusuario, username, dash_filiais, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes, foto_perfil FROM usuario WHERE (idcliforemp = :cli OR ',' || COALESCE(dash_representantes, '') || ',' LIKE '%,' || :cli_txt || ',%') AND COALESCE(inativo, 'N') <> 'S' ORDER BY CASE WHEN idcliforemp = :cli THEN 0 ELSE 1 END LIMIT 1");
+                $st->execute(['cli' => $idcliforemp, 'cli_txt' => (string)$idcliforemp]);
+            } else {
+                return null;
+            }
+            $u = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$u) {
+                return null;
+            }
+            $idUsr = (int)$u['idusuario'];
+            $isAdmin = false;
+            if ($this->pdo->query("SELECT to_regclass('usuarios_admin') IS NOT NULL")->fetchColumn()) {
+                $stA = $this->pdo->prepare("SELECT 1 FROM usuarios_admin WHERE idusuario = :id AND ativo = true LIMIT 1");
+                $stA->execute(['id' => $idUsr]);
+                $isAdmin = (bool)$stA->fetchColumn();
+            }
+            $permissoes = [];
+            if ($isAdmin) {
+                $permissoes = $this->pdo->query("SELECT slug FROM sistema_modulos WHERE ativo = true")->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                if (!in_array('admin', $permissoes, true)) {
+                    $permissoes[] = 'admin';
+                }
+            } else {
+                $stP = $this->pdo->prepare("SELECT sm.slug FROM usuario_permissoes up JOIN sistema_modulos sm ON sm.id = up.idmodulo WHERE up.idusuario = :id AND sm.ativo = true");
+                $stP->execute(['id' => $idUsr]);
+                $permissoes = $stP->fetchAll(PDO::FETCH_COLUMN) ?: ['portal-cliente'];
+            }
+            $seg = \Nutricional\Services\SegurancaUsuario::config($this->pdo, $idUsr);
+            $dashFiliais = !empty($u['dash_filiais']) ? explode(',', (string)$u['dash_filiais']) : [];
+            $dashGestores = !empty($u['dash_gestores']) ? explode(',', (string)$u['dash_gestores']) : [];
+            $dashReps = !empty($u['dash_representantes']) ? explode(',', (string)$u['dash_representantes']) : [];
+            $secret = defined('CHAVE_SECRETA') ? CHAVE_SECRETA : ($_ENV['CHAVE_SECRETA'] ?? '');
+            $payload = [
+                'jti' => bin2hex(random_bytes(16)),
+                'uid' => (int)$u['idcliforemp'],
+                'idusuario' => $idUsr,
+                'username' => $u['username'],
+                'foto_perfil' => $u['foto_perfil'] ?? null,
+                'dash_filiais' => $dashFiliais,
+                'dash_gestores' => $dashGestores,
+                'dash_representantes' => $dashReps,
+                'permissoes' => $permissoes,
+                'motorista_id' => null,
+                'iat' => time(),
+                'exp' => time() + ($seg['token_min'] * 60),
+            ];
+            $tok = JWT::encode($payload, $secret, 'HS256');
+            return [
+                'token' => $tok,
+                'user' => [
+                    'uid' => $payload['uid'],
+                    'idusuario' => $payload['idusuario'],
+                    'username' => $payload['username'],
+                    'foto_perfil' => $payload['foto_perfil'],
+                    'dash_filiais' => $payload['dash_filiais'],
+                    'dash_gestores' => $payload['dash_gestores'],
+                    'dash_representantes' => $payload['dash_representantes'],
+                    'permissoes' => $payload['permissoes'],
+                    'inatividade_min' => $seg['inatividade_min'],
+                ],
+            ];
+        } catch (\Throwable $e) {
+            return null;
+        }
     }
 
     /**
@@ -651,6 +782,7 @@ class PortalClienteController
                 'nome' => (string)($u['username'] ?? ''),
                 'idcliforemp' => (int)($u['idcliforemp'] ?? 0),
                 'idvendedor' => (int)($u['idvendedor'] ?? 0),
+                'representantes' => (int)($u['idvendedor'] ?? 0) > 0 ? [(int)$u['idvendedor']] : [],
                 'gestores' => array_values(array_filter(array_map('intval', explode(',', (string)($u['dash_gestores'] ?? ''))))),
                 'is_admin' => !empty($u['is_admin']),
             ];
@@ -659,24 +791,30 @@ class PortalClienteController
         // Usuário autenticado via Portal Interno (Admin / Gestor / Representante)
         $idusuario = (int)($u['idusuario'] ?? 0);
         $isAdmin = !empty($u['is_admin']) || in_array('admin', (array)($u['permissoes'] ?? []), true);
-        $st = $this->pdo->prepare("SELECT idcliforemp, username, dash_gestores FROM usuario WHERE idusuario = :id");
+        $st = $this->pdo->prepare("SELECT idcliforemp, username, dash_gestores, COALESCE(dash_representantes, '') AS dash_representantes FROM usuario WHERE idusuario = :id");
         $st->execute(['id' => $idusuario]);
         $row = $st->fetch(PDO::FETCH_ASSOC) ?: [];
         $gestores = array_values(array_filter(array_map('intval', explode(',', (string)($row['dash_gestores'] ?? '')))));
+        $reps = array_values(array_filter(array_map('intval', explode(',', (string)($row['dash_representantes'] ?? '')))));
+        $idCliUser = (int)($row['idcliforemp'] ?? 0);
 
         if ($isAdmin) {
             $perfil = 'ADMIN';
-        } elseif ($gestores !== []) {
+        } elseif ($gestores !== [] && $reps === []) {
             $perfil = 'GESTOR';
         } else {
-            $perfil = 'REPRESENTANTE';
+            $perfil = ($gestores !== []) ? 'GESTOR' : 'REPRESENTANTE';
+            if ($reps === [] && $idCliUser > 0) {
+                $reps = [$idCliUser];
+            }
         }
 
         return [
             'perfil' => $perfil,
             'nome' => $this->utf8($row['username'] ?? ($u['username'] ?? '')),
-            'idcliforemp' => (int)($row['idcliforemp'] ?? 0),
-            'idvendedor' => (int)($row['idcliforemp'] ?? 0),
+            'idcliforemp' => $idCliUser,
+            'idvendedor' => $reps[0] ?? $idCliUser,
+            'representantes' => $reps,
             'gestores' => $gestores,
             'is_admin' => $isAdmin,
         ];
@@ -694,9 +832,12 @@ class PortalClienteController
         $busca = trim((string)($q['busca'] ?? ''));
 
         $representantes = [];
-        if (in_array($esc['perfil'], ['ADMIN', 'GESTOR'], true)) {
+        if (in_array($esc['perfil'], ['ADMIN', 'GESTOR'], true) || count($esc['representantes'] ?? []) > 1) {
             $whereRep = "COALESCE(c.inativo,'N')='N' AND EXISTS (SELECT 1 FROM cliente cl WHERE cl.idvendedor = c.idcliforemp)";
-            if ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
+            if (!empty($esc['representantes'])) {
+                $inR = implode(',', array_map('intval', $esc['representantes']));
+                $whereRep .= " AND c.idcliforemp IN ($inR)";
+            } elseif ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
                 $inG = implode(',', $esc['gestores']);
                 $whereRep .= " AND EXISTS (SELECT 1 FROM pedido p WHERE p.idvendrepre = c.idcliforemp AND p.idsupervisor IN ($inG))";
             }
@@ -712,12 +853,23 @@ class PortalClienteController
             $whereCli[] = 'c.idcliforemp = :idcli_lock';
             $params['idcli_lock'] = $esc['idcliforemp'];
         } elseif ($esc['perfil'] === 'REPRESENTANTE') {
-            $whereCli[] = 'cl.idvendedor = :idrep_lock';
-            $params['idrep_lock'] = $esc['idvendedor'];
+            $repsLock = !empty($esc['representantes']) ? array_map('intval', $esc['representantes']) : [(int)$esc['idvendedor']];
+            if ($repFiltro > 0 && in_array($repFiltro, $repsLock, true)) {
+                $repsLock = [$repFiltro];
+            }
+            $inReps = implode(',', $repsLock ?: [-1]);
+            $whereCli[] = "cl.idvendedor IN ($inReps)";
         } else {
             if ($repFiltro > 0) {
-                $whereCli[] = 'cl.idvendedor = :idrep_f';
-                $params['idrep_f'] = $repFiltro;
+                if (!empty($esc['representantes']) && !in_array($repFiltro, array_map('intval', $esc['representantes']), true)) {
+                    $whereCli[] = '1 = 0';
+                } else {
+                    $whereCli[] = 'cl.idvendedor = :idrep_f';
+                    $params['idrep_f'] = $repFiltro;
+                }
+            } elseif (!empty($esc['representantes'])) {
+                $inReps = implode(',', array_map('intval', $esc['representantes']));
+                $whereCli[] = "cl.idvendedor IN ($inReps)";
             } elseif ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
                 $inG = implode(',', $esc['gestores']);
                 $whereCli[] = "EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = c.idcliforemp AND p.idsupervisor IN ($inG))";
@@ -780,8 +932,16 @@ class PortalClienteController
             return $idCliente === $esc['idcliforemp'];
         }
         if ($esc['perfil'] === 'REPRESENTANTE') {
-            $st = $this->pdo->prepare("SELECT 1 FROM cliente WHERE idcliforemp = :c AND idvendedor = :v");
-            $st->execute(['c' => $idCliente, 'v' => $esc['idvendedor']]);
+            $repsLock = !empty($esc['representantes']) ? array_map('intval', $esc['representantes']) : [(int)$esc['idvendedor']];
+            $inReps = implode(',', $repsLock ?: [-1]);
+            $st = $this->pdo->prepare("SELECT 1 FROM cliente WHERE idcliforemp = :c AND idvendedor IN ($inReps)");
+            $st->execute(['c' => $idCliente]);
+            return (bool)$st->fetchColumn();
+        }
+        if (!empty($esc['representantes'])) {
+            $inReps = implode(',', array_map('intval', $esc['representantes']));
+            $st = $this->pdo->prepare("SELECT 1 FROM cliente WHERE idcliforemp = :c AND idvendedor IN ($inReps)");
+            $st->execute(['c' => $idCliente]);
             return (bool)$st->fetchColumn();
         }
         if ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {

@@ -54,13 +54,14 @@ class AnaliseCarteiraController
             $scope = UserScope::fromRequest($request, $this->pdo);
             $gestoresPermitidos = $scope->resolverGestores(null);
             $filiaisPermitidas = $scope->resolverFiliais(null);
-            $lista = $this->listarGestores($gestoresPermitidos, $filiaisPermitidas);
+            $repsPermitidos = $scope->resolverRepresentantes(null);
+            $lista = $this->listarGestores($gestoresPermitidos, $filiaisPermitidas, $repsPermitidos);
             return [
                 'success' => true,
                 'gestores' => $lista,
                 'is_admin' => $scope->isAdmin,
-                'gestor_restrito' => $scope->gestorRestrito(),
-                'todos_permitido' => !$scope->gestorRestrito() || count($lista) > 1
+                'gestor_restrito' => $scope->gestorRestrito() || $scope->repRestrito(),
+                'todos_permitido' => (!$scope->gestorRestrito() && !$scope->repRestrito()) || count($lista) > 1
             ];
         }, 'getGestores');
     }
@@ -341,11 +342,11 @@ class AnaliseCarteiraController
     // CONSULTAS
     // ======================================================================
 
-    private function listarGestores(array $gestores, array $filiais): array
+    private function listarGestores(array $gestores, array $filiais, array $representantes = []): array
     {
         $params = [];
         $where = $this->filtroEscopo(
-            ['gestores' => $gestores, 'sem_gestor' => false, 'filiais' => $filiais],
+            ['gestores' => $gestores, 'sem_gestor' => false, 'filiais' => $filiais, 'representantes' => $representantes],
             'varg.idsupervisor',
             'varg.idfilial',
             $params
@@ -615,6 +616,7 @@ class AnaliseCarteiraController
             'gestores' => $gestores,
             'sem_gestor' => $semGestor,
             'filiais' => $scope->resolverFiliais(null),
+            'representantes' => $scope->resolverRepresentantes($input['id_representante'] ?? null),
             'data_inicio' => $dataInicio ?: null,
             'data_fim' => $dataFim ?: null,
             'tipo_periodo' => $tipoPeriodo === 'emissao' ? 'emissao' : 'vencimento',
@@ -622,7 +624,7 @@ class AnaliseCarteiraController
         ];
     }
 
-    /** Monta " AND ..." com parâmetros nomeados para gestor/filial. */
+    /** Monta " AND ..." com parâmetros nomeados para gestor/filial/representante. */
     private function filtroEscopo(array $esc, string $colGestor, string $colFilial, array &$params): string
     {
         $sql = '';
@@ -633,6 +635,10 @@ class AnaliseCarteiraController
         }
         if (!empty($esc['filiais'])) {
             $sql .= " AND $colFilial IN (" . $this->listaParams('f', $esc['filiais'], $params) . ')';
+        }
+        if (!empty($esc['representantes'])) {
+            $colRep = str_replace('.idsupervisor', '.idvendrepre', $colGestor);
+            $sql .= " AND $colRep IN (" . $this->listaParams('r', $esc['representantes'], $params) . ')';
         }
         return $sql;
     }
