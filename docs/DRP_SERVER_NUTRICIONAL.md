@@ -40,7 +40,12 @@
 - **Cópia 2 (Disco físico separado `F:`):** o mesmo script grava `.dmp` + `DE_PARA_MERCOS*.FDB` em `F:\Backup_EMA\` (retenção 7 cópias).
 - **Cópia 3 (Nuvem Imutável / Append-Only sem letra de drive):** `NEXUS_Backup_Nuvem_Diario` (`13:00` e `19:30`, `C:\rclone\backup_nuvem.ps1`) envia via `rclone copy` (sem comando `delete`) para `nutricional_bkp:Backup_Imutavel_EMA/YYYY-MM-DD_HHmm/` (conta Google Drive `2 TB`, `1,394 TB` livres), incluindo `.dmp`, `DE_PARA_MERCOS.FDB`, `DE_PARA_MERCOS-F6.FDB`, `application.properties`, `dump.pm2` e configs HFS. `GoogleDriveFS` (`G:`/`H:`) foi desativado na inicialização.
 - **Cópias na Rede Interna:** `BACKUP INDIVIDUAL` (`destinos.bat`, corrigido sem `pause`) replica para `\\tecnologia`, `\\Financeiro`, `\\robson`, `\\deposito`.
-- **Observabilidade WhatsApp:** `NEXUS_Alerta_Saude_WhatsApp` (`C:\Monitoramento\Alerta_Saude.ps1`) roda às `13:30` e `20:00` verificando serviços, portas, discos, backups locais/nuvem e eventos `4625`, enviando resumo/alerta para `5548996426445` via Evolution API local.
+- **Observabilidade WhatsApp:**
+  - `NEXUS_Alerta_Saude_WhatsApp` (`C:\Monitoramento\Alerta_Saude.ps1`, `13:30` e `20:00`): resumo diário de serviços, discos, backups e `Event 4625` para `5548996426445`.
+  - `NEXUS_Monitor_Erros_15min` (`Alerta_Saude.ps1 -AlertOnly`, a cada 15 min): alerta imediato apenas em caso de falha de serviço, disco `< 15%` ou `4625 > 20/h`.
+  - `NEXUS_Alerta_AcessoRemoto` (`C:\Monitoramento\Alerta_AcessoRemoto.ps1`, gatilho `Event 4624 / LogonType 10`): avisa na hora no WhatsApp quando houver login RDP (local ou Cloudflare Zero Trust).
+  - `NEXUS_Alerta_Boot` (`C:\Monitoramento\Alerta_Boot.ps1`, gatilho `AtStartup`): avisa após 60s do boot informando se o reinício foi normal ou inesperado (`Event 41 / 6008`) e o estado dos serviços.
+  - `backup_nuvem.ps1`: envia confirmação imediata (`BACKUP NUVEM OK` ou `ERRO`) ao concluir o envio `rclone`.
 
 **RPO / RTO:**
 - **RPO (Perda máxima em caso de desastre):** ~`6h` a `12h` em horário comercial (2 backups/dia às `12:20`/`13:00` e `18:30`/`19:30`).
