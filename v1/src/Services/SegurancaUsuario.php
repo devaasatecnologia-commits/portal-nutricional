@@ -20,6 +20,9 @@ class SegurancaUsuario
                 if (!$pdo->query("SELECT 1 FROM information_schema.columns WHERE table_name = 'usuario_seguranca' AND column_name = 'whatsapp'")->fetchColumn()) {
                     $pdo->exec("ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(20)");
                 }
+                if (!$pdo->query("SELECT 1 FROM information_schema.columns WHERE table_name = 'usuario_seguranca' AND column_name = 'tipo_2fa'")->fetchColumn()) {
+                    $pdo->exec("ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS tipo_2fa VARCHAR(20) NOT NULL DEFAULT 'totp'");
+                }
                 return;
             }
             $pdo->exec("
@@ -44,16 +47,19 @@ class SegurancaUsuario
             'exige_2fa_login' => false,
             'inatividade_min' => self::PADRAO_INATIVIDADE_MIN,
             'token_min' => self::PADRAO_TOKEN_MIN,
+            'tipo_2fa' => 'totp',
         ];
         try {
-            $st = $pdo->prepare("SELECT exige_2fa_login, inatividade_min, token_min FROM usuario_seguranca WHERE idusuario = :id");
+            $st = $pdo->prepare("SELECT exige_2fa_login, inatividade_min, token_min, COALESCE(tipo_2fa, 'totp') AS tipo_2fa FROM usuario_seguranca WHERE idusuario = :id");
             $st->execute(['id' => $idusuario]);
             $r = $st->fetch(\PDO::FETCH_ASSOC);
             if ($r) {
+                $tipo = in_array($r['tipo_2fa'] ?? 'totp', ['totp', 'whatsapp', 'ambos'], true) ? $r['tipo_2fa'] : 'totp';
                 return [
                     'exige_2fa_login' => (bool)$r['exige_2fa_login'],
                     'inatividade_min' => self::limitar((int)$r['inatividade_min'], 1, 480, $padrao['inatividade_min']),
                     'token_min' => self::limitar((int)$r['token_min'], 15, 1440, $padrao['token_min']),
+                    'tipo_2fa' => $tipo,
                 ];
             }
         } catch (\Throwable $e) {

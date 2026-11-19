@@ -65,32 +65,15 @@ class AuthController
                 return $this->jsonError($response, 'Credenciais inválidas', 401);
             }
 
-            // Politica por usuario: 2FA no login, inatividade e duracao do token
+            // Politica por usuario: 2FA no login (TOTP, WhatsApp ou Ambos), inatividade e duracao do token
             $seg = \Nutricional\Services\SegurancaUsuario::config($this->pdo, (int)$usuario['idusuario']);
-            $doisFatoresPendente = false;
-            if ($seg['exige_2fa_login']) {
-                if (\Nutricional\Services\SegurancaUsuario::tem2fa($this->pdo, (int)$usuario['idusuario'])) {
-                    $codigo2fa = preg_replace('/\D/', '', (string)($input['codigo2fa'] ?? ''));
-                    if ($codigo2fa === '') {
-                        $response->getBody()->write(json_encode(['error' => 'Informe o código do aplicativo autenticador', 'requer_2fa' => true]));
-                        return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
-                    }
-                    $res = \Nutricional\Services\SegurancaUsuario::validarCodigoLogin(
-                        $this->pdo, (int)$usuario['idusuario'], (string)$usuario['username'], $codigo2fa,
-                        (string)($request->getServerParams()['REMOTE_ADDR'] ?? '')
-                    );
-                    if ($res === 'bloqueado') {
-                        return $this->jsonError($response, 'Muitas tentativas. Aguarde 10 minutos.', 429);
-                    }
-                    if ($res !== 'ok') {
-                        $response->getBody()->write(json_encode(['error' => 'Código inválido ou expirado', 'requer_2fa' => true]));
-                        return $response->withStatus(401)->withHeader('Content-Type', 'application/json');
-                    }
-                } else {
-                    // Evita trancar o usuario fora: entra e deve cadastrar o autenticador.
-                    $doisFatoresPendente = true;
-                }
+            $ipOrigem = (string)($request->getServerParams()['REMOTE_ADDR'] ?? '');
+            $verif2fa = $this->verificarDoisFatoresLogin($usuario, $seg, $input, $ipOrigem);
+            if (!$verif2fa['ok']) {
+                $response->getBody()->write(json_encode($verif2fa['payload'], JSON_UNESCAPED_UNICODE));
+                return $response->withStatus($verif2fa['status'])->withHeader('Content-Type', 'application/json');
             }
+            $doisFatoresPendente = !empty($verif2fa['pendente']);
 
             // Buscar permissões
             $permissoes = $this->getPermissoesDoUsuario($usuario['idusuario'], $usuario['idcliforemp']);
@@ -153,6 +136,7 @@ class AuthController
                     'motorista_id' => $payload['motorista_id'],
                     'inatividade_min' => $seg['inatividade_min'],
                     'exige_2fa' => $seg['exige_2fa_login'],
+                    'tipo_2fa' => $seg['tipo_2fa'] ?? 'totp',
                     'requer_cadastro_2fa' => $doisFatoresPendente
                 ]
             ];
@@ -626,6 +610,137 @@ class AuthController
         $response->getBody()->write(json_encode(['success' => true]));
         return $response->withHeader('Content-Type', 'application/json');
     }
+    /**
+     * Valida política 2FA no login interno (TOTP, WhatsApp OTP ou Ambos).
+     */
+    private function verificarDoisFatoresLogin(array $usuario, array $seg, array $input, string $ip): array
+    {
+        if (empty($seg['exige_2fa_login'])) {
+            return ['ok' => true, 'pendente' => false];
+        }
+
+        $idUsr = (int)$usuario['idusuario'];
+        $uname = (string)$usuario['username'];
+        $tipo2fa = $seg['tipo_2fa'] ?? 'totp';
+        $temTotp = \Nutricional\Services\SegurancaUsuario::tem2fa($this->pdo, $idUsr);
+        $numWhats = \Nutricional\Services\WhatsAppCodigo::numero($this->pdo, $idUsr);
+        $provedorWhats = \Nutricional\Services\WhatsAppService::provedor() !== null;
+        $temWhats = $provedorWhats && $numWhats !== null;
+        $destino = $numWhats ? \Nutricional\Services\WhatsAppService::mascarar($numWhats) : null;
+
+        $podeTotp = $temTotp && in_array($tipo2fa, ['totp', 'ambos'], true);
+        $podeWhats = $temWhats && in_array($tipo2fa, ['whatsapp', 'ambos'], true);
+
+        if (!$podeTotp && !$podeWhats) {
+            if ($temTotp) {
+                $podeTotp = true;
+            } else {
+                // Evita trancar o usuario fora: entra e orienta configurar o autenticador.
+                return ['ok' => true, 'pendente' => true];
+            }
+        }
+
+        $canalEfetivo = ($podeTotp && $podeWhats) ? 'ambos' : ($podeWhats ? 'whatsapp' : 'totp');
+        $querEnviarWhats = !empty($input['enviar_whatsapp']);
+        $codigo2fa = preg_replace('/\D/', '', (string)($input['codigo2fa'] ?? ''));
+
+        $basePayload = [
+            'requer_2fa' => true,
+            'canal_2fa' => $canalEfetivo,
+            'destino' => $destino,
+            'tem_whats' => $podeWhats,
+            'tem_totp' => $podeTotp,
+        ];
+
+        // 1) Primeiro envio automatico no modo WhatsApp ou solicitacao explicita de envio/reenvio
+        if ($podeWhats && ($querEnviarWhats || ($canalEfetivo === 'whatsapp' && $codigo2fa === ''))) {
+            $resEnv = \Nutricional\Services\WhatsAppCodigo::enviar($this->pdo, $idUsr, $uname, $ip);
+            if ($resEnv['ok']) {
+                return [
+                    'ok' => false,
+                    'status' => 401,
+                    'payload' => $basePayload + [
+                        'enviado_whatsapp' => true,
+                        'destino' => $resEnv['destino'],
+                        'error' => 'Enviamos um código de 6 dígitos para o WhatsApp ' . $resEnv['destino'] . '.',
+                    ],
+                ];
+            }
+            if ((int)($resEnv['status'] ?? 0) === 429) {
+                return [
+                    'ok' => false,
+                    'status' => 401,
+                    'payload' => $basePayload + [
+                        'enviado_whatsapp' => false,
+                        'error' => $resEnv['erro'] ?? 'Aguarde alguns segundos antes de reenviar o código.',
+                    ],
+                ];
+            }
+            if ($podeTotp) {
+                return [
+                    'ok' => false,
+                    'status' => 401,
+                    'payload' => $basePayload + [
+                        'enviado_whatsapp' => false,
+                        'error' => 'Falha ao enviar WhatsApp. Informe o código do app autenticador.',
+                    ],
+                ];
+            }
+            return [
+                'ok' => false,
+                'status' => 401,
+                'payload' => $basePayload + [
+                    'enviado_whatsapp' => false,
+                    'error' => $resEnv['erro'] ?? 'Falha ao enviar código pelo WhatsApp.',
+                ],
+            ];
+        }
+
+        // 2) Primeiro passo sem codigo (modo TOTP ou Ambos antes de escolher canal)
+        if ($codigo2fa === '') {
+            $msg = $canalEfetivo === 'ambos'
+                ? 'Informe o código do autenticador ou solicite o envio por WhatsApp'
+                : 'Informe o código do aplicativo autenticador';
+            return ['ok' => false, 'status' => 401, 'payload' => $basePayload + ['error' => $msg]];
+        }
+
+        // 3) Validacao do codigo informado
+        $canalEscolhido = strtolower(trim((string)($input['canal_2fa'] ?? '')));
+        $temCodigoWaPendente = false;
+        if ($podeWhats && $canalEfetivo === 'ambos' && $canalEscolhido !== 'whatsapp') {
+            try {
+                $stWa = $this->pdo->prepare("SELECT 1 FROM admin_whatsapp_codigo WHERE idusuario = :id AND expira > NOW()");
+                $stWa->execute(['id' => $idUsr]);
+                $temCodigoWaPendente = (bool)$stWa->fetchColumn();
+            } catch (\Throwable $e) {}
+        }
+
+        if ($podeWhats && ($canalEfetivo === 'whatsapp' || $canalEscolhido === 'whatsapp' || $temCodigoWaPendente)) {
+            $waRes = \Nutricional\Services\WhatsAppCodigo::verificar($this->pdo, $idUsr, $codigo2fa);
+            if ($waRes === 'ok') {
+                return ['ok' => true, 'pendente' => false];
+            }
+            if ($canalEfetivo === 'whatsapp') {
+                $msg = $waRes === 'ausente'
+                    ? 'Código do WhatsApp expirado ou ausente. Clique em Reenviar código.'
+                    : 'Código do WhatsApp inválido ou expirado';
+                return ['ok' => false, 'status' => 401, 'payload' => $basePayload + ['error' => $msg]];
+            }
+        }
+
+        if ($podeTotp) {
+            $res = \Nutricional\Services\SegurancaUsuario::validarCodigoLogin($this->pdo, $idUsr, $uname, $codigo2fa, $ip);
+            if ($res === 'bloqueado') {
+                return ['ok' => false, 'status' => 429, 'payload' => ['error' => 'Muitas tentativas. Aguarde 10 minutos.']];
+            }
+            if ($res === 'ok') {
+                return ['ok' => true, 'pendente' => false];
+            }
+        }
+
+        return ['ok' => false, 'status' => 401, 'payload' => $basePayload + ['error' => 'Código inválido ou expirado']];
+    }
+
     /**
      * Resposta de erro JSON
      */

@@ -47,6 +47,9 @@ function portalClienteHandler(appBase = '') {
         pedidos: [],
         itensComprados: [],
         aba: 'boletos',
+        dadosAbertosMobile: false,
+        toastMsg: '',
+        _toastTimer: null,
 
         filtroTexto: '',
         filtroDataIni: '',
@@ -76,6 +79,8 @@ function portalClienteHandler(appBase = '') {
                 this.tokenAtivo = b2bTok;
                 this.autenticado = true;
                 await this.carregarContexto();
+            } else if (this.temTokenPortalInterno && new URLSearchParams(window.location.search).get('sessao') === 'portal') {
+                await this.entrarComSessaoPortal();
             }
         },
 
@@ -426,9 +431,31 @@ function portalClienteHandler(appBase = '') {
             this.msgPref2fa = d.message;
         },
 
-        copiarTexto(txt) {
-            navigator.clipboard?.writeText(txt);
-            alert('Copiado: ' + txt);
+        irParaAba(nome) {
+            this.aba = nome;
+            this.$nextTick(() => {
+                const el = document.getElementById('b2b-secao-abas');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            });
+        },
+
+        mostrarToast(msg) {
+            this.toastMsg = msg;
+            if (this._toastTimer) clearTimeout(this._toastTimer);
+            this._toastTimer = setTimeout(() => { this.toastMsg = ''; }, 2600);
+        },
+
+        copiarTexto(txt, label = 'Copiado') {
+            if (!txt) return;
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(txt).then(() => {
+                    this.mostrarToast(`${label} com sucesso!`);
+                }).catch(() => {
+                    window.prompt('Copie o código abaixo:', txt);
+                });
+            } else {
+                window.prompt('Copie o código abaixo:', txt);
+            }
         },
 
         sair() {

@@ -1090,8 +1090,6 @@ class PortalClienteController
             return $this->json($response, ['success' => false, 'error' => 'Informe um número de WhatsApp para ativar o 2FA por WhatsApp.'], 400);
         }
 
-        $this->pdo->exec("ALTER TABLE b2b_portal_contas ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(30) DEFAULT ''");
-        $this->pdo->exec("ALTER TABLE b2b_portal_contas ADD COLUMN IF NOT EXISTS preferencia_2fa VARCHAR(20) DEFAULT 'email'");
         $this->pdo->prepare("UPDATE b2b_portal_contas SET whatsapp = :w, preferencia_2fa = :p, atualizado_em = NOW() WHERE id = :id")
             ->execute(['w' => $numNorm, 'p' => $canal, 'id' => $b2bId]);
 

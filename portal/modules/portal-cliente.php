@@ -28,10 +28,20 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             #modal-danfe-b2b, #modal-boleto-b2b { position: static !important; background: #fff !important; padding: 0 !important; }
             #modal-danfe-b2b .no-print, #modal-boleto-b2b .no-print { display: none !important; }
             #modal-danfe-b2b .print-box, #modal-boleto-b2b .print-box { max-width: 100% !important; max-height: none !important; box-shadow: none !important; border: none !important; overflow: visible !important; }
+            .no-print { display: none !important; }
         }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-50 text-slate-800 min-h-screen" x-data="portalClienteHandler('<?= $appBase ?>')" x-init="init()">
+
+    <!-- TOAST FLUTUANTE MOBILE / DESKTOP -->
+    <div x-show="toastMsg" x-cloak x-transition
+         class="no-print fixed top-4 left-1/2 -translate-x-1/2 z-[90] px-4 py-2.5 rounded-full bg-slate-900 text-white text-xs font-extrabold shadow-xl flex items-center gap-2 border border-emerald-500/40">
+        <i class="fa-solid fa-circle-check text-emerald-400"></i>
+        <span x-text="toastMsg"></span>
+    </div>
 
     <!-- ================================================================== -->
     <!-- TELA 1: AUTENTICAÇÃO B2B (E-MAIL/CNPJ + TURNSTILE + 2FA E-MAIL)    -->
@@ -193,23 +203,23 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     <!-- ================================================================== -->
     <!-- TELA 2: ÁREA LOGADA (HIERARQUIA COMERCIAL + BOLETOS/NOTAS/PEDIDOS) -->
     <!-- ================================================================== -->
-    <div x-show="autenticado" x-cloak class="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+    <div x-show="autenticado" x-cloak class="max-w-[1440px] mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6 pb-24 md:pb-6 space-y-4 sm:space-y-5">
         <!-- HEADER -->
-        <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-emerald-900 text-white rounded-2xl p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="bg-gradient-to-r from-slate-900 via-emerald-950 to-emerald-900 text-white rounded-2xl p-4 sm:p-5 shadow-lg flex flex-col md:flex-row md:items-center justify-between gap-3 sm:gap-4">
             <div>
-                <div class="flex items-center gap-2 mb-1">
+                <div class="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-1">
                     <a x-show="temTokenPortalInterno" href="<?= $appBase ?>/portal/" class="px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-white text-xs font-bold no-underline">
                         <i class="fa-solid fa-arrow-left mr-1"></i> Portal
                     </a>
                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase bg-emerald-500/30 border border-emerald-400/40" x-text="'PERFIL: ' + (escopo.perfil || 'CLIENTE')"></span>
-                    <span class="text-xs font-bold text-emerald-200" x-text="escopo.nome"></span>
+                    <span class="text-xs font-bold text-emerald-200 truncate max-w-[200px] sm:max-w-none" x-text="escopo.nome"></span>
                 </div>
-                <h1 class="text-xl font-black tracking-tight"
+                <h1 class="text-lg sm:text-xl font-black tracking-tight"
                     x-text="escopo.perfil === 'CLIENTE' ? 'Minha Área do Cliente — Nutricional' : (escopo.perfil === 'REPRESENTANTE' ? 'Minha Carteira de Clientes' : 'Gestão de Carteira Comercial')"></h1>
             </div>
-            <div class="flex items-center gap-2 self-start md:self-auto">
+            <div class="flex items-center gap-2 self-stretch sm:self-start md:self-auto">
                 <button x-show="escopo.perfil === 'CLIENTE' || escopo.perfil === 'REPRESENTANTE'" @click="modalPref2fa = true; msgPref2fa = ''"
-                        class="px-3 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/30 text-white text-xs font-extrabold">
+                        class="flex-1 sm:flex-none px-3 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/30 text-white text-xs font-extrabold">
                     <i class="fa-brands fa-whatsapp mr-1"></i> 2FA WhatsApp
                 </button>
                 <button @click="sair()" class="px-4 py-2 rounded-xl bg-rose-500/20 hover:bg-rose-500/40 border border-rose-400/30 text-white text-xs font-extrabold">
@@ -219,10 +229,10 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
         </div>
 
         <!-- SELETOR DE HIERARQUIA (GESTOR / REPRESENTANTE) -->
-        <div x-show="escopo.perfil !== 'CLIENTE'" class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+        <div x-show="escopo.perfil !== 'CLIENTE'" class="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-3 gap-2.5 sm:gap-3 items-end">
             <div x-show="escopo.perfil === 'ADMIN' || escopo.perfil === 'GESTOR'">
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Filtrar Representante</label>
-                <select x-model="filtroRep" @change="carregarContexto()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold">
+                <select x-model="filtroRep" @change="carregarContexto()" class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 text-sm sm:text-xs font-bold bg-white">
                     <option value="0">Todos os Representantes Liberados</option>
                     <template x-for="r in representantes" :key="r.id">
                         <option :value="r.id" x-text="r.id + ' - ' + r.nome"></option>
@@ -232,11 +242,11 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             <div>
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Buscar Cliente (Razão / CNPJ / ID)</label>
                 <input type="text" x-model="buscaCliente" @input.debounce.350ms="carregarContexto()" placeholder="Digite para filtrar carteira..."
-                       class="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-semibold">
+                       class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 text-sm sm:text-xs font-semibold">
             </div>
             <div>
                 <label class="block text-[10px] font-bold uppercase text-slate-500 mb-1">Cliente Selecionado (<span x-text="clientes.length"></span> liberados)</label>
-                <select x-model="clienteSelecionadoId" @change="carregarClienteResumo(clienteSelecionadoId)" class="w-full px-3 py-2 rounded-xl border border-emerald-400 bg-emerald-50/40 text-xs font-extrabold text-slate-900">
+                <select x-model="clienteSelecionadoId" @change="carregarClienteResumo(clienteSelecionadoId)" class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-emerald-400 bg-emerald-50/40 text-sm sm:text-xs font-extrabold text-slate-900">
                     <template x-for="c in clientes" :key="c.idcliforemp">
                         <option :value="c.idcliforemp" x-text="c.idcliforemp + ' - ' + c.razao + ' (' + c.cidade + '/' + c.uf + ')'"></option>
                     </template>
@@ -245,8 +255,48 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
         </div>
 
         <!-- DASHBOARD DE TRANSPARÊNCIA + LIMITE DE CRÉDITO -->
-        <div x-show="clienteAtual" class="space-y-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div x-show="clienteAtual" class="space-y-3 sm:space-y-4">
+            <!-- BANNER MOBILE DE ACESSO RÁPIDO A BOLETOS (APENAS MOBILE) -->
+            <div class="md:hidden space-y-2.5">
+                <div x-show="resumoCli.boletos_qtd > 0" @click="irParaAba('boletos')"
+                     class="rounded-2xl p-3.5 border shadow-sm flex items-center justify-between gap-3 cursor-pointer active:scale-[0.99] transition"
+                     :class="resumoCli.boletos_vencido > 0 ? 'bg-gradient-to-r from-rose-600 to-rose-700 border-rose-500 text-white' : 'bg-gradient-to-r from-amber-500 to-orange-500 border-amber-400 text-white'">
+                    <div class="min-w-0">
+                        <div class="text-[10px] font-black uppercase opacity-90 flex items-center gap-1.5">
+                            <i class="fa-solid fa-barcode"></i>
+                            <span x-text="resumoCli.boletos_vencido > 0 ? 'Atenção: Boleto(s) Vencido(s)' : 'Boletos em Aberto (' + resumoCli.boletos_qtd + ')'"></span>
+                        </div>
+                        <div class="text-xl font-black font-mono mt-0.5" x-text="fmtMoeda(resumoCli.boletos_aberto)"></div>
+                        <div class="text-[11px] font-semibold opacity-95">Toque para copiar código ou abrir PIX</div>
+                    </div>
+                    <span class="px-3 py-2 rounded-xl bg-white/20 text-xs font-black shrink-0">
+                        Abrir <i class="fa-solid fa-arrow-right ml-1"></i>
+                    </span>
+                </div>
+
+                <!-- GRADE MOBILE DE ATALHOS INSTANTÂNEOS -->
+                <div class="grid grid-cols-4 gap-2">
+                    <button @click="irParaAba('boletos')" class="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col items-center gap-1 shadow-sm relative active:bg-slate-100">
+                        <span x-show="resumoCli.boletos_qtd > 0" class="absolute -top-1.5 -right-1.5 px-1.5 py-0.5 rounded-full bg-amber-500 text-white text-[9px] font-black" x-text="resumoCli.boletos_qtd"></span>
+                        <i class="fa-solid fa-barcode text-emerald-700 text-base"></i>
+                        <span class="text-[10px] font-extrabold text-slate-700">Boletos</span>
+                    </button>
+                    <button @click="irParaAba('notas')" class="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col items-center gap-1 shadow-sm active:bg-slate-100">
+                        <i class="fa-solid fa-file-invoice text-indigo-600 text-base"></i>
+                        <span class="text-[10px] font-extrabold text-slate-700">DANFEs</span>
+                    </button>
+                    <button @click="irParaAba('pedidos')" class="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col items-center gap-1 shadow-sm active:bg-slate-100">
+                        <i class="fa-solid fa-cart-shopping text-slate-700 text-base"></i>
+                        <span class="text-[10px] font-extrabold text-slate-700">Pedidos</span>
+                    </button>
+                    <button @click="irParaAba('itens')" class="bg-white border border-slate-200 rounded-xl p-2.5 flex flex-col items-center gap-1 shadow-sm active:bg-slate-100">
+                        <i class="fa-solid fa-boxes-stacked text-emerald-600 text-base"></i>
+                        <span class="text-[10px] font-extrabold text-slate-700">Produtos</span>
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
                 <!-- Card 1: Limite de Crédito -->
                 <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
                     <div class="flex items-center justify-between gap-2">
@@ -294,11 +344,23 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             </div>
 
             <!-- Dados Cadastrais do Cliente -->
-            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                <div class="text-[10px] font-black uppercase text-slate-400 mb-2 flex items-center gap-1.5">
-                    <i class="fa-solid fa-address-card text-emerald-600"></i> Dados Cadastrais no ERP
+            <div class="bg-white rounded-2xl p-3.5 sm:p-4 border border-slate-200 shadow-sm">
+                <div class="flex items-center justify-between gap-2">
+                    <div class="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1.5">
+                        <i class="fa-solid fa-address-card text-emerald-600"></i> Dados Cadastrais no ERP
+                    </div>
+                    <button type="button" @click="dadosAbertosMobile = !dadosAbertosMobile"
+                            class="md:hidden px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-extrabold">
+                        <span x-text="dadosAbertosMobile ? 'Ocultar' : 'Ver completos'"></span>
+                        <i class="fa-solid ml-1" :class="dadosAbertosMobile ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                    </button>
                 </div>
-                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <div class="md:hidden mt-1.5 text-xs">
+                    <div class="font-extrabold text-slate-800 truncate" x-text="clienteAtual?.razao"></div>
+                    <div class="text-[11px] font-mono text-slate-500" x-text="(clienteAtual?.doc || '-') + ' • ' + (clienteAtual?.cidade || '') + '/' + (clienteAtual?.uf || '')"></div>
+                </div>
+                <div class="grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs mt-2"
+                     :class="dadosAbertosMobile ? 'grid' : 'hidden md:grid'">
                     <div><span class="text-[10px] text-slate-400 block">Razão Social / Fantasia</span><strong class="text-slate-800" x-text="clienteAtual?.razao"></strong></div>
                     <div><span class="text-[10px] text-slate-400 block">CNPJ/CPF • IE</span><strong class="font-mono text-slate-800" x-text="(clienteAtual?.doc || '-') + ' • IE: ' + (clienteAtual?.ie || '-')"></strong></div>
                     <div><span class="text-[10px] text-slate-400 block">Endereço</span><strong class="text-slate-700" x-text="(clienteAtual?.endereco || '-') + ', ' + (clienteAtual?.bairro || '') + ' — ' + (clienteAtual?.cidade || '') + '/' + (clienteAtual?.uf || '') + ' (' + (clienteAtual?.cep || '') + ')'"></strong></div>
@@ -367,19 +429,19 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
         </div>
 
         <!-- ABAS + FILTROS -->
-        <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="flex flex-wrap border-b border-slate-200 bg-slate-50 px-4 pt-2 gap-2 text-xs font-extrabold">
-                <button @click="aba = 'boletos'" :class="aba === 'boletos' ? 'bg-white text-emerald-700 border border-b-0 border-slate-200 rounded-t-xl px-4 py-2.5' : 'text-slate-500 px-4 py-2.5'">
-                    <i class="fa-solid fa-barcode mr-1"></i> Títulos / Boletos (<span x-text="boletosFiltrados().length"></span>)
+        <div id="b2b-secao-abas" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="flex overflow-x-auto no-scrollbar border-b border-slate-200 bg-slate-50 px-3 sm:px-4 pt-2 gap-1.5 sm:gap-2 text-xs font-extrabold">
+                <button @click="aba = 'boletos'" :class="aba === 'boletos' ? 'bg-white text-emerald-700 border border-b-0 border-slate-200 rounded-t-xl px-3 sm:px-4 py-2.5' : 'text-slate-500 px-3 sm:px-4 py-2.5'" class="shrink-0 whitespace-nowrap">
+                    <i class="fa-solid fa-barcode mr-1"></i> Boletos (<span x-text="boletosFiltrados().length"></span>)
                 </button>
-                <button @click="aba = 'notas'" :class="aba === 'notas' ? 'bg-white text-indigo-700 border border-b-0 border-slate-200 rounded-t-xl px-4 py-2.5' : 'text-slate-500 px-4 py-2.5'">
-                    <i class="fa-solid fa-file-invoice mr-1"></i> Notas Fiscais (<span x-text="notasFiltradas().length"></span>)
+                <button @click="aba = 'notas'" :class="aba === 'notas' ? 'bg-white text-indigo-700 border border-b-0 border-slate-200 rounded-t-xl px-3 sm:px-4 py-2.5' : 'text-slate-500 px-3 sm:px-4 py-2.5'" class="shrink-0 whitespace-nowrap">
+                    <i class="fa-solid fa-file-invoice mr-1"></i> Notas (<span x-text="notasFiltradas().length"></span>)
                 </button>
-                <button @click="aba = 'pedidos'" :class="aba === 'pedidos' ? 'bg-white text-slate-900 border border-b-0 border-slate-200 rounded-t-xl px-4 py-2.5' : 'text-slate-500 px-4 py-2.5'">
+                <button @click="aba = 'pedidos'" :class="aba === 'pedidos' ? 'bg-white text-slate-900 border border-b-0 border-slate-200 rounded-t-xl px-3 sm:px-4 py-2.5' : 'text-slate-500 px-3 sm:px-4 py-2.5'" class="shrink-0 whitespace-nowrap">
                     <i class="fa-solid fa-cart-shopping mr-1"></i> Pedidos (<span x-text="pedidosFiltrados().length"></span>)
                 </button>
-                <button @click="aba = 'itens'" :class="aba === 'itens' ? 'bg-white text-emerald-800 border border-b-0 border-slate-200 rounded-t-xl px-4 py-2.5' : 'text-slate-500 px-4 py-2.5'">
-                    <i class="fa-solid fa-boxes-stacked mr-1"></i> Produtos Comprados (<span x-text="itensFiltrados().length"></span>)
+                <button @click="aba = 'itens'" :class="aba === 'itens' ? 'bg-white text-emerald-800 border border-b-0 border-slate-200 rounded-t-xl px-3 sm:px-4 py-2.5' : 'text-slate-500 px-3 sm:px-4 py-2.5'" class="shrink-0 whitespace-nowrap">
+                    <i class="fa-solid fa-boxes-stacked mr-1"></i> Produtos (<span x-text="itensFiltrados().length"></span>)
                 </button>
             </div>
 
@@ -387,13 +449,13 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             <div class="p-3 bg-slate-50/70 border-b border-slate-200 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2 items-center text-xs">
                 <div class="lg:col-span-2">
                     <input type="text" x-model="filtroTexto" placeholder="Filtrar por número, documento, produto, marca..."
-                           class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold">
+                           class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 bg-white text-sm sm:text-xs font-semibold">
                 </div>
                 <div x-show="aba !== 'itens'">
-                    <input type="date" x-model="filtroDataIni" title="Data inicial" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold">
+                    <input type="date" x-model="filtroDataIni" title="Data inicial" class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 bg-white text-sm sm:text-xs font-semibold">
                 </div>
                 <div x-show="aba !== 'itens'">
-                    <input type="date" x-model="filtroDataFim" title="Data final" class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-xs font-semibold">
+                    <input type="date" x-model="filtroDataFim" title="Data final" class="w-full px-3 py-2.5 sm:py-2 rounded-xl border border-slate-300 bg-white text-sm sm:text-xs font-semibold">
                 </div>
                 <div class="flex gap-2">
                     <select x-show="aba === 'boletos'" x-model="filtroTituloTipo" class="flex-1 px-2.5 py-2 rounded-xl border border-slate-300 bg-white text-xs font-bold">
@@ -409,7 +471,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             </div>
 
             <!-- BOLETOS -->
-            <div x-show="aba === 'boletos'" class="p-4 overflow-x-auto">
+            <div x-show="aba === 'boletos'">
+                <div class="hidden md:block p-4 overflow-x-auto">
                 <table class="w-full text-xs">
                     <thead class="bg-slate-800 text-white">
                         <tr>
@@ -459,10 +522,60 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <tr x-show="boletosFiltrados().length === 0"><td colspan="7" class="py-8 text-center text-slate-400">Nenhum título encontrado para os filtros atuais.</td></tr>
                     </tbody>
                 </table>
+                </div>
+
+                <!-- VERSÃO EXCLUSIVA MOBILE: CARDS DE BOLETOS -->
+                <div class="md:hidden p-3 space-y-3 bg-slate-50/70">
+                    <template x-for="b in boletosFiltrados()" :key="'mob-' + b.idfilial + '-' + b.idreceber">
+                        <div class="bg-white rounded-2xl p-3.5 border shadow-sm space-y-2.5"
+                             :class="b.dias_atraso > 0 ? 'border-rose-200' : 'border-slate-200'">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <div class="font-mono text-xs font-black text-slate-900" x-text="'Doc ' + b.documento + ' / ' + b.parcela"></div>
+                                    <div x-show="b.nossonumero" class="font-mono text-[10px] text-slate-400" x-text="'NN: ' + b.nossonumero"></div>
+                                </div>
+                                <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0"
+                                      :class="b.dias_atraso > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'"
+                                      x-text="b.dias_atraso > 0 ? (b.dias_atraso + 'd atraso') : 'Em aberto'"></span>
+                            </div>
+                            <div class="flex items-end justify-between gap-2 border-t border-slate-100 pt-2">
+                                <div>
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Saldo Aberto</span>
+                                    <span class="text-lg font-black font-mono text-slate-900" x-text="fmtMoeda(b.valorsaldo)"></span>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Vencimento</span>
+                                    <span class="text-xs font-extrabold" :class="b.dias_atraso > 0 ? 'text-rose-600' : 'text-emerald-700'" x-text="fmtData(b.vencimento)"></span>
+                                </div>
+                            </div>
+                            <div class="text-[11px] text-slate-500 flex items-center justify-between">
+                                <span class="truncate font-semibold" x-text="b.portador_nome || (b.tem_boleto ? 'Boleto Bancário' : 'Outras Formas')"></span>
+                                <span class="font-mono text-[10px]" x-text="'Orig: ' + fmtMoeda(b.valororiginal)"></span>
+                            </div>
+                            <template x-if="b.tem_boleto">
+                                <div class="grid grid-cols-2 gap-2 pt-1">
+                                    <button @click="abrirBoleto(b)" class="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
+                                        <i class="fa-solid fa-barcode"></i> Ver Boleto / PIX
+                                    </button>
+                                    <button @click="copiarTexto(b.linha_digitavel || b.codigobarra, 'Linha digitável copiada')" class="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
+                                        <i class="fa-regular fa-copy"></i> Copiar Código
+                                    </button>
+                                </div>
+                            </template>
+                            <template x-if="!b.tem_boleto">
+                                <button @click="abrirTituloDetalhe(b)" class="w-full py-2.5 px-3 rounded-xl bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-extrabold flex items-center justify-center gap-1.5">
+                                    <i class="fa-solid fa-circle-info"></i> Ver Detalhes do Título
+                                </button>
+                            </template>
+                        </div>
+                    </template>
+                    <div x-show="boletosFiltrados().length === 0" class="py-8 text-center text-xs text-slate-400">Nenhum título encontrado para os filtros atuais.</div>
+                </div>
             </div>
 
             <!-- NOTAS FISCAIS -->
-            <div x-show="aba === 'notas'" class="p-4 overflow-x-auto">
+            <div x-show="aba === 'notas'">
+                <div class="hidden md:block p-4 overflow-x-auto">
                 <table class="w-full text-xs">
                     <thead class="bg-slate-800 text-white">
                         <tr>
@@ -496,10 +609,43 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <tr x-show="notasFiltradas().length === 0"><td colspan="5" class="py-8 text-center text-slate-400">Nenhuma nota fiscal encontrada.</td></tr>
                     </tbody>
                 </table>
+                </div>
+
+                <!-- VERSÃO EXCLUSIVA MOBILE: CARDS DE NOTAS FISCAIS -->
+                <div class="md:hidden p-3 space-y-3 bg-slate-50/70">
+                    <template x-for="n in notasFiltradas()" :key="'mob-nf-' + n.idfilial + '-' + n.idnfs">
+                        <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <div class="font-mono text-sm font-black text-slate-900" x-text="'NF ' + n.numeronf + ' (F' + n.idfilial + ')'"></div>
+                                    <div class="text-[11px] text-slate-500" x-text="'Emissão: ' + fmtData(n.dataemissao)"></div>
+                                </div>
+                                <div class="text-right">
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Valor Nota</span>
+                                    <span class="text-base font-black font-mono text-indigo-700" x-text="fmtMoeda(n.valortotal)"></span>
+                                </div>
+                            </div>
+                            <div x-show="n.chave_nfe" class="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
+                                <span class="font-mono text-[10px] text-slate-600 truncate" x-text="n.chave_nfe"></span>
+                                <button @click="copiarTexto(n.chave_nfe, 'Chave NF-e copiada')" class="px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0">Copiar</button>
+                            </div>
+                            <div class="flex gap-2">
+                                <button @click="abrirDanfe(n)" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
+                                    <i class="fa-solid fa-file-pdf"></i> Ver / Baixar DANFE
+                                </button>
+                                <button @click="abrirItens('nota', n)" class="py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold">
+                                    Itens
+                                </button>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="notasFiltradas().length === 0" class="py-8 text-center text-xs text-slate-400">Nenhuma nota fiscal encontrada.</div>
+                </div>
             </div>
 
             <!-- PEDIDOS -->
-            <div x-show="aba === 'pedidos'" class="p-4 overflow-x-auto">
+            <div x-show="aba === 'pedidos'">
+                <div class="hidden md:block p-4 overflow-x-auto">
                 <table class="w-full text-xs">
                     <thead class="bg-slate-800 text-white">
                         <tr>
@@ -545,6 +691,45 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <tr x-show="pedidosFiltrados().length === 0"><td colspan="7" class="py-8 text-center text-slate-400">Nenhum pedido encontrado.</td></tr>
                     </tbody>
                 </table>
+                </div>
+
+                <!-- VERSÃO EXCLUSIVA MOBILE: CARDS DE PEDIDOS -->
+                <div class="md:hidden p-3 space-y-3 bg-slate-50/70">
+                    <template x-for="p in pedidosFiltrados()" :key="'mob-ped-' + p.idfilial + '-' + p.idpedido">
+                        <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <div class="font-mono text-sm font-black text-slate-900" x-text="'Pedido #' + p.idpedido + ' (F' + p.idfilial + ')'"></div>
+                                    <div class="text-[11px] text-slate-500" x-text="fmtData(p.data) + (p.vendedor ? ' • ' + p.vendedor : '')"></div>
+                                </div>
+                                <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0"
+                                      :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')"
+                                      x-text="p.status_label || (p.status === 5 ? 'Faturado' : (p.status === 3 ? 'Cancelado' : 'Em Aberto'))"></span>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                                <div>
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Valor Pedido</span>
+                                    <span class="text-base font-black font-mono text-slate-900" x-text="fmtMoeda(p.valortotal)"></span>
+                                </div>
+                                <template x-if="p.numeronf > 0">
+                                    <div class="flex items-center gap-1.5">
+                                        <button @click="abrirDanfe({idfilial: p.idfilial, idnfs: p.idnfs, numeronf: p.numeronf})"
+                                                class="px-2.5 py-1.5 rounded-xl bg-indigo-50 text-indigo-700 font-mono font-extrabold text-[11px]">
+                                            <i class="fa-solid fa-file-invoice mr-1"></i> NF <span x-text="p.numeronf"></span>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <div x-show="p.idembarque > 0" class="text-[11px] text-slate-600 font-semibold">
+                                <i class="fa-solid fa-truck-fast text-emerald-600 mr-1"></i> Embarque #<span x-text="p.idembarque"></span>
+                            </div>
+                            <button @click="abrirItens('pedido', p)" class="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                                Ver Itens do Pedido
+                            </button>
+                        </div>
+                    </template>
+                    <div x-show="pedidosFiltrados().length === 0" class="py-8 text-center text-xs text-slate-400">Nenhum pedido encontrado.</div>
+                </div>
             </div>
 
             <!-- PRODUTOS COMPRADOS (COM IMAGENS) -->
@@ -573,6 +758,31 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 <div x-show="itensFiltrados().length === 0" class="py-10 text-center text-xs text-slate-400">Nenhum produto comprado encontrado.</div>
             </div>
         </div>
+
+        <!-- BARRA INFERIOR FIXA EXCLUSIVA MOBILE -->
+        <nav x-show="clienteAtual" class="md:hidden no-print fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 px-2 py-1.5 grid grid-cols-4 gap-1 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+            <button @click="irParaAba('boletos')" class="relative py-1.5 rounded-xl flex flex-col items-center gap-0.5 transition"
+                    :class="aba === 'boletos' ? 'bg-emerald-50 text-emerald-700 font-black' : 'text-slate-500 font-bold'">
+                <span x-show="resumoCli.boletos_qtd > 0" class="absolute top-0.5 right-4 px-1.5 rounded-full bg-amber-500 text-white text-[9px] font-black" x-text="resumoCli.boletos_qtd"></span>
+                <i class="fa-solid fa-barcode text-sm"></i>
+                <span class="text-[10px]">Boletos</span>
+            </button>
+            <button @click="irParaAba('notas')" class="py-1.5 rounded-xl flex flex-col items-center gap-0.5 transition"
+                    :class="aba === 'notas' ? 'bg-indigo-50 text-indigo-700 font-black' : 'text-slate-500 font-bold'">
+                <i class="fa-solid fa-file-invoice text-sm"></i>
+                <span class="text-[10px]">Notas</span>
+            </button>
+            <button @click="irParaAba('pedidos')" class="py-1.5 rounded-xl flex flex-col items-center gap-0.5 transition"
+                    :class="aba === 'pedidos' ? 'bg-slate-100 text-slate-900 font-black' : 'text-slate-500 font-bold'">
+                <i class="fa-solid fa-cart-shopping text-sm"></i>
+                <span class="text-[10px]">Pedidos</span>
+            </button>
+            <button @click="irParaAba('itens')" class="py-1.5 rounded-xl flex flex-col items-center gap-0.5 transition"
+                    :class="aba === 'itens' ? 'bg-emerald-50 text-emerald-800 font-black' : 'text-slate-500 font-bold'">
+                <i class="fa-solid fa-boxes-stacked text-sm"></i>
+                <span class="text-[10px]">Produtos</span>
+            </button>
+        </nav>
     </div>
 
     <!-- MODAL DETALHES DE TÍTULO SEM BOLETO (RENEGOCIAÇÃO / OUTRAS FORMAS, z-[70]) -->
@@ -607,8 +817,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     </div>
 
     <!-- MODAL ITENS (z-[70]) -->
-    <div x-show="modalItens" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-4">
-        <div @click.away="modalItens = false" class="bg-white rounded-2xl max-w-3xl w-full max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
+    <div x-show="modalItens" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/70 p-0 sm:p-4">
+        <div @click.away="modalItens = false" class="bg-white rounded-none sm:rounded-2xl max-w-3xl w-full h-full sm:h-auto sm:max-h-[85vh] flex flex-col overflow-hidden shadow-2xl">
             <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
                 <h3 class="text-sm font-extrabold" x-text="modalTitulo"></h3>
                 <button @click="modalItens = false" class="text-white/70 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
@@ -633,24 +843,24 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     </div>
 
     <!-- MODAL BOLETO BANCÁRIO FEBRABAN (z-[70]) -->
-    <div id="modal-boleto-b2b" x-show="modalBoleto" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-4">
-        <div @click.away="modalBoleto = false" class="print-box bg-white rounded-2xl max-w-4xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            <div class="no-print bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+    <div id="modal-boleto-b2b" x-show="modalBoleto" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-0 sm:p-4">
+        <div @click.away="modalBoleto = false" class="print-box bg-white rounded-none sm:rounded-2xl max-w-4xl w-full h-full sm:h-auto sm:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="no-print bg-slate-900 text-white px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2">
                 <div class="text-xs font-extrabold flex items-center gap-2">
                     <i class="fa-solid fa-barcode text-emerald-400"></i>
                     <span x-text="boletoDoc ? ('Boleto ' + boletoDoc.banco_sigla + ' (' + boletoDoc.banco_codigo_dv + ') — Doc ' + boletoDoc.documento) : 'Boleto'"></span>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button x-show="boletoDoc && boletoDoc.linha_digitavel" @click="copiarTexto(boletoDoc.linha_digitavel)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
-                        <i class="fa-regular fa-copy mr-1"></i> Copiar Linha Digitável
+                <div class="flex flex-wrap items-center gap-2">
+                    <button x-show="boletoDoc && boletoDoc.linha_digitavel" @click="copiarTexto(boletoDoc.linha_digitavel, 'Linha digitável copiada')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
+                        <i class="fa-regular fa-copy mr-1"></i> Copiar Linha
                     </button>
                     <button @click="imprimirDocumento('boleto')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold">
-                        <i class="fa-solid fa-print mr-1"></i> Imprimir / Salvar PDF
+                        <i class="fa-solid fa-print mr-1"></i> PDF / Imprimir
                     </button>
-                    <button @click="modalBoleto = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
+                    <button @click="modalBoleto = false" class="text-white/70 hover:text-white px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans">
+            <div class="p-3 sm:p-6 overflow-auto text-[10px] text-black font-sans">
                 <template x-if="boletoDoc">
                     <div>
                 <!-- Recibo do Pagador -->
@@ -744,21 +954,21 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     </div>
 
     <!-- MODAL DANFE ESPELHO (MESMO LAYOUT CONTÁBIL, z-[70]) -->
-    <div id="modal-danfe-b2b" x-show="modalDanfe" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-4">
-        <div @click.away="modalDanfe = false" class="print-box bg-white rounded-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
-            <div class="no-print bg-slate-900 text-white px-5 py-3 flex items-center justify-between">
+    <div id="modal-danfe-b2b" x-show="modalDanfe" x-cloak class="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/75 p-0 sm:p-4">
+        <div @click.away="modalDanfe = false" class="print-box bg-white rounded-none sm:rounded-2xl max-w-5xl w-full h-full sm:h-auto sm:max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+            <div class="no-print bg-slate-900 text-white px-4 sm:px-5 py-3 flex flex-wrap items-center justify-between gap-2">
                 <div class="text-xs font-extrabold flex items-center gap-2">
                     <i class="fa-solid fa-file-invoice text-emerald-400"></i>
                     <span x-text="danfeNota ? ('DANFE Espelho — NF ' + danfeNota.numeronf + ' (Filial ' + danfeNota.idfilial + ')') : 'DANFE'"></span>
                 </div>
                 <div class="flex items-center gap-2">
                     <button @click="imprimirDocumento('danfe')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold">
-                        <i class="fa-solid fa-print mr-1"></i> Imprimir / Salvar PDF
+                        <i class="fa-solid fa-print mr-1"></i> PDF / Imprimir
                     </button>
-                    <button @click="modalDanfe = false" class="text-white/70 hover:text-white px-2"><i class="fa-solid fa-xmark"></i></button>
+                    <button @click="modalDanfe = false" class="text-white/70 hover:text-white px-2 py-1"><i class="fa-solid fa-xmark"></i></button>
                 </div>
             </div>
-            <div class="p-6 overflow-y-auto text-[10px] text-black font-sans">
+            <div class="p-3 sm:p-6 overflow-auto text-[10px] text-black font-sans">
                 <template x-if="danfeNota">
                     <div>
                 <table class="w-full border-collapse border border-black mb-2">

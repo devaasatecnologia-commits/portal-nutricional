@@ -647,7 +647,13 @@ async function segurancaUsuario(idusuario, nome) {
         const r = await Swal.fire({
             title: 'Segurança: ' + escapeHtml(nome),
             html: `<div style="text-align:left;font-size:.85rem">
-                <label style="display:flex;gap:8px;align-items:center;margin-bottom:4px"><input type="checkbox" id="sg_2fa" ${s.exige_2fa_login ? 'checked' : ''}> Exigir código do autenticador no login</label>
+                <label style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="sg_2fa" ${s.exige_2fa_login ? 'checked' : ''}> Exigir verificação em duas etapas (2FA) no login</label>
+                <label style="font-size:12px;color:#64748b">Método 2FA no login</label>
+                <select id="sg_tipo" class="swal2-input" style="margin:4px 0 10px;width:100%;height:auto;padding:8px 12px;font-size:14px">
+                    <option value="totp" ${(s.tipo_2fa || 'totp') === 'totp' ? 'selected' : ''}>App Autenticador (TOTP)</option>
+                    <option value="whatsapp" ${s.tipo_2fa === 'whatsapp' ? 'selected' : ''}>WhatsApp (código 6 dígitos)</option>
+                    <option value="ambos" ${s.tipo_2fa === 'ambos' ? 'selected' : ''}>Ambos (Autenticador ou WhatsApp)</option>
+                </select>
                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
                     <span style="font-size:.72rem;color:${s.tem_2fa ? '#059669' : '#d97706'}">${s.tem_2fa ? 'O usuário já ativou o autenticador.' : 'O usuário ainda não ativou o autenticador: entra normalmente até cadastrar.'}</span>
                     ${s.tem_2fa ? `<button type="button" onclick="resetar2faModal(${idusuario}, '${escapeHtml(nome)}')" style="font-size:.7rem;padding:2px 8px;border-radius:4px;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;cursor:pointer;font-weight:600">Resetar 2FA</button>` : ''}
@@ -662,9 +668,11 @@ async function segurancaUsuario(idusuario, nome) {
             showCancelButton: true, confirmButtonText: 'Salvar', cancelButtonText: 'Cancelar', confirmButtonColor: '#274036',
             preConfirm: () => {
                 const v = { exige_2fa_login: document.getElementById('sg_2fa').checked,
+                    tipo_2fa: document.getElementById('sg_tipo').value,
                     inatividade_min: parseInt(document.getElementById('sg_inat').value, 10),
                     token_min: parseInt(document.getElementById('sg_tok').value, 10),
                     whatsapp: document.getElementById('sg_whats').value.trim() };
+                if (v.tipo_2fa === 'whatsapp' && !v.whatsapp) return Swal.showValidationMessage('Informe o WhatsApp para usar 2FA via WhatsApp');
                 if (!(v.inatividade_min >= 1 && v.inatividade_min <= 480)) return Swal.showValidationMessage('Inatividade entre 1 e 480');
                 if (!(v.token_min >= 15 && v.token_min <= 1440)) return Swal.showValidationMessage('Token entre 15 e 1440');
                 return v;

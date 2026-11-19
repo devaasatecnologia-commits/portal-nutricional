@@ -153,6 +153,7 @@ $app->group('/v1', function ($group) {
         $protected->post('/auth/inatividade', [new AuthController(), 'registrarInatividade']);
         $protected->post('/auth/alterar-senha', [new AuthController(), 'alterarSenha']);
         $protected->post('/auth/whatsapp/enviar', [new \Nutricional\Controllers\AdminSegredosController(), 'enviarWhatsapp']);
+        $protected->get('/auth/whatsapp/status', [new \Nutricional\Controllers\AdminSegredosController(), 'statusWhatsapp']);
         $protected->get('/perfil/dados', [new AuthController(), 'getDadosPerfil']);
 
         // Retorno de carga por embarque (comparativo + destinos abertos)
@@ -1296,6 +1297,8 @@ $protected->group('/admin', function ($group) {
     $group->get('/seguranca-usuarios', [$segUsuarios, 'listarPolitica']);
     $group->post('/seguranca-usuarios/{id}', [$segUsuarios, 'salvarPolitica']);
     $group->post('/seguranca-usuarios/{id}/2fa/resetar', [$segUsuarios, 'resetar2fa']);
+    $group->get('/seguranca-b2b', [$segUsuarios, 'listarB2b']);
+    $group->post('/seguranca-b2b/{id}', [$segUsuarios, 'salvarB2b']);
     $cofre = new \Nutricional\Controllers\CofreSenhasController();
     $group->get('/cofre/status', [$cofre, 'status']);
     $group->post('/cofre/criar', [$cofre, 'criar']);

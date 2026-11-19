@@ -70,6 +70,12 @@ require_once __DIR__ . '/estrutura/header.php';
     <a href="#" @click.prevent="abrirPerfil()" class="sidebar-link-premium flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
         <i class="fa-solid fa-user-gear w-5 text-center"></i><span>Meu Perfil</span>
     </a>
+    <a href="<?= $portalBase ?>/portal/modules/portal-cliente.php?sessao=portal" class="sidebar-link-premium flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+        <i class="fa-solid fa-wallet w-5 text-center"></i><span>Carteira &amp; Boletos</span>
+    </a>
+    <a href="<?= $portalBase ?>/portal/modules/2fa.php" class="sidebar-link-premium flex items-center gap-3 px-4 py-2.5 text-sm font-medium">
+        <i class="fa-solid fa-shield-halved w-5 text-center"></i><span>Segurança 2FA</span>
+    </a>
 
     <div class="px-6 mt-5 mb-2"><span class="sidebar-section-title">Setores</span></div>
  <template x-for="setor in setoresVisiveis" :key="setor.nome">

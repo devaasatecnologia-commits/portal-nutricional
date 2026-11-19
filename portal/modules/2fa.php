@@ -28,15 +28,25 @@ async function carregar() {
     try {
         const d = await apiFetch('/2fa/status', 'GET');
         if (d.error) throw new Error(d.error);
+        const mapaTipo = { totp: 'App Autenticador (TOTP)', whatsapp: 'WhatsApp (código 6 dígitos)', ambos: 'Autenticador ou WhatsApp' };
+        const infoPolitica = `
+            <div class="mt-3 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
+                <div><b>Exigência no login:</b> ${d.exige_2fa_login ? '<span class="text-emerald-700 font-semibold">Obrigatório</span>' : 'Opcional'}</div>
+                <div><b>Canal configurado:</b> ${escapeHtml(mapaTipo[d.tipo_2fa || 'totp'] || 'App Autenticador')}</div>
+                <div><b>WhatsApp cadastrado:</b> ${d.whatsapp_destino ? '<span class="font-mono font-semibold text-emerald-700">' + escapeHtml(d.whatsapp_destino) + '</span>' : '<span class="text-slate-400">Não cadastrado (solicite ao Admin)</span>'}</div>
+            </div>`;
         if (d.ativo) {
-            box.innerHTML = '<span class="text-emerald-600 font-bold">Ativo.</span> Sua conta ja pede o codigo do app no login.';
-            acoes.innerHTML = '<button onclick="desativar()" class="px-4 py-2 border border-rose-300 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-500 hover:text-white">Desativar</button>';
+            box.innerHTML = '<span class="text-emerald-600 font-bold">Autenticador ativo.</span> Sua conta pode validar com o app autenticador.' + infoPolitica;
+            acoes.innerHTML = '<button onclick="desativar()" class="px-4 py-2 border border-rose-300 text-rose-600 rounded-xl text-sm font-bold hover:bg-rose-500 hover:text-white">Desativar TOTP</button>';
         } else if (d.pendente) {
-            box.innerHTML = '<span class="text-amber-600 font-bold">Pendente.</span> Voce ja iniciou o cadastro; reinicie para gerar um novo segredo.';
-            acoes.innerHTML = '<button onclick="iniciar()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">Reiniciar cadastro</button>';
+            box.innerHTML = '<span class="text-amber-600 font-bold">Pendente.</span> Você já iniciou o cadastro do autenticador; reinicie para gerar um novo segredo.' + infoPolitica;
+            acoes.innerHTML = '<button onclick="iniciar()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">Reiniciar cadastro TOTP</button>';
         } else {
-            box.innerHTML = '<span class="text-slate-600 font-bold">Nao ativado.</span> Ative para aumentar a seguranca da sua conta.';
-            acoes.innerHTML = '<button onclick="iniciar()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">Ativar 2FA</button>';
+            const msgWa = (d.tipo_2fa === 'whatsapp' && d.whatsapp_destino)
+                ? '<span class="text-emerald-600 font-bold">2FA por WhatsApp ativo.</span> O login usa código de 6 dígitos no seu WhatsApp. Se desejar, você também pode ativar um app autenticador.'
+                : '<span class="text-slate-600 font-bold">Autenticador não ativado.</span> Ative para aumentar a segurança da sua conta.';
+            box.innerHTML = msgWa + infoPolitica;
+            acoes.innerHTML = '<button onclick="iniciar()" class="px-4 py-2 bg-emerald-600 text-white rounded-xl text-sm font-bold hover:bg-emerald-700">Ativar Autenticador</button>';
         }
     } catch (e) {
         box.textContent = 'Erro ao carregar status: ' + e.message;

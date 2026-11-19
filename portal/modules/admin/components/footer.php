@@ -161,8 +161,11 @@ function escapeHtml(s) {
 async function pedirCodigo2fa(titulo = 'Verificação em duas etapas', totp = true) {
     let exigeWhats = false, destino = '';
     try {
-        const st = await apiFetch('/admin/whatsapp/status');
+        const st = await apiFetch('/auth/whatsapp/status');
         exigeWhats = !!st.exigido; destino = st.destino || '';
+        if (totp && !st.tem_2fa && st.exigido && st.tipo_2fa === 'whatsapp') {
+            totp = false;
+        }
     } catch (e) { /* segue so com TOTP */ }
     window.__waCodigo = null;
 
@@ -186,7 +189,7 @@ async function pedirCodigo2fa(titulo = 'Verificação em duas etapas', totp = tr
             b.onclick = async () => {
                 b.disabled = true; b.textContent = 'Enviando...';
                 try {
-                    const e = await apiFetch('/admin/whatsapp/enviar', 'POST', {});
+                    const e = await apiFetch('/auth/whatsapp/enviar', 'POST', {});
                     if (e.error) throw new Error(e.error);
                     b.textContent = 'Código enviado. Reenviar em 60s';
                     setTimeout(() => { b.disabled = false; b.textContent = 'Reenviar código'; }, 60000);
@@ -206,7 +209,7 @@ async function pedirCodigo2fa(titulo = 'Verificação em duas etapas', totp = tr
     });
     if (!r.isConfirmed) return null;
     window.__waCodigo = r.value.w || null;
-    return r.value.t;
+    return totp ? r.value.t : (r.value.w || 'ok');
 }
 
 // Revela um valor sensivel (exige 2FA). Mostra por alguns segundos e permite copiar.

@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS usuario_seguranca (
     atualizado_em TIMESTAMP DEFAULT NOW()
 );
 ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS whatsapp VARCHAR(20);
+ALTER TABLE usuario_seguranca ADD COLUMN IF NOT EXISTS tipo_2fa VARCHAR(20) NOT NULL DEFAULT 'totp';
 
 -- Codigo de verificacao por WhatsApp (5 min, uso unico, so o hash e guardado)
 CREATE TABLE IF NOT EXISTS admin_whatsapp_codigo (

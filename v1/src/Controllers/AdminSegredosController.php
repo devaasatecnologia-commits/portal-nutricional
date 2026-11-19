@@ -241,6 +241,13 @@ class AdminSegredosController
 
         $reg = $this->buscar2fa($u['idusuario']);
         if (!$reg || !$reg['ativo']) {
+            $seg = SegurancaUsuario::config($this->pdo, (int)$u['idusuario']);
+            if (($seg['tipo_2fa'] ?? 'totp') === 'whatsapp' && WhatsAppCodigo::exigido($this->pdo, (int)$u['idusuario'])) {
+                if ($r = $this->validarWhatsapp($request, $response, $u, $alvo, $acao)) {
+                    return $r;
+                }
+                return null;
+            }
             return $this->json($response, ['error' => 'Ative a verificacao em duas etapas para executar esta acao', 'requer_2fa_setup' => true], 403);
         }
         $codigo = (string)($this->body($request)['codigo'] ?? '');
@@ -303,6 +310,8 @@ class AdminSegredosController
             'provedor' => WhatsAppService::provedor(),
             'exigido' => WhatsAppCodigo::exigido($this->pdo, $u['idusuario']),
             'destino' => $numero ? WhatsAppService::mascarar($numero) : null,
+            'tem_2fa' => (bool)($this->buscar2fa((int)$u['idusuario'])['ativo'] ?? false),
+            'tipo_2fa' => SegurancaUsuario::config($this->pdo, (int)$u['idusuario'])['tipo_2fa'],
         ]);
     }
 

@@ -66,11 +66,16 @@
             </div>
 
             <div id="campo2fa" class="hidden">
-                <label class="block text-sm font-semibold text-slate-700 mb-2">Código do autenticador</label>
+                <div class="flex items-center justify-between gap-2 mb-2">
+                    <label id="label2fa" class="block text-sm font-semibold text-slate-700">Código de verificação</label>
+                    <button type="button" id="btnEnviarWhatsLogin" class="hidden text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline">
+                        <i class="fa-brands fa-whatsapp mr-1"></i><span id="txtBtnWhatsLogin">Enviar no WhatsApp</span>
+                    </button>
+                </div>
                 <input type="text" id="codigo2fa" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*"
                        class="block w-full px-3 py-3 border border-slate-200 rounded-xl text-center text-lg tracking-[0.5em] focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 bg-slate-50"
                        placeholder="000000">
-                <p class="text-xs text-slate-400 mt-2">Abra o app autenticador e informe os 6 dígitos.</p>
+                <p id="hint2fa" class="text-xs text-slate-400 mt-2">Abra o app autenticador e informe os 6 dígitos.</p>
             </div>
 
             <div id="errorMessage" class="hidden bg-rose-50 border border-rose-200 text-rose-600 px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2">
@@ -230,8 +235,114 @@
     }
 
     // ==========================================================================
-    // SUBMIT DO LOGIN
+    // SUBMIT DO LOGIN & 2FA (TOTP / WHATSAPP)
     // ==========================================================================
+    let canal2faLogin = '';
+    let waCooldownTimer = null;
+
+    function iniciarCooldownWhats(seg = 60) {
+        const btn = document.getElementById('btnEnviarWhatsLogin');
+        const txt = document.getElementById('txtBtnWhatsLogin');
+        if (!btn || !txt) return;
+        if (waCooldownTimer) clearInterval(waCooldownTimer);
+        let rest = seg;
+        btn.disabled = true;
+        btn.classList.add('opacity-50', 'cursor-not-allowed');
+        txt.textContent = `Reenviar (${rest}s)`;
+        waCooldownTimer = setInterval(() => {
+            rest -= 1;
+            if (rest <= 0) {
+                clearInterval(waCooldownTimer);
+                waCooldownTimer = null;
+                btn.disabled = false;
+                btn.classList.remove('opacity-50', 'cursor-not-allowed');
+                txt.textContent = 'Reenviar código';
+            } else {
+                txt.textContent = `Reenviar (${rest}s)`;
+            }
+        }, 1000);
+    }
+
+    function atualizarUi2faLogin(data) {
+        const campo = document.getElementById('campo2fa');
+        const lbl = document.getElementById('label2fa');
+        const hint = document.getElementById('hint2fa');
+        const btnWa = document.getElementById('btnEnviarWhatsLogin');
+        const txtWa = document.getElementById('txtBtnWhatsLogin');
+
+        campo.classList.remove('hidden');
+        const canal = data.canal_2fa || 'totp';
+        canal2faLogin = (data.enviado_whatsapp || canal === 'whatsapp') ? 'whatsapp' : canal;
+
+        if (canal === 'whatsapp') {
+            lbl.textContent = 'Código enviado por WhatsApp';
+            hint.textContent = data.destino
+                ? `Informe os 6 dígitos enviados para o WhatsApp ${data.destino} (válido por 5 min).`
+                : 'Informe os 6 dígitos recebidos no seu WhatsApp.';
+        } else if (canal === 'ambos') {
+            lbl.textContent = data.enviado_whatsapp ? 'Código WhatsApp / Autenticador' : 'Autenticador ou WhatsApp';
+            hint.textContent = data.enviado_whatsapp
+                ? `Código enviado para ${data.destino || 'seu WhatsApp'}. Você também pode usar o app autenticador.`
+                : `Use o app autenticador ou clique em "Enviar no WhatsApp" (${data.destino || ''}).`;
+        } else {
+            lbl.textContent = 'Código do autenticador';
+            hint.textContent = 'Abra o app autenticador e informe os 6 dígitos.';
+        }
+
+        hint.className = data.enviado_whatsapp ? 'text-xs text-emerald-600 font-semibold mt-2' : 'text-xs text-slate-400 mt-2';
+
+        if (data.tem_whats) {
+            btnWa.classList.remove('hidden');
+            if (!waCooldownTimer) {
+                txtWa.textContent = (data.enviado_whatsapp || canal === 'whatsapp') ? 'Reenviar código' : 'Enviar no WhatsApp';
+            }
+            if (data.enviado_whatsapp) iniciarCooldownWhats(60);
+        } else {
+            btnWa.classList.add('hidden');
+        }
+    }
+
+    document.getElementById('btnEnviarWhatsLogin')?.addEventListener('click', async () => {
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+        if (!username || !password) {
+            mostrarErro('Preencha usuário e senha antes de solicitar o código.');
+            return;
+        }
+        const btn = document.getElementById('btnEnviarWhatsLogin');
+        const txt = document.getElementById('txtBtnWhatsLogin');
+        esconderErro();
+        btn.disabled = true;
+        txt.textContent = 'Enviando...';
+        try {
+            const resp = await fetch(`${API_URL}/auth/login`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ user: username, pass: password, enviar_whatsapp: true })
+            });
+            const data = await resp.json();
+            if (data.requer_2fa) {
+                atualizarUi2faLogin(data);
+                document.getElementById('codigo2fa').value = '';
+                document.getElementById('codigo2fa').focus();
+                if (data.enviado_whatsapp) {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: `Código enviado para ${data.destino || 'seu WhatsApp'}`, showConfirmButton: false, timer: 4000 });
+                } else if (data.error) {
+                    mostrarErro(data.error);
+                }
+            } else if (data.error) {
+                mostrarErro(data.error);
+            }
+        } catch (err) {
+            mostrarErro('Falha ao solicitar código por WhatsApp.');
+        } finally {
+            if (!waCooldownTimer) {
+                btn.disabled = false;
+                txt.textContent = 'Reenviar código';
+            }
+        }
+    });
+
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('username').value;
@@ -250,19 +361,24 @@
                 body: JSON.stringify({
                     user: username,
                     pass: password,
-                    codigo2fa: document.getElementById('codigo2fa').value
+                    codigo2fa: document.getElementById('codigo2fa').value,
+                    canal_2fa: canal2faLogin
                 })
             });
             const data = await response.json();
 
-            // 2FA exigido e já cadastrado
+            // 2FA exigido (TOTP ou WhatsApp)
             if (data.requer_2fa) {
-                document.getElementById('campo2fa').classList.remove('hidden');
+                atualizarUi2faLogin(data);
                 document.getElementById('codigo2fa').focus();
                 submitBtn.innerHTML = '<i class="fa fa-sign-in-alt"></i> Entrar no Sistema';
                 submitBtn.disabled = false;
                 submitBtn.classList.remove('opacity-75');
-                if (data.error) mostrarErro(data.error);
+                if (data.enviado_whatsapp) {
+                    Swal.fire({ toast: true, position: 'top-end', icon: 'info', title: data.error || 'Código enviado no WhatsApp!', showConfirmButton: false, timer: 4500 });
+                } else if (data.error) {
+                    mostrarErro(data.error);
+                }
                 return;
             }
 

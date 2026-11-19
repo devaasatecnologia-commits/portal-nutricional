@@ -1,6 +1,9 @@
 <?php
 namespace Nutricional\Controllers;
 
+use Nutricional\Services\SegurancaUsuario;
+use Nutricional\Services\WhatsAppCodigo;
+use Nutricional\Services\WhatsAppService;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 
@@ -23,9 +26,15 @@ class Meu2faController extends AdminSegredosController
             return $this->json($response, ['error' => 'Nao autenticado'], 401);
         }
         $r = $this->buscar2fa($u['idusuario']);
+        $seg = SegurancaUsuario::config($this->pdo, (int)$u['idusuario']);
+        $numWhats = WhatsAppCodigo::numero($this->pdo, (int)$u['idusuario']);
         return $this->json($response, [
-            'ativo'    => (bool)($r['ativo'] ?? false),
-            'pendente' => (bool)($r && !$r['ativo']),
+            'ativo'             => (bool)($r['ativo'] ?? false),
+            'pendente'          => (bool)($r && !$r['ativo']),
+            'exige_2fa_login'   => (bool)$seg['exige_2fa_login'],
+            'tipo_2fa'          => $seg['tipo_2fa'],
+            'provedor_whatsapp' => WhatsAppService::provedor() !== null,
+            'whatsapp_destino'  => $numWhats ? WhatsAppService::mascarar($numWhats) : null,
         ]);
     }
 

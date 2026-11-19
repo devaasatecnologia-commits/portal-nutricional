@@ -82,6 +82,7 @@ require_once __DIR__ . '/components/sidebar.php';
                     <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Usuário</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Autenticador</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Exigir 2FA no login</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Método 2FA</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Inatividade (min)</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Token (min)</th>
                     <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">WhatsApp (código)</th>
@@ -89,6 +90,39 @@ require_once __DIR__ . '/components/sidebar.php';
                 </tr>
             </thead>
             <tbody id="segUsuariosTable"></tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Representantes & Contas B2B (2FA WhatsApp / E-mail) -->
+<div data-painel="seguranca" class="hidden bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden mb-6">
+    <div class="p-5 border-b border-slate-100 flex justify-between items-center gap-3 flex-wrap">
+        <div>
+            <h5 class="text-sm font-bold text-slate-700"><i class="fa-solid fa-user-tie mr-2 text-emerald-600"></i>Representantes &amp; Contas B2B (/representante e /cliente)</h5>
+            <p class="text-xs text-slate-400 mt-1">Defina o WhatsApp e o canal padrão de 2FA para Representantes comerciais e contas B2B. O número salvo no cadastro é usado para enviar o código de 6 dígitos no login.</p>
+        </div>
+        <div class="flex items-center gap-2 flex-wrap">
+            <select id="filtroPerfilB2b" onchange="renderizarSegurancaB2b()" class="px-3 py-1.5 border border-slate-200 rounded-xl text-xs bg-white font-semibold">
+                <option value="REPRESENTANTE">Apenas Representantes</option>
+                <option value="TODOS">Todos (Rep + Clientes)</option>
+                <option value="CLIENTE">Apenas Clientes</option>
+            </select>
+            <input id="filtroSegB2b" oninput="renderizarSegurancaB2b()" placeholder="Filtrar representante ou cliente..." class="px-3 py-1.5 border border-slate-200 rounded-xl text-sm">
+        </div>
+    </div>
+    <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+            <thead class="bg-slate-50">
+                <tr>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">Nome / Perfil</th>
+                    <th class="px-4 py-3 text-left text-xs font-bold text-slate-400 uppercase">E-mail B2B</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Status Portal</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">Canal 2FA</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase">WhatsApp (código 6 dígitos)</th>
+                    <th class="px-4 py-3 text-center text-xs font-bold text-slate-400 uppercase"></th>
+                </tr>
+            </thead>
+            <tbody id="segB2bTable"></tbody>
         </table>
     </div>
 </div>
@@ -291,7 +325,7 @@ function renderizarSeguranca() {
     const lista = segUsuarios.filter(u => !f || u.username.toLowerCase().includes(f));
     document.getElementById('segUsuariosTable').innerHTML = lista.map(u => `
         <tr class="border-b border-slate-100 text-sm">
-            <td class="px-4 py-2 font-semibold">${escapeHtml(u.username)}</td>
+            <td class="px-4 py-2 font-semibold">${escapeHtml(u.username)}${u.is_admin ? '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 text-[9px] font-bold">ADMIN</span>' : ''}${u.eh_gestor ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-bold">GESTOR</span>' : ''}${u.eh_rep ? '<span class="ml-1 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold">REP</span>' : ''}</td>
             <td class="px-4 py-2 text-center">${u.tem_2fa
                 ? `<div class="inline-flex items-center gap-1.5 justify-center">
                     <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700">Ativo</span>
@@ -299,12 +333,19 @@ function renderizarSeguranca() {
                    </div>`
                 : '<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500">Não ativado</span>'}</td>
             <td class="px-4 py-2 text-center"><input type="checkbox" id="seg2fa_${u.idusuario}" ${u.exige_2fa_login ? 'checked' : ''} class="w-4 h-4">
-                ${u.exige_2fa_login && !u.tem_2fa ? '<div class="text-[10px] text-amber-600">aguardando cadastro</div>' : ''}</td>
+                ${u.exige_2fa_login && (u.tipo_2fa || 'totp') === 'whatsapp' && !u.whatsapp ? '<div class="text-[10px] text-rose-600">falta WhatsApp</div>' : (u.exige_2fa_login && (u.tipo_2fa || 'totp') === 'totp' && !u.tem_2fa ? '<div class="text-[10px] text-amber-600">aguardando TOTP</div>' : (u.exige_2fa_login && u.tipo_2fa === 'ambos' && !u.tem_2fa && !u.whatsapp ? '<div class="text-[10px] text-amber-600">aguardando cadastro</div>' : ''))}</td>
+            <td class="px-4 py-2 text-center">
+                <select id="segTipo_${u.idusuario}" class="px-2 py-1 border border-slate-200 rounded-lg text-xs bg-white font-medium">
+                    <option value="totp" ${(u.tipo_2fa || 'totp') === 'totp' ? 'selected' : ''}>App Autenticador</option>
+                    <option value="whatsapp" ${u.tipo_2fa === 'whatsapp' ? 'selected' : ''}>WhatsApp</option>
+                    <option value="ambos" ${u.tipo_2fa === 'ambos' ? 'selected' : ''}>Ambos</option>
+                </select>
+            </td>
             <td class="px-4 py-2 text-center"><input type="number" min="1" max="480" id="segInat_${u.idusuario}" value="${u.inatividade_min}" class="w-20 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
             <td class="px-4 py-2 text-center"><input type="number" min="15" max="1440" id="segTok_${u.idusuario}" value="${u.token_min}" class="w-24 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
                         <td class="px-4 py-2 text-center"><input type="tel" id="segWhats_${u.idusuario}" value="${escapeHtml(u.whatsapp)}" placeholder="11999998888" class="w-36 px-2 py-1 border border-slate-200 rounded-lg text-center"></td>
                         <td class="px-4 py-2 text-center"><button onclick="salvarSeguranca(${u.idusuario})" class="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700">Salvar</button></td>
-                    </tr>`).join('') || '<tr><td colspan="7" class="text-center py-6 text-slate-400">Nenhum usuário</td></tr>';
+                    </tr>`).join('') || '<tr><td colspan="8" class="text-center py-6 text-slate-400">Nenhum usuário</td></tr>';
             }
 
             async function resetar2faUsuario(id, username) {
@@ -338,6 +379,7 @@ function renderizarSeguranca() {
                     const d = await apiFetch('/admin/seguranca-usuarios/' + id, 'POST', {
                         codigo,
                         exige_2fa_login: document.getElementById('seg2fa_' + id).checked,
+                        tipo_2fa: document.getElementById('segTipo_' + id).value,
                         inatividade_min: parseInt(document.getElementById('segInat_' + id).value, 10),
                         token_min: parseInt(document.getElementById('segTok_' + id).value, 10),
                         whatsapp: document.getElementById('segWhats_' + id).value.trim()
@@ -346,6 +388,77 @@ function renderizarSeguranca() {
         if (d.error) throw new Error(d.error);
         showToast('Política salva');
         carregarSeguranca();
+    } catch (e) { showError('Erro', e.message); }
+}
+
+let segB2bContas = [];
+async function carregarSegurancaB2b() {
+    const tbody = document.getElementById('segB2bTable');
+    if (!tbody) return;
+    try {
+        const d = await apiFetch('/admin/seguranca-b2b', 'GET');
+        if (d.error) throw new Error(d.error);
+        segB2bContas = d.contas || [];
+        renderizarSegurancaB2b();
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-rose-500">${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+function renderizarSegurancaB2b() {
+    const tbody = document.getElementById('segB2bTable');
+    if (!tbody) return;
+    const f = (document.getElementById('filtroSegB2b')?.value || '').toLowerCase();
+    const perf = document.getElementById('filtroPerfilB2b')?.value || 'REPRESENTANTE';
+    const lista = segB2bContas.filter(c => {
+        if (perf !== 'TODOS' && c.perfil !== perf) return false;
+        if (f && !`${c.nome} ${c.email} ${c.idcliforemp} ${c.cnpj_cpf}`.toLowerCase().includes(f)) return false;
+        return true;
+    });
+    tbody.innerHTML = lista.map(c => {
+        const key = `${c.conta_id}_${c.idcliforemp}`;
+        const badgePerf = c.perfil === 'REPRESENTANTE'
+            ? '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold">REP</span>'
+            : '<span class="ml-1.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 text-[9px] font-bold">CLIENTE</span>';
+        const statusCls = c.status === 'ATIVO' ? 'bg-emerald-100 text-emerald-700' : (c.status === 'BLOQUEADO' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700');
+        const statusTxt = c.status === 'NAO_ATIVADO' ? 'PRÉ-CADASTRO' : c.status;
+        const dicaFone = !c.whatsapp && c.fone_erp
+            ? `<button type="button" onclick="document.getElementById('b2bWhats_${key}').value='${escapeHtml(c.fone_erp)}'" class="text-[10px] text-emerald-700 hover:underline mt-0.5 block mx-auto">Usar ERP: ${escapeHtml(c.fone_erp)}</button>`
+            : '';
+        return `<tr class="hover:bg-slate-50">
+            <td class="px-4 py-2 font-semibold">${escapeHtml(c.nome)}${badgePerf}<div class="text-[10px] text-slate-400 font-mono">ERP #${c.idcliforemp}</div></td>
+            <td class="px-4 py-2 text-xs text-slate-600">${escapeHtml(c.email || '-')}</td>
+            <td class="px-4 py-2 text-center"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${statusCls}">${escapeHtml(statusTxt)}</span></td>
+            <td class="px-4 py-2 text-center">
+                <select id="b2bPref_${key}" class="px-2 py-1 border border-slate-200 rounded-lg text-xs bg-white font-medium">
+                    <option value="whatsapp" ${c.preferencia_2fa === 'whatsapp' ? 'selected' : ''}>WhatsApp (6 dígitos)</option>
+                    <option value="email" ${c.preferencia_2fa !== 'whatsapp' ? 'selected' : ''}>E-mail</option>
+                </select>
+            </td>
+            <td class="px-4 py-2 text-center">
+                <input type="tel" id="b2bWhats_${key}" value="${escapeHtml(c.whatsapp)}" placeholder="48999998888" class="w-36 px-2 py-1 border border-slate-200 rounded-lg text-center">${dicaFone}
+            </td>
+            <td class="px-4 py-2 text-center">
+                <button onclick="salvarSegurancaB2b(${c.idcliforemp}, ${c.conta_id}, '${key}')" class="px-3 py-1 bg-[#274036] hover:bg-[#1e3129] text-white rounded-lg text-xs font-bold">Salvar</button>
+            </td>
+        </tr>`;
+    }).join('') || '<tr><td colspan="6" class="text-center py-6 text-slate-400">Nenhum registro B2B encontrado</td></tr>';
+}
+
+async function salvarSegurancaB2b(idcliforemp, contaId, key) {
+    const codigo = await pedirCodigo2fa('Confirmar 2FA Representante / B2B');
+    if (codigo === null) return;
+    try {
+        const d = await apiFetch('/admin/seguranca-b2b/' + idcliforemp, 'POST', {
+            codigo,
+            conta_id: contaId,
+            preferencia_2fa: document.getElementById('b2bPref_' + key).value,
+            whatsapp: document.getElementById('b2bWhats_' + key).value.trim()
+        });
+        if (d.requer_2fa_setup) return showError('2FA não configurado', 'Ative a verificação em duas etapas na sua conta Admin primeiro.');
+        if (d.error) throw new Error(d.error);
+        showToast('Configuração B2B salva!');
+        carregarSegurancaB2b();
     } catch (e) { showError('Erro', e.message); }
 }
 
@@ -588,7 +701,7 @@ function abrirAba(nome) {
 document.addEventListener('DOMContentLoaded', () => {
     const h = location.hash.replace('#', '');
     abrirAba(['chaves', 'seguranca', 'cofre', 'auditoria'].includes(h) ? h : 'chaves');
-    carregar(); carregarSeguranca(); carregarCofre();
+    carregar(); carregarSeguranca(); carregarSegurancaB2b(); carregarCofre();
 });
 </script>
 

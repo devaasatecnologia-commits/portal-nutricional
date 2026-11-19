@@ -146,6 +146,8 @@ Controles ativos verificados no código:
 5. **Evolution API no Windows sem Docker:** Evolution v2.3.7 exige Node 22 LTS (`require(ESM)` do Baileys) e banco PostgreSQL + Redis desativado (`CACHE_REDIS_ENABLED=false`) + `prisma generate` antes do `build` + tarefa agendada `SYSTEM` (`PM2_HOME`) para sobreviver a reboots.
 6. **Notas Bonificadas R$ 239,00 sem débito Flex:** NFs `301005` e `301043` continham apenas item `3159` (`idmarca = 60` `MATERIAL APOIO VENDA`), corretamente ignorado pela view `verificabonificacao` (`item.idmarca <> 60`).
 7. **Frontend Alpine.js:** `x-if` só funciona em `<template>` (nunca em `<div>`); modais empilhados precisam de `z-[70]`; e `carregarAuthConfig()` deve rodar mesmo após `sair()` ou token expirado.
+8. **Gestão de 2FA para Representantes vs Usuários Internos:** Representantes B2B (`/representante`) autenticam por `cliforemp` + `b2b_portal_contas` (muitos não têm registro na tabela `usuario`). Por isso, a centralização no Admin (`Admin > Segredos & 2FA`) precisa unir os dois painéis: `usuario_seguranca` (com `tipo_2fa = totp/whatsapp/ambos` para Admins, Gestores e Operacionais) **e** `b2b_portal_contas` + `cliforemp` (`/v1/admin/seguranca-b2b`) para Representantes e Clientes B2B, além de liberar `/v1/auth/whatsapp/status` para não-admins.
+9. **Mobile-First para Operação em Campo:** Evitar `<table>` com rolagem horizontal no mobile e nunca usar `alert()` ao copiar linha digitável/PIX; adotar cards dedicados (`md:hidden` + `hidden md:block` no desktop), barra inferior fixa estilo app e toast não-bloqueante.
 
 ---
 
@@ -157,9 +159,9 @@ Toda solicitação estrutural ou nova feature deve registrar:
 
 ## CAMADA 14 — Roadmap Tecnológico Nutricional
 - **Curto Prazo:**
-  - Concluir testes finais `/representante` e encerrar **Chamado #66**.
-  - Remover `ALTER TABLE` de runtime em `PortalClienteController` e limpar chaves não usadas no `SecretVault`.
-  - Criar rotina de monitoramento automático no Cron (saúde PostgreSQL, Evolution `state=open`, tamanho das tabelas, validade A1 e backup offsite do `ema` `86 GB`).
+  - Concluir testes finais assistidos em `/representante` (WhatsApp 2FA + Mobile Cards) e encerrar **Chamado #66**.
+  - Concluído em 19/11/2026 (**Chamado #74 — Etapa 1**): 2FA WhatsApp unificado no Portal Interno (`tipo_2fa`), gestão de Representantes B2B no Admin (`/admin/seguranca-b2b`), UX exclusiva mobile no módulo Cliente/Representante/Gestor e remoção de `ALTER TABLE` de runtime em `PortalClienteController`. Limpar eventuais chaves não usadas no `SecretVault`.
+  - **Etapa 2 (Próxima):** Auditoria do servidor Windows `SERVER` (`ema` `86 GB`), túnel seguro administrativo, plano formal de DRP/Backup offsite anti-ransomware (`rclone` Write-Only + RPO diário) e monitoramento automático no Cron (PostgreSQL, Evolution `state=open`, tamanho das tabelas e validade A1).
   - Integrar status de entrega da **Frota** (`frota_embarque`/`frota_entrega`) na aba Pedidos do Portal B2B.
 - **Médio Prazo:**
   - **10/01/2027 — Integrador Próprio Mercos (Nativo):** substituir `ema-mercos-integration.exe` + Firebird `DE_PARA_MERCOS.FDB` por rotinas nativas PostgreSQL + Slim Cron (hoje em planejamento/sombra).
