@@ -69,3 +69,9 @@ Referência cruzada entre os domínios exigidos por `NUT-CORE-001` e onde cada e
 - **Contexto:** A assinatura de IA atual é pessoal de Alan Marcon. A Nutricional precisa garantir que Gestores/CEO não percam memória nem continuidade caso Alan se desligue ou a empresa adote conta/ferramenta própria.
 - **Decisão:** Formalizar `docs/CONSTITUICAO_IA_NUTRICIONAL.md` + `docs/tokens/NUT-CORE-001.md` referenciados na raiz por `GEMINI.md`, mantendo 100% do conhecimento no Git corporativo e no PostgreSQL `ema`.
 - **Consequências:** Portabilidade imediata entre contas e provedores de IA mediante simples abertura do repositório + Boot Prompt padrão.
+
+### `ADR-005` — Adoção Oficial da Identidade `NEXUS` & Evolução Incremental no Portal
+- **Data:** 19/11/2026
+- **Contexto:** Necessidade de transformar a IA em um ativo corporativo próprio (**NEXUS**), com metodologia N.E.X.U.S., conselho de especialistas, botão *"Analisar com o NEXUS"* e chat por setor/módulo respeitando hierarquia no Portal Web.
+- **Decisão:** Formalizar [`docs/MANIFESTO_NEXUS.md`](../MANIFESTO_NEXUS.md) + [`docs/tokens/NEXUS-FOUNDATION-001.md`](NEXUS-FOUNDATION-001.md) como Fase 0 no repositório e planejar a materialização no Portal Web em 3 fases incrementais (Fase 1: `NexusService`/`NexusController` + `SecretVault` + tabelas `nexus_*` + Context Builders sem SQL livre; Fase 2: `nexus-widget.js` por módulo com filtro estrito de `UserScope`/JWT B2B; Fase 3: módulo `/portal/modules/nexus.php`).
+- **Consequências:** Evita implantação "Big Bang", impede vazamento de dados entre clientes/carteiras e garante que cada novo módulo já nasça integrado à inteligência corporativa da Nutricional.
