@@ -1797,6 +1797,11 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             carregarClienteDaURL() {
                 const urlParams = new URLSearchParams(window.location.search);
                 const clienteData = urlParams.get('cliente_data');
+                const clienteParam = (urlParams.get('cliente') || urlParams.get('idcliente') || '').trim();
+                if (!clienteData && clienteParam) {
+                    this.filtros.busca = clienteParam;
+                    return false;
+                }
 
                 if (clienteData) {
                     try {
@@ -2338,6 +2343,10 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
             const clienteId = c.id_crm || c.id_erp || c.id;
             const acaoFicha = c.id_crm ? `window.editarCliente(${c.id_crm}, 'CRM')` : `window.visualizarClienteUnificado(${c.id_erp}, '${c.origem_dados}')`;
 
+            const idErpPortal = Number(c.id_erp || 0);
+            const btnPortalB2bDesktop = idErpPortal > 0
+                ? `<a href="/portal/modules/portal-cliente.php?sessao=portal&idcliente=${idErpPortal}" class="text-emerald-600 hover:text-emerald-800 mr-2 transition-colors no-underline" title="Ver Boletos, Notas e Limite no Portal B2B"><i class="fa-solid fa-barcode"></i></a>`
+                : '';
             const btnMercosDesktop = `<button onclick="window.abrirPedidoMercos(${clienteId}, '${nomeSafe}', '${cnpjSafe}', ${c.id_erp || 0}, ${c.idfilial || 1})" class="text-blue-600 hover:text-blue-800 mr-2 transition-colors" title="Criar Pedido no Mercos"><i class="fa-solid fa-cart-plus"></i></button>`;
             const btnAgendarDesktop = `<button onclick="window.abrirAgendamentoClienteRapido(${clienteId}, '${nomeSafe}')" class="text-indigo-500 hover:text-indigo-700 mr-2 transition-colors" title="Agendar Visita / Contato"><i class="fa-regular fa-calendar-plus"></i></button>`;
             const btnImportar = (c.origem_dados === 'APENAS_ERP') ?
@@ -2400,10 +2409,10 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                     ${badgesPedidosStatus ? `<div class="flex flex-wrap gap-1 mt-1.5">${badgesPedidosStatus}</div>` : ''}
 
                     <!-- BARRA DE AÇÕES RÁPIDAS DO GESTOR NO CELULAR -->
-                    <div class="grid grid-cols-4 gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
+                    <div class="grid ${idErpPortal > 0 ? 'grid-cols-5' : 'grid-cols-4'} gap-1.5 mt-3 pt-2.5 border-t border-slate-100">
                         ${whatsUrl ? `
                             <a href="${whatsUrl}" target="_blank" onclick="event.stopPropagation()" class="py-1.5 px-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 text-[10px] font-extrabold flex items-center justify-center gap-1 no-underline">
-                                <i class="fa-brands fa-whatsapp text-xs"></i> WhatsApp
+                                <i class="fa-brands fa-whatsapp text-xs"></i> Whats
                             </a>
                         ` : `
                             <button type="button" onclick="event.stopPropagation(); ${acaoFicha}" class="py-1.5 px-2 rounded-xl bg-slate-100 text-slate-500 text-[10px] font-bold flex items-center justify-center gap-1">
@@ -2413,6 +2422,11 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                         <button type="button" onclick="event.stopPropagation(); window.abrirAgendamentoClienteRapido(${clienteId}, '${nomeSafe}')" class="py-1.5 px-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[10px] font-extrabold flex items-center justify-center gap-1">
                             <i class="fa-regular fa-calendar-plus text-xs"></i> Agendar
                         </button>
+                        ${idErpPortal > 0 ? `
+                            <a href="/portal/modules/portal-cliente.php?sessao=portal&idcliente=${idErpPortal}" onclick="event.stopPropagation()" class="py-1.5 px-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-extrabold flex items-center justify-center gap-1 no-underline shadow-xs">
+                                <i class="fa-solid fa-barcode text-[10px]"></i> Boletos
+                            </a>
+                        ` : ''}
                         <button type="button" onclick="event.stopPropagation(); window.abrirPedidoMercos(${clienteId}, '${nomeSafe}', '${cnpjSafe}', ${c.id_erp || 0}, ${c.idfilial || 1})" class="py-1.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[10px] font-extrabold flex items-center justify-center gap-1 shadow-xs">
                             <i class="fa-solid fa-cart-plus text-[10px]"></i> Mercos
                         </button>
@@ -2456,7 +2470,7 @@ LINHA 2: FILTROS ORGANIZADOS COM LABELS E MÚLTIPLA SELEÇÃO
                             ${c.total_pedidos_periodo > 0 && c.total_pedidos > 0 ? `<span class="text-[8px] text-slate-400">(${c.total_pedidos_periodo} de ${c.total_pedidos} pedidos no período)</span>` : ''}
                         </div>
                     </td>
-                    <td class="px-4 py-3 text-center whitespace-nowrap" onclick="event.stopPropagation()">${btnMercosDesktop}${btnAgendarDesktop}${btnImportar}${btnEditar}${btnDeletar}</td>
+                    <td class="px-4 py-3 text-center whitespace-nowrap" onclick="event.stopPropagation()">${btnPortalB2bDesktop}${btnMercosDesktop}${btnAgendarDesktop}${btnImportar}${btnEditar}${btnDeletar}</td>
                 </tr>
             `;
 
@@ -3907,7 +3921,11 @@ window.editarCliente = async function(id, origem = null) {
         if (modal) modal.classList.remove('hidden');
 
         const tituloModal = document.getElementById('modalClienteTitulo');
-        if (tituloModal) tituloModal.innerHTML = `<i class="fa-solid fa-user-edit mr-2"></i>✏️ ${c.nome || 'Cliente'}`;
+        const idErpModal = Number(c.id_erp || clienteId || 0);
+        const linkB2bModal = idErpModal > 0
+            ? `<a href="/portal/modules/portal-cliente.php?sessao=portal&idcliente=${idErpModal}" class="ml-3 px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white text-[11px] font-bold no-underline inline-flex items-center gap-1"><i class="fa-solid fa-barcode"></i> Boletos / Portal B2B</a>`
+            : '';
+        if (tituloModal) tituloModal.innerHTML = `<i class="fa-solid fa-user-edit mr-2"></i>✏️ ${c.nome || 'Cliente'}${linkB2bModal}`;
         Swal.close();
 
     } catch (e) {

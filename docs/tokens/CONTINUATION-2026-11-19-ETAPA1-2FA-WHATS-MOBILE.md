@@ -17,10 +17,15 @@
    - `portal/assets/js/portal-cliente.js` (`init()`) agora entra direto no módulo quando o usuário já está logado no Portal Interno (`authToken` de Admin, Gestor ou Representante) ou possui `b2bToken` ativo, sem parar na tela de login. Se um usuário interno ou representante digitar seu `username` + senha na tela de login do módulo, `PortalClienteController::login()` e `verificar2fa()` autenticam e sincronizam ambas as sessões.
    - Removido `ALTER TABLE` de runtime em `PortalClienteController::atualizarPreferencias2fa()`.
    - Interface mobile dedicada (`md:hidden`) em `portal/modules/portal-cliente.php` mantendo as tabelas no desktop (`hidden md:block`): banner de boletos pendentes/vencidos, grade rápida de 4 atalhos, cards individuais para Boletos / Notas Fiscais / Pedidos, dados cadastrais colapsáveis, barra inferior fixa estilo app, toast não-bloqueante e modais fullscreen.
+4. **UX Cliente v1.3, Integração CRM ↔ Portal B2B e Constituição da IA (`NUT-CORE-001`):**
+   - Boletos exibem NF (`numeronf` clicável para DANFE) e Pedido (`pedidos`); Notas Fiscais e Pedidos exibem vínculo mútuo, destaque roxo `BONIFICAÇÃO` e vermelho/rosa `CANCELADA` (excluindo NFs canceladas do `total12m`); Pedidos em aberto bloqueados exibem aviso laranja `"Em Análise Financeiro — Qualquer dúvida entrar em contato"` + WhatsApp Financeiro.
+   - Botões WhatsApp (Financeiro e Representante) enviam mensagem contextualizada com código do cliente, razão social e nº do documento.
+   - Integração bidirecional CRM (`portal/modules/marketing/clientes.php`) ↔ Portal B2B (`portal-cliente.php?sessao=portal&idcliente={id}`), restrita a perfis internos (`escopo.perfil !== 'CLIENTE'`).
+   - Formalizadas `docs/CONSTITUICAO_IA_NUTRICIONAL.md` e `docs/tokens/NUT-CORE-001.md` (com Artigo 10º de portabilidade/sucessão da conta pessoal para conta corporativa da Nutricional e `ADR-001`..`ADR-004`).
 
 ## Chamados & Manuais Atualizados
-- **Chamado #74 (`Concluído`):** `[Seguranca 2FA WhatsApp & Responsivo Mobile] ...` (solicitante/atendente `ALAN`, 4 operações registradas, PDF `portal/uploads/chamados/manual_2fa_whatsapp_portal_mobile_chamado_74.pdf`, Manual `admin` v2.1).
-- **Chamado #66 (`Em Correção` — aguardando teste final `/representante`):** operação `#15` registrada + PDF atualizado (`portal/uploads/chamados/manual_portal_cliente_hierarquia_2fa_chamado_66.pdf`) + Manual `portal-cliente` v1.2.
+- **Chamado #74 (`Concluído`):** `[Seguranca 2FA WhatsApp & Responsivo Mobile] ...` (solicitante/atendente `ALAN`, 5 operações registradas, PDF `portal/uploads/chamados/manual_2fa_whatsapp_portal_mobile_chamado_74.pdf`, Manual `admin` v2.1).
+- **Chamado #66 (`Em Correção` — aguardando teste final `/representante`):** operação `#16` registrada + PDF atualizado (`portal/uploads/chamados/manual_portal_cliente_hierarquia_2fa_chamado_66.pdf` v1.3) + Manual `portal-cliente` v1.3.
 
 ## Lista Exata de Arquivos para Deploy FTP (cPanel)
 - `v1/routes/api.php`
@@ -42,6 +47,7 @@
 - `portal/index.php`
 - `portal/modules/2fa.php`
 - `portal/modules/portal-cliente.php`
+- `portal/modules/marketing/clientes.php`
 - `portal/assets/js/portal-cliente.js`
 - `portal/modules/admin/segredos.php`
 - `portal/modules/admin/usuarios.php`

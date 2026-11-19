@@ -48,6 +48,7 @@ function portalClienteHandler(appBase = '') {
         itensComprados: [],
         aba: 'boletos',
         dadosAbertosMobile: false,
+        clienteAlvoUrl: '',
         toastMsg: '',
         _toastTimer: null,
 
@@ -75,6 +76,11 @@ function portalClienteHandler(appBase = '') {
             this.temTokenPortalInterno = Boolean(localStorage.getItem('authToken'));
             const params = new URLSearchParams(window.location.search);
             const modo = (params.get('modo') || '').toLowerCase();
+            const idCliUrl = (params.get('idcliente') || params.get('cliente') || '').trim();
+            if (idCliUrl) {
+                this.clienteAlvoUrl = idCliUrl;
+                this.buscaCliente = idCliUrl;
+            }
             const b2bTok = localStorage.getItem('b2bToken') || '';
 
             // 1. Se abriu o módulo pelo Portal Interno (Admin, Gestor ou Representante já autenticado) e não está forçando modo=cliente: entra direto!
@@ -297,9 +303,14 @@ function portalClienteHandler(appBase = '') {
             this.representantes = d.representantes || [];
             this.clientes = d.clientes || [];
             if (this.clientes.length > 0) {
-                const jaExiste = this.clientes.some(c => String(c.idcliforemp) === String(this.clienteSelecionadoId));
-                if (!jaExiste) {
-                    this.clienteSelecionadoId = String(this.clientes[0].idcliforemp);
+                if (this.clienteAlvoUrl && this.clientes.some(c => String(c.idcliforemp) === String(this.clienteAlvoUrl))) {
+                    this.clienteSelecionadoId = String(this.clienteAlvoUrl);
+                    this.clienteAlvoUrl = '';
+                } else {
+                    const jaExiste = this.clientes.some(c => String(c.idcliforemp) === String(this.clienteSelecionadoId));
+                    if (!jaExiste) {
+                        this.clienteSelecionadoId = String(this.clientes[0].idcliforemp);
+                    }
                 }
                 await this.carregarClienteResumo(this.clienteSelecionadoId);
             } else {
@@ -424,6 +435,33 @@ function portalClienteHandler(appBase = '') {
             if (!d) return '#';
             const num = d.startsWith('55') ? d : '55' + d;
             return `https://wa.me/${num}` + (msg ? `?text=${encodeURIComponent(msg)}` : '');
+        },
+
+        montarMensagemContato(destino, docTipo = '', docRef = '', extra = '') {
+            const cod = this.clienteAtual?.idcliforemp || '';
+            const nome = this.clienteAtual?.razao || '';
+            const prefixo = destino === 'financeiro'
+                ? 'Olá Financeiro Nutricional!'
+                : 'Olá!';
+            const ident = cod ? ` Código do Cliente: ${cod} (${nome}).` : '';
+            const docParte = docTipo && docRef
+                ? ` Referente ao ${docTipo} ${docRef}${extra ? ' - ' + extra : ''},`
+                : '';
+            return `${prefixo}${ident}${docParte} gostaria de tirar a seguinte dúvida: `;
+        },
+
+        whatsFinanceiro(docTipo = '', docRef = '', extra = '') {
+            return this.linkWhats('4835246543', this.montarMensagemContato('financeiro', docTipo, docRef, extra));
+        },
+
+        whatsRepresentante(docTipo = '', docRef = '', extra = '') {
+            const fone = this.clienteAtual?.vendedor_celular || this.clienteAtual?.vendedor_fone || '4835246543';
+            return this.linkWhats(fone, this.montarMensagemContato('representante', docTipo, docRef, extra));
+        },
+
+        abrirNoCrm() {
+            if (!this.clienteAtual || this.escopo?.perfil === 'CLIENTE') return;
+            window.location.href = `${appBase}/portal/modules/marketing/clientes.php?cliente=${this.clienteAtual.idcliforemp}`;
         },
 
         imprimirDocumento(tipo) {

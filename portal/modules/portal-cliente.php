@@ -349,11 +349,17 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <div class="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1.5">
                         <i class="fa-solid fa-address-card text-emerald-600"></i> Dados Cadastrais no ERP
                     </div>
-                    <button type="button" @click="dadosAbertosMobile = !dadosAbertosMobile"
-                            class="md:hidden px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-extrabold">
-                        <span x-text="dadosAbertosMobile ? 'Ocultar' : 'Ver completos'"></span>
-                        <i class="fa-solid ml-1" :class="dadosAbertosMobile ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button x-show="escopo.perfil !== 'CLIENTE' && clienteAtual" type="button" @click="abrirNoCrm()"
+                                class="px-2.5 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-extrabold inline-flex items-center gap-1 shadow-xs">
+                            <i class="fa-regular fa-calendar-plus"></i> Abrir no CRM (Agendar)
+                        </button>
+                        <button type="button" @click="dadosAbertosMobile = !dadosAbertosMobile"
+                                class="md:hidden px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 text-[10px] font-extrabold">
+                            <span x-text="dadosAbertosMobile ? 'Ocultar' : 'Ver completos'"></span>
+                            <i class="fa-solid ml-1" :class="dadosAbertosMobile ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                        </button>
+                    </div>
                 </div>
                 <div class="md:hidden mt-1.5 text-xs">
                     <div class="font-extrabold text-slate-800 truncate" x-text="clienteAtual?.razao"></div>
@@ -383,7 +389,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <span class="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-handshake"></i></span>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <a :href="linkWhats(clienteAtual?.vendedor_celular || clienteAtual?.vendedor_fone || '4835246543', 'Olá! Gostaria de falar sobre meus pedidos na Nutricional.')" target="_blank"
+                        <a :href="whatsRepresentante()" target="_blank"
                            class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
                             <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp
                         </a>
@@ -411,7 +417,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <span class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0"><i class="fa-solid fa-headset"></i></span>
                     </div>
                     <div class="flex flex-wrap gap-2">
-                        <a :href="linkWhats('4835246543', 'Olá Financeiro Nutricional! Preciso de suporte sobre um boleto/título.')" target="_blank"
+                        <a :href="whatsFinanceiro()" target="_blank"
                            class="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold no-underline inline-flex items-center gap-1.5">
                             <i class="fa-brands fa-whatsapp text-sm"></i> WhatsApp Financeiro
                         </a>
@@ -488,7 +494,16 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <tbody class="divide-y divide-slate-100">
                         <template x-for="b in boletosFiltrados()" :key="b.idfilial + '-' + b.idreceber">
                             <tr class="hover:bg-slate-50">
-                                <td class="px-3 py-2 font-mono font-bold" x-text="b.documento + ' / ' + b.parcela"></td>
+                                <td class="px-3 py-2 font-mono font-bold">
+                                    <div x-text="b.documento + ' / ' + b.parcela"></div>
+                                    <div class="flex flex-wrap gap-1 mt-1 font-sans">
+                                        <button x-show="b.numeronf > 0" type="button" @click="abrirDanfe({idfilial: b.idfilial, idnfs: b.idnfs, numeronf: b.numeronf})"
+                                                class="px-1.5 py-0.5 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[9px] font-bold">
+                                            NF <span x-text="b.numeronf"></span>
+                                        </button>
+                                        <span x-show="b.pedidos" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[9px] font-bold" x-text="'Ped #' + b.pedidos"></span>
+                                    </div>
+                                </td>
                                 <td class="px-3 py-2" x-text="fmtData(b.dataemissao)"></td>
                                 <td class="px-3 py-2 font-bold" :class="b.dias_atraso > 0 ? 'text-rose-600' : 'text-emerald-700'"
                                     x-text="fmtData(b.vencimento) + (b.dias_atraso > 0 ? ' (' + b.dias_atraso + 'd atraso)' : '')"></td>
@@ -509,12 +524,22 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                             <button @click="copiarTexto(b.linha_digitavel || b.codigobarra)" class="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]" title="Copiar Linha Digitável">
                                                 <i class="fa-regular fa-copy"></i>
                                             </button>
+                                            <a :href="whatsFinanceiro('Boleto/Título', b.documento + ' / ' + b.parcela, (b.numeronf ? 'NF ' + b.numeronf : '') + (b.pedidos ? ' Ped #' + b.pedidos : ''))" target="_blank"
+                                               class="px-2 py-1 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800 font-bold text-[10px] no-underline" title="Tirar dúvida no WhatsApp Financeiro">
+                                                <i class="fa-brands fa-whatsapp"></i>
+                                            </a>
                                         </div>
                                     </template>
                                     <template x-if="!b.tem_boleto">
-                                        <button @click="abrirTituloDetalhe(b)" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[10px]">
-                                            <i class="fa-solid fa-circle-info mr-1"></i> Ver Detalhes
-                                        </button>
+                                        <div class="inline-flex items-center gap-1.5">
+                                            <button @click="abrirTituloDetalhe(b)" class="px-2.5 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-[10px]">
+                                                <i class="fa-solid fa-circle-info mr-1"></i> Ver Detalhes
+                                            </button>
+                                            <a :href="whatsFinanceiro('Título', b.documento + ' / ' + b.parcela, (b.numeronf ? 'NF ' + b.numeronf : '') + (b.pedidos ? ' Ped #' + b.pedidos : ''))" target="_blank"
+                                               class="px-2 py-1 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800 font-bold text-[10px] no-underline" title="Tirar dúvida no WhatsApp Financeiro">
+                                                <i class="fa-brands fa-whatsapp"></i>
+                                            </a>
+                                        </div>
                                     </template>
                                 </td>
                             </tr>
@@ -533,6 +558,13 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <div>
                                     <div class="font-mono text-xs font-black text-slate-900" x-text="'Doc ' + b.documento + ' / ' + b.parcela"></div>
                                     <div x-show="b.nossonumero" class="font-mono text-[10px] text-slate-400" x-text="'NN: ' + b.nossonumero"></div>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <button x-show="b.numeronf > 0" type="button" @click="abrirDanfe({idfilial: b.idfilial, idnfs: b.idnfs, numeronf: b.numeronf})"
+                                                class="px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 text-[10px] font-bold">
+                                            NF <span x-text="b.numeronf"></span>
+                                        </button>
+                                        <span x-show="b.pedidos" class="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-bold" x-text="'Ped #' + b.pedidos"></span>
+                                    </div>
                                 </div>
                                 <span class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0"
                                       :class="b.dias_atraso > 0 ? 'bg-rose-100 text-rose-700' : 'bg-emerald-100 text-emerald-700'"
@@ -567,6 +599,10 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                     <i class="fa-solid fa-circle-info"></i> Ver Detalhes do Título
                                 </button>
                             </template>
+                            <a :href="whatsFinanceiro('Boleto/Título', b.documento + ' / ' + b.parcela, (b.numeronf ? 'NF ' + b.numeronf : '') + (b.pedidos ? ' Ped #' + b.pedidos : ''))" target="_blank"
+                               class="w-full py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-extrabold flex items-center justify-center gap-1.5 no-underline">
+                                <i class="fa-brands fa-whatsapp text-sm"></i> Dúvida sobre este título? Falar com Financeiro
+                            </a>
                         </div>
                     </template>
                     <div x-show="boletosFiltrados().length === 0" class="py-8 text-center text-xs text-slate-400">Nenhum título encontrado para os filtros atuais.</div>
@@ -580,33 +616,48 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     <thead class="bg-slate-800 text-white">
                         <tr>
                             <th class="px-3 py-2 text-left">NF / Filial</th>
+                            <th class="px-3 py-2 text-left">Pedido(s) / Tipo</th>
                             <th class="px-3 py-2 text-left">Emissão</th>
                             <th class="px-3 py-2 text-left">Chave NF-e</th>
                             <th class="px-3 py-2 text-right">Valor Nota</th>
-                            <th class="px-3 py-2 text-center">Itens</th>
+                            <th class="px-3 py-2 text-center">Itens / Ação</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         <template x-for="n in notasFiltradas()" :key="n.idfilial + '-' + n.idnfs">
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-3 py-2 font-mono font-extrabold" x-text="'NF ' + n.numeronf + ' (F' + n.idfilial + ')'"></td>
+                            <tr :class="n.cancelada ? 'bg-rose-50/70 hover:bg-rose-50' : (n.eh_bonificacao ? 'bg-purple-50/70 hover:bg-purple-50' : 'hover:bg-slate-50')">
+                                <td class="px-3 py-2 font-mono font-extrabold">
+                                    <div x-text="'NF ' + n.numeronf + ' (F' + n.idfilial + ')'"></div>
+                                    <div class="flex flex-wrap gap-1 mt-0.5 font-sans">
+                                        <span x-show="n.cancelada" class="px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[9px] font-black uppercase">CANCELADA</span>
+                                        <span x-show="n.eh_bonificacao && !n.cancelada" class="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[9px] font-black uppercase">BONIFICAÇÃO</span>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-2">
+                                    <span x-show="n.pedidos" class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-mono font-bold text-[10px]" x-text="'Ped #' + n.pedidos"></span>
+                                    <span x-show="!n.pedidos" class="text-[10px] text-slate-400">-</span>
+                                </td>
                                 <td class="px-3 py-2" x-text="fmtData(n.dataemissao)"></td>
                                 <td class="px-3 py-2 font-mono text-[10px]">
                                     <span x-text="n.chave_nfe || '-'"></span>
                                     <button x-show="n.chave_nfe" @click="copiarTexto(n.chave_nfe)" class="ml-1 text-indigo-600 hover:underline font-sans font-bold">[Copiar]</button>
                                 </td>
-                                <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(n.valortotal)"></td>
+                                <td class="px-3 py-2 text-right font-mono font-bold" :class="n.cancelada ? 'line-through text-rose-600' : ''" x-text="fmtMoeda(n.valortotal)"></td>
                                 <td class="px-3 py-2 text-center">
                                     <div class="inline-flex items-center gap-1.5">
-                                        <button @click="abrirDanfe(n)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px]">
+                                        <button x-show="!n.cancelada" @click="abrirDanfe(n)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px]">
                                             <i class="fa-solid fa-file-pdf mr-1"></i> Baixar DANFE
                                         </button>
                                         <button @click="abrirItens('nota', n)" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px]">Itens</button>
+                                        <a :href="whatsRepresentante('Nota Fiscal', 'NF ' + n.numeronf, n.pedidos ? 'Ped #' + n.pedidos : '')" target="_blank"
+                                           class="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px] no-underline" title="Dúvida com Representante">
+                                            <i class="fa-brands fa-whatsapp"></i>
+                                        </a>
                                     </div>
                                 </td>
                             </tr>
                         </template>
-                        <tr x-show="notasFiltradas().length === 0"><td colspan="5" class="py-8 text-center text-slate-400">Nenhuma nota fiscal encontrada.</td></tr>
+                        <tr x-show="notasFiltradas().length === 0"><td colspan="6" class="py-8 text-center text-slate-400">Nenhuma nota fiscal encontrada.</td></tr>
                     </tbody>
                 </table>
                 </div>
@@ -614,15 +665,21 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 <!-- VERSÃO EXCLUSIVA MOBILE: CARDS DE NOTAS FISCAIS -->
                 <div class="md:hidden p-3 space-y-3 bg-slate-50/70">
                     <template x-for="n in notasFiltradas()" :key="'mob-nf-' + n.idfilial + '-' + n.idnfs">
-                        <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                        <div class="rounded-2xl p-3.5 border shadow-sm space-y-2.5"
+                             :class="n.cancelada ? 'bg-rose-50/80 border-rose-300' : (n.eh_bonificacao ? 'bg-purple-50/80 border-purple-300' : 'bg-white border-slate-200')">
                             <div class="flex items-start justify-between gap-2">
                                 <div>
                                     <div class="font-mono text-sm font-black text-slate-900" x-text="'NF ' + n.numeronf + ' (F' + n.idfilial + ')'"></div>
                                     <div class="text-[11px] text-slate-500" x-text="'Emissão: ' + fmtData(n.dataemissao)"></div>
+                                    <div class="flex flex-wrap gap-1 mt-1">
+                                        <span x-show="n.cancelada" class="px-2 py-0.5 rounded-full bg-rose-100 text-rose-800 text-[9px] font-black uppercase">CANCELADA</span>
+                                        <span x-show="n.eh_bonificacao && !n.cancelada" class="px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[9px] font-black uppercase">BONIFICAÇÃO</span>
+                                        <span x-show="n.pedidos" class="px-2 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-[10px] font-bold" x-text="'Ped #' + n.pedidos"></span>
+                                    </div>
                                 </div>
                                 <div class="text-right">
                                     <span class="text-[10px] uppercase font-bold text-slate-400 block">Valor Nota</span>
-                                    <span class="text-base font-black font-mono text-indigo-700" x-text="fmtMoeda(n.valortotal)"></span>
+                                    <span class="text-base font-black font-mono" :class="n.cancelada ? 'line-through text-rose-600' : 'text-indigo-700'" x-text="fmtMoeda(n.valortotal)"></span>
                                 </div>
                             </div>
                             <div x-show="n.chave_nfe" class="p-2 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-2">
@@ -630,12 +687,16 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <button @click="copiarTexto(n.chave_nfe, 'Chave NF-e copiada')" class="px-2 py-1 rounded-lg bg-indigo-100 text-indigo-700 text-[10px] font-bold shrink-0">Copiar</button>
                             </div>
                             <div class="flex gap-2">
-                                <button @click="abrirDanfe(n)" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
+                                <button x-show="!n.cancelada" @click="abrirDanfe(n)" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
                                     <i class="fa-solid fa-file-pdf"></i> Ver / Baixar DANFE
                                 </button>
                                 <button @click="abrirItens('nota', n)" class="py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold">
                                     Itens
                                 </button>
+                                <a :href="whatsRepresentante('Nota Fiscal', 'NF ' + n.numeronf, n.pedidos ? 'Ped #' + n.pedidos : '')" target="_blank"
+                                   class="py-2.5 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-extrabold flex items-center justify-center no-underline" title="Dúvida com Representante">
+                                    <i class="fa-brands fa-whatsapp"></i>
+                                </a>
                             </div>
                         </div>
                     </template>
@@ -660,13 +721,19 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     </thead>
                     <tbody class="divide-y divide-slate-100">
                         <template x-for="p in pedidosFiltrados()" :key="p.idfilial + '-' + p.idpedido">
-                            <tr class="hover:bg-slate-50">
-                                <td class="px-3 py-2 font-mono font-extrabold" x-text="'#' + p.idpedido + ' (F' + p.idfilial + ')'"></td>
+                            <tr :class="p.cancelado ? 'bg-rose-50/70 hover:bg-rose-50' : (p.eh_bonificacao ? 'bg-purple-50/70 hover:bg-purple-50' : (p.em_analise_financeiro ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-slate-50'))">
+                                <td class="px-3 py-2 font-mono font-extrabold">
+                                    <div x-text="'#' + p.idpedido + ' (F' + p.idfilial + ')'"></div>
+                                    <span x-show="p.eh_bonificacao" class="inline-block mt-0.5 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-800 font-sans text-[9px] font-black uppercase">BONIFICAÇÃO</span>
+                                </td>
                                 <td class="px-3 py-2" x-text="fmtData(p.data)"></td>
                                 <td class="px-3 py-2 text-center">
                                     <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase"
-                                          :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')"
+                                          :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : (p.em_analise_financeiro ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800'))"
                                           x-text="p.status_label || (p.status === 5 ? 'Faturado' : (p.status === 3 ? 'Cancelado' : 'Em Aberto'))"></span>
+                                    <div x-show="p.em_analise_financeiro" class="text-[10px] text-orange-700 font-bold mt-1">
+                                        Em Análise Financeiro • <a :href="whatsFinanceiro('Pedido', '#' + p.idpedido, 'Em Análise Financeiro')" target="_blank" class="underline text-emerald-700">Qualquer dúvida entrar em contato</a>
+                                    </div>
                                 </td>
                                 <td class="px-3 py-2 font-semibold text-slate-700" x-text="p.vendedor || '-'"></td>
                                 <td class="px-3 py-2">
@@ -680,11 +747,17 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                                   x-text="p.idembarque > 0 ? ('Embarque #' + p.idembarque) : 'Faturado • Logística'"></span>
                                         </div>
                                     </template>
-                                    <span x-show="!p.numeronf" class="text-[10px] text-slate-400" x-text="p.status === 3 ? 'Cancelado' : 'Aguardando faturamento'"></span>
+                                    <span x-show="!p.numeronf" class="text-[10px] text-slate-400" x-text="p.status === 3 ? 'Cancelado' : (p.em_analise_financeiro ? 'Aguardando aprovação financeira' : 'Aguardando faturamento')"></span>
                                 </td>
-                                <td class="px-3 py-2 text-right font-mono font-bold" x-text="fmtMoeda(p.valortotal)"></td>
+                                <td class="px-3 py-2 text-right font-mono font-bold" :class="p.cancelado ? 'line-through text-rose-600' : ''" x-text="fmtMoeda(p.valortotal)"></td>
                                 <td class="px-3 py-2 text-center">
-                                    <button @click="abrirItens('pedido', p)" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]">Ver Itens</button>
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <button @click="abrirItens('pedido', p)" class="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[10px]">Ver Itens</button>
+                                        <a :href="whatsRepresentante('Pedido', '#' + p.idpedido, p.status_label || '')" target="_blank"
+                                           class="px-2 py-1 rounded-lg bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-800 font-bold text-[10px] no-underline" title="Falar com Representante sobre este pedido">
+                                            <i class="fa-brands fa-whatsapp"></i>
+                                        </a>
+                                    </div>
                                 </td>
                             </tr>
                         </template>
@@ -696,20 +769,29 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                 <!-- VERSÃO EXCLUSIVA MOBILE: CARDS DE PEDIDOS -->
                 <div class="md:hidden p-3 space-y-3 bg-slate-50/70">
                     <template x-for="p in pedidosFiltrados()" :key="'mob-ped-' + p.idfilial + '-' + p.idpedido">
-                        <div class="bg-white rounded-2xl p-3.5 border border-slate-200 shadow-sm space-y-2.5">
+                        <div class="rounded-2xl p-3.5 border shadow-sm space-y-2.5"
+                             :class="p.cancelado ? 'bg-rose-50/80 border-rose-300' : (p.eh_bonificacao ? 'bg-purple-50/80 border-purple-300' : (p.em_analise_financeiro ? 'bg-amber-50/60 border-amber-300' : 'bg-white border-slate-200'))">
                             <div class="flex items-start justify-between gap-2">
                                 <div>
                                     <div class="font-mono text-sm font-black text-slate-900" x-text="'Pedido #' + p.idpedido + ' (F' + p.idfilial + ')'"></div>
                                     <div class="text-[11px] text-slate-500" x-text="fmtData(p.data) + (p.vendedor ? ' • ' + p.vendedor : '')"></div>
+                                    <span x-show="p.eh_bonificacao" class="inline-block mt-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 text-[9px] font-black uppercase">BONIFICAÇÃO</span>
                                 </div>
                                 <span class="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase shrink-0"
-                                      :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : 'bg-amber-100 text-amber-800')"
+                                      :class="p.status === 5 ? 'bg-emerald-100 text-emerald-800' : (p.status === 3 ? 'bg-rose-100 text-rose-800' : (p.em_analise_financeiro ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800'))"
                                       x-text="p.status_label || (p.status === 5 ? 'Faturado' : (p.status === 3 ? 'Cancelado' : 'Em Aberto'))"></span>
+                            </div>
+                            <div x-show="p.em_analise_financeiro" class="p-2.5 rounded-xl bg-orange-50 border border-orange-200 text-[11px] text-orange-900 space-y-1.5">
+                                <div class="font-extrabold"><i class="fa-solid fa-clock mr-1"></i> Em Análise Financeiro — Qualquer dúvida entrar em contato</div>
+                                <a :href="whatsFinanceiro('Pedido', '#' + p.idpedido, 'Em Análise Financeiro')" target="_blank"
+                                   class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-[11px] font-extrabold no-underline">
+                                    <i class="fa-brands fa-whatsapp"></i> Falar com Financeiro
+                                </a>
                             </div>
                             <div class="flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
                                 <div>
                                     <span class="text-[10px] uppercase font-bold text-slate-400 block">Valor Pedido</span>
-                                    <span class="text-base font-black font-mono text-slate-900" x-text="fmtMoeda(p.valortotal)"></span>
+                                    <span class="text-base font-black font-mono" :class="p.cancelado ? 'line-through text-rose-600' : 'text-slate-900'" x-text="fmtMoeda(p.valortotal)"></span>
                                 </div>
                                 <template x-if="p.numeronf > 0">
                                     <div class="flex items-center gap-1.5">
@@ -723,9 +805,15 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                             <div x-show="p.idembarque > 0" class="text-[11px] text-slate-600 font-semibold">
                                 <i class="fa-solid fa-truck-fast text-emerald-600 mr-1"></i> Embarque #<span x-text="p.idembarque"></span>
                             </div>
-                            <button @click="abrirItens('pedido', p)" class="w-full py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-extrabold">
-                                Ver Itens do Pedido
-                            </button>
+                            <div class="flex gap-2">
+                                <button @click="abrirItens('pedido', p)" class="flex-1 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-extrabold">
+                                    Ver Itens do Pedido
+                                </button>
+                                <a :href="whatsRepresentante('Pedido', '#' + p.idpedido, p.status_label || '')" target="_blank"
+                                   class="py-2.5 px-3 rounded-xl bg-emerald-600/10 border border-emerald-200 text-emerald-800 text-xs font-extrabold flex items-center justify-center no-underline" title="Falar com Representante">
+                                    <i class="fa-brands fa-whatsapp"></i>
+                                </a>
+                            </div>
                         </div>
                     </template>
                     <div x-show="pedidosFiltrados().length === 0" class="py-8 text-center text-xs text-slate-400">Nenhum pedido encontrado.</div>

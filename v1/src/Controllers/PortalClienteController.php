@@ -997,7 +997,7 @@ class PortalClienteController
             if (is_string($v)) $cli[$k] = $this->utf8(trim($v));
         }
 
-        // 2. Títulos & Boletos em Aberto (receber + receber_boleto + portador)
+        // 2. Títulos & Boletos em Aberto (receber + receber_boleto + portador + vínculo NF/Pedido)
         $stBol = $this->pdo->prepare("
             SELECT r.idreceber, r.idfilial, r.documento, r.parcela, r.dataemissao, r.vencimento,
                    COALESCE(r.valororiginal, r.valor, 0)::numeric(14,2) AS valororiginal,
@@ -1009,9 +1009,13 @@ class PortalClienteController
                    COALESCE(rb.idbanco, 0) AS idbanco,
                    COALESCE(p.descricao, 'Outros / Carteira') AS portador_nome,
                    COALESCE(NULLIF(TRIM(r.observacao),'.'), '') AS observacao,
+                   COALESCE(NULLIF(r.idnfs, 0), nf.idnfs, 0) AS idnfs,
+                   COALESCE(NULLIF(r.numeronf, 0), nf.numeronf, 0) AS numeronf,
+                   COALESCE(NULLIF(NULLIF(TRIM(r.pedidos), '.'), ''), NULLIF(NULLIF(TRIM(nf.pedidos), '.'), ''), '') AS pedidos,
                    (CURRENT_DATE - r.vencimento) AS dias_atraso
             FROM receber r
             LEFT JOIN portador p ON p.idportador = r.idportador
+            LEFT JOIN nfs nf ON nf.idfilial = r.idfilial AND nf.idnfs = r.idnfs
             LEFT JOIN LATERAL (
                 SELECT nossonumero, nossonumeroatual, codigobarra, numeroboleto, shipayqrcode, idbanco
                 FROM receber_boleto b
@@ -1051,42 +1055,67 @@ class PortalClienteController
                 'idbanco' => (int)$b['idbanco'],
                 'portador_nome' => $this->utf8(trim((string)$b['portador_nome'])),
                 'observacao' => $this->utf8(trim((string)$b['observacao'])),
+                'idnfs' => (int)$b['idnfs'],
+                'numeronf' => (int)$b['numeronf'],
+                'pedidos' => $this->utf8(trim((string)$b['pedidos'])),
                 'tem_boleto' => ($codBar !== '' && $codBar !== '.'),
                 'dias_atraso' => $atraso,
             ];
         }
 
-        // 3. Notas Fiscais Emitidas (nfs)
+        // 3. Notas Fiscais (emitidas e canceladas; identifica Bonificação e Pedido vinculado)
         $stNf = $this->pdo->prepare("
             SELECT n.idfilial, n.idnfs, n.numeronf, n.dataemissao, n.valortotalnota::numeric(14,2) AS valortotal,
-                   COALESCE(n.numero_nf_e,'') AS chave_nfe, COALESCE(n.pedidos,'') AS pedidos
+                   n.status, COALESCE(n.cancelado_sefaz,'N') AS cancelado_sefaz,
+                   COALESCE(n.idtransacao, 0) AS idtransacao,
+                   COALESCE(nt.descricao, '') AS transacao_nome,
+                   COALESCE(n.numero_nf_e,'') AS chave_nfe,
+                   COALESCE(NULLIF(TRIM(n.pedidos), '.'), '') AS pedidos
             FROM nfs n
+            LEFT JOIN nfs_transacao nt ON nt.idtransacao = n.idtransacao
             WHERE n.idcliforemp = :id
-              AND n.status = 2 AND COALESCE(n.cancelado_sefaz,'N') = 'N' AND COALESCE(n.denegada,'N') = 'N'
+              AND n.status IN (2, 3) AND COALESCE(n.denegada,'N') = 'N'
             ORDER BY n.dataemissao DESC, n.idnfs DESC
             LIMIT 80
         ");
         $stNf->execute(['id' => $idCli]);
         $notas = [];
         foreach ($stNf->fetchAll(PDO::FETCH_ASSOC) as $n) {
+            $stNfCode = (int)$n['status'];
+            $canc = ($stNfCode === 3 || strtoupper((string)$n['cancelado_sefaz']) === 'S');
+            $idTransNf = (int)$n['idtransacao'];
+            $transNfNome = $this->utf8(trim((string)$n['transacao_nome']));
+            $ehBonif = (stripos($transNfNome, 'BONIF') !== false || in_array($idTransNf, [25, 1001], true));
             $notas[] = [
                 'idfilial' => (int)$n['idfilial'],
                 'idnfs' => (int)$n['idnfs'],
                 'numeronf' => (int)$n['numeronf'],
                 'dataemissao' => $n['dataemissao'],
                 'valortotal' => (float)$n['valortotal'],
+                'status' => $stNfCode,
+                'cancelada' => $canc,
+                'idtransacao' => $idTransNf,
+                'transacao_nome' => $transNfNome,
+                'eh_bonificacao' => $ehBonif,
                 'chave_nfe' => trim((string)$n['chave_nfe']),
-                'pedidos' => $this->utf8($n['pedidos']),
+                'pedidos' => $this->utf8(trim((string)$n['pedidos'])),
             ];
         }
 
-        // 4. Pedidos (pedido + nome fantasia do representante + vínculo NF / Embarque para rastreio)
+        // 4. Pedidos (pedido + transação bonificação + status financeiro + vínculo NF / Embarque)
         $stPed = $this->pdo->prepare("
             SELECT p.idfilial, p.idpedido, p.data, p.status, p.valortotalpedido::numeric(14,2) AS valortotal,
+                   COALESCE(p.idtransacao, 0) AS idtransacao,
+                   COALESCE(pt.descricao, '') AS transacao_nome,
+                   COALESCE(p.aprovado_financeiro, 'S') AS aprovado_financeiro,
+                   COALESCE(p.aprovado_comercial, 'S') AS aprovado_comercial,
+                   COALESCE(p.aguardandoaprovacaoweb, 'N') AS aguardandoaprovacaoweb,
+                   COALESCE(NULLIF(TRIM(p.motivobloqueio), '.'), '') AS motivobloqueio,
                    COALESCE(NULLIF(TRIM(v.fantasia),''), v.razao, '') AS vendedor,
                    COALESCE(nf.idnfs, 0) AS idnfs, COALESCE(nf.numeronf, 0) AS numeronf,
                    COALESCE(nf.idembarque, 0) AS idembarque
             FROM pedido p
+            LEFT JOIN pedido_transacao pt ON pt.idtransacao = p.idtransacao
             LEFT JOIN cliforemp v ON v.idcliforemp = p.idvendrepre
             LEFT JOIN LATERAL (
                 SELECT n.idnfs, n.numeronf, n.idembarque
@@ -1104,13 +1133,41 @@ class PortalClienteController
         $pedidos = [];
         foreach ($stPed->fetchAll(PDO::FETCH_ASSOC) as $p) {
             $stCode = (int)$p['status'];
-            $stLabel = $stCode === 5 ? 'Faturado' : ($stCode === 3 ? 'Cancelado' : ($stCode === 1 ? 'Em Aberto' : 'Em Processamento'));
+            $idTransPed = (int)$p['idtransacao'];
+            $transPedNome = $this->utf8(trim((string)$p['transacao_nome']));
+            $ehBonifPed = (stripos($transPedNome, 'BONIF') !== false || in_array($idTransPed, [2, 6, 18], true));
+            $motivoBloq = $this->utf8(trim((string)$p['motivobloqueio']));
+            $aprovFin = strtoupper((string)$p['aprovado_financeiro']);
+            $aprovCom = strtoupper((string)$p['aprovado_comercial']);
+            $aguardWeb = strtoupper((string)$p['aguardandoaprovacaoweb']);
+            $emAnaliseFin = in_array($stCode, [1, 4], true) && ($aprovFin === 'N' || $aguardWeb === 'S' || $motivoBloq !== '');
+
+            if ($stCode === 5) {
+                $stLabel = 'Faturado';
+            } elseif ($stCode === 3) {
+                $stLabel = 'Cancelado';
+            } elseif ($emAnaliseFin) {
+                $stLabel = 'Em Análise Financeiro';
+            } elseif ($stCode === 1 && $aprovCom === 'N') {
+                $stLabel = 'Em Aprovação Comercial';
+            } elseif ($stCode === 1) {
+                $stLabel = 'Em Aberto';
+            } else {
+                $stLabel = 'Em Processamento';
+            }
+
             $pedidos[] = [
                 'idfilial' => (int)$p['idfilial'],
                 'idpedido' => (int)$p['idpedido'],
                 'data' => $p['data'],
                 'status' => $stCode,
                 'status_label' => $stLabel,
+                'cancelado' => ($stCode === 3),
+                'eh_bonificacao' => $ehBonifPed,
+                'em_analise_financeiro' => $emAnaliseFin,
+                'motivo_bloqueio' => $motivoBloq,
+                'idtransacao' => $idTransPed,
+                'transacao_nome' => $transPedNome,
                 'valortotal' => (float)$p['valortotal'],
                 'vendedor' => $this->utf8(trim((string)$p['vendedor'])),
                 'idnfs' => (int)$p['idnfs'],

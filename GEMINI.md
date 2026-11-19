@@ -58,6 +58,6 @@
 ---
 
 ## 5. Protocolo de Execução (Início e Fechamento)
-1. **Contexto Preliminar:** Ler `docs/CONTINUATION_TOKEN.md` → token ativo em `docs/tokens/` e consultar `docs/tokens/KNOWLEDGE-BASE-ECOSSISTEMA-NUTRICIONAL.md` quando envolver regras/integrações transversais.
+1. **Contexto Preliminar & Constituição:** Ler `docs/CONTINUATION_TOKEN.md` → token ativo em `docs/tokens/`, obedecer à [`docs/CONSTITUICAO_IA_NUTRICIONAL.md`](docs/CONSTITUICAO_IA_NUTRICIONAL.md) e ao token [`docs/tokens/NUT-CORE-001.md`](docs/tokens/NUT-CORE-001.md) (continuidade corporativa independente de conta pessoal), e consultar `docs/tokens/KNOWLEDGE-BASE-ECOSSISTEMA-NUTRICIONAL.md` quando envolver regras/integrações transversais.
 2. **Validação:** Testar queries complexas em `scratch/` (ou CLI seguro sem alterar dados reais), validar sintaxe (`php -l`, `node --check`) e rodar testes reais antes de entregar.
 3. **Fechamento:** Atualizar `docs/tokens/` + `docs/CONTINUATION_TOKEN.md` com os arquivos exatos para deploy FTP.
