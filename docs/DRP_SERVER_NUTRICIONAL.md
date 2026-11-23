@@ -31,7 +31,7 @@
 3. **Acesso Externo Zero Trust (`remoto.nutricionalbr.com`):**
    - Browser RDP protegido por Cloudflare Access (`alan@nutricionalbr.com`, `robson@nutricionalbr.com`), sessão de `8h`, **One-time PIN por e-mail + MFA TOTP (`Authenticator application` / `Biometrics`) em todo acesso**.
 4. **Compartilhamentos SMB:**
-   - `Ema Software`, `Logicsoft`, `NUTRI`: `BUILTIN\Administradores = Full` e `Everyone = Read`.
+   - `Ema Software`, `Logicsoft`, `NUTRI`: mantidos com `Everyone = Full` (exigido pelo ERP EMA ao gravar XMLs de NF-e via caminho UNC `\\192.168.1.99\EMA SOFTWARE\CONTAS ERP\NF-E\...` com token filtrado por UAC do Windows; mitigação anti-ransomware garantida pelo backup 3-2-1 Append-Only e perímetro fechado).
 
 ---
 
