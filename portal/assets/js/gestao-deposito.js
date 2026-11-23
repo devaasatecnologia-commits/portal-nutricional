@@ -446,9 +446,15 @@ window.carregarSecoes = carregarSecoes;
                 return;
             }
             saida.innerHTML = itens.map(it => {
-                const ends = (it.enderecos || []).map(e =>
-                    `<span class="inline-block bg-amber-100 text-amber-800 rounded-lg px-2 py-1 text-xs font-bold mr-1 mb-1">
-                        ${esc(e.endereco)} · lote ${esc(e.lote)} · ${Number(e.quantidade)} un</span>`).join('');
+                const ends = (it.enderecos || []).map(e => {
+                    if (e.lote) {
+                        const dt = e.data_entrada ? ` · ent. ${esc(String(e.data_entrada).slice(0, 10))}` : '';
+                        return `<span class="inline-block bg-amber-100 text-amber-800 rounded-lg px-2 py-1 text-xs font-bold mr-1 mb-1">
+                            ${esc(e.endereco)} · lote ${esc(e.lote)} · ${Number(e.quantidade)} un${dt} (FIFO)</span>`;
+                    }
+                    return `<span class="inline-block bg-emerald-100 text-emerald-800 rounded-lg px-2 py-1 text-xs font-bold mr-1 mb-1">
+                        ${esc(e.endereco)} · End. Fixo (${esc(e.tipo || 'GIRO')})</span>`;
+                }).join('');
                 return `<div class="p-3 rounded-xl border border-slate-100">
                     <div class="text-sm font-bold text-slate-800">${esc(it.descricao)} <span class="text-slate-400 font-medium">#${esc(it.iditem)}</span></div>
                     <div class="mt-1">${ends || '<span class="text-xs text-slate-400">Sem endereço no depósito</span>'}</div>

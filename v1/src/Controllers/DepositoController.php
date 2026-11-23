@@ -379,4 +379,74 @@ public function getSecao(Request $request, Response $response, array $args): Res
             return $response->withStatus(500);
         }
     }
+
+    /**
+     * POST /v1/deposito/item-endereco
+     * Vincula ou atualiza endereço fixo (GIRO/PULMAO) de um item.
+     */
+    public function vincularItemEndereco(Request $request, Response $response): Response
+    {
+        $input = json_decode($request->getBody()->getContents(), true) ?? [];
+        $iditem = (int)($input['iditem'] ?? 0);
+        $idsecao = (int)($input['idsecao'] ?? 0);
+        $idendereco = (int)($input['idendereco'] ?? 0);
+        $tipo = strtoupper(trim((string)($input['tipo'] ?? 'GIRO')));
+        if (!in_array($tipo, ['GIRO', 'PULMAO'], true)) {
+            $tipo = 'GIRO';
+        }
+        $prioridade = max(1, (int)($input['prioridade'] ?? 1));
+        $usuario = (string)(($request->getAttribute('user') ?? [])['username'] ?? 'SISTEMA');
+
+        if ($iditem <= 0 || $idsecao <= 0 || $idendereco <= 0) {
+            $response->getBody()->write(json_encode(['error' => 'Dados inválidos para vincular endereço ao item']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+        }
+
+        try {
+            $stmt = $this->pdo->prepare("
+                INSERT INTO item_endereco (iditem, idsecao, idendereco, tipo, prioridade, atualizado_por)
+                VALUES (:iditem, :idsecao, :idendereco, :tipo, :prioridade, :usuario)
+                ON CONFLICT (iditem, idsecao, idendereco)
+                DO UPDATE SET tipo = EXCLUDED.tipo, prioridade = EXCLUDED.prioridade, atualizado_por = EXCLUDED.atualizado_por, atualizado_em = NOW()
+            ");
+            $stmt->execute([
+                'iditem' => $iditem,
+                'idsecao' => $idsecao,
+                'idendereco' => $idendereco,
+                'tipo' => $tipo,
+                'prioridade' => $prioridade,
+                'usuario' => $usuario,
+            ]);
+            $response->getBody()->write(json_encode(['success' => true]));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Throwable $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
+
+    /**
+     * DELETE /v1/deposito/item-endereco/{iditem}/{idsecao}/{idendereco}
+     */
+    public function desvincularItemEndereco(Request $request, Response $response, array $args): Response
+    {
+        $iditem = (int)($args['iditem'] ?? 0);
+        $idsecao = (int)($args['idsecao'] ?? 0);
+        $idendereco = (int)($args['idendereco'] ?? 0);
+
+        if ($iditem <= 0 || $idsecao <= 0 || $idendereco <= 0) {
+            $response->getBody()->write(json_encode(['error' => 'Parâmetros inválidos']));
+            return $response->withStatus(400)->withHeader('Content-Type', 'application/json');
+        }
+
+        try {
+            $this->pdo->prepare("DELETE FROM item_endereco WHERE iditem = ? AND idsecao = ? AND idendereco = ?")
+                ->execute([$iditem, $idsecao, $idendereco]);
+            $response->getBody()->write(json_encode(['success' => true]));
+            return $response->withHeader('Content-Type', 'application/json');
+        } catch (\Throwable $e) {
+            $response->getBody()->write(json_encode(['error' => $e->getMessage()]));
+            return $response->withStatus(500)->withHeader('Content-Type', 'application/json');
+        }
+    }
 }

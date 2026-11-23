@@ -984,7 +984,33 @@ $protected->group('/deposito', function ($group) {
     $group->get('/resumo', [$controller, 'getResumo']);
     $group->post('/secao', [$controller, 'salvarSecao']);
     $group->get('/secao/{idsecao}', [$controller, 'getSecao']);
+    $group->post('/item-endereco', [$controller, 'vincularItemEndereco']);
+    $group->delete('/item-endereco/{iditem}/{idsecao}/{idendereco}', [$controller, 'desvincularItemEndereco']);
 })->add(new ModulePermissionMiddleware('gestao-deposito'));
+
+        // ======================================================================
+        // PROGRAMA 365 COMERCIAL (T27 - JIU-JITSU)
+        // ======================================================================
+$protected->group('/programa-365', function ($group) {
+    $controller = new \Nutricional\Controllers\Programa365Controller();
+    $group->get('/contexto', [$controller, 'contexto']);
+    $group->get('/dashboard', [$controller, 'dashboard']);
+    $group->get('/ranking', [$controller, 'ranking']);
+    $group->get('/pins', [$controller, 'pins']);
+    $group->get('/extrato', [$controller, 'extrato']);
+    $group->get('/admin/estrutura', [$controller, 'adminEstrutura']);
+    $group->post('/admin/campanha', [$controller, 'salvarCampanha']);
+    $group->post('/admin/equipe', [$controller, 'salvarEquipe']);
+    $group->post('/admin/participante', [$controller, 'salvarParticipante']);
+    $group->get('/admin/metas', [$controller, 'getMetas']);
+    $group->post('/admin/metas', [$controller, 'salvarMetas']);
+    $group->get('/admin/desafios', [$controller, 'getDesafios']);
+    $group->post('/admin/desafio', [$controller, 'salvarDesafio']);
+    $group->get('/admin/buscar-itens', [$controller, 'buscarItens']);
+    $group->post('/admin/extra', [$controller, 'lancarExtra']);
+    $group->post('/admin/fechar-round', [$controller, 'fecharRound']);
+    $group->post('/admin/reabrir-round', [$controller, 'reabrirRound']);
+})->add(new ModulePermissionMiddleware('programa-365'));
 
         // ======================================================================
         // ESTOQUE COM PREVISÃO

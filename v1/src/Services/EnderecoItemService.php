@@ -22,14 +22,29 @@ class EnderecoItemService
         SELECT le.iditem, le.idfilial, le.idsecao, le.idendereco, le.lote,
                le.quantidade::float AS quantidade, le.data_entrada,
                s.descricao AS secao,
-               TRIM(split_part(s.descricao, ' - ', 1)) || '-' || se.linhasigla || se.colunasigla AS endereco
+               TRIM(split_part(s.descricao, ' - ', 1)) || '-' || se.linhasigla || se.colunasigla AS endereco,
+               'LOTE_FIFO'::text AS origem,
+               'LOTE'::text AS tipo
         FROM lote_endereco le
         JOIN secao_enderecos se ON se.idendereco = le.idendereco AND se.idsecao = le.idsecao
         JOIN secao s ON s.idsecao = le.idsecao
         WHERE le.quantidade > 0";
 
+    private const SQL_FIXO = "
+        SELECT ie.iditem, NULL::integer AS idfilial, ie.idsecao, ie.idendereco, NULL::text AS lote,
+               0::float AS quantidade, NULL::date AS data_entrada,
+               s.descricao AS secao,
+               TRIM(split_part(s.descricao, ' - ', 1)) || '-' || se.linhasigla || se.colunasigla AS endereco,
+               'FIXO'::text AS origem,
+               ie.tipo
+        FROM item_endereco ie
+        JOIN secao_enderecos se ON se.idendereco = ie.idendereco AND se.idsecao = ie.idsecao
+        JOIN secao s ON s.idsecao = ie.idsecao
+        WHERE 1=1";
+
     /**
-     * Endereços ativos de vários itens, do lote mais antigo ao mais novo (FIFO).
+     * Endereços ativos de vários itens, do lote mais antigo ao mais novo (FIFO),
+     * complementados pelos endereços fixos cadastrados (item_endereco).
      *
      * @param int[] $iditens
      * @return array<int, array<int, array<string, mixed>>> iditem => endereços
@@ -48,15 +63,35 @@ class EnderecoItemService
             $sql .= " AND le.idfilial = ?";
             $params[] = $idfilial;
         }
-        $sql .= " ORDER BY le.data_entrada ASC, le.lote ASC";
+        $sql .= " ORDER BY le.data_entrada ASC NULLS LAST, le.lote ASC";
 
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
 
         $mapa = [];
+        $vistosFixos = [];
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
-            $mapa[(int)$row['iditem']][] = $row;
+            $iditem = (int)$row['iditem'];
+            $mapa[$iditem][] = $row;
+            $vistosFixos[$iditem][(int)$row['idendereco']] = true;
         }
+
+        // Complementa com endereços fixos cadastrados (Giro / Pulmão) sem duplicar se já tem lote no mesmo slot
+        try {
+            $sqlFixo = self::SQL_FIXO . " AND ie.iditem IN ($in) ORDER BY ie.prioridade ASC, ie.id ASC";
+            $stmtFixo = $this->pdo->prepare($sqlFixo);
+            $stmtFixo->execute($iditens);
+            foreach ($stmtFixo->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                $iditem = (int)$row['iditem'];
+                if (!empty($vistosFixos[$iditem][(int)$row['idendereco']])) {
+                    continue;
+                }
+                $mapa[$iditem][] = $row;
+            }
+        } catch (\Throwable $e) {
+            // Ignora se a tabela item_endereco ainda não existir em algum ambiente
+        }
+
         return $mapa;
     }
 

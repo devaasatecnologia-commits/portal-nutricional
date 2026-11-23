@@ -292,10 +292,10 @@ async function sugerirEnderecoItem(iditem) {
         const unicos = atuais.filter(e => !vistos.has(e.idendereco) && vistos.add(e.idendereco));
 
         if (unicos.length) {
-            box.innerHTML = '<div style="font-weight:800; color:#166534; margin-bottom:4px;">📍 Já guardado em (toque para usar):</div>' +
+            box.innerHTML = '<div style="font-weight:800; color:#166534; margin-bottom:4px;">📍 Endereço sugerido / já guardado (toque para usar):</div>' +
                 unicos.map(e => `<button type="button" data-sec="${e.idsecao}" data-end="${e.idendereco}"
                     style="margin:0 4px 4px 0; padding:5px 10px; border-radius:8px; border:1px solid #86efac; background:#fff; font-weight:800; color:#166534;">
-                    ${escapar(e.endereco)} <span style="font-weight:600; color:#64748b;">(disp. ${e.disponivel})</span></button>`).join('');
+                    ${escapar(e.endereco)} <span style="font-weight:600; color:#64748b;">(${e.origem === 'FIXO' ? 'Fixo · ' : ''}disp. ${e.disponivel})</span></button>`).join('');
             box.querySelectorAll('button').forEach(b =>
                 b.addEventListener('click', () => escolher(b.dataset.sec, b.dataset.end)));
             await escolher(unicos[0].idsecao, unicos[0].idendereco);
