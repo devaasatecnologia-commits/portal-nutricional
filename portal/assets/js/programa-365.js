@@ -1,6 +1,7 @@
 function programa365App() {
     return {
         aba: 'tatame',
+        filtrosAbertosMobile: false,
         isAdmin: false,
         perfil: 'ADMIN',
         campanhas: [],
@@ -210,6 +211,17 @@ function programa365App() {
 
         brl(v) {
             return Number(v || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        },
+
+        proximoDegrau(pct, alvos) {
+            const p = Number(pct || 0);
+            for (const a of alvos) {
+                if (p < a.pct) {
+                    const falta = (a.pct - p).toFixed(1);
+                    return `Falta ${falta}% para ${a.pct}% (+${a.pts} pts)`;
+                }
+            }
+            return 'Nível máximo atingido!';
         }
     };
 }

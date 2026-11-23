@@ -45,7 +45,14 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
 
         <!-- Filtros Globais: Campanha, Round, Filial, Gestor, Representante -->
-        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+        <div class="flex items-center justify-between lg:hidden">
+            <span class="text-[11px] font-bold text-emerald-100/90" x-text="'Round ' + filtros.mes + '/' + filtros.ano + (selecionado ? ' • ' + selecionado.nome : '')"></span>
+            <button @click="filtrosAbertosMobile = !filtrosAbertosMobile" class="px-3 py-1.5 rounded-xl bg-white/15 text-white text-[11px] font-bold">
+                <i class="fa-solid fa-filter mr-1"></i> <span x-text="filtrosAbertosMobile ? 'Ocultar Filtros' : 'Filtros'"></span>
+            </button>
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" :class="filtrosAbertosMobile ? 'grid' : 'hidden lg:grid'">
             <select x-model.number="filtros.campanha_id" @change="carregarTudo()" class="bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
                 <template x-for="c in campanhas" :key="c.id">
                     <option class="text-slate-900" :value="c.id" x-text="c.codigo + ' - ' + c.temporada_ano"></option>
@@ -58,14 +65,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                 </template>
             </select>
 
-            <select x-model.number="filtros.filial" @change="filtros.participante_id=0; carregarDashboard()" class="bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
+            <select x-model.number="filtros.filial" @change="filtros.participante_id=0; carregarDashboard(); carregarRanking()" class="bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
                 <option class="text-slate-900" value="0">Todas as Filiais</option>
                 <template x-for="f in filiaisDisponiveis" :key="f.idfilial">
                     <option class="text-slate-900" :value="f.idfilial" x-text="f.nome"></option>
                 </template>
             </select>
 
-            <select x-model.number="filtros.idgestor" @change="filtros.participante_id=0; carregarDashboard()" class="bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
+            <select x-model.number="filtros.idgestor" @change="filtros.participante_id=0; carregarDashboard(); carregarRanking()" class="bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
                 <option class="text-slate-900" value="0">Todos os Gestores</option>
                 <template x-for="g in gestoresDisponiveis" :key="g.idgestor">
                     <option class="text-slate-900" :value="g.idgestor" x-text="g.nome"></option>
@@ -83,8 +90,8 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </div>
 
-    <!-- Navegacao por Abas (Desktop + Scroll Horizontal Mobile) -->
-    <div class="flex overflow-x-auto gap-2 mb-5 pb-1">
+    <!-- Navegacao por Abas (Desktop) -->
+    <div class="hidden lg:flex overflow-x-auto gap-2 mb-5 pb-1">
         <button @click="aba='tatame'" :class="aba==='tatame' ? 'bg-[#2F5D50] text-white shadow' : 'bg-white text-slate-600 hover:bg-slate-50'" class="shrink-0 px-4 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center gap-2 border border-slate-200">
             <i class="fa-solid fa-gauge-high"></i> Meu Tatame
         </button>
@@ -181,43 +188,47 @@ require_once __DIR__ . '/../estrutura/header.php';
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-center mb-1.5">
                                 <span class="text-xs font-extrabold text-[#2F5D50]">DIA 10 • RASPAGEM</span>
                                 <span class="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-100 text-emerald-800" x-text="'+' + selecionado.pts_dia10 + ' pts'"></span>
                             </div>
                             <div class="text-xl font-black text-slate-800" x-text="selecionado.pct_dia10 + '%'"></div>
-                            <div class="text-[11px] text-slate-500 mt-1" x-text="brl(selecionado.fat_dia10) + ' faturado até dia 10'"></div>
-                            <div class="text-[10px] text-slate-400 mt-2">Alvos: 15% (+10) | 20% (+15) | 25% (+20)</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden my-1.5"><div class="h-full bg-[#2F5D50]" :style="`width:${Math.min(100, (selecionado.pct_dia10/25)*100)}%`"></div></div>
+                            <div class="text-[11px] text-slate-500" x-text="brl(selecionado.fat_dia10) + ' até dia 10'"></div>
+                            <div class="text-[10px] font-bold text-emerald-700 mt-1" x-text="proximoDegrau(selecionado.pct_dia10, [{pct:15,pts:10},{pct:20,pts:15},{pct:25,pts:20}])"></div>
                         </div>
 
                         <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-center mb-1.5">
                                 <span class="text-xs font-extrabold text-[#2F5D50]">DIA 20 • PASSAGEM</span>
                                 <span class="px-2 py-0.5 rounded-lg text-xs font-black bg-emerald-100 text-emerald-800" x-text="'+' + selecionado.pts_dia20 + ' pts'"></span>
                             </div>
                             <div class="text-xl font-black text-slate-800" x-text="selecionado.pct_dia20 + '%'"></div>
-                            <div class="text-[11px] text-slate-500 mt-1" x-text="brl(selecionado.fat_dia20) + ' faturado até dia 20'"></div>
-                            <div class="text-[10px] text-slate-400 mt-2">Alvos: 50% (+10) | 55% (+15) | 60% (+20)</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden my-1.5"><div class="h-full bg-[#2F5D50]" :style="`width:${Math.min(100, (selecionado.pct_dia20/60)*100)}%`"></div></div>
+                            <div class="text-[11px] text-slate-500" x-text="brl(selecionado.fat_dia20) + ' até dia 20'"></div>
+                            <div class="text-[10px] font-bold text-emerald-700 mt-1" x-text="proximoDegrau(selecionado.pct_dia20, [{pct:50,pts:10},{pct:55,pts:15},{pct:60,pts:20}])"></div>
                         </div>
 
                         <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-center mb-1.5">
                                 <span class="text-xs font-extrabold text-[#2F5D50]">DIA 30 • FINALIZAÇÃO</span>
                                 <span class="px-2 py-0.5 rounded-lg text-xs font-black bg-amber-100 text-amber-800" x-text="'+' + selecionado.pts_dia30 + ' pts'"></span>
                             </div>
                             <div class="text-xl font-black text-slate-800" x-text="selecionado.pct_dia30 + '%'"></div>
-                            <div class="text-[11px] text-slate-500 mt-1" x-text="brl(selecionado.fat_liquido) + ' líquido no mês'"></div>
-                            <div class="text-[10px] text-slate-400 mt-2">80% (+10) | 90% (+15) | 100% (+20) | 110% (+30)</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden my-1.5"><div class="h-full bg-amber-500" :style="`width:${Math.min(100, (selecionado.pct_dia30/110)*100)}%`"></div></div>
+                            <div class="text-[11px] text-slate-500" x-text="brl(selecionado.fat_liquido) + ' líquido no mês'"></div>
+                            <div class="text-[10px] font-bold text-amber-700 mt-1" x-text="proximoDegrau(selecionado.pct_dia30, [{pct:80,pts:10},{pct:90,pts:15},{pct:100,pts:20},{pct:110,pts:30}])"></div>
                         </div>
 
                         <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                            <div class="flex justify-between items-center mb-2">
+                            <div class="flex justify-between items-center mb-1.5">
                                 <span class="text-xs font-extrabold text-[#2F5D50]">CONTROLE LATERAL</span>
                                 <span class="px-2 py-0.5 rounded-lg text-xs font-black bg-blue-100 text-blue-800" x-text="'+' + selecionado.pts_positivacao + ' pts'"></span>
                             </div>
                             <div class="text-xl font-black text-slate-800" x-text="selecionado.pct_positivacao + '%'"></div>
-                            <div class="text-[11px] text-slate-500 mt-1" x-text="selecionado.clientes_positivados + ' / ' + selecionado.carteira_efetiva + ' clientes (piso 60)'"></div>
-                            <div class="text-[10px] text-slate-400 mt-2">Alvos: 50% (+10) | 60% (+15) | 70% (+20)</div>
+                            <div class="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden my-1.5"><div class="h-full bg-blue-600" :style="`width:${Math.min(100, (selecionado.pct_positivacao/70)*100)}%`"></div></div>
+                            <div class="text-[11px] text-slate-500" x-text="selecionado.clientes_positivados + ' / ' + selecionado.carteira_efetiva + ' clientes (piso 60)'"></div>
+                            <div class="text-[10px] font-bold text-blue-700 mt-1" x-text="proximoDegrau(selecionado.pct_positivacao, [{pct:50,pts:10},{pct:60,pts:15},{pct:70,pts:20}])"></div>
                         </div>
                     </div>
 
@@ -658,6 +669,31 @@ require_once __DIR__ . '/../estrutura/header.php';
             </div>
         </div>
     </template>
+    <!-- Barra Inferior Fixa Mobile Estilo App (para Gestor e Representante no Celular) -->
+    <div class="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-slate-200 shadow-2xl px-2 py-1.5 flex items-center justify-around">
+        <button @click="aba='tatame'" :class="aba==='tatame' ? 'text-[#2F5D50]' : 'text-slate-400'" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-extrabold">
+            <i class="fa-solid fa-gauge-high text-base"></i>
+            <span>Tatame</span>
+        </button>
+        <template x-if="perfil !== 'REPRESENTANTE'">
+            <button @click="aba='equipe'" :class="aba==='equipe' ? 'text-[#2F5D50]' : 'text-slate-400'" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-extrabold">
+                <i class="fa-solid fa-users-viewfinder text-base"></i>
+                <span>Equipe</span>
+            </button>
+        </template>
+        <button @click="aba='ranking'; carregarRanking()" :class="aba==='ranking' ? 'text-[#2F5D50]' : 'text-slate-400'" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-extrabold">
+            <i class="fa-solid fa-trophy text-base"></i>
+            <span>Ranking</span>
+        </button>
+        <button @click="aba='pins'; carregarPins()" :class="aba==='pins' ? 'text-[#2F5D50]' : 'text-slate-400'" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-extrabold">
+            <i class="fa-solid fa-award text-base"></i>
+            <span>PINs</span>
+        </button>
+        <button @click="aba='manual'" :class="aba==='manual' ? 'text-[#2F5D50]' : 'text-slate-400'" class="flex flex-col items-center gap-0.5 px-2 py-1 text-[10px] font-extrabold">
+            <i class="fa-solid fa-book-open text-base"></i>
+            <span>Regras</span>
+        </button>
+    </div>
 </div>
 
 <?php require_once __DIR__ . '/../estrutura/footer.php'; ?>

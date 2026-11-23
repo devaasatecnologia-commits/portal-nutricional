@@ -27,13 +27,13 @@ class Programa365Controller
 
     private function podeAdministrar(UserScope $scope): bool
     {
-        return $scope->isAdmin || $scope->temAcessoTotal();
+        return $scope->isAdmin;
     }
 
     private function resolverParticipantesPermitidos(UserScope $scope, int $idcampanha): ?array
     {
-        if ($this->podeAdministrar($scope)) {
-            return null; // Admin sempre ve todos
+        if ($scope->isAdmin || $scope->temAcessoTotal()) {
+            return null; // Admin e gerencia master (ex: permite_ver_usuarios=S) visualizam todos
         }
 
         $filiaisPermitidas = $scope->resolverFiliais();
@@ -176,7 +176,7 @@ class Programa365Controller
             $desafios = $stD->fetchAll(PDO::FETCH_ASSOC);
 
             $ehAdmin = $this->podeAdministrar($scope);
-            $ehGestor = !$ehAdmin && $scope->gestorRestrito();
+            $ehGestor = !$ehAdmin && ($scope->temAcessoTotal() || $scope->gestorRestrito());
             $perfil = $ehAdmin ? 'ADMIN' : ($ehGestor ? 'GESTOR' : 'REPRESENTANTE');
 
             // Resumo da equipe (visao gerencial / mobile para Gestores e Admins)
