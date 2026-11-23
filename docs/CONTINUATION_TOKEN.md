@@ -22,3 +22,8 @@ Status: Chamados #70 e #80 concluídos, validados no `ema` e fechados (`status =
    - `portal/assets/js/programa-365.js`
    - `portal/uploads/chamados/chamado_80_programa_365_t27.pdf`
    - *(Banco `ema` já migrado: `docs/programa_365_migration.sql` -> `p365_*` + `sistema_modulos` `programa-365`)*
+
+3. **Verba Flex / Movimentação / Transferência (Fallback Mercos Cloud):**
+   - `v1/src/Services/MercosFlexService.php`
+   - `v1/src/Services/SecretVault.php`
+   - *(Banco `ema`: `usuarios_mercos.idmercos` mapeado para F1/F6 + `MERCOS_APP_TOKEN`, `MERCOS_COMPANY_TOKEN_F1`, `MERCOS_COMPANY_TOKEN_F6` salvos no `SecretVault`)*

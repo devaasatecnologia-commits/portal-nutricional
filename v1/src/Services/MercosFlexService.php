@@ -136,7 +136,7 @@ class MercosFlexService
         }
 
         $disco = $this->lerCacheDisco();
-        if ($disco !== null) {
+        if ($disco !== null && !empty($disco['saldos'])) {
             $idade = max(0, time() - $disco['ts']);
             $ttlEfetivo = $forcar ? self::RATE_LIMIT_BURST_SEGUNDOS : self::CACHE_TTL_SEGUNDOS;
             if ($idade <= $ttlEfetivo) {
@@ -162,7 +162,16 @@ class MercosFlexService
                             $mapa[(int)$item['cliforemp_id']] = $item;
                         }
                     }
-                    $this->gravarCacheDisco($mapa);
+                    // Se o integrador Java local retornou [] (vazio), aciona fallback direto na API oficial Mercos Cloud
+                    if ($mapa === []) {
+                        $cloud = $this->buscarSaldosMercosCloud();
+                        if ($cloud !== []) {
+                            $mapa = $cloud;
+                        }
+                    }
+                    if ($mapa !== []) {
+                        $this->gravarCacheDisco($mapa);
+                    }
                     $this->statusCache = [
                         'cache_hit' => false,
                         'atualizado_em' => date('d/m/Y H:i:s'),
@@ -187,7 +196,23 @@ class MercosFlexService
             }
         }
 
-        if ($permitirStaleFallback && $disco !== null) {
+        // Fallback direto para API oficial Mercos Cloud se o integrador local falhar
+        try {
+            $cloud = $this->buscarSaldosMercosCloud();
+            if ($cloud !== []) {
+                $this->gravarCacheDisco($cloud);
+                $this->statusCache = [
+                    'cache_hit' => false,
+                    'atualizado_em' => date('d/m/Y H:i:s'),
+                    'idade_segundos' => 0,
+                    'stale' => false,
+                ];
+                return $this->cache = $cloud;
+            }
+        } catch (\Throwable $ignored) {
+        }
+
+        if ($permitirStaleFallback && $disco !== null && !empty($disco['saldos'])) {
             $idade = max(0, time() - $disco['ts']);
             $this->statusCache = [
                 'cache_hit' => true,
@@ -199,6 +224,68 @@ class MercosFlexService
         }
 
         throw $ultimo;
+    }
+
+    /**
+     * Consulta direta na API oficial da Mercos Cloud (/api/v1/saldo_flex) usando
+     * tokens do SecretVault e mapeamento usuarios_mercos.idmercos -> idcolaborador.
+     *
+     * @return array<int,array>
+     */
+    private function buscarSaldosMercosCloud(): array
+    {
+        $appToken = SecretVault::get('MERCOS_APP_TOKEN');
+        $companyToken = SecretVault::get('MERCOS_COMPANY_TOKEN_F' . $this->filial);
+        if ($appToken === '' || $companyToken === '') {
+            return [];
+        }
+
+        $ch = curl_init('https://app.mercos.com/api/v1/saldo_flex');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_CONNECTTIMEOUT => 5,
+            CURLOPT_TIMEOUT => 12,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_HTTPHEADER => [
+                'Accept: application/json',
+                'ApplicationToken: ' . $appToken,
+                'CompanyToken: ' . $companyToken,
+            ],
+        ]);
+        $ini = microtime(true);
+        $resp = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $erro = curl_error($ch);
+        curl_close($ch);
+        error_log(sprintf('[flex-cloud] f%d GET %d %.0fms%s', $this->filial, $status, (microtime(true) - $ini) * 1000, $erro ? " erro=$erro" : ''));
+
+        if ($resp === false || $status >= 400) {
+            return [];
+        }
+        $dados = json_decode((string)$resp, true);
+        if (!is_array($dados) || $dados === []) {
+            return [];
+        }
+
+        $pdo = \getPDO();
+        $st = $pdo->prepare("SELECT idmercos, idcolaborador FROM usuarios_mercos WHERE filial = ? AND idmercos IS NOT NULL AND idcolaborador IS NOT NULL");
+        $st->execute([$this->filial]);
+        $depara = [];
+        foreach ($st->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $depara[(int)$r['idmercos']] = (int)$r['idcolaborador'];
+        }
+
+        $mapa = [];
+        foreach ($dados as $item) {
+            $colabId = (int)($item['colaborador_id'] ?? 0);
+            if ($colabId <= 0 || !isset($depara[$colabId])) {
+                continue;
+            }
+            $cliforempId = $depara[$colabId];
+            $item['cliforemp_id'] = $cliforempId;
+            $mapa[$cliforempId] = $item;
+        }
+        return $mapa;
     }
 
     /**
@@ -226,10 +313,20 @@ class MercosFlexService
                         $saldos[(int)$item['cliforemp_id']] = $item;
                     }
                 }
-                $this->cache = $saldos;
+                if ($saldos === []) {
+                    $saldos = $this->buscarSaldosMercosCloud();
+                }
+                if ($saldos !== []) {
+                    $this->cache = $saldos;
+                }
             }
         } catch (MercosIndisponivelException $e) {
-            $erro = $e->getMessage();
+            $saldos = $this->buscarSaldosMercosCloud();
+            if ($saldos === []) {
+                $erro = $e->getMessage();
+            } else {
+                $http = 200;
+            }
         }
 
         return [
