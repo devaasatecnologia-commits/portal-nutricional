@@ -943,7 +943,13 @@ class ChamadosController
                     c.versao_entrega,
                     c.anexo_url,
                     (SELECT COUNT(*) FROM chamado_operacao op WHERE op.idchamado = c.idchamado) AS total_interacoes,
-                    ((SELECT COUNT(*) FROM chamado_operacao op WHERE op.idchamado = c.idchamado AND op.anexo_url IS NOT NULL AND op.anexo_url <> '') + (CASE WHEN c.anexo_url IS NOT NULL AND c.anexo_url <> '' THEN 1 ELSE 0 END)) AS total_anexos
+                    (SELECT COUNT(DISTINCT u.anexo_url) FROM (
+                        SELECT NULLIF(TRIM(c.anexo_url), '') AS anexo_url
+                        UNION ALL
+                        SELECT NULLIF(TRIM(op.anexo_url), '') AS anexo_url
+                        FROM chamado_operacao op
+                        WHERE op.idchamado = c.idchamado
+                    ) u WHERE u.anexo_url IS NOT NULL) AS total_anexos
                 FROM chamado c
                 LEFT JOIN sistema_modulos sm ON sm.slug = c.modulo_slug
                 WHERE " . implode(' AND ', $where) . "
@@ -1073,14 +1079,17 @@ class ChamadosController
             $timeline = $stmtOp->fetchAll(PDO::FETCH_ASSOC);
 
             $anexos = [];
+            $anexosVistos = [];
             $chamado['data_fmt'] = !empty($chamado['datahora']) ? date('d/m/Y H:i', strtotime($chamado['datahora'])) : '';
             $chamado['concluido_fmt'] = !empty($chamado['concluido_em']) ? date('d/m/Y H:i', strtotime($chamado['concluido_em'])) : '';
             $chamado['prioridade'] = (int)($chamado['prioridade'] ?? 10);
             $chamado['status'] = (int)($chamado['status'] ?? 0);
 
-            if (!empty($chamado['anexo_url'])) {
+            $anexoChamado = trim((string)($chamado['anexo_url'] ?? ''));
+            if ($anexoChamado !== '') {
+                $anexosVistos[$anexoChamado] = true;
                 $anexos[] = [
-                    'url' => $chamado['anexo_url'],
+                    'url' => $anexoChamado,
                     'autor' => $chamado['solicitante'] ?: ($chamado['usuario'] ?: 'Usuário'),
                     'data_fmt' => $chamado['data_fmt'],
                     'origem' => 'abertura',
@@ -1090,9 +1099,11 @@ class ChamadosController
 
             foreach ($timeline as &$op) {
                 $op['data_fmt'] = !empty($op['datahora']) ? date('d/m/Y H:i', strtotime($op['datahora'])) : '';
-                if (!empty($op['anexo_url'])) {
+                $anexoOp = trim((string)($op['anexo_url'] ?? ''));
+                if ($anexoOp !== '' && !isset($anexosVistos[$anexoOp])) {
+                    $anexosVistos[$anexoOp] = true;
                     $anexos[] = [
-                        'url' => $op['anexo_url'],
+                        'url' => $anexoOp,
                         'autor' => $op['usuario'] ?: 'Usuário',
                         'data_fmt' => $op['data_fmt'],
                         'origem' => 'interacao',
