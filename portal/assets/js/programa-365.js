@@ -84,7 +84,7 @@ function programa365App() {
         },
 
         async carregarRanking() {
-            const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}`;
+            const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}&filial=${this.filtros.filial || 0}&idgestor=${this.filtros.idgestor || 0}`;
             const d = await apiFetch(`v1/programa-365/ranking?${qs}`, 'GET');
             this.rankingRound = d.ranking_round || [];
             this.rankingAnual = d.ranking_anual || [];

@@ -485,15 +485,20 @@ class Programa365Service
      * Ranking anual acumulado da campanha (somando rounds fechados + round aberto atual).
      * Desempate oficial: MAIOR FATURAMENTO LIQUIDO ACUMULADO.
      */
-    public function calcularRankingAnual(int $idcampanha, int $ano, int $mesReferencia): array
+    public function calcularRankingAnual(int $idcampanha, int $ano, int $mesReferencia, ?array $filtroParticipanteIds = null): array
     {
-        $stP = $this->pdo->prepare("
-            SELECT p.id, p.idvendedor, p.nome_exibicao, p.apelido_tatame, p.categoria,
+        $sqlP = "
+            SELECT p.id, p.idvendedor, p.nome_exibicao, p.apelido_tatame, p.categoria, p.filiais, e.idgestor,
                    COALESCE(e.nome, 'Sem Equipe') AS equipe, COALESCE(e.cor, '#2F5D50') AS equipe_cor
             FROM p365_participantes p
             LEFT JOIN p365_equipes e ON e.id = p.idequipe
             WHERE p.idcampanha = ? AND p.ativo = TRUE
-        ");
+        ";
+        if ($filtroParticipanteIds !== null) {
+            if (empty($filtroParticipanteIds)) return [];
+            $sqlP .= " AND p.id IN (" . implode(',', array_map('intval', $filtroParticipanteIds)) . ")";
+        }
+        $stP = $this->pdo->prepare($sqlP);
         $stP->execute([$idcampanha]);
         $acumulado = [];
         foreach ($stP->fetchAll(PDO::FETCH_ASSOC) as $p) {
@@ -504,6 +509,8 @@ class Programa365Service
                 'apelido' => $p['apelido_tatame'] ?: $p['nome_exibicao'],
                 'equipe' => $p['equipe'],
                 'equipe_cor' => $p['equipe_cor'],
+                'filiais' => $p['filiais'] ?: '1,6',
+                'idgestor' => $p['idgestor'] ? (int)$p['idgestor'] : null,
                 'xp_total' => 0,
                 'fat_liquido_anual' => 0.0,
                 'bonus_acumulado_rs' => 0.0,

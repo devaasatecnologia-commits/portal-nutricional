@@ -33,30 +33,42 @@ class Programa365Controller
     private function resolverParticipantesPermitidos(UserScope $scope, int $idcampanha): ?array
     {
         if ($this->podeAdministrar($scope)) {
-            return null; // sem restricao
+            return null; // Admin sempre ve todos
         }
-        $ids = [];
-        // Gestor: participantes das equipes onde ele eh gestor
-        if (!empty($scope->gestores)) {
-            $in = implode(',', array_map('intval', $scope->gestores));
-            $st = $this->pdo->prepare("
-                SELECT p.id FROM p365_participantes p
-                LEFT JOIN p365_equipes e ON e.id = p.idequipe
-                WHERE p.idcampanha = ? AND p.ativo = TRUE AND (e.idgestor IN ($in) OR p.idvendedor IN ($in))
-            ");
-            $st->execute([$idcampanha]);
-            $ids = array_merge($ids, $st->fetchAll(PDO::FETCH_COLUMN));
+
+        $filiaisPermitidas = $scope->resolverFiliais();
+        $stTodos = $this->pdo->prepare("
+            SELECT p.id, p.idvendedor, p.filiais, e.idgestor
+            FROM p365_participantes p
+            LEFT JOIN p365_equipes e ON e.id = p.idequipe
+            WHERE p.idcampanha = ? AND p.ativo = TRUE
+        ");
+        $stTodos->execute([$idcampanha]);
+        $todos = $stTodos->fetchAll(PDO::FETCH_ASSOC);
+
+        $gestoresValid = array_values(array_filter(array_map('intval', $scope->gestores), fn($g) => $g > 0));
+        $repsValid = array_values(array_filter(array_map('intval', $scope->representantes), fn($r) => $r > 0));
+
+        // Se nao tem gestor nem representante explicitado e nao esta bloqueado (-1), usa o proprio uid caso seja vendedor
+        if (empty($gestoresValid) && empty($repsValid) && !in_array(-1, $scope->gestores, true) && $scope->uid > 0) {
+            $repsValid = [$scope->uid];
         }
-        // Representante ou usuario proprio
-        $vends = !empty($scope->representantes) ? $scope->representantes : [$scope->uid];
-        $vends = array_values(array_filter(array_map('intval', $vends), fn($v) => $v > 0));
-        if (!empty($vends)) {
-            $inV = implode(',', $vends);
-            $st2 = $this->pdo->prepare("SELECT id FROM p365_participantes WHERE idcampanha = ? AND ativo = TRUE AND idvendedor IN ($inV)");
-            $st2->execute([$idcampanha]);
-            $ids = array_merge($ids, $st2->fetchAll(PDO::FETCH_COLUMN));
+
+        $permitidos = [];
+        foreach ($todos as $p) {
+            $fils = array_map('intval', explode(',', (string)($p['filiais'] ?? '')));
+            if (!empty($filiaisPermitidas) && !array_intersect($filiaisPermitidas, $fils)) {
+                continue;
+            }
+            $idVend = (int)$p['idvendedor'];
+            $idGest = (int)($p['idgestor'] ?? 0);
+            $okGestor = !empty($gestoresValid) && ($idGest > 0 && in_array($idGest, $gestoresValid, true) || in_array($idVend, $gestoresValid, true));
+            $okRep = !empty($repsValid) && in_array($idVend, $repsValid, true);
+            if ($okGestor || $okRep) {
+                $permitidos[] = (int)$p['id'];
+            }
         }
-        return array_values(array_unique(array_map('intval', $ids)));
+        return array_values(array_unique($permitidos));
     }
 
     public function contexto(Request $request, Response $response): Response
@@ -214,6 +226,7 @@ class Programa365Controller
     public function ranking(Request $request, Response $response): Response
     {
         try {
+            $scope = UserScope::fromRequest($request, $this->pdo);
             $q = $request->getQueryParams();
             $campanha = $this->service->getCampanhaAtiva(!empty($q['campanha_id']) ? (int)$q['campanha_id'] : null);
             if (!$campanha) {
@@ -222,16 +235,32 @@ class Programa365Controller
             $cid = (int)$campanha['id'];
             $ano = (int)($q['ano'] ?? $campanha['temporada_ano']);
             $mes = max(1, min(12, (int)($q['mes'] ?? (int)date('n'))));
+            $filialFiltro = !empty($q['filial']) ? (int)$q['filial'] : 0;
+            $gestorFiltro = !empty($q['idgestor']) ? (int)$q['idgestor'] : 0;
 
-            $round = $this->service->calcularRound($cid, $ano, $mes);
-            $anual = $this->service->calcularRankingAnual($cid, $ano, $mes);
+            $permitidos = $this->resolverParticipantesPermitidos($scope, $cid);
+            $round = $this->service->calcularRound($cid, $ano, $mes, $permitidos);
+            $anual = $this->service->calcularRankingAnual($cid, $ano, $mes, $permitidos);
+
+            $filtrar = function (array $lista) use ($filialFiltro, $gestorFiltro): array {
+                return array_values(array_filter($lista, function ($r) use ($filialFiltro, $gestorFiltro) {
+                    if ($filialFiltro > 0) {
+                        $fs = array_map('intval', explode(',', (string)($r['filiais'] ?? '')));
+                        if (!in_array($filialFiltro, $fs, true)) return false;
+                    }
+                    if ($gestorFiltro > 0 && (int)($r['idgestor'] ?? 0) !== $gestorFiltro) {
+                        return false;
+                    }
+                    return true;
+                }));
+            };
 
             return $this->json($response, [
                 'campanha' => $campanha,
                 'ano' => $ano,
                 'mes' => $mes,
-                'ranking_round' => $round,
-                'ranking_anual' => $anual,
+                'ranking_round' => $filtrar($round),
+                'ranking_anual' => $filtrar($anual),
                 'premiacao_anual' => Programa365Service::catalogoPremiacaoAnual(),
             ]);
         } catch (\Throwable $e) {
@@ -242,6 +271,7 @@ class Programa365Controller
     public function pins(Request $request, Response $response): Response
     {
         try {
+            $scope = UserScope::fromRequest($request, $this->pdo);
             $q = $request->getQueryParams();
             $campanha = $this->service->getCampanhaAtiva(!empty($q['campanha_id']) ? (int)$q['campanha_id'] : null);
             if (!$campanha) {
@@ -249,6 +279,11 @@ class Programa365Controller
             }
             $cid = (int)$campanha['id'];
             $partId = (int)($q['participante_id'] ?? 0);
+
+            $permitidos = $this->resolverParticipantesPermitidos($scope, $cid);
+            if ($permitidos !== null && !in_array($partId, $permitidos, true)) {
+                $partId = $permitidos[0] ?? 0;
+            }
 
             $desbloqueados = [];
             if ($partId > 0) {
