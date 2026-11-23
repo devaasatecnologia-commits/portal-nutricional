@@ -999,6 +999,7 @@ $protected->group('/programa-365', function ($group) {
     $group->get('/pins', [$controller, 'pins']);
     $group->get('/extrato', [$controller, 'extrato']);
     $group->get('/admin/estrutura', [$controller, 'adminEstrutura']);
+    $group->post('/admin/sincronizar-erp', [$controller, 'sincronizarErp']);
     $group->post('/admin/campanha', [$controller, 'salvarCampanha']);
     $group->post('/admin/equipe', [$controller, 'salvarEquipe']);
     $group->post('/admin/participante', [$controller, 'salvarParticipante']);

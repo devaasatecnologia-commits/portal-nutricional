@@ -350,6 +350,8 @@ class Programa365Service
                     'apelido' => $p['apelido_tatame'] ?: $p['nome_exibicao'],
                     'equipe' => $p['equipe_nome'] ?: 'Sem Equipe',
                     'equipe_cor' => $p['equipe_cor'] ?: '#2F5D50',
+                    'idgestor' => $p['equipe_idgestor'] ? (int)$p['equipe_idgestor'] : null,
+                    'filiais' => $p['filiais'] ?: '1,6',
                     'categoria' => $p['categoria'],
                     'ano' => $ano,
                     'mes' => $mes,
@@ -434,6 +436,8 @@ class Programa365Service
                 'apelido' => $p['apelido_tatame'] ?: $p['nome_exibicao'],
                 'equipe' => $p['equipe_nome'] ?: 'Sem Equipe',
                 'equipe_cor' => $p['equipe_cor'] ?: '#2F5D50',
+                'idgestor' => $p['equipe_idgestor'] ? (int)$p['equipe_idgestor'] : null,
+                'filiais' => $p['filiais'] ?: '1,6',
                 'categoria' => $p['categoria'],
                 'ano' => $ano,
                 'mes' => $mes,
@@ -666,6 +670,90 @@ class Programa365Service
 
             $this->pdo->commit();
             return ['fechados' => count($rows)];
+        } catch (\Throwable $e) {
+            if ($this->pdo->inTransaction()) $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Importa/atualiza automaticamente Equipes (Gestores) e Representantes ativos do ERP (vw_gestor_repre),
+     * calculando a carteira base real de clientes ativos de cada representante.
+     */
+    public function sincronizarComErp(int $idcampanha): array
+    {
+        $rows = $this->pdo->query("
+            SELECT DISTINCT idgestor, gestor, idrepresentante, representante, idfilial
+            FROM vw_gestor_repre
+            WHERE COALESCE(inativo, 'N') = 'N'
+              AND idrepresentante > 0
+            ORDER BY gestor, representante
+        ")->fetchAll(PDO::FETCH_ASSOC);
+
+        if (!$rows) {
+            return ['equipes' => 0, 'participantes' => 0];
+        }
+
+        // Mapa de carteira ativa real no ERP por vendedor
+        $carteiraMap = [];
+        foreach ($this->pdo->query("
+            SELECT cl.idvendedor, COUNT(DISTINCT cl.idcliforemp)::int AS qtd
+            FROM cliente cl
+            JOIN cliforemp cf ON cf.idcliforemp = cl.idcliforemp
+            WHERE COALESCE(cf.inativo, 'N') = 'N' AND cl.idvendedor > 0
+            GROUP BY cl.idvendedor
+        ") as $c) {
+            $carteiraMap[(int)$c['idvendedor']] = (int)$c['qtd'];
+        }
+
+        $this->pdo->beginTransaction();
+        try {
+            $equipeCache = [];
+            foreach ($this->pdo->query("SELECT id, idgestor FROM p365_equipes WHERE idcampanha = " . (int)$idcampanha) as $eq) {
+                if (!empty($eq['idgestor'])) {
+                    $equipeCache[(int)$eq['idgestor']] = (int)$eq['id'];
+                }
+            }
+
+            $stInsEq = $this->pdo->prepare("INSERT INTO p365_equipes (idcampanha, nome, idgestor, cor) VALUES (?, ?, ?, '#2F5D50') RETURNING id");
+            $stUpPart = $this->pdo->prepare("
+                INSERT INTO p365_participantes (idcampanha, idequipe, idvendedor, nome_exibicao, apelido_tatame, categoria, filiais, carteira_base, ativo)
+                VALUES (?, ?, ?, ?, ?, 'REPRESENTANTE', ?, ?, TRUE)
+                ON CONFLICT (idcampanha, idvendedor)
+                DO UPDATE SET
+                    idequipe = COALESCE(EXCLUDED.idequipe, p365_participantes.idequipe),
+                    nome_exibicao = EXCLUDED.nome_exibicao,
+                    filiais = EXCLUDED.filiais,
+                    carteira_base = GREATEST(1, EXCLUDED.carteira_base),
+                    ativo = TRUE
+            ");
+
+            $equipesCriadas = 0;
+            $partCount = 0;
+            foreach ($rows as $r) {
+                $idGestor = (int)($r['idgestor'] ?? 0);
+                $nomeGestor = trim((string)($r['gestor'] ?? 'Equipe Geral'));
+                $idRep = (int)$r['idrepresentante'];
+                $nomeRep = trim(ltrim((string)$r['representante'], '* '));
+                $filial = (string)((int)($r['idfilial'] ?? 1));
+
+                $idEquipe = null;
+                if ($idGestor > 0) {
+                    if (!isset($equipeCache[$idGestor])) {
+                        $stInsEq->execute([$idcampanha, 'Equipe ' . $nomeGestor, $idGestor]);
+                        $equipeCache[$idGestor] = (int)$stInsEq->fetchColumn();
+                        $equipesCriadas++;
+                    }
+                    $idEquipe = $equipeCache[$idGestor];
+                }
+
+                $carteira = max(1, $carteiraMap[$idRep] ?? 60);
+                $stUpPart->execute([$idcampanha, $idEquipe, $idRep, $nomeRep, $nomeRep, $filial, $carteira]);
+                $partCount++;
+            }
+
+            $this->pdo->commit();
+            return ['equipes_criadas' => $equipesCriadas, 'participantes_sincronizados' => $partCount];
         } catch (\Throwable $e) {
             if ($this->pdo->inTransaction()) $this->pdo->rollBack();
             throw $e;

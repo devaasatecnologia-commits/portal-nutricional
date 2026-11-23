@@ -2,12 +2,15 @@ function programa365App() {
     return {
         aba: 'tatame',
         isAdmin: false,
+        perfil: 'ADMIN',
         campanhas: [],
         campanha: null,
         filtros: {
             campanha_id: 0,
             ano: 2027,
             mes: new Date().getMonth() + 1,
+            filial: 0,
+            idgestor: 0,
             participante_id: 0,
         },
         meses: [
@@ -16,7 +19,10 @@ function programa365App() {
             { id: 7, nome: 'Julho' }, { id: 8, nome: 'Agosto' }, { id: 9, nome: 'Setembro' },
             { id: 10, nome: 'Outubro' }, { id: 11, nome: 'Novembro' }, { id: 12, nome: 'Dezembro' }
         ],
+        filiaisDisponiveis: [],
+        gestoresDisponiveis: [],
         participantesDisponiveis: [],
+        equipeResumo: [],
         selecionado: null,
         faixa: { codigo: 'BRANCA', nome: 'Faixa Branca', grau: 1, cor: '#F8FAFC', borda: '#CBD5E1', texto: '#1E293B', pct_jornada: 0, xp_falta_proxima: 288, proxima_faixa: 'Faixa Azul' },
         xpAnual: 0,
@@ -52,12 +58,16 @@ function programa365App() {
         },
 
         async carregarDashboard() {
-            const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}&participante_id=${this.filtros.participante_id || 0}`;
+            const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}&filial=${this.filtros.filial || 0}&idgestor=${this.filtros.idgestor || 0}&participante_id=${this.filtros.participante_id || 0}`;
             const d = await apiFetch(`v1/programa-365/dashboard?${qs}`, 'GET');
             this.campanha = d.campanha || this.campanha;
+            this.perfil = d.perfil || (this.isAdmin ? 'ADMIN' : 'REPRESENTANTE');
+            this.filiaisDisponiveis = d.filiais_disponiveis || [];
+            this.gestoresDisponiveis = d.gestores_disponiveis || [];
             this.participantesDisponiveis = d.participantes_disponiveis || [];
+            this.equipeResumo = d.equipe_resumo || [];
             this.selecionado = d.selecionado || null;
-            if (this.selecionado && !this.filtros.participante_id) {
+            if (this.selecionado && (!this.filtros.participante_id || !this.participantesDisponiveis.some(p => Number(p.id) === Number(this.filtros.participante_id)))) {
                 this.filtros.participante_id = Number(this.selecionado.idparticipante);
             }
             this.faixa = d.faixa || this.faixa;
@@ -65,6 +75,12 @@ function programa365App() {
             this.bonusAnual = d.bonus_anual || 0;
             this.posicaoAnual = d.posicao_anual || null;
             this.desafios = d.desafios || [];
+        },
+
+        async abrirTatameRepresentante(idparticipante) {
+            this.filtros.participante_id = Number(idparticipante);
+            this.aba = 'tatame';
+            await this.carregarDashboard();
         },
 
         async carregarRanking() {
@@ -92,6 +108,13 @@ function programa365App() {
             const d = await apiFetch(`v1/programa-365/admin/estrutura?campanha_id=${this.filtros.campanha_id}`, 'GET');
             this.admin = d || { equipes: [], participantes: [], vendedores_erp: [] };
             this.adminMetas = await apiFetch(`v1/programa-365/admin/metas?campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}`, 'GET');
+        },
+
+        async sincronizarErp() {
+            const r = await apiFetch('v1/programa-365/admin/sincronizar-erp', 'POST', { idcampanha: this.filtros.campanha_id });
+            Swal.fire('ERP Sincronizado!', `${r.participantes_sincronizados || 0} representantes e ${r.equipes_criadas || 0} novas equipes importadas.`, 'success');
+            await this.carregarAdmin();
+            await this.carregarDashboard();
         },
 
         preencherNomeVendedor() {

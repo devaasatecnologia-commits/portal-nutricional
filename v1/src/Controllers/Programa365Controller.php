@@ -92,10 +92,42 @@ class Programa365Controller
             $ano = (int)($q['ano'] ?? $campanha['temporada_ano']);
             $mes = max(1, min(12, (int)($q['mes'] ?? (int)date('n'))));
             $partId = !empty($q['participante_id']) ? (int)$q['participante_id'] : 0;
+            $filialFiltro = !empty($q['filial']) ? (int)$q['filial'] : 0;
+            $gestorFiltro = !empty($q['idgestor']) ? (int)$q['idgestor'] : 0;
 
             $permitidos = $this->resolverParticipantesPermitidos($scope, $cid);
-            $roundRows = $this->service->calcularRound($cid, $ano, $mes, $permitidos);
+            $roundRowsTodos = $this->service->calcularRound($cid, $ano, $mes, $permitidos);
+
+            // Extrair filiais e gestores disponiveis dentro do escopo do usuario
+            $filiaisSet = [];
+            $gestoresMap = [];
+            foreach ($roundRowsTodos as $r) {
+                foreach (explode(',', (string)($r['filiais'] ?? '')) as $f) {
+                    $fi = (int)trim($f);
+                    if ($fi > 0) $filiaisSet[$fi] = $fi;
+                }
+                if (!empty($r['idgestor'])) {
+                    $gestoresMap[(int)$r['idgestor']] = $r['equipe'];
+                }
+            }
+
+            // Aplicar filtros de Filial e Gestor
+            $roundRows = array_values(array_filter($roundRowsTodos, function ($r) use ($filialFiltro, $gestorFiltro) {
+                if ($filialFiltro > 0) {
+                    $fs = array_map('intval', explode(',', (string)($r['filiais'] ?? '')));
+                    if (!in_array($filialFiltro, $fs, true)) return false;
+                }
+                if ($gestorFiltro > 0 && (int)($r['idgestor'] ?? 0) !== $gestorFiltro) {
+                    return false;
+                }
+                return true;
+            }));
+
             $rankingAnual = $this->service->calcularRankingAnual($cid, $ano, $mes);
+            $faixaPorPart = [];
+            foreach ($rankingAnual as $rk) {
+                $faixaPorPart[(int)$rk['idparticipante']] = $rk['faixa'];
+            }
 
             // Escolher participante selecionado
             $selecionado = null;
@@ -131,17 +163,42 @@ class Programa365Controller
             $stD->execute([$cid, $ano, $mes]);
             $desafios = $stD->fetchAll(PDO::FETCH_ASSOC);
 
+            $ehAdmin = $this->podeAdministrar($scope);
+            $ehGestor = !$ehAdmin && $scope->gestorRestrito();
+            $perfil = $ehAdmin ? 'ADMIN' : ($ehGestor ? 'GESTOR' : 'REPRESENTANTE');
+
+            // Resumo da equipe (visao gerencial / mobile para Gestores e Admins)
+            $equipeResumo = array_map(function ($r) use ($faixaPorPart) {
+                $r['faixa'] = $faixaPorPart[(int)$r['idparticipante']] ?? Programa365Service::calcularFaixa(0);
+                return $r;
+            }, $roundRows);
+
+            $filiaisMeta = [];
+            if (!empty($filiaisSet)) {
+                $inF = implode(',', array_values($filiaisSet));
+                $filiaisMeta = $this->pdo->query("SELECT idfilial, nome FROM filial WHERE idfilial IN ($inF) ORDER BY idfilial")->fetchAll(PDO::FETCH_ASSOC);
+            }
+
+            $gestoresLista = [];
+            foreach ($gestoresMap as $gid => $gnome) {
+                $gestoresLista[] = ['idgestor' => $gid, 'nome' => $gnome];
+            }
+
             return $this->json($response, [
                 'campanha' => $campanha,
                 'ano' => $ano,
                 'mes' => $mes,
-                'is_admin' => $this->podeAdministrar($scope),
+                'is_admin' => $ehAdmin,
+                'perfil' => $perfil,
+                'filiais_disponiveis' => $filiaisMeta,
+                'gestores_disponiveis' => $gestoresLista,
                 'participantes_disponiveis' => array_map(fn($r) => [
                     'id' => $r['idparticipante'],
                     'nome' => $r['nome'],
                     'equipe' => $r['equipe'],
                     'pts_total_mes' => $r['pts_total_mes'],
                 ], $roundRows),
+                'equipe_resumo' => $equipeResumo,
                 'selecionado' => $selecionado,
                 'faixa' => Programa365Service::calcularFaixa($xpAnual),
                 'xp_anual' => $xpAnual,
@@ -264,7 +321,13 @@ class Programa365Controller
             $equipes = [];
             $participantes = [];
             if ($cid > 0) {
-                $stE = $this->pdo->prepare("SELECT e.*, c.nome AS gestor_nome FROM p365_equipes e LEFT JOIN cliforemp c ON c.idcliforemp = e.idgestor WHERE e.idcampanha = ? ORDER BY e.nome");
+                $stE = $this->pdo->prepare("
+                    SELECT e.*, COALESCE(NULLIF(TRIM(c.fantasia), ''), c.razao) AS gestor_nome
+                    FROM p365_equipes e
+                    LEFT JOIN cliforemp c ON c.idcliforemp = e.idgestor
+                    WHERE e.idcampanha = ?
+                    ORDER BY e.nome
+                ");
                 $stE->execute([$cid]);
                 $equipes = $stE->fetchAll(PDO::FETCH_ASSOC);
 
@@ -273,13 +336,15 @@ class Programa365Controller
                 $participantes = $stP->fetchAll(PDO::FETCH_ASSOC);
             }
 
-            // Vendedores/Representantes ativos no ERP para vincular facilmente
+            // Vendedores/Representantes ativos no ERP (vw_gestor_repre)
             $vendedoresErp = $this->pdo->query("
-                SELECT DISTINCT c.idcliforemp AS idvendedor, c.nome
-                FROM cliforemp c
-                WHERE c.ehvendedor = 'S' AND COALESCE(c.inativo, 'N') = 'N'
-                ORDER BY c.nome
-                LIMIT 200
+                SELECT DISTINCT idrepresentante AS idvendedor,
+                       TRIM(LEADING '* ' FROM representante) AS nome,
+                       idgestor, gestor, idfilial
+                FROM vw_gestor_repre
+                WHERE COALESCE(inativo, 'N') = 'N'
+                  AND idrepresentante > 0
+                ORDER BY nome
             ")->fetchAll(PDO::FETCH_ASSOC);
 
             return $this->json($response, [
@@ -288,6 +353,28 @@ class Programa365Controller
                 'participantes' => $participantes,
                 'vendedores_erp' => $vendedoresErp,
             ]);
+        } catch (\Throwable $e) {
+            return $this->json($response, ['error' => $e->getMessage()], 500);
+        }
+    }
+
+    public function sincronizarErp(Request $request, Response $response): Response
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        if (!$this->podeAdministrar($scope)) {
+            return $this->json($response, ['error' => 'Acesso restrito a administradores'], 403);
+        }
+        $in = json_decode($request->getBody()->getContents(), true) ?? [];
+        $cid = (int)($in['idcampanha'] ?? 0);
+        if ($cid <= 0) {
+            $camp = $this->service->getCampanhaAtiva();
+            $cid = $camp ? (int)$camp['id'] : 0;
+        }
+        if ($cid <= 0) return $this->json($response, ['error' => 'Campanha nao encontrada'], 404);
+
+        try {
+            $res = $this->service->sincronizarComErp($cid);
+            return $this->json($response, array_merge(['success' => true], $res));
         } catch (\Throwable $e) {
             return $this->json($response, ['error' => $e->getMessage()], 500);
         }
