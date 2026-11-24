@@ -287,14 +287,24 @@ class MercosFlexService
         }
 
         $mapa = [];
+        $semDepara = [];
         foreach ($dados as $item) {
             $colabId = (int)($item['colaborador_id'] ?? 0);
-            if ($colabId <= 0 || !isset($depara[$colabId])) {
+            if ($colabId <= 0) {
+                continue;
+            }
+            if (!isset($depara[$colabId])) {
+                if (empty($item['excluido']) && abs((float)($item['saldo_atual'] ?? 0)) > 0.001) {
+                    $semDepara[] = $colabId;
+                }
                 continue;
             }
             $cliforempId = $depara[$colabId];
             $item['cliforemp_id'] = $cliforempId;
             $mapa[$cliforempId] = $item;
+        }
+        if ($semDepara !== []) {
+            error_log(sprintf('[flex-cloud] f%d colaborador_id Mercos sem idmercos em usuarios_mercos: %s', $this->filial, implode(',', $semDepara)));
         }
         return $mapa;
     }
