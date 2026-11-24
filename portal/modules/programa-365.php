@@ -80,11 +80,14 @@ require_once __DIR__ . '/../estrutura/header.php';
             </select>
 
             <select x-model.number="filtros.participante_id" @change="carregarDashboard(); carregarPins(); carregarExtrato()" class="col-span-2 sm:col-span-1 bg-white/10 border border-white/20 text-white text-xs font-bold rounded-xl px-3 py-2 focus:outline-none">
+                <template x-if="participantesDisponiveis.length > 1">
+                    <option class="text-slate-900" :value="0" x-text="'Todos - Auto-Soma (' + participantesDisponiveis.length + ')'"></option>
+                </template>
                 <template x-for="p in participantesDisponiveis" :key="p.id">
                     <option class="text-slate-900" :value="p.id" x-text="p.nome + ' (' + p.pts_total_mes + ' pts)'"></option>
                 </template>
                 <template x-if="!participantesDisponiveis.length">
-                    <option class="text-slate-900" value="0">Sem representantes</option>
+                    <option class="text-slate-900" :value="0">Sem representantes</option>
                 </template>
             </select>
         </div>
@@ -139,20 +142,23 @@ require_once __DIR__ . '/../estrutura/header.php';
                                     <span class="text-[11px] font-bold uppercase text-slate-400" x-text="selecionado.equipe"></span>
                                     <h2 class="text-lg sm:text-xl font-extrabold text-slate-800" x-text="selecionado.nome"></h2>
                                     <div class="flex flex-wrap items-center gap-2 mt-2">
-                                        <span class="px-3 py-1 rounded-full text-xs font-extrabold border" :style="`background:${faixa.cor}; color:${faixa.texto}; border-color:${faixa.borda}`" x-text="faixa.nome + ' • ' + faixa.grau + 'º Grau'"></span>
+                                        <span class="px-3 py-1 rounded-full text-xs font-extrabold border" :style="`background:${faixa.cor}; color:${faixa.texto}; border-color:${faixa.borda}`" x-text="(selecionado.eh_consolidado ? 'Média Grupo: ' : '') + faixa.nome + ' • ' + faixa.grau + 'º Grau'"></span>
+                                        <template x-if="selecionado.eh_consolidado">
+                                            <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-700 text-white"><i class="fa-solid fa-calculator mr-1"></i> Auto-Soma Ativa</span>
+                                        </template>
                                         <template x-if="selecionado.fechado">
                                             <span class="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-800 text-amber-300"><i class="fa-solid fa-lock mr-1"></i> Round Fechado</span>
                                         </template>
                                     </div>
                                 </div>
                                 <div class="text-right">
-                                    <span class="text-[10px] uppercase font-bold text-slate-400 block">Posição Anual</span>
-                                    <span class="text-2xl font-black text-[#2F5D50]" x-text="posicaoAnual ? '#' + posicaoAnual : '--'"></span>
+                                    <span class="text-[10px] uppercase font-bold text-slate-400 block" x-text="selecionado.eh_consolidado ? 'Representantes' : 'Posição Anual'"></span>
+                                    <span class="text-2xl font-black text-[#2F5D50]" x-text="selecionado.eh_consolidado ? selecionado.qtd_representantes : (rankingGeralOculto ? '🔒' : (posicaoAnual ? '#' + posicaoAnual : '--'))"></span>
                                 </div>
                             </div>
                             <div class="mt-4">
                                 <div class="flex justify-between text-xs font-bold text-slate-600 mb-1">
-                                    <span>Jornada 1.440 XP: <b x-text="xpAnual + ' XP'"></b></span>
+                                    <span><span x-text="selecionado.eh_consolidado ? 'Média Jornada 1.440 XP: ' : 'Jornada 1.440 XP: '"></span><b x-text="xpAnual + ' XP'"></b></span>
                                     <span x-text="faixa.pct_jornada + '%'"></span>
                                 </div>
                                 <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden">
@@ -163,10 +169,13 @@ require_once __DIR__ . '/../estrutura/header.php';
                         </div>
 
                         <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm flex flex-col justify-between">
-                            <span class="text-[11px] font-bold uppercase text-slate-400">Pontuação do Round</span>
+                            <span class="text-[11px] font-bold uppercase text-slate-400" x-text="selecionado.eh_consolidado ? 'Média / Soma do Round' : 'Pontuação do Round'"></span>
                             <div class="my-2">
                                 <span class="text-4xl font-black text-[#2F5D50]" x-text="selecionado.pts_total_mes"></span>
                                 <span class="text-sm font-bold text-slate-400"> / 120 pts</span>
+                                <template x-if="selecionado.eh_consolidado">
+                                    <div class="text-[11px] font-extrabold text-emerald-700 mt-0.5" x-text="'Soma Equipe: ' + (selecionado.pts_soma_equipe || 0) + ' pts'"></div>
+                                </template>
                             </div>
                             <div class="text-xs text-slate-500">
                                 Faturamento Líquido: <b class="text-slate-800" x-text="brl(selecionado.fat_liquido)"></b><br>
@@ -301,62 +310,96 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </template>
 
-    <!-- ABA 3: RANKING (DESKTOP TABELA + MOBILE CARDS) -->
+    <!-- ABA 3: RANKING (DESKTOP TABELA + MOBILE CARDS + MODO SURPRESA) -->
     <template x-if="aba === 'ranking'">
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            <!-- RANKING GERAL ANUAL (COM SUPORTE A MODO SURPRESA) -->
             <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm">
-                <h3 class="text-sm font-extrabold text-slate-800 mb-3"><i class="fa-solid fa-crown text-amber-500 mr-1"></i> Ranking Anual T27 (Top 6 Premiados)</h3>
-                <!-- Mobile Cards -->
-                <div class="space-y-2 md:hidden">
-                    <template x-for="r in rankingAnual" :key="r.idparticipante">
-                        <div class="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
-                            <div>
-                                <div class="text-xs font-black text-slate-800" x-text="r.posicao + 'º ' + r.nome"></div>
-                                <div class="text-[10px] text-slate-500" x-text="r.faixa.nome + ' • ' + brl(r.fat_liquido_anual)"></div>
-                            </div>
-                            <div class="text-right">
-                                <div class="text-sm font-black text-[#2F5D50]" x-text="r.xp_total + ' XP'"></div>
-                                <div class="text-[10px] font-bold text-emerald-600" x-text="r.premio_anual_rs > 0 ? brl(r.premio_anual_rs) : ''"></div>
-                            </div>
-                        </div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="text-sm font-extrabold text-slate-800"><i class="fa-solid fa-crown text-amber-500 mr-1"></i> Ranking Geral Anual (Top 6 Premiados)</h3>
+                    <template x-if="isAdmin && configVisibilidade.ocultar_ranking_geral">
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800"><i class="fa-solid fa-eye-slash mr-1"></i> Oculto p/ Participantes</span>
                     </template>
                 </div>
-                <!-- Desktop Table -->
-                <div class="hidden md:block overflow-x-auto">
-                    <table class="w-full text-xs">
-                        <thead>
-                            <tr class="text-left text-slate-400 border-b border-slate-100">
-                                <th class="py-2">#</th>
-                                <th class="py-2">Atleta / Equipe</th>
-                                <th class="py-2">Faixa</th>
-                                <th class="py-2 text-right">XP</th>
-                                <th class="py-2 text-right">Fat. Líquido</th>
-                                <th class="py-2 text-right">Prêmio</th>
-                            </tr>
-                        </thead>
-                        <tbody>
+
+                <template x-if="rankingGeralOculto">
+                    <div class="rounded-2xl p-8 text-center tatame-hero text-white my-2">
+                        <div class="w-14 h-14 rounded-2xl gold-bg flex items-center justify-center mx-auto mb-3 shadow-lg">
+                            <i class="fa-solid fa-user-secret text-2xl"></i>
+                        </div>
+                        <h4 class="text-base font-extrabold gold-accent">Modo Surpresa Ativo na Reta Final!</h4>
+                        <p class="text-xs text-emerald-100/90 mt-2 max-w-md mx-auto leading-relaxed">
+                            O Ranking Geral Anual está temporariamente oculto para manter o suspense nos últimos rounds da temporada. Continue pontuando no mês atual — os campeões serão revelados na cerimônia oficial!
+                        </p>
+                    </div>
+                </template>
+
+                <template x-if="!rankingGeralOculto">
+                    <div>
+                        <!-- Mobile Cards -->
+                        <div class="space-y-2 md:hidden">
                             <template x-for="r in rankingAnual" :key="r.idparticipante">
-                                <tr class="border-b border-slate-50 hover:bg-slate-50">
-                                    <td class="py-2.5 font-black" x-text="r.posicao + 'º'"></td>
-                                    <td class="py-2.5">
-                                        <div class="font-bold text-slate-800" x-text="r.nome"></div>
-                                        <div class="text-[10px] text-slate-400" x-text="r.equipe"></div>
-                                    </td>
-                                    <td class="py-2.5">
-                                        <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border" :style="`background:${r.faixa.cor}; color:${r.faixa.texto}; border-color:${r.faixa.borda}`" x-text="r.faixa.nome.replace('Faixa ','') + ' ' + r.faixa.grau + 'º'"></span>
-                                    </td>
-                                    <td class="py-2.5 text-right font-black text-[#2F5D50]" x-text="r.xp_total"></td>
-                                    <td class="py-2.5 text-right font-semibold text-slate-600" x-text="brl(r.fat_liquido_anual)"></td>
-                                    <td class="py-2.5 text-right font-extrabold text-emerald-600" x-text="r.premio_anual_rs > 0 ? brl(r.premio_anual_rs) : '-'"></td>
-                                </tr>
+                                <div class="p-3 rounded-2xl border border-slate-100 bg-slate-50/70 flex items-center justify-between gap-2">
+                                    <div>
+                                        <div class="text-xs font-black text-slate-800" x-text="r.posicao + 'º ' + r.nome"></div>
+                                        <div class="text-[10px] text-slate-500" x-text="r.faixa.nome + ' • ' + brl(r.fat_liquido_anual)"></div>
+                                    </div>
+                                    <div class="text-right">
+                                        <div class="text-sm font-black text-[#2F5D50]" x-text="r.xp_total + ' XP'"></div>
+                                        <div class="text-[10px] font-bold text-emerald-600" x-text="r.premio_anual_rs > 0 ? brl(r.premio_anual_rs) : ''"></div>
+                                    </div>
+                                </div>
                             </template>
-                        </tbody>
-                    </table>
-                </div>
+                        </div>
+                        <!-- Desktop Table -->
+                        <div class="hidden md:block overflow-x-auto">
+                            <table class="w-full text-xs">
+                                <thead>
+                                    <tr class="text-left text-slate-400 border-b border-slate-100">
+                                        <th class="py-2">#</th>
+                                        <th class="py-2">Atleta / Equipe</th>
+                                        <th class="py-2">Faixa</th>
+                                        <th class="py-2 text-right">XP</th>
+                                        <th class="py-2 text-right">Fat. Líquido</th>
+                                        <th class="py-2 text-right">Prêmio</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <template x-for="r in rankingAnual" :key="r.idparticipante">
+                                        <tr class="border-b border-slate-50 hover:bg-slate-50">
+                                            <td class="py-2.5 font-black" x-text="r.posicao + 'º'"></td>
+                                            <td class="py-2.5">
+                                                <div class="font-bold text-slate-800" x-text="r.nome"></div>
+                                                <div class="text-[10px] text-slate-400" x-text="r.equipe"></div>
+                                            </td>
+                                            <td class="py-2.5">
+                                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold border" :style="`background:${r.faixa.cor}; color:${r.faixa.texto}; border-color:${r.faixa.borda}`" x-text="r.faixa.nome.replace('Faixa ','') + ' ' + r.faixa.grau + 'º'"></span>
+                                            </td>
+                                            <td class="py-2.5 text-right font-black text-[#2F5D50]" x-text="r.xp_total"></td>
+                                            <td class="py-2.5 text-right font-semibold text-slate-600" x-text="brl(r.fat_liquido_anual)"></td>
+                                            <td class="py-2.5 text-right font-extrabold text-emerald-600" x-text="r.premio_anual_rs > 0 ? brl(r.premio_anual_rs) : '-'"></td>
+                                        </tr>
+                                    </template>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </template>
             </div>
 
+            <!-- RANKING DO MES / ROUND SELECIONADO -->
             <div class="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200 shadow-sm">
-                <h3 class="text-sm font-extrabold text-slate-800 mb-3"><i class="fa-solid fa-bolt text-emerald-600 mr-1"></i> Classificação do Round Atual</h3>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <h3 class="text-sm font-extrabold text-slate-800">
+                        <i class="fa-solid fa-bolt text-emerald-600 mr-1"></i>
+                        <span x-text="'Ranking do Mês: Round ' + filtros.mes + ' (' + nomeMes(filtros.mes) + '/' + filtros.ano + ')'"></span>
+                    </h3>
+                    <template x-if="filtros.mes !== (new Date().getMonth() + 1)">
+                        <button @click="irParaMesAtual()" class="px-2.5 py-1 rounded-lg bg-emerald-50 text-[#2F5D50] text-[11px] font-extrabold hover:bg-emerald-100">
+                            Ir p/ Mês Atual
+                        </button>
+                    </template>
+                </div>
                 <!-- Mobile Cards -->
                 <div class="space-y-2 md:hidden">
                     <template x-for="(r, idx) in rankingRound" :key="r.idparticipante">
@@ -403,32 +446,66 @@ require_once __DIR__ . '/../estrutura/header.php';
         </div>
     </template>
 
-    <!-- ABA 4: FAIXAS & PINS -->
+    <!-- ABA 4: FAIXAS & 50 PINS OFICIAIS -->
     <template x-if="aba === 'pins'">
         <div class="space-y-5">
             <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm">
-                <h3 class="text-sm font-extrabold text-slate-800 mb-3">Trilha Oficial de Graduação (1.440 XP)</h3>
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
-                    <div class="p-3 rounded-2xl border border-slate-200 bg-slate-50"><b>Faixa Branca</b><div class="text-slate-500">0 a 287 XP</div></div>
-                    <div class="p-3 rounded-2xl border border-blue-200 bg-blue-50 text-blue-900"><b>Faixa Azul</b><div class="opacity-80">288 a 575 XP</div></div>
-                    <div class="p-3 rounded-2xl border border-purple-200 bg-purple-50 text-purple-900"><b>Faixa Roxa</b><div class="opacity-80">576 a 863 XP</div></div>
-                    <div class="p-3 rounded-2xl border border-amber-300 bg-amber-50 text-amber-900"><b>Faixa Marrom</b><div class="opacity-80">864 a 1.151 XP</div></div>
-                    <div class="p-3 rounded-2xl border border-amber-400 bg-slate-900 text-[#E8C87E]"><b>Faixa Preta</b><div class="opacity-90">1.152 a 1.440 XP</div></div>
+                <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <div>
+                        <h3 class="text-sm font-extrabold text-slate-800">Arquitetura Oficial de Graduação (1.440 XP • 288 XP/Faixa • +72 XP/Grau)</h3>
+                        <p class="text-[11px] text-slate-500">5 Faixas do Jiu-Jitsu com 4 Graus internos cada + 5º Grau de Consagração aos 1.440 XP.</p>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-3 text-xs">
+                    <template x-for="fx in faixasDetalhadas" :key="fx.codigo">
+                        <div class="p-4 rounded-2xl border flex flex-col justify-between" :style="`background:${fx.cor}; color:${fx.texto}; border-color:${fx.borda}`">
+                            <div>
+                                <div class="flex items-center justify-between">
+                                    <b class="text-sm font-extrabold" x-text="fx.nome"></b>
+                                    <span class="text-sm font-black opacity-80" x-text="fx.japones"></span>
+                                </div>
+                                <div class="text-[11px] font-bold opacity-85 mt-0.5" x-text="fx.xp_range"></div>
+                                <div class="text-[10px] opacity-75 mt-1" x-text="fx.subtitulo"></div>
+                                <ul class="mt-2.5 space-y-0.5 text-[10px] font-semibold opacity-90">
+                                    <template x-for="g in fx.graus" :key="g">
+                                        <li x-text="'• ' + g"></li>
+                                    </template>
+                                </ul>
+                            </div>
+                            <div class="text-[10px] opacity-80 mt-3 pt-2 border-t border-current/15" x-text="fx.significado"></div>
+                        </div>
+                    </template>
                 </div>
             </div>
 
             <div class="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm">
-                <h3 class="text-sm font-extrabold text-slate-800 mb-3">Galeria de PINs Conquistados</h3>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                    <div>
+                        <h3 class="text-sm font-extrabold text-slate-800">Galeria Oficial de Conquistas (<span x-text="pinsDesbloqueados.length + ' / ' + catalogoPins.length + ' PINs desbloqueados'"></span>)</h3>
+                        <p class="text-[11px] text-slate-500">Todos os marcos de Graduação, Volume de Vendas, Acúmulo XP, Precisão/Ritmo, Carteira e Consistência.</p>
+                    </div>
+                    <select x-model="filtroCategoriaPin" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700">
+                        <option value="" x-text="'Todas as Categorias (' + catalogoPins.length + ')'">Todas as Categorias</option>
+                        <template x-for="cat in categoriasPins()" :key="cat">
+                            <option :value="cat" x-text="cat"></option>
+                        </template>
+                    </select>
+                </div>
+
                 <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                    <template x-for="pin in catalogoPins" :key="pin.codigo">
-                        <div class="p-4 rounded-2xl border transition" :class="pinDesbloqueado(pin.codigo) ? 'border-amber-300 bg-amber-50/60' : 'border-slate-100 bg-slate-50/70 opacity-60'">
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="w-9 h-9 rounded-xl flex items-center justify-center" :class="pinDesbloqueado(pin.codigo) ? 'bg-[#2F5D50] text-[#E8C87E]' : 'bg-slate-200 text-slate-400'">
+                    <template x-for="pin in pinsFiltrados()" :key="pin.codigo">
+                        <div class="p-4 rounded-2xl border transition" :class="pinDesbloqueado(pin.codigo) ? 'border-amber-300 bg-amber-50/60 shadow-sm' : 'border-slate-100 bg-slate-50/70 opacity-65'">
+                            <div class="flex items-center justify-between mb-2 gap-1">
+                                <span class="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" :class="pinDesbloqueado(pin.codigo) ? 'bg-[#2F5D50] text-[#E8C87E]' : 'bg-slate-200 text-slate-400'">
                                     <i class="fa-solid" :class="pin.icone"></i>
                                 </span>
-                                <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full" :class="pinDesbloqueado(pin.codigo) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'" x-text="pinDesbloqueado(pin.codigo) ? 'Desbloqueado' : pin.categoria"></span>
+                                <div class="text-right">
+                                    <span class="block text-[9px] font-mono font-bold text-slate-400" x-text="pin.codigo"></span>
+                                    <span class="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full inline-block" :class="pinDesbloqueado(pin.codigo) ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-200 text-slate-500'" x-text="pinDesbloqueado(pin.codigo) ? 'Desbloqueado' : 'Bloqueado'"></span>
+                                </div>
                             </div>
                             <div class="text-xs font-extrabold text-slate-800" x-text="pin.nome"></div>
+                            <div class="text-[10px] font-bold text-[#2F5D50] mt-0.5" x-text="pin.categoria"></div>
                             <div class="text-[11px] text-slate-500 mt-1" x-text="pin.regra"></div>
                         </div>
                     </template>
@@ -515,13 +592,14 @@ require_once __DIR__ . '/../estrutura/header.php';
                         <p><b>3. Configurar Desafios 01, 02 e 03:</b> Escolha o desafio (<b>01 Kimono 15%</b>, <b>02 Armlock 20%</b> ou <b>03 RNC 25%</b>), informe o título e opcionalmente os IDs dos itens foco separados por vírgula. O RNC sem itens calcula automaticamente clientes reativados/abertos sem compra nos últimos 90 dias.</p>
                         <p><b>4. Pontos Extras (+5) & Auditorias:</b> Use o bloco <i>Lançar Ponto Extra / Ajuste</i> para bonificar (+5 pts) ou registrar ajustes manuais de devolução com motivo obrigatório.</p>
                         <p><b>5. Fechar Round:</b> Ao término do mês, clique em <b>Fechar Round & Gerar PINs</b>. Isso congela o snapshot em <code>p365_round_fechamento</code> e desbloqueia automaticamente todos os PINs conquistados.</p>
-                        <p><b>6. Liberar para Gestores e Representantes (Mobile/Web):</b> Em <b>Admin > Permissões de Módulos</b>, marque o módulo <code>programa-365</code> para o usuário. O sistema identifica automaticamente via <code>UserScope</code> quem é <b>Gestor</b> (libera a aba <i>Visão Gestor / Equipe</i>) e quem é <b>Representante</b> (libera seu Tatame + Ranking).</p>
+                        <p><b>6. Modo Surpresa (Ranking Geral):</b> Nos últimos meses da temporada, ative <b>Esconder Ranking Geral (Surpresa)</b> e escolha se deseja liberar ou bloquear também para os Gestores até a revelação final.</p>
+                        <p><b>7. Liberar para Gestores e Representantes (Mobile/Web):</b> Em <b>Admin > Permissões de Módulos</b>, marque o módulo <code>programa-365</code> para o usuário. Ao entrar no módulo, Admin e Gestores visualizam automaticamente <b>Todos - Auto-Soma</b> com os totais consolidados da carteira/equipe.</p>
                     </div>
 
                     <!-- Bloco Regras Comerciais T27 -->
                     <div class="p-4 rounded-2xl bg-emerald-50/60 border border-emerald-200 space-y-2">
                         <h4 class="text-sm font-extrabold text-emerald-900"><i class="fa-solid fa-medal mr-1"></i> Regras Oficiais T27 (Gestores & Representantes)</h4>
-                        <p><b>• Captura Automática ERP/Mercos:</b> Toda nota faturada (<code>nfs</code> status 2, transação 1) entra automaticamente. Devoluções (<code>nfe</code> de devolução) são subtraídas no mês em que ocorrem.</p>
+                        <p><b>• Captura Automática ERP/Mercos (Data de Importação do Pedido):</b> Toda nota faturada (<code>nfs</code> status 2, transação 1) é apurada pela <b>data de chegada/importação do pedido no ERP</b> (<code>palmtop_pedido.data</code> / <code>pedido.data</code>), espelhando o corte exato da Mercos nos marcos Dia 10, Dia 20 e Dia 30. Devoluções (<code>nfe</code>) são subtraídas no mês em que ocorrem.</p>
                         <p><b>• Cadência de Faturamento (máx. 70 pts/mês, não cumulativo dentro do marco):</b><br>
                            - <b>Dia 10 (Raspagem):</b> 15% (+10) | 20% (+15) | 25% (+20 pts)<br>
                            - <b>Dia 20 (Passagem de Guarda):</b> 50% (+10) | 55% (+15) | 60% (+20 pts)<br>
@@ -540,15 +618,39 @@ require_once __DIR__ . '/../estrutura/header.php';
     <!-- ABA 7: ADMINISTRACAO T27 -->
     <template x-if="aba === 'admin' && isAdmin">
         <div class="space-y-5">
-            <!-- Barra Rapida de Sincronizacao ERP -->
-            <div class="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                    <h3 class="text-sm font-extrabold text-amber-900"><i class="fa-solid fa-arrows-rotate mr-1"></i> Integração Automática com ERP (Representantes & Gestores)</h3>
-                    <p class="text-xs text-amber-800/80">Importa todos os representantes ativos da view <code>vw_gestor_repre</code>, cria as equipes por gestor e calcula a carteira real de clientes.</p>
+            <!-- Barra Rapida de Sincronizacao ERP + Modo Surpresa -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-amber-50 border border-amber-200 rounded-3xl p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-sm font-extrabold text-amber-900"><i class="fa-solid fa-arrows-rotate mr-1"></i> Integração Automática com ERP</h3>
+                        <p class="text-xs text-amber-800/80">Importa os representantes ativos de <code>vw_gestor_repre</code>, equipes por gestor e carteira real.</p>
+                    </div>
+                    <button @click="sincronizarErp()" class="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow transition">
+                        <i class="fa-solid fa-cloud-arrow-down mr-1"></i> Sincronizar do ERP
+                    </button>
                 </div>
-                <button @click="sincronizarErp()" class="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold shadow transition">
-                    <i class="fa-solid fa-cloud-arrow-down mr-1"></i> Sincronizar Representantes do ERP
-                </button>
+
+                <div class="bg-slate-900 text-white rounded-3xl p-4 flex flex-col justify-between gap-3 shadow">
+                    <div class="flex items-start justify-between gap-3">
+                        <div>
+                            <h3 class="text-sm font-extrabold gold-accent"><i class="fa-solid fa-user-secret mr-1"></i> Modo Surpresa — Ranking Geral Anual</h3>
+                            <p class="text-[11px] text-slate-300">Oculta o Ranking Geral nos últimos meses para revelar apenas no encerramento.</p>
+                        </div>
+                        <button @click="salvarConfigVisibilidade()" class="px-3.5 py-2 gold-bg rounded-xl text-xs font-extrabold shrink-0 hover:opacity-90 transition">
+                            Salvar Visibilidade
+                        </button>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-4 text-xs pt-1">
+                        <label class="flex items-center gap-2 cursor-pointer font-bold">
+                            <input type="checkbox" x-model="configVisibilidade.ocultar_ranking_geral" class="rounded text-amber-500">
+                            <span>Esconder Ranking Geral (Surpresa)</span>
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer font-semibold text-slate-200" :class="!configVisibilidade.ocultar_ranking_geral ? 'opacity-40 pointer-events-none' : ''">
+                            <input type="checkbox" x-model="configVisibilidade.liberar_ranking_gestor" class="rounded text-emerald-500">
+                            <span>Liberar visualização para Gestores</span>
+                        </label>
+                    </div>
+                </div>
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">

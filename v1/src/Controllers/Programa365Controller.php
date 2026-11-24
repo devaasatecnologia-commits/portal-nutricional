@@ -135,14 +135,28 @@ class Programa365Controller
                 return true;
             }));
 
-            $rankingAnual = $this->service->calcularRankingAnual($cid, $ano, $mes);
+            $rankingAnual = $this->service->calcularRankingAnual($cid, $ano, $mes, $permitidos);
             $faixaPorPart = [];
+            $rkMap = [];
             foreach ($rankingAnual as $rk) {
                 $faixaPorPart[(int)$rk['idparticipante']] = $rk['faixa'];
+                $rkMap[(int)$rk['idparticipante']] = $rk;
             }
 
-            // Escolher participante selecionado
+            $ehAdmin = $this->podeAdministrar($scope);
+            $ehGestor = !$ehAdmin && ($scope->temAcessoTotal() || $scope->gestorRestrito());
+            $perfil = $ehAdmin ? 'ADMIN' : ($ehGestor ? 'GESTOR' : 'REPRESENTANTE');
+
+            $cfgVis = $this->lerConfigVisibilidade($campanha);
+            $rankingGeralOculto = !$this->podeVerRankingGeral($ehAdmin, $ehGestor, $cfgVis);
+
+            // Se apenas 1 participante disponivel (ex: Representante), seleciona ele;
+            // Se > 1 e partId == 0 ("Todos"), monta a AUTO-SOMA consolidada do grupo!
             $selecionado = null;
+            $xpAnual = 0;
+            $bonusAnual = 0.0;
+            $posicaoAnual = null;
+
             if ($partId > 0) {
                 foreach ($roundRows as $r) {
                     if ((int)$r['idparticipante'] === $partId) {
@@ -150,22 +164,31 @@ class Programa365Controller
                         break;
                     }
                 }
-            }
-            if (!$selecionado && !empty($roundRows)) {
+            } elseif (count($roundRows) === 1) {
                 $selecionado = $roundRows[0];
+            } elseif (count($roundRows) > 1) {
+                $selecionado = $this->montarAutoSoma($roundRows, $ano, $mes);
             }
 
-            // Enriquecer selecionado com XP anual e faixa
-            $xpAnual = 0;
-            $bonusAnual = 0.0;
-            $posicaoAnual = null;
             if ($selecionado) {
-                foreach ($rankingAnual as $rk) {
-                    if ((int)$rk['idparticipante'] === (int)$selecionado['idparticipante']) {
-                        $xpAnual = (int)$rk['xp_total'];
-                        $bonusAnual = (float)$rk['bonus_acumulado_rs'];
-                        $posicaoAnual = (int)$rk['posicao'];
-                        break;
+                if (!empty($selecionado['eh_consolidado'])) {
+                    // Auto-soma anual do grupo filtrado (XP medio para faixa representativa + soma de bonus anual)
+                    $somaXp = 0;
+                    foreach ($roundRows as $r) {
+                        $pid = (int)$r['idparticipante'];
+                        if (isset($rkMap[$pid])) {
+                            $somaXp += (int)$rkMap[$pid]['xp_total'];
+                            $bonusAnual += (float)$rkMap[$pid]['bonus_acumulado_rs'];
+                        }
+                    }
+                    $xpAnual = count($roundRows) > 0 ? (int)round($somaXp / count($roundRows)) : 0;
+                    $bonusAnual = round($bonusAnual, 2);
+                } else {
+                    $pid = (int)$selecionado['idparticipante'];
+                    if (isset($rkMap[$pid])) {
+                        $xpAnual = (int)$rkMap[$pid]['xp_total'];
+                        $bonusAnual = (float)$rkMap[$pid]['bonus_acumulado_rs'];
+                        $posicaoAnual = $rankingGeralOculto ? null : (int)$rkMap[$pid]['posicao'];
                     }
                 }
             }
@@ -174,10 +197,6 @@ class Programa365Controller
             $stD = $this->pdo->prepare("SELECT * FROM p365_desafios_mes WHERE idcampanha = ? AND ano = ? AND mes = ? ORDER BY numero_desafio");
             $stD->execute([$cid, $ano, $mes]);
             $desafios = $stD->fetchAll(PDO::FETCH_ASSOC);
-
-            $ehAdmin = $this->podeAdministrar($scope);
-            $ehGestor = !$ehAdmin && ($scope->temAcessoTotal() || $scope->gestorRestrito());
-            $perfil = $ehAdmin ? 'ADMIN' : ($ehGestor ? 'GESTOR' : 'REPRESENTANTE');
 
             // Resumo da equipe (visao gerencial / mobile para Gestores e Admins)
             $equipeResumo = array_map(function ($r) use ($faixaPorPart) {
@@ -202,6 +221,8 @@ class Programa365Controller
                 'mes' => $mes,
                 'is_admin' => $ehAdmin,
                 'perfil' => $perfil,
+                'config_visibilidade' => $cfgVis,
+                'ranking_geral_oculto' => $rankingGeralOculto,
                 'filiais_disponiveis' => $filiaisMeta,
                 'gestores_disponiveis' => $gestoresLista,
                 'participantes_disponiveis' => array_map(fn($r) => [
@@ -238,9 +259,14 @@ class Programa365Controller
             $filialFiltro = !empty($q['filial']) ? (int)$q['filial'] : 0;
             $gestorFiltro = !empty($q['idgestor']) ? (int)$q['idgestor'] : 0;
 
+            $ehAdmin = $this->podeAdministrar($scope);
+            $ehGestor = !$ehAdmin && ($scope->temAcessoTotal() || $scope->gestorRestrito());
+            $cfgVis = $this->lerConfigVisibilidade($campanha);
+            $rankingGeralOculto = !$this->podeVerRankingGeral($ehAdmin, $ehGestor, $cfgVis);
+
             $permitidos = $this->resolverParticipantesPermitidos($scope, $cid);
             $round = $this->service->calcularRound($cid, $ano, $mes, $permitidos);
-            $anual = $this->service->calcularRankingAnual($cid, $ano, $mes, $permitidos);
+            $anual = $rankingGeralOculto ? [] : $this->service->calcularRankingAnual($cid, $ano, $mes, $permitidos);
 
             $filtrar = function (array $lista) use ($filialFiltro, $gestorFiltro): array {
                 return array_values(array_filter($lista, function ($r) use ($filialFiltro, $gestorFiltro) {
@@ -259,6 +285,8 @@ class Programa365Controller
                 'campanha' => $campanha,
                 'ano' => $ano,
                 'mes' => $mes,
+                'ranking_geral_oculto' => $rankingGeralOculto,
+                'config_visibilidade' => $cfgVis,
                 'ranking_round' => $filtrar($round),
                 'ranking_anual' => $filtrar($anual),
                 'premiacao_anual' => Programa365Service::catalogoPremiacaoAnual(),
@@ -275,24 +303,37 @@ class Programa365Controller
             $q = $request->getQueryParams();
             $campanha = $this->service->getCampanhaAtiva(!empty($q['campanha_id']) ? (int)$q['campanha_id'] : null);
             if (!$campanha) {
-                return $this->json($response, ['catalogo' => Programa365Service::catalogoPins(), 'desbloqueados' => []]);
+                return $this->json($response, [
+                    'faixas_detalhadas' => Programa365Service::catalogoFaixasDetalhado(),
+                    'catalogo' => Programa365Service::catalogoPins(),
+                    'desbloqueados' => [],
+                ]);
             }
             $cid = (int)$campanha['id'];
+            $ano = (int)($q['ano'] ?? $campanha['temporada_ano']);
+            $mes = max(1, min(12, (int)($q['mes'] ?? (int)date('n'))));
             $partId = (int)($q['participante_id'] ?? 0);
 
             $permitidos = $this->resolverParticipantesPermitidos($scope, $cid);
-            if ($permitidos !== null && !in_array($partId, $permitidos, true)) {
-                $partId = $permitidos[0] ?? 0;
+            if ($partId > 0) {
+                if ($permitidos !== null && !in_array($partId, $permitidos, true)) {
+                    $partId = $permitidos[0] ?? 0;
+                }
+                $alvoIds = $partId > 0 ? [$partId] : [];
+            } else {
+                if ($permitidos === null) {
+                    $stAll = $this->pdo->prepare("SELECT id FROM p365_participantes WHERE idcampanha = ? AND ativo = TRUE");
+                    $stAll->execute([$cid]);
+                    $alvoIds = array_map('intval', $stAll->fetchAll(PDO::FETCH_COLUMN));
+                } else {
+                    $alvoIds = $permitidos;
+                }
             }
 
-            $desbloqueados = [];
-            if ($partId > 0) {
-                $st = $this->pdo->prepare("SELECT pin_codigo, ano, mes, desbloqueado_em FROM p365_pins_desbloqueados WHERE idcampanha = ? AND idparticipante = ? ORDER BY ano, mes");
-                $st->execute([$cid, $partId]);
-                $desbloqueados = $st->fetchAll(PDO::FETCH_ASSOC);
-            }
+            $desbloqueados = $this->service->avaliarPinsParticipante($cid, $ano, $mes, $alvoIds);
 
             return $this->json($response, [
+                'faixas_detalhadas' => Programa365Service::catalogoFaixasDetalhado(),
                 'catalogo' => Programa365Service::catalogoPins(),
                 'desbloqueados' => $desbloqueados,
             ]);
@@ -729,5 +770,145 @@ class Programa365Controller
         $this->pdo->prepare("UPDATE p365_round_fechamento SET fechado = FALSE WHERE idcampanha = ? AND ano = ? AND mes = ?")
             ->execute([$cid, $ano, $mes]);
         return $this->json($response, ['success' => true]);
+    }
+
+    public function salvarConfigVisibilidade(Request $request, Response $response): Response
+    {
+        $scope = UserScope::fromRequest($request, $this->pdo);
+        if (!$this->podeAdministrar($scope)) {
+            return $this->json($response, ['error' => 'Acesso restrito ao Administrador'], 403);
+        }
+
+        $in = json_decode($request->getBody()->getContents(), true) ?? [];
+        $cid = (int)($in['idcampanha'] ?? 0);
+        if ($cid <= 0) {
+            $camp = $this->service->getCampanhaAtiva();
+            $cid = $camp ? (int)$camp['id'] : 0;
+        }
+        if ($cid <= 0) return $this->json($response, ['error' => 'Campanha nao encontrada'], 404);
+
+        $st = $this->pdo->prepare("SELECT config_json FROM p365_campanhas WHERE id = ?");
+        $st->execute([$cid]);
+        $atual = json_decode((string)($st->fetchColumn() ?: '{}'), true) ?: [];
+
+        $atual['ocultar_ranking_geral'] = !empty($in['ocultar_ranking_geral']);
+        $atual['liberar_ranking_gestor'] = !empty($in['liberar_ranking_gestor']);
+
+        $this->pdo->prepare("UPDATE p365_campanhas SET config_json = ?::jsonb, atualizado_em = NOW() WHERE id = ?")
+            ->execute([json_encode($atual, JSON_UNESCAPED_UNICODE), $cid]);
+
+        return $this->json($response, ['success' => true, 'config_visibilidade' => $atual]);
+    }
+
+    private function lerConfigVisibilidade(array $campanha): array
+    {
+        $cfg = json_decode((string)($campanha['config_json'] ?? '{}'), true) ?: [];
+        return [
+            'ocultar_ranking_geral' => !empty($cfg['ocultar_ranking_geral']),
+            'liberar_ranking_gestor' => !empty($cfg['liberar_ranking_gestor']),
+        ];
+    }
+
+    private function podeVerRankingGeral(bool $ehAdmin, bool $ehGestor, array $cfgVis): bool
+    {
+        if ($ehAdmin) return true;
+        if (empty($cfgVis['ocultar_ranking_geral'])) return true;
+        if ($ehGestor && !empty($cfgVis['liberar_ranking_gestor'])) return true;
+        return false;
+    }
+
+    private function montarAutoSoma(array $rows, int $ano, int $mes): array
+    {
+        $qtd = count($rows);
+        $metaFat = 0.0;
+        $fatD10 = 0.0;
+        $fatD20 = 0.0;
+        $fatD30 = 0.0;
+        $devMes = 0.0;
+        $fatLiq = 0.0;
+        $cartAtiva = 0;
+        $cartEfetiva = 0;
+        $cliPos = 0;
+        $somaBonus = 0.0;
+        $somaPts = 0;
+        $somaExtras = 0;
+        $somaPctD1 = 0.0; $somaPctD2 = 0.0; $somaPctD3 = 0.0;
+        $somaPtsD1 = 0;   $somaPtsD2 = 0;   $somaPtsD3 = 0;
+        $todosFechados = true;
+
+        foreach ($rows as $r) {
+            $metaFat += (float)$r['meta_faturamento'];
+            $fatD10 += (float)$r['fat_dia10'];
+            $fatD20 += (float)$r['fat_dia20'];
+            $fatD30 += (float)$r['fat_dia30'];
+            $devMes += (float)$r['devolucoes_mes'];
+            $fatLiq += (float)$r['fat_liquido'];
+            $cartAtiva += (int)$r['carteira_ativa'];
+            $cartEfetiva += (int)$r['carteira_efetiva'];
+            $cliPos += (int)$r['clientes_positivados'];
+            $somaBonus += (float)$r['bonus_mes_rs'];
+            $somaPts += (int)$r['pts_total_mes'];
+            $somaExtras += (int)$r['pts_extras'];
+            $somaPctD1 += (float)$r['pct_desafio1'];
+            $somaPctD2 += (float)$r['pct_desafio2'];
+            $somaPctD3 += (float)$r['pct_desafio3'];
+            $somaPtsD1 += (int)$r['pts_desafio1'];
+            $somaPtsD2 += (int)$r['pts_desafio2'];
+            $somaPtsD3 += (int)$r['pts_desafio3'];
+            if (empty($r['fechado'])) $todosFechados = false;
+        }
+
+        $pctD10 = $metaFat > 0 ? round(($fatD10 / $metaFat) * 100, 2) : 0.0;
+        $pctD20 = $metaFat > 0 ? round(($fatD20 / $metaFat) * 100, 2) : 0.0;
+        $pctD30 = $metaFat > 0 ? round(($fatLiq / $metaFat) * 100, 2) : 0.0;
+        $pctPos = $cartEfetiva > 0 ? round(($cliPos / $cartEfetiva) * 100, 2) : 0.0;
+
+        $ptsD10 = Programa365Service::calcularPontosDia10($pctD10);
+        $ptsD20 = Programa365Service::calcularPontosDia20($pctD20);
+        $ptsD30 = Programa365Service::calcularPontosDia30($pctD30);
+        $ptsPos = Programa365Service::calcularPontosPositivacao($pctPos);
+        $mediaPtsMes = $qtd > 0 ? (int)round($somaPts / $qtd) : 0;
+
+        return [
+            'idparticipante' => 0,
+            'idvendedor' => 0,
+            'eh_consolidado' => true,
+            'qtd_representantes' => $qtd,
+            'nome' => "Todos os Representantes ($qtd)",
+            'apelido' => "Auto-Soma ($qtd)",
+            'equipe' => 'Consolidado do Filtro / Escopo',
+            'equipe_cor' => '#2F5D50',
+            'categoria' => 'CONSOLIDADO',
+            'ano' => $ano,
+            'mes' => $mes,
+            'fechado' => $todosFechados,
+            'meta_faturamento' => round($metaFat, 2),
+            'fat_dia10' => round($fatD10, 2),
+            'fat_dia20' => round($fatD20, 2),
+            'fat_dia30' => round($fatD30, 2),
+            'devolucoes_mes' => round($devMes, 2),
+            'fat_liquido' => round($fatLiq, 2),
+            'pct_dia10' => $pctD10,
+            'pct_dia20' => $pctD20,
+            'pct_dia30' => $pctD30,
+            'pts_dia10' => $ptsD10,
+            'pts_dia20' => $ptsD20,
+            'pts_dia30' => $ptsD30,
+            'carteira_ativa' => $cartAtiva,
+            'carteira_efetiva' => $cartEfetiva,
+            'clientes_positivados' => $cliPos,
+            'pct_positivacao' => $pctPos,
+            'pts_positivacao' => $ptsPos,
+            'pct_desafio1' => $qtd > 0 ? round($somaPctD1 / $qtd, 2) : 0.0,
+            'pts_desafio1' => $qtd > 0 ? (int)round($somaPtsD1 / $qtd) : 0,
+            'pct_desafio2' => $qtd > 0 ? round($somaPctD2 / $qtd, 2) : 0.0,
+            'pts_desafio2' => $qtd > 0 ? (int)round($somaPtsD2 / $qtd) : 0,
+            'pct_desafio3' => $qtd > 0 ? round($somaPctD3 / $qtd, 2) : 0.0,
+            'pts_desafio3' => $qtd > 0 ? (int)round($somaPtsD3 / $qtd) : 0,
+            'pts_extras' => $somaExtras,
+            'pts_total_mes' => $mediaPtsMes,
+            'pts_soma_equipe' => $somaPts,
+            'bonus_mes_rs' => round($somaBonus, 2),
+        ];
     }
 }

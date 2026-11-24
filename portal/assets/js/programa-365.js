@@ -2,8 +2,14 @@ function programa365App() {
     return {
         aba: 'tatame',
         filtrosAbertosMobile: false,
+        filtroCategoriaPin: '',
         isAdmin: false,
         perfil: 'ADMIN',
+        rankingGeralOculto: false,
+        configVisibilidade: {
+            ocultar_ranking_geral: false,
+            liberar_ranking_gestor: false,
+        },
         campanhas: [],
         campanha: null,
         filtros: {
@@ -12,7 +18,7 @@ function programa365App() {
             mes: new Date().getMonth() + 1,
             filial: 0,
             idgestor: 0,
-            participante_id: 0,
+            participante_id: 0, // 0 = Todos (Auto-Soma) para Admin/Gestor
         },
         meses: [
             { id: 1, nome: 'Janeiro' }, { id: 2, nome: 'Fevereiro' }, { id: 3, nome: 'Março' },
@@ -32,6 +38,7 @@ function programa365App() {
         desafios: [],
         rankingRound: [],
         rankingAnual: [],
+        faixasDetalhadas: [],
         catalogoPins: [],
         pinsDesbloqueados: [],
         extrato: { rounds: [], extras: [] },
@@ -50,6 +57,7 @@ function programa365App() {
                 this.campanha = ctx.campanha_ativa;
                 this.filtros.campanha_id = Number(ctx.campanha_ativa.id);
                 this.filtros.ano = Number(ctx.campanha_ativa.temporada_ano);
+                this.filtros.mes = new Date().getMonth() + 1;
             }
             await this.carregarTudo();
         },
@@ -63,14 +71,23 @@ function programa365App() {
             const d = await apiFetch(`v1/programa-365/dashboard?${qs}`, 'GET');
             this.campanha = d.campanha || this.campanha;
             this.perfil = d.perfil || (this.isAdmin ? 'ADMIN' : 'REPRESENTANTE');
+            this.rankingGeralOculto = !!d.ranking_geral_oculto;
+            if (d.config_visibilidade) {
+                this.configVisibilidade = d.config_visibilidade;
+            }
             this.filiaisDisponiveis = d.filiais_disponiveis || [];
             this.gestoresDisponiveis = d.gestores_disponiveis || [];
             this.participantesDisponiveis = d.participantes_disponiveis || [];
             this.equipeResumo = d.equipe_resumo || [];
             this.selecionado = d.selecionado || null;
-            if (this.selecionado && (!this.filtros.participante_id || !this.participantesDisponiveis.some(p => Number(p.id) === Number(this.filtros.participante_id)))) {
-                this.filtros.participante_id = Number(this.selecionado.idparticipante);
+
+            // Se houver apenas 1 representante permitido, sincroniza o select; se > 1 e filtro=0, mantem 0 (Auto-Soma)
+            if (this.participantesDisponiveis.length === 1) {
+                this.filtros.participante_id = Number(this.participantesDisponiveis[0].id);
+            } else if (this.filtros.participante_id > 0 && !this.participantesDisponiveis.some(p => Number(p.id) === Number(this.filtros.participante_id))) {
+                this.filtros.participante_id = 0;
             }
+
             this.faixa = d.faixa || this.faixa;
             this.xpAnual = d.xp_anual || 0;
             this.bonusAnual = d.bonus_anual || 0;
@@ -84,18 +101,45 @@ function programa365App() {
             await this.carregarDashboard();
         },
 
+        async irParaMesAtual() {
+            this.filtros.mes = new Date().getMonth() + 1;
+            await this.carregarDashboard();
+            await this.carregarRanking();
+        },
+
+        nomeMes(m) {
+            const found = this.meses.find(x => Number(x.id) === Number(m));
+            return found ? found.nome : ('Mês ' + m);
+        },
+
         async carregarRanking() {
             const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}&filial=${this.filtros.filial || 0}&idgestor=${this.filtros.idgestor || 0}`;
             const d = await apiFetch(`v1/programa-365/ranking?${qs}`, 'GET');
+            this.rankingGeralOculto = !!d.ranking_geral_oculto;
+            if (d.config_visibilidade) {
+                this.configVisibilidade = d.config_visibilidade;
+            }
             this.rankingRound = d.ranking_round || [];
             this.rankingAnual = d.ranking_anual || [];
         },
 
         async carregarPins() {
-            const qs = `campanha_id=${this.filtros.campanha_id}&participante_id=${this.filtros.participante_id || 0}`;
+            const qs = `campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}&participante_id=${this.filtros.participante_id || 0}`;
             const d = await apiFetch(`v1/programa-365/pins?${qs}`, 'GET');
+            this.faixasDetalhadas = d.faixas_detalhadas || [];
             this.catalogoPins = d.catalogo || [];
             this.pinsDesbloqueados = d.desbloqueados || [];
+        },
+
+        categoriasPins() {
+            const s = new Set();
+            (this.catalogoPins || []).forEach(p => { if (p.categoria) s.add(p.categoria); });
+            return Array.from(s);
+        },
+
+        pinsFiltrados() {
+            if (!this.filtroCategoriaPin) return this.catalogoPins || [];
+            return (this.catalogoPins || []).filter(p => p.categoria === this.filtroCategoriaPin);
         },
 
         async carregarExtrato() {
@@ -109,6 +153,19 @@ function programa365App() {
             const d = await apiFetch(`v1/programa-365/admin/estrutura?campanha_id=${this.filtros.campanha_id}`, 'GET');
             this.admin = d || { equipes: [], participantes: [], vendedores_erp: [] };
             this.adminMetas = await apiFetch(`v1/programa-365/admin/metas?campanha_id=${this.filtros.campanha_id}&ano=${this.filtros.ano}&mes=${this.filtros.mes}`, 'GET');
+        },
+
+        async salvarConfigVisibilidade() {
+            const r = await apiFetch('v1/programa-365/admin/config-visibilidade', 'POST', {
+                idcampanha: this.filtros.campanha_id,
+                ocultar_ranking_geral: !!this.configVisibilidade.ocultar_ranking_geral,
+                liberar_ranking_gestor: !!this.configVisibilidade.liberar_ranking_gestor,
+            });
+            if (r && r.config_visibilidade) {
+                this.configVisibilidade = r.config_visibilidade;
+            }
+            Swal.fire('Atualizado!', 'Configuração de visibilidade do Ranking Geral salva com sucesso.', 'success');
+            await this.carregarDashboard();
         },
 
         async sincronizarErp() {

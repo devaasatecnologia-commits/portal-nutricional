@@ -1011,6 +1011,7 @@ $protected->group('/programa-365', function ($group) {
     $group->post('/admin/extra', [$controller, 'lancarExtra']);
     $group->post('/admin/fechar-round', [$controller, 'fecharRound']);
     $group->post('/admin/reabrir-round', [$controller, 'reabrirRound']);
+    $group->post('/admin/config-visibilidade', [$controller, 'salvarConfigVisibilidade']);
 })->add(new ModulePermissionMiddleware('programa-365'));
 
         // ======================================================================

@@ -28,8 +28,23 @@
 // ==========================================================================
 // FUNÇÃO GLOBAL PARA REQUISIÇÕES (PADRÃO)
 // ==========================================================================
-window.apiFetch = async function(endpoint, options) {
-    options = options || {};
+window.apiFetch = async function(endpoint, options, maybeBody) {
+    if (typeof options === 'string') {
+        var methodStr = options.toUpperCase();
+        options = { method: methodStr };
+        if (maybeBody !== undefined && maybeBody !== null) {
+            if (methodStr === 'GET') {
+                var qs = new URLSearchParams(maybeBody).toString();
+                if (qs) endpoint += (endpoint.indexOf('?') === -1 ? '?' : '&') + qs;
+            } else {
+                options.body = (typeof maybeBody === 'string' || (typeof FormData !== 'undefined' && maybeBody instanceof FormData))
+                    ? maybeBody
+                    : JSON.stringify(maybeBody);
+            }
+        }
+    } else {
+        options = options || {};
+    }
     var token = localStorage.getItem('authToken');
     
     // Remove /v1/ e barras redundantes do início
@@ -218,27 +233,161 @@ function getCsrfToken() {
     }
 }
 
-// Interceptar fetch para adicionar CSRF token
+// ==========================================================================
+// LOADING GLOBAL DO PORTAL (TODAS AS AÇÕES, FILTROS E NAVEGAÇÕES)
+// ==========================================================================
 (function() {
+    var activeFetches = 0;
+    var showTimer = null;
+    var elapsedTimer = null;
+    var startTime = 0;
+    var domReady = false;
+
+    function ensureLoaderDom() {
+        if (document.getElementById('nutri-global-loader-style')) return true;
+        if (!document.head || !document.body) return false;
+
+        var st = document.createElement('style');
+        st.id = 'nutri-global-loader-style';
+        st.textContent =
+            '#nutri-top-progress{position:fixed;top:0;left:0;right:0;height:4px;z-index:99999;pointer-events:none;opacity:0;transition:opacity .2s ease;overflow:hidden;background:rgba(15,23,42,.08)}' +
+            '#nutri-top-progress.is-active{opacity:1}' +
+            '#nutri-top-progress::after{content:"";display:block;height:100%;width:42%;background:linear-gradient(90deg,#059669,#E8C87E,#10b981);border-radius:0 4px 4px 0;animation:nutriBarSlide 1.15s infinite ease-in-out}' +
+            '@keyframes nutriBarSlide{0%{transform:translateX(-110%)}100%{transform:translateX(260%)}}' +
+            '#nutri-global-loader{position:fixed;inset:0;z-index:99998;display:flex;align-items:center;justify-content:center;background:rgba(15,23,42,.22);backdrop-filter:blur(2px);opacity:0;pointer-events:none;transition:opacity .18s ease}' +
+            '#nutri-global-loader.is-active{opacity:1;pointer-events:auto}' +
+            '.nutri-loader-card{background:#ffffff;border:1px solid #e2e8f0;border-radius:20px;padding:16px 22px;box-shadow:0 20px 45px rgba(15,23,42,.18);display:flex;align-items:center;gap:14px;max-width:90vw}' +
+            '.nutri-loader-spin{width:34px;height:34px;border-radius:50%;border:3.5px solid #d1fae5;border-top-color:#059669;border-right-color:#E8C87E;animation:nutriSpin .75s linear infinite;flex-shrink:0}' +
+            '@keyframes nutriSpin{to{transform:rotate(360deg)}}' +
+            '.nutri-loader-title{font-family:"Plus Jakarta Sans",system-ui,sans-serif;font-size:13.5px;font-weight:800;color:#0f172a;line-height:1.25}' +
+            '.nutri-loader-sub{font-family:"Plus Jakarta Sans",system-ui,sans-serif;font-size:11.5px;font-weight:600;color:#64748b;margin-top:2px}';
+        document.head.appendChild(st);
+
+        var bar = document.createElement('div');
+        bar.id = 'nutri-top-progress';
+        document.body.appendChild(bar);
+
+        var box = document.createElement('div');
+        box.id = 'nutri-global-loader';
+        box.setAttribute('aria-live', 'polite');
+        box.innerHTML =
+            '<div class="nutri-loader-card">' +
+                '<div class="nutri-loader-spin"></div>' +
+                '<div>' +
+                    '<div class="nutri-loader-title" id="nutri-loader-msg">Carregando dados, aguarde...</div>' +
+                    '<div class="nutri-loader-sub" id="nutri-loader-sub">Consultando servidor Nutricional</div>' +
+                '</div>' +
+            '</div>';
+        document.body.appendChild(box);
+        domReady = true;
+        return true;
+    }
+
+    function renderVisible(msg) {
+        if (!ensureLoaderDom()) return;
+        var bar = document.getElementById('nutri-top-progress');
+        var box = document.getElementById('nutri-global-loader');
+        var mEl = document.getElementById('nutri-loader-msg');
+        var sEl = document.getElementById('nutri-loader-sub');
+        if (mEl && msg) mEl.textContent = msg;
+        if (sEl) sEl.textContent = 'Consultando servidor Nutricional...';
+        if (bar) bar.classList.add('is-active');
+        if (box) box.classList.add('is-active');
+
+        clearInterval(elapsedTimer);
+        startTime = Date.now();
+        elapsedTimer = setInterval(function() {
+            var sec = Math.floor((Date.now() - startTime) / 1000);
+            if (sEl && sec >= 2) {
+                sEl.textContent = 'Processando informações no servidor... (' + sec + 's)';
+            }
+        }, 1000);
+    }
+
+    function hideVisible() {
+        clearTimeout(showTimer);
+        showTimer = null;
+        clearInterval(elapsedTimer);
+        elapsedTimer = null;
+        if (!domReady) return;
+        var bar = document.getElementById('nutri-top-progress');
+        var box = document.getElementById('nutri-global-loader');
+        if (bar) bar.classList.remove('is-active');
+        if (box) box.classList.remove('is-active');
+    }
+
+    function isSilentUrl(urlStr) {
+        return urlStr.indexOf('/notificacoes') !== -1 ||
+               urlStr.indexOf('/inatividade') !== -1 ||
+               urlStr.indexOf('/ping') !== -1 ||
+               urlStr.indexOf('/heartbeat') !== -1 ||
+               urlStr.indexOf('silent=1') !== -1;
+    }
+
+    window.PortalLoader = {
+        show: function(msg) { renderVisible(msg || 'Carregando dados, aguarde...'); },
+        hide: function() { activeFetches = 0; hideVisible(); }
+    };
+
     var originalFetch = window.fetch;
     window.fetch = function(url, options) {
         options = options || {};
         var urlStr = (typeof url === 'string') ? url : (url && url.url) ? url.url : String(url);
         var method = options.method || 'GET';
         var needsCsrf = ['POST', 'PUT', 'DELETE', 'PATCH'].indexOf(method.toUpperCase()) !== -1;
-        var isPublicRoute = urlStr.indexOf('/auth/login') !== -1 || 
-                            urlStr.indexOf('/ping') !== -1 || 
+        var isPublicRoute = urlStr.indexOf('/auth/login') !== -1 ||
+                            urlStr.indexOf('/ping') !== -1 ||
                             urlStr.indexOf('/sistema/modulos-setores') !== -1;
-        
+
         if (needsCsrf && !isPublicRoute) {
             var csrfToken = getCsrfToken();
             options.headers = Object.assign({}, options.headers || {}, {
                 'X-CSRF-Token': csrfToken
             });
         }
-        
-        return originalFetch(url, options);
+
+        var trackLoader = !options.silent && !isSilentUrl(urlStr);
+        if (trackLoader) {
+            activeFetches++;
+            if (ensureLoaderDom()) {
+                var bar = document.getElementById('nutri-top-progress');
+                if (bar) bar.classList.add('is-active');
+            }
+            if (!showTimer) {
+                var label = needsCsrf ? 'Salvando e processando, aguarde...' : 'Carregando dados, aguarde...';
+                showTimer = setTimeout(function() {
+                    if (activeFetches > 0) renderVisible(label);
+                }, 180);
+            }
+        }
+
+        return originalFetch(url, options).finally(function() {
+            if (trackLoader) {
+                activeFetches = Math.max(0, activeFetches - 1);
+                if (activeFetches === 0) {
+                    hideVisible();
+                }
+            }
+        });
     };
+
+    document.addEventListener('DOMContentLoaded', function() {
+        ensureLoaderDom();
+        document.addEventListener('click', function(ev) {
+            var a = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+            if (!a) return;
+            var href = a.getAttribute('href') || '';
+            if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+            if (a.target === '_blank' || a.hasAttribute('download') || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+            if (href.indexOf('/portal/') !== -1 || href.indexOf('.php') !== -1) {
+                renderVisible('Abrindo módulo, aguarde...');
+            }
+        });
+    });
+
+    window.addEventListener('pageshow', function() {
+        if (activeFetches === 0) hideVisible();
+    });
 })();
 
 // ==========================================================================
