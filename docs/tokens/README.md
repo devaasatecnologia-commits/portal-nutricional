@@ -7,9 +7,12 @@ dos responsáveis pelo banco ou deploy.
 
 ## Fonte atual
 
-- **[Handoff atual (2026-10-21)](CONTINUATION-2026-10-21.md)**: Manutenções no Dashboard de Vendas (SQL joins, projeção de meses, filtros por representante, positivação executiva e z-index dos modais de rastreio), ajustes de API no Retorno de Pedidos e especificação técnica do Módulo Produção MTR.
+- **[Handoff atual (2026-11-24 — Emergência CSRF / Verba Flex)](CONTINUATION-2026-11-24-emergencia-csrf-flex.md)**: Hotfix emergencial remoto (`222ef73`) corrigindo erro `403 CSRF token inválido` após 21h BRT (UTC vs `America/Sao_Paulo` + `uid` via JWT), já publicado em produção via AndFTP; pendência de documentação formal e abertura de chamado ao retomar no VSCode.
+- **[Fechamento anterior (2026-10-26)](CONTINUATION-2026-10-26-fechamento-dia.md)**: `MOD-TRANSF-COMPRA`, `MOD-ESTOQUE-PREVISAO`, ajuste de mês corrente em Separação & Carregamento e tooltips globais.
 
 ## Handoffs recentes (Outubro/2026)
+
+- **[Handoff 2026-10-21](CONTINUATION-2026-10-21.md)**: Manutenções no Dashboard de Vendas (SQL joins, projeção de meses, filtros por representante, positivação executiva e z-index dos modais de rastreio), ajustes de API no Retorno de Pedidos e especificação técnica do Módulo Produção MTR.
 
 - **[Handoff 2026-10-19](CONTINUATION-2026-10-19.md)**: Correção de fallbacks JWT (`'chave_super_secreta'`), Reset Administrativo de 2FA auditado, interfaces visuais de reset e saneamento de arquivos sensíveis.
 - **[Handoff 2026-10-16](CONTINUATION-2026-10-16.md)**: 2FA TOTP por usuário com auto-atendimento no login, banner de aviso no portal e tela enxuta `2fa.php`.
