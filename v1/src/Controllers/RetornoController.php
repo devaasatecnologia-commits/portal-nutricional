@@ -198,7 +198,7 @@ class RetornoController
             $fotoPath = explode('Fotos para o Site\\', $fotoPath)[1];
         }
         $fotoPath = str_replace('\\', '/', $fotoPath);
-        $url = 'https://acesso.nutricionalbr.com:2053/fotos/' . rawurlencode($fotoPath);
+        $url = ($_ENV['FOTOS_BASE_URL'] ?? 'https://fotos.nutricionalbr.com/fotos/') . rawurlencode($fotoPath);
         $url = str_replace('%2F', '/', $url);
         return $url;
     }

@@ -1480,6 +1480,310 @@ class PortalClienteController
     }
 
     /**
+     * GET /v1/portal-cliente/nota/{idfilial}/{idnfs}/xml (Protegida)
+     * Baixa o XML da NF-e (prioriza o arquivo original assinado do ERP/Ponte HFS e possui fallback nfeProc 4.00 do banco ema).
+     */
+    public function notaXml(Request $request, Response $response, array $args): Response
+    {
+        $esc = $this->resolverEscopo($request);
+        $f = (int)($args['idfilial'] ?? 0);
+        $id = (int)($args['idnfs'] ?? 0);
+
+        $st = $this->pdo->prepare("
+            SELECT n.idfilial, n.idnfs, n.numeronf, COALESCE(NULLIF(TRIM(n.idserie::text),''), '1') AS idserie,
+                   n.dataemissao, COALESCE(n.datasaida, n.dataemissao) AS datasaida,
+                   n.idcfop, COALESCE(cf.descricao, 'VENDA DE MERCADORIA') AS nat_op,
+                   n.status, COALESCE(n.cancelado_sefaz, 'N') AS cancelado_sefaz,
+                   COALESCE(n.numero_nf_e, '') AS chave_nfe,
+                   COALESCE(n.numeroprotocolo_nf_e, '') AS protocolo,
+                   n.datahora_nf_e, COALESCE(n.idembarque, 0) AS idembarque,
+                   COALESCE(f.nf_e_caminho_arquivo, '') AS caminho_base,
+                   COALESCE(n.observacao, '') AS observacao,
+                   COALESCE(n.tipofrete, 0) AS tipofrete,
+                   COALESCE(n.quant_mercadorias, 0) AS quant_volumes,
+                   COALESCE(n.pesobruto, 0)::numeric(14,3) AS pesobruto,
+                   COALESCE(n.pesoliquido, 0)::numeric(14,3) AS pesoliquido,
+                   COALESCE(n.valortotalitens, 0)::numeric(14,2) AS vprod,
+                   COALESCE(n.valortotaldesconto, 0)::numeric(14,2) AS vdesc,
+                   COALESCE(n.valorfrete, 0)::numeric(14,2) AS vfrete,
+                   COALESCE(n.valorseguro, 0)::numeric(14,2) AS vseg,
+                   COALESCE(n.valoroutrasdespesas, 0)::numeric(14,2) AS voutro,
+                   COALESCE(n.valortotalnota, 0)::numeric(14,2) AS vnf,
+                   COALESCE(n.baseicms, 0)::numeric(14,2) AS vbc,
+                   COALESCE(n.valoricms, 0)::numeric(14,2) AS vicms,
+                   COALESCE(n.base_substituicaotrib, 0)::numeric(14,2) AS vbcst,
+                   COALESCE(n.valor_substituicaotrib, 0)::numeric(14,2) AS vst,
+                   COALESCE(n.valoripi, 0)::numeric(14,2) AS vipi,
+                   f.razao AS emit_razao, f.nome AS emit_fantasia, f.cnpj AS emit_cnpj, f.ie AS emit_ie,
+                   f.endereco AS emit_end, COALESCE(NULLIF(TRIM(f.numero::text),'.'),'S/N') AS emit_num,
+                   f.bairro AS emit_bairro, COALESCE(cid_f.descricao,'ARARANGUA') AS emit_mun,
+                   COALESCE(cid_f.idmunicipio, 420140) AS emit_cmun, COALESCE(f.uf,'SC') AS emit_uf,
+                   COALESCE(f.cep,'') AS emit_cep, COALESCE(f.fone,'') AS emit_fone,
+                   c.idcliforemp, COALESCE(c.razao,'CONSUMIDOR') AS dest_razao,
+                   COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS dest_doc,
+                   COALESCE(c.ie,'') AS dest_ie, COALESCE(c.endereco,'') AS dest_end,
+                   COALESCE(NULLIF(TRIM(c.numero::text),'.'),'S/N') AS dest_num,
+                   COALESCE(c.bairro,'') AS dest_bairro, COALESCE(cid.descricao,'') AS dest_mun,
+                   COALESCE(cid.idmunicipio, 0) AS dest_cmun, COALESCE(c.uf, n.uf_destino, 'SC') AS dest_uf,
+                   COALESCE(c.cep,'') AS dest_cep, COALESCE(c.fone,'') AS dest_fone, COALESCE(c.email,'') AS dest_email,
+                   COALESCE(tr.razao,'') AS transp_razao, COALESCE(NULLIF(TRIM(tr.cnpj),''), TRIM(tr.cpf), '') AS transp_doc
+            FROM nfs n
+            LEFT JOIN filial f ON f.idfilial = n.idfilial
+            LEFT JOIN cidade cid_f ON cid_f.idcidade = f.idcidade
+            LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+            LEFT JOIN cliforemp tr ON tr.idcliforemp = n.idtransportadora
+            LEFT JOIN cfop cf ON cf.idcfop = n.idcfop
+            WHERE n.idfilial = :f AND n.idnfs = :id
+        ");
+        $st->execute(['f' => $f, 'id' => $id]);
+        $nf = $st->fetch(PDO::FETCH_ASSOC);
+        if (!$nf) {
+            return $this->json($response, ['success' => false, 'error' => 'Nota fiscal não encontrada.'], 404);
+        }
+        if (!$this->validarAcessoCliente($esc, (int)$nf['idcliforemp'])) {
+            return $this->json($response, ['success' => false, 'error' => 'Acesso negado.'], 403);
+        }
+
+        $chave = preg_replace('/\D+/', '', (string)$nf['chave_nfe']);
+        $numNf = (int)$nf['numeronf'];
+        $emb = (int)$nf['idembarque'];
+        $datasTentativa = array_values(array_unique(array_filter([
+            !empty($nf['dataemissao']) ? date('d-m-Y', strtotime((string)$nf['dataemissao'])) : null,
+            !empty($nf['datahora_nf_e']) ? date('d-m-Y', strtotime((string)$nf['datahora_nf_e'])) : null,
+            !empty($nf['datasaida']) ? date('d-m-Y', strtotime((string)$nf['datasaida'])) : null,
+        ])));
+
+        $xmlRaw = null;
+        $origemXml = 'ESPELHO_EMA';
+
+        // 1. Tenta localizar o XML original assinado no caminho UNC/local do ERP (quando acessivel)
+        $baseUnc = rtrim(str_replace('/', DIRECTORY_SEPARATOR, trim((string)$nf['caminho_base'])), DIRECTORY_SEPARATOR);
+        if ($baseUnc !== '' && $chave !== '') {
+            foreach ($datasTentativa as $dtDir) {
+                $dirs = [];
+                if ($emb > 0) {
+                    $dirs[] = $baseUnc . DIRECTORY_SEPARATOR . 'NF-e' . DIRECTORY_SEPARATOR . "Filial {$f}" . DIRECTORY_SEPARATOR . 'Saidas' . DIRECTORY_SEPARATOR . $dtDir . DIRECTORY_SEPARATOR . $emb;
+                }
+                $dirs[] = $baseUnc . DIRECTORY_SEPARATOR . 'NF-e' . DIRECTORY_SEPARATOR . "Filial {$f}" . DIRECTORY_SEPARATOR . 'Saidas' . DIRECTORY_SEPARATOR . $dtDir;
+
+                foreach ($dirs as $dir) {
+                    $exato = $dir . DIRECTORY_SEPARATOR . "{$chave}-nf {$numNf}.xml";
+                    if (@is_file($exato)) {
+                        $conteudo = @file_get_contents($exato);
+                        if (is_string($conteudo) && $conteudo !== '') {
+                            $xmlRaw = $conteudo;
+                            $origemXml = 'ORIGINAL_SEFAZ';
+                            break 2;
+                        }
+                    }
+                    $matches = @glob($dir . DIRECTORY_SEPARATOR . $chave . '*.xml');
+                    if (!empty($matches) && @is_file($matches[0])) {
+                        $conteudo = @file_get_contents($matches[0]);
+                        if (is_string($conteudo) && $conteudo !== '') {
+                            $xmlRaw = $conteudo;
+                            $origemXml = 'ORIGINAL_SEFAZ';
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. Tenta Ponte HTTPS privada (HFS/Tunnel com Basic Auth no SecretVault, se configurada para cPanel)
+        if ($xmlRaw === null && $chave !== '') {
+            $bridgeBase = rtrim(trim(\Nutricional\Services\SecretVault::get('NFE_XML_BRIDGE_URL')), '/');
+            if ($bridgeBase !== '') {
+                $bridgeUser = trim(\Nutricional\Services\SecretVault::get('NFE_XML_BRIDGE_USER'));
+                $bridgePass = trim(\Nutricional\Services\SecretVault::get('NFE_XML_BRIDGE_PASS'));
+                foreach ($datasTentativa as $dtDir) {
+                    $relPaths = [];
+                    if ($emb > 0) {
+                        $relPaths[] = rawurlencode("Filial {$f}") . '/Saidas/' . rawurlencode($dtDir) . '/' . $emb . '/' . rawurlencode("{$chave}-nf {$numNf}.xml");
+                    }
+                    $relPaths[] = rawurlencode("Filial {$f}") . '/Saidas/' . rawurlencode($dtDir) . '/' . rawurlencode("{$chave}-nf {$numNf}.xml");
+                    foreach ($relPaths as $rp) {
+                        $ch = curl_init($bridgeBase . '/' . $rp);
+                        $opts = [
+                            CURLOPT_RETURNTRANSFER => true,
+                            CURLOPT_TIMEOUT => 5,
+                            CURLOPT_SSL_VERIFYPEER => false,
+                            CURLOPT_SSL_VERIFYHOST => 0,
+                        ];
+                        if ($bridgeUser !== '') {
+                            $opts[CURLOPT_USERPWD] = $bridgeUser . ':' . $bridgePass;
+                        }
+                        curl_setopt_array($ch, $opts);
+                        $resBody = curl_exec($ch);
+                        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                        if ($httpCode === 200 && is_string($resBody) && strpos($resBody, '<NFe') !== false) {
+                            $xmlRaw = $resBody;
+                            $origemXml = 'ORIGINAL_BRIDGE';
+                            break 2;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Fallback imediato em nuvem (cPanel): gera XML padrao SEFAZ nfeProc v4.00 com todos os itens, NCMs e impostos do banco ema
+        if ($xmlRaw === null) {
+            $xmlRaw = $this->gerarXmlNfeProcFallback($nf);
+        }
+
+        $fileName = ($chave !== '' ? $chave : ('NF_' . $numNf . '_F' . $f)) . '-nfe.xml';
+        $response->getBody()->write($xmlRaw);
+        return $response
+            ->withStatus(200)
+            ->withHeader('Content-Type', 'application/xml; charset=utf-8')
+            ->withHeader('Content-Disposition', 'attachment; filename="' . $fileName . '"')
+            ->withHeader('X-XML-Source', $origemXml);
+    }
+
+    /**
+     * Reconstrói o XML estruturado padrão SEFAZ nfeProc 4.00 diretamente do banco `ema` quando o XML físico não está acessível no host web.
+     */
+    private function gerarXmlNfeProcFallback(array $nf): string
+    {
+        $escXml = fn($v): string => htmlspecialchars($this->utf8(trim((string)$v)), ENT_XML1 | ENT_COMPAT, 'UTF-8');
+        $num = static fn($v, int $dec = 2): string => number_format((float)$v, $dec, '.', '');
+        $digits = static fn($v): string => preg_replace('/\D+/', '', (string)$v) ?: '';
+
+        $f = (int)$nf['idfilial'];
+        $id = (int)$nf['idnfs'];
+        $chave = $digits($nf['chave_nfe']);
+        if (strlen($chave) !== 44) {
+            $chave = str_pad($chave, 44, '0', STR_PAD_LEFT);
+        }
+        $cUF = substr($chave, 0, 2) ?: '42';
+        $cNF = substr($chave, 35, 8) ?: str_pad((string)$id, 8, '0', STR_PAD_LEFT);
+        $cDV = substr($chave, 43, 1) ?: '0';
+        $dhEmi = !empty($nf['datahora_nf_e'])
+            ? date('Y-m-d\TH:i:sP', strtotime((string)$nf['datahora_nf_e']))
+            : ((string)$nf['dataemissao']) . 'T12:00:00-03:00';
+        $dhSai = ((string)$nf['datasaida']) . 'T12:00:00-03:00';
+        $idDest = (strtoupper(trim((string)$nf['emit_uf'])) === strtoupper(trim((string)$nf['dest_uf']))) ? '1' : '2';
+
+        $emitCnpj = str_pad($digits($nf['emit_cnpj']), 14, '0', STR_PAD_LEFT);
+        $emitCmun = strlen($digits($nf['emit_cmun'])) === 7 ? $digits($nf['emit_cmun']) : str_pad($digits($nf['emit_cmun']), 7, '0', STR_PAD_RIGHT);
+        $destDoc = $digits($nf['dest_doc']);
+        $destTagDoc = strlen($destDoc) === 11 ? "<CPF>{$destDoc}</CPF>" : '<CNPJ>' . str_pad($destDoc, 14, '0', STR_PAD_LEFT) . '</CNPJ>';
+        $destIe = $digits($nf['dest_ie']);
+        $indIEDest = $destIe !== '' ? '1' : '9';
+        $destCmun = strlen($digits($nf['dest_cmun'])) >= 6 ? str_pad($digits($nf['dest_cmun']), 7, '0', STR_PAD_RIGHT) : $emitCmun;
+
+        $stI = $this->pdo->prepare("
+            SELECT ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                   COALESCE(NULLIF(TRIM(i.codigobarrastributavel),''), 'SEM GTIN') AS ean,
+                   COALESCE(NULLIF(TRIM(u_nf.sigla), ''), NULLIF(TRIM(u_it.sigla), ''), 'UN') AS unidade,
+                   COALESCE(
+                       NULLIF(NULLIF(TRIM(ni.classificacao), ''), '00000000'),
+                       NULLIF(NULLIF(TRIM(cf_nf.classificacao), ''), '00000000'),
+                       NULLIF(NULLIF(TRIM(cf_it.classificacao), ''), '00000000'),
+                       '00000000'
+                   ) AS ncm,
+                   ni.idcfop,
+                   COALESCE(ni.idsittrib_origem, 0) AS orig,
+                   LPAD(COALESCE(ni.idsituacaotributaria, 0)::text, 2, '0') AS cst_icms,
+                   ni.qt AS qcom,
+                   CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS vuncom,
+                   ni.valor_total::numeric(14,2) AS vprod,
+                   COALESCE(ni.valor_desconto, 0)::numeric(14,2) AS vdesc,
+                   COALESCE(ni.valor_basecalculo, 0)::numeric(14,2) AS vbc_icms,
+                   COALESCE(ni.perc_icms, 0)::numeric(6,2) AS picms,
+                   COALESCE(ni.valoricms, 0)::numeric(14,2) AS vicms,
+                   COALESCE(ni.valor_ipi, 0)::numeric(14,2) AS vipi,
+                   COALESCE(ni.valor_pis, 0)::numeric(14,2) AS vpis,
+                   COALESCE(ni.valor_cofins, 0)::numeric(14,2) AS vcofins
+            FROM nfs_item ni
+            LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN classificacaofiscal cf_nf ON cf_nf.idclassificacaofiscal = ni.idclassfiscal
+            LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+            LEFT JOIN unidade u_nf ON u_nf.idunidade = COALESCE(NULLIF(ni.idunidade_impressao, 0), ni.idunidade)
+            LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
+            WHERE ni.idfilial = :f AND ni.idnfs = :id
+            ORDER BY ni.iditemnfs
+        ");
+        $stI->execute(['f' => $f, 'id' => $id]);
+        $rowsItens = $stI->fetchAll(PDO::FETCH_ASSOC);
+
+        $detXml = '';
+        $vPisTot = 0.0;
+        $vCofinsTot = 0.0;
+        foreach ($rowsItens as $idx => $it) {
+            $nItem = $idx + 1;
+            $cProd = $escXml($it['referencia'] ?: $it['iditem']);
+            $cEAN = preg_match('/^\d{8,14}$/', trim((string)$it['ean'])) ? trim((string)$it['ean']) : 'SEM GTIN';
+            $xProd = $escXml($it['descricao']);
+            $ncm = str_pad($digits($it['ncm']), 8, '0', STR_PAD_LEFT);
+            $cfop = (int)$it['idcfop'];
+            $uCom = $escXml($it['unidade'] ?: 'UN');
+            $orig = (int)$it['orig'];
+            $cst = substr(str_pad($digits($it['cst_icms']), 2, '0', STR_PAD_LEFT), -2);
+            $vDescTag = ((float)$it['vdesc'] > 0) ? '<vDesc>' . $num($it['vdesc'], 2) . '</vDesc>' : '';
+            $vPisTot += (float)$it['vpis'];
+            $vCofinsTot += (float)$it['vcofins'];
+
+            $detXml .= "<det nItem=\"{$nItem}\">"
+                . "<prod><cProd>{$cProd}</cProd><cEAN>{$cEAN}</cEAN><xProd>{$xProd}</xProd><NCM>{$ncm}</NCM><CFOP>{$cfop}</CFOP>"
+                . "<uCom>{$uCom}</uCom><qCom>" . $num($it['qcom'], 4) . "</qCom><vUnCom>" . $num($it['vuncom'], 4) . "</vUnCom>"
+                . "<vProd>" . $num($it['vprod'], 2) . "</vProd><cEANTrib>{$cEAN}</cEANTrib><uTrib>{$uCom}</uTrib>"
+                . "<qTrib>" . $num($it['qcom'], 4) . "</qTrib><vUnTrib>" . $num($it['vuncom'], 4) . "</vUnTrib>{$vDescTag}<indTot>1</indTot></prod>"
+                . "<imposto><ICMS><ICMS{$cst}><orig>{$orig}</orig><CST>{$cst}</CST><modBC>3</modBC><vBC>" . $num($it['vbc_icms'], 2) . "</vBC><pICMS>" . $num($it['picms'], 2) . "</pICMS><vICMS>" . $num($it['vicms'], 2) . "</vICMS></ICMS{$cst}></ICMS>"
+                . "<PIS><PISAliq><CST>01</CST><vBC>" . $num($it['vprod'], 2) . "</vBC><pPIS>0.00</pPIS><vPIS>" . $num($it['vpis'], 2) . "</vPIS></PISAliq></PIS>"
+                . "<COFINS><COFINSAliq><CST>01</CST><vBC>" . $num($it['vprod'], 2) . "</vBC><pCOFINS>0.00</pCOFINS><vCOFINS>" . $num($it['vcofins'], 2) . "</vCOFINS></COFINSAliq></COFINS></imposto>"
+                . "</det>";
+        }
+
+        $stDup = $this->pdo->prepare("SELECT documento, parcela, vencimento, COALESCE(valororiginal, valor, 0)::numeric(14,2) AS valor FROM receber WHERE idfilial = :f AND idnfs = :id AND COALESCE(excluido,'N') = 'N' ORDER BY vencimento ASC, parcela ASC");
+        $stDup->execute(['f' => $f, 'id' => $id]);
+        $dups = $stDup->fetchAll(PDO::FETCH_ASSOC);
+        $cobrXml = '';
+        if (!empty($dups)) {
+            $dupTags = '';
+            foreach ($dups as $iDup => $d) {
+                $nDup = str_pad((string)($iDup + 1), 3, '0', STR_PAD_LEFT);
+                $dupTags .= "<dup><nDup>{$nDup}</nDup><dVenc>" . $escXml($d['vencimento']) . "</dVenc><vDup>" . $num($d['valor'], 2) . "</vDup></dup>";
+            }
+            $cobrXml = "<cobr><fat><nFat>" . (int)$nf['numeronf'] . "</nFat><vOrig>" . $num($nf['vnf'], 2) . "</vOrig><vLiq>" . $num($nf['vnf'], 2) . "</vLiq></fat>{$dupTags}</cobr>";
+        }
+
+        $modFrete = in_array((int)$nf['tipofrete'], [0, 1, 2, 3, 4, 9], true) ? (int)$nf['tipofrete'] : 0;
+        $transpInner = '';
+        if (trim((string)$nf['transp_razao']) !== '') {
+            $trDoc = $digits($nf['transp_doc']);
+            $trDocTag = strlen($trDoc) === 11 ? "<CPF>{$trDoc}</CPF>" : ($trDoc !== '' ? '<CNPJ>' . str_pad($trDoc, 14, '0', STR_PAD_LEFT) . '</CNPJ>' : '');
+            $transpInner .= "<transporta>{$trDocTag}<xNome>" . $escXml($nf['transp_razao']) . "</xNome></transporta>";
+        }
+        $transpInner .= "<vol><qVol>" . (int)$nf['quant_volumes'] . "</qVol><pesoL>" . $num($nf['pesoliquido'], 3) . "</pesoL><pesoB>" . $num($nf['pesobruto'], 3) . "</pesoB></vol>";
+
+        $obsLimpa = trim((string)$nf['observacao']);
+        $infAdic = $obsLimpa !== '' ? '<infAdic><infCpl>' . $escXml($obsLimpa) . '</infCpl></infAdic>' : '';
+        $nProt = $digits($nf['protocolo']) ?: '000000000000000';
+
+        return '<?xml version="1.0" encoding="UTF-8"?>'
+            . '<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">'
+            . '<NFe xmlns="http://www.portalfiscal.inf.br/nfe">'
+            . "<infNFe Id=\"NFe{$chave}\" versao=\"4.00\">"
+            . "<ide><cUF>{$cUF}</cUF><cNF>{$cNF}</cNF><natOp>" . $escXml($nf['nat_op']) . "</natOp><mod>55</mod><serie>" . (int)$nf['idserie'] . "</serie><nNF>" . (int)$nf['numeronf'] . "</nNF><dhEmi>{$dhEmi}</dhEmi><dhSaiEnt>{$dhSai}</dhSaiEnt><tpNF>1</tpNF><idDest>{$idDest}</idDest><cMunFG>{$emitCmun}</cMunFG><tpImp>1</tpImp><tpEmis>1</tpEmis><cDV>{$cDV}</cDV><tpAmb>1</tpAmb><finNFe>1</finNFe><indFinal>0</indFinal><indPres>9</indPres><procEmi>0</procEmi><verProc>NEXUS-EMA-4.0</verProc></ide>"
+            . "<emit><CNPJ>{$emitCnpj}</CNPJ><xNome>" . $escXml($nf['emit_razao']) . "</xNome><xFant>" . $escXml($nf['emit_fantasia'] ?: $nf['emit_razao']) . "</xFant>"
+            . "<enderEmit><xLgr>" . $escXml($nf['emit_end']) . "</xLgr><nro>" . $escXml($nf['emit_num']) . "</nro><xBairro>" . $escXml($nf['emit_bairro']) . "</xBairro><cMun>{$emitCmun}</cMun><xMun>" . $escXml($nf['emit_mun']) . "</xMun><UF>" . $escXml($nf['emit_uf']) . "</UF><CEP>" . str_pad($digits($nf['emit_cep']), 8, '0', STR_PAD_LEFT) . "</CEP><cPais>1058</cPais><xPais>BRASIL</xPais></enderEmit>"
+            . "<IE>" . $digits($nf['emit_ie']) . "</IE><CRT>3</CRT></emit>"
+            . "<dest>{$destTagDoc}<xNome>" . $escXml($nf['dest_razao']) . "</xNome>"
+            . "<enderDest><xLgr>" . $escXml($nf['dest_end']) . "</xLgr><nro>" . $escXml($nf['dest_num']) . "</nro><xBairro>" . $escXml($nf['dest_bairro']) . "</xBairro><cMun>{$destCmun}</cMun><xMun>" . $escXml($nf['dest_mun']) . "</xMun><UF>" . $escXml($nf['dest_uf']) . "</UF><CEP>" . str_pad($digits($nf['dest_cep']), 8, '0', STR_PAD_LEFT) . "</CEP><cPais>1058</cPais><xPais>BRASIL</xPais></enderDest>"
+            . "<indIEDest>{$indIEDest}</indIEDest>" . ($destIe !== '' ? "<IE>{$destIe}</IE>" : '') . "</dest>"
+            . $detXml
+            . "<total><ICMSTot><vBC>" . $num($nf['vbc'], 2) . "</vBC><vICMS>" . $num($nf['vicms'], 2) . "</vICMS><vICMSDeson>0.00</vICMSDeson><vFCP>0.00</vFCP><vBCST>" . $num($nf['vbcst'], 2) . "</vBCST><vST>" . $num($nf['vst'], 2) . "</vST><vFCPST>0.00</vFCPST><vFCPSTRet>0.00</vFCPSTRet><vProd>" . $num($nf['vprod'], 2) . "</vProd><vFrete>" . $num($nf['vfrete'], 2) . "</vFrete><vSeg>" . $num($nf['vseg'], 2) . "</vSeg><vDesc>" . $num($nf['vdesc'], 2) . "</vDesc><vII>0.00</vII><vIPI>" . $num($nf['vipi'], 2) . "</vIPI><vIPIDevol>0.00</vIPIDevol><vPIS>" . $num($vPisTot, 2) . "</vPIS><vCOFINS>" . $num($vCofinsTot, 2) . "</vCOFINS><vOutro>" . $num($nf['voutro'], 2) . "</vOutro><vNF>" . $num($nf['vnf'], 2) . "</vNF></ICMSTot></total>"
+            . "<transp><modFrete>{$modFrete}</modFrete>{$transpInner}</transp>"
+            . $cobrXml
+            . "<pag><detPag><tPag>15</tPag><vPag>" . $num($nf['vnf'], 2) . "</vPag></detPag></pag>"
+            . $infAdic
+            . "</infNFe></NFe>"
+            . "<protNFe versao=\"4.00\"><infProt><tpAmb>1</tpAmb><verAplic>SVRS</verAplic><chNFe>{$chave}</chNFe><dhRecbto>{$dhEmi}</dhRecbto><nProt>{$nProt}</nProt><digVal></digVal><cStat>100</cStat><xMotivo>Autorizado o uso da NF-e</xMotivo></infProt></protNFe>"
+            . '</nfeProc>';
+    }
+
+    /**
      * GET /v1/portal-cliente/boleto/{idfilial}/{idreceber}/detalhe (Protegida)
      * Retorna dados bancários completos para renderização do Boleto FEBRABAN conforme o banco registrador.
      */

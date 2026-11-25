@@ -195,7 +195,7 @@ function renderizarMonitor(dados) {
 
         const relativePath = normalized.substring(markerIndex + marker.length)
             .split('/').map(segment => encodeURIComponent(segment)).join('/');
-        return relativePath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath : placeholder;
+        return relativePath ? (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') + relativePath : placeholder;
     };
 
     let html = '';

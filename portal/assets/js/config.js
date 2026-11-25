@@ -553,3 +553,27 @@ if (typeof window !== 'undefined') {
 }
 
 console.log('🔐 CSRF Protection: ' + (typeof CryptoJS !== 'undefined' ? '✅ Ativo' : '⚠️ CryptoJS não carregado'));
+
+
+// ==========================================================================
+// FOTOS DE PRODUTOS (HFS via Cloudflare Tunnel - fotos.nutricionalbr.com)
+// A porta 2053 do servidor nao e mais exposta; todos os modulos usam esta base.
+// ==========================================================================
+window.FOTOS_BASE_URL = window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/';
+
+// Fallback global: se qualquer foto do HFS falhar, troca por um icone neutro (sem ficar "carregando")
+(function() {
+    var PLACEHOLDER = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="10" fill="#f1f5f9"/>' +
+        '<path d="M14 44l12-14 9 10 6-7 9 11z" fill="#cbd5e1"/><circle cx="23" cy="21" r="5" fill="#cbd5e1"/></svg>'
+    );
+    window.addEventListener('error', function(ev) {
+        var el = ev && ev.target;
+        if (!el || el.tagName !== 'IMG') return;
+        var src = String(el.currentSrc || el.src || '');
+        if (src.indexOf('fotos.nutricionalbr.com') === -1 && src.indexOf(':2053/fotos/') === -1) return;
+        if (el.dataset && el.dataset.fotoFallback === '1') return;
+        if (el.dataset) el.dataset.fotoFallback = '1';
+        el.src = PLACEHOLDER;
+    }, true);
+})();

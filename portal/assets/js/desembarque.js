@@ -52,7 +52,7 @@ function getProductImageUrl(path) {
 
     if (!relativePath) return semFotoUrl;
     relativePath = relativePath.split('/').map(segment => encodeURIComponent(segment)).join('/');
-    return 'https://acesso.nutricionalbr.com:2053/fotos/' + relativePath;
+    return (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') + relativePath;
 }
 
 // ==========================================================================

@@ -741,7 +741,7 @@ function processarFotoUrl(foto) {
     if (markerIndex >= 0) {
         const imgPath = foto.substring(markerIndex + marker.length)
             .split('/').map(segment => encodeURIComponent(segment)).join('/');
-        return imgPath ? 'https://acesso.nutricionalbr.com:2053/fotos/' + imgPath : SEM_FOTO_URL;
+        return imgPath ? (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') + imgPath : SEM_FOTO_URL;
     }
     
     // Tratar /portal/assets/ (caso ainda tenha sem produtos)

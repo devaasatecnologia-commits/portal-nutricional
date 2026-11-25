@@ -82,7 +82,7 @@ function getImageUrl(foto) {
     imgPath = imgPath.replace(/\\/g, '/');
     
     if (imgPath) {
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' + encodeURIComponent(imgPath).replace(/%2F/g, '/');
+        return (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') + encodeURIComponent(imgPath).replace(/%2F/g, '/');
     }
     return 'https://placehold.co/100x100?text=S/F';
 }

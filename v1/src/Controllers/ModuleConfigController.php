@@ -403,7 +403,7 @@ class ModuleConfigController
             return $sem;
         }
         $parts = array_map('rawurlencode', explode('/', $rel));
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' . implode('/', $parts);
+        return ($_ENV['FOTOS_BASE_URL'] ?? 'https://fotos.nutricionalbr.com/fotos/') . implode('/', $parts);
     }
 
     /** GET /v1/admin/config-modulos/amostra */

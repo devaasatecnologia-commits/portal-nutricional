@@ -881,7 +881,7 @@ private function processarFotoUrl($foto) {
         $imgPath = explode('Fotos para o Site\\', $foto)[1];
         // Substituir barras invertidas por barras normais
         $imgPath = str_replace('\\', '/', $imgPath);
-        return 'https://acesso.nutricionalbr.com:2053/fotos/' . str_replace(' ', '%20', $imgPath);
+        return ($_ENV['FOTOS_BASE_URL'] ?? 'https://fotos.nutricionalbr.com/fotos/') . str_replace(' ', '%20', $imgPath);
     }
     
     // Substituir barras invertidas por barras normais

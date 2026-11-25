@@ -181,3 +181,4 @@ Toda solicitação estrutural ou nova feature deve registrar:
 - **Longo Prazo:**
   - Data Warehouse / BI separado para evitar peso analítico sobre o ERP transacional `ema`.
   - Assistente operacional inteligente via WhatsApp (consultas seguras para Gestores e Representantes via Evolution API) e governança multi-agente.
+- 20. **Fotos HFS via Cloudflare Tunnel (25/11/2026):** a porta `2053` (HFS) deixou de ser acessivel externamente apos a blindagem de perimetro (Cloudflare sem alcancar a origem; modulos ficavam 'carregando'). Solucao: hostname `fotos.nutricionalbr.com` no tunel `Servidor-Principal` -> `https://localhost:2053` (No TLS Verify), constante unica `window.FOTOS_BASE_URL` / env `FOTOS_BASE_URL` e fallback global de imagem. **Licao:** nunca expor porta de servico (HFS/DOX) no roteador; publicar via tunel e, para terceiros, endpoint dedicado autenticado.

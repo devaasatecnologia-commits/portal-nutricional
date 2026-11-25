@@ -38,7 +38,7 @@ function getImageUrl(foto) {
     const idx = n.toLowerCase().indexOf(marker);
     const rel = idx >= 0 ? n.substring(idx + marker.length) : n.replace(/^\/+/, '').replace(/^fotos\//i, '');
     if (!rel) return sem;
-    return 'https://acesso.nutricionalbr.com:2053/fotos/' . concat(rel.split('/').map(encodeURIComponent).join('/'));
+    return (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') . concat(rel.split('/').map(encodeURIComponent).join('/'));
 }
 
 const swalBase = { confirmButtonColor: '#059669', cancelButtonColor: '#64748b', customClass: { popup: 'rounded-3xl' } };

@@ -648,7 +648,10 @@ $versionCfg = @filemtime(__DIR__ . '/../assets/js/config.js') ?: time();
                                 <td class="px-3 py-2 text-center">
                                     <div class="inline-flex items-center gap-1.5">
                                         <button x-show="!n.cancelada" @click="abrirDanfe(n)" class="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-bold text-[10px]">
-                                            <i class="fa-solid fa-file-pdf mr-1"></i> Baixar DANFE
+                                            <i class="fa-solid fa-file-pdf mr-1"></i> DANFE
+                                        </button>
+                                        <button x-show="!n.cancelada" @click="baixarXmlNota(n)" class="px-2.5 py-1 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-[10px]" title="Baixar XML da NF-e">
+                                            <i class="fa-solid fa-file-code mr-1"></i> XML
                                         </button>
                                         <button @click="abrirItens('nota', n)" class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[10px]">Itens</button>
                                         <a :href="whatsRepresentante('Nota Fiscal', 'NF ' + n.numeronf, n.pedidos ? 'Ped #' + n.pedidos : '')" target="_blank"
@@ -690,9 +693,12 @@ $versionCfg = @filemtime(__DIR__ . '/../assets/js/config.js') ?: time();
                             </div>
                             <div class="flex gap-2">
                                 <button x-show="!n.cancelada" @click="abrirDanfe(n)" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-extrabold flex items-center justify-center gap-1.5">
-                                    <i class="fa-solid fa-file-pdf"></i> Ver / Baixar DANFE
+                                    <i class="fa-solid fa-file-pdf"></i> DANFE
                                 </button>
-                                <button @click="abrirItens('nota', n)" class="py-2.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold">
+                                <button x-show="!n.cancelada" @click="baixarXmlNota(n)" class="py-2.5 px-3 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-extrabold flex items-center justify-center gap-1" title="Baixar XML">
+                                    <i class="fa-solid fa-file-code"></i> XML
+                                </button>
+                                <button @click="abrirItens('nota', n)" class="py-2.5 px-3.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-extrabold">
                                     Itens
                                 </button>
                                 <a :href="whatsRepresentante('Nota Fiscal', 'NF ' + n.numeronf, n.pedidos ? 'Ped #' + n.pedidos : '')" target="_blank"
@@ -1059,7 +1065,11 @@ $versionCfg = @filemtime(__DIR__ . '/../assets/js/config.js') ?: time();
                     <i class="fa-solid fa-file-invoice text-emerald-400"></i>
                     <span x-text="danfeNota ? ('DANFE Espelho — NF ' + danfeNota.numeronf + ' (Filial ' + danfeNota.idfilial + ')') : 'DANFE'"></span>
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button x-show="danfeNota" @click="baixarXmlNota({idfilial: danfeNota.idfilial, idnfs: danfeNota.idnota, numeronf: danfeNota.numeronf, chave_nfe: danfeNota.chave_nfe})"
+                            class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold">
+                        <i class="fa-solid fa-file-code mr-1"></i> Baixar XML
+                    </button>
                     <button @click="imprimirDocumento('danfe')" class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold">
                         <i class="fa-solid fa-print mr-1"></i> PDF / Imprimir
                     </button>
@@ -1089,8 +1099,12 @@ $versionCfg = @filemtime(__DIR__ . '/../assets/js/config.js') ?: time();
                             <div class="mt-1 font-bold text-xs" x-text="'Nº ' + danfeNota.numeronf + ' | Série ' + (danfeNota.idserie || '1')"></div>
                         </td>
                         <td class="border border-black p-2 w-[38%] align-middle">
-                            <div class="text-[8px] font-bold uppercase text-slate-500">Chave de Acesso</div>
-                            <div class="font-mono font-bold text-[10px] break-all mt-0.5" x-text="fmtChave(danfeNota.chave_nfe)"></div>
+                            <div x-show="danfeBarcodeSvg" class="mb-1.5 pb-1.5 border-b border-black flex justify-center" x-html="danfeBarcodeSvg"></div>
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="text-[8px] font-bold uppercase text-slate-500">Chave de Acesso</span>
+                                <button x-show="danfeNota.chave_nfe" type="button" @click="copiarTexto(danfeNota.chave_nfe, 'Chave NF-e copiada')" class="no-print text-[8px] font-bold text-indigo-600 hover:underline">[Copiar]</button>
+                            </div>
+                            <div class="font-mono font-bold text-[9.5px] tracking-tight break-all mt-0.5 text-center" x-text="fmtChave(danfeNota.chave_nfe)"></div>
                             <div class="text-[8px] font-bold uppercase text-slate-500 mt-1.5">Protocolo de Autorização SEFAZ</div>
                             <div class="font-mono text-[9px]" x-text="(danfeNota.protocolo || '-') + (danfeNota.datahora_sefaz ? ' — ' + danfeNota.datahora_sefaz : '')"></div>
                         </td>

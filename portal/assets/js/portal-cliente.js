@@ -68,6 +68,7 @@ function portalClienteHandler(appBase = '') {
         danfeNota: null,
         danfeDuplicatas: [],
         danfeItens: [],
+        danfeBarcodeSvg: '',
 
         modalBoleto: false,
         boletoDoc: null,
@@ -345,7 +346,7 @@ function portalClienteHandler(appBase = '') {
             const idx = norm.toLowerCase().indexOf('fotos para o site/');
             if (idx === -1) return null;
             const rel = norm.slice(idx + 'fotos para o site/'.length).replace(/^\/+/, '');
-            return rel ? 'https://acesso.nutricionalbr.com:2053/fotos/' + encodeURI(rel) : null;
+            return rel ? (window.FOTOS_BASE_URL || 'https://fotos.nutricionalbr.com/fotos/') + encodeURI(rel) : null;
         },
 
         abrirTituloDetalhe(b) {
@@ -411,9 +412,42 @@ function portalClienteHandler(appBase = '') {
                 this.danfeNota = d.nota;
                 this.danfeDuplicatas = d.duplicatas || [];
                 this.danfeItens = d.itens || [];
+                this.danfeBarcodeSvg = this.gerarSvgCode128C(d.nota?.chave_nfe || '');
                 this.modalDanfe = true;
             } catch (e) {
                 this.mostrarToast(e.message || 'Erro ao carregar DANFE.');
+            }
+        },
+
+        async baixarXmlNota(n) {
+            if (!n || !n.idfilial || !n.idnfs) return;
+            try {
+                const resp = await fetch(`${apiBase()}/portal-cliente/nota/${n.idfilial}/${n.idnfs}/xml`, {
+                    headers: { 'Authorization': `Bearer ${this.tokenAtivo}` }
+                });
+                if (resp.status === 401) {
+                    this.sair();
+                    throw new Error('Sessão expirada.');
+                }
+                if (!resp.ok) {
+                    const errJson = await resp.json().catch(() => ({}));
+                    throw new Error(errJson.error || `Erro HTTP ${resp.status} ao baixar XML.`);
+                }
+                const xmlText = await resp.text();
+                const blob = new Blob([xmlText], { type: 'application/xml;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const chaveLimpa = String(n.chave_nfe || '').replace(/\D/g, '');
+                const nomeArq = (chaveLimpa.length === 44 ? chaveLimpa : `NF_${n.numeronf || n.idnfs}_F${n.idfilial}`) + '-nfe.xml';
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = nomeArq;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 1500);
+                this.mostrarToast(`XML da NF ${n.numeronf || n.idnfs} baixado com sucesso!`);
+            } catch (e) {
+                this.mostrarToast(e.message || 'Erro ao baixar XML da nota.');
             }
         },
 
@@ -502,6 +536,49 @@ function portalClienteHandler(appBase = '') {
                 x += w;
             }
             return `<svg viewBox="0 0 ${x} 52" class="w-full max-w-[420px] h-[52px]" preserveAspectRatio="none">${rects}</svg>`;
+        },
+
+        gerarSvgCode128C(chave) {
+            const dig = String(chave || '').replace(/\D/g, '');
+            if (dig.length !== 44) return '';
+            // Padrão ISO/IEC 15417 Code-128 (0..106) para Chave de Acesso NF-e SEFAZ (Subconjunto C)
+            const P = [
+                '212222','222122','222221','121223','121322','131222','122213','122312','132212','221213',
+                '221312','231212','112232','122132','122231','113222','123122','123221','223211','221132',
+                '221231','213212','223112','312131','311222','321122','321221','312212','322112','322211',
+                '212123','212321','232121','111323','131123','131321','112313','132113','132311','211313',
+                '231113','231311','112133','112331','132131','113123','113321','133121','313121','211331',
+                '231131','213113','213311','213131','311123','311321','331121','312113','312311','332111',
+                '314111','221411','431111','111224','111422','121124','121421','141122','141221','112214',
+                '112412','122114','122411','142112','142211','241211','221114','413111','241112','134111',
+                '111242','121142','121241','114212','124112','124211','411212','421112','421211','212141',
+                '214121','412121','111143','111341','131141','114113','114311','411113','411311','113141',
+                '114131','311141','411131','211412','211214','211232','2331112'
+            ];
+            const codes = [105]; // Start Code C
+            let sum = 105;
+            for (let i = 0; i < 22; i++) {
+                const v = parseInt(dig.slice(i * 2, i * 2 + 2), 10);
+                codes.push(v);
+                sum += (i + 1) * v;
+            }
+            codes.push(sum % 103);
+            codes.push(106); // Stop
+
+            let x = 10; // Quiet zone esquerda
+            let rects = '';
+            for (const c of codes) {
+                const pat = P[c];
+                for (let j = 0; j < pat.length; j++) {
+                    const w = Number(pat[j]);
+                    if (j % 2 === 0) {
+                        rects += `<rect x="${x}" y="0" width="${w}" height="38" fill="#000"/>`;
+                    }
+                    x += w;
+                }
+            }
+            x += 10; // Quiet zone direita
+            return `<svg viewBox="0 0 ${x} 38" class="w-full max-w-[360px] h-[38px]" preserveAspectRatio="none" aria-label="Código de barras Chave NF-e">${rects}</svg>`;
         },
 
         fmtChave(chave) {
