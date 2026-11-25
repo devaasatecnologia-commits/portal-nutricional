@@ -7,6 +7,7 @@ $pageTitle = $modoCliente
     : ($modoRep ? 'Portal do Representante | Nutricional' : 'Carteira Comercial | Nutricional');
 $appBase = strpos($_SERVER['REQUEST_URI'] ?? '', '/API/') !== false ? '/API' : '';
 $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
+$versionCfg = @filemtime(__DIR__ . '/../assets/js/config.js') ?: time();
 ?>
 <!DOCTYPE html>
 <html lang="pt-BR">
@@ -15,10 +16,11 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($pageTitle) ?></title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <script src="<?= $appBase ?>/portal/assets/js/config.js?v=<?= $version ?>"></script>
+    <script src="<?= $appBase ?>/portal/assets/js/config.js?v=<?= $versionCfg ?>"></script>
     <script src="<?= $appBase ?>/portal/assets/js/portal-cliente.js?v=<?= $version ?>"></script>
     <style>
         [x-cloak]{display:none !important;}
@@ -218,7 +220,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                     x-text="escopo.perfil === 'CLIENTE' ? 'Minha Área do Cliente — Nutricional' : (escopo.perfil === 'REPRESENTANTE' ? 'Minha Carteira de Clientes' : 'Gestão de Carteira Comercial')"></h1>
             </div>
             <div class="flex items-center gap-2 self-stretch sm:self-start md:self-auto">
-                <button x-show="escopo.perfil === 'CLIENTE' || escopo.perfil === 'REPRESENTANTE'" @click="modalPref2fa = true; msgPref2fa = ''"
+                <button x-show="escopo.conta_b2b && (escopo.perfil === 'CLIENTE' || escopo.perfil === 'REPRESENTANTE')" @click="modalPref2fa = true; msgPref2fa = ''"
                         class="flex-1 sm:flex-none px-3 py-2 rounded-xl bg-emerald-600/30 hover:bg-emerald-600/50 border border-emerald-400/30 text-white text-xs font-extrabold">
                     <i class="fa-brands fa-whatsapp mr-1"></i> 2FA WhatsApp
                 </button>
@@ -914,12 +916,20 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
             <div class="p-4 overflow-y-auto">
                 <table class="w-full text-xs">
                     <thead class="bg-slate-100 text-slate-700">
-                        <tr><th class="px-2 py-2 text-left">Item</th><th class="px-2 py-2 text-right">Qtd</th><th class="px-2 py-2 text-right">Valor Total</th></tr>
+                        <tr>
+                            <th class="px-2 py-2 text-left">Item</th>
+                            <th class="px-2 py-2 text-center">NCM</th>
+                            <th class="px-2 py-2 text-center">Unid</th>
+                            <th class="px-2 py-2 text-right">Qtd</th>
+                            <th class="px-2 py-2 text-right">Valor Total</th>
+                        </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100">
-                        <template x-for="it in itensModal" :key="it.iditem + '-' + it.valor_total">
+                        <template x-for="(it, idx) in itensModal" :key="idx">
                             <tr>
                                 <td class="px-2 py-2" x-text="it.iditem + ' - ' + it.descricao + (it.referencia ? ' (' + it.referencia + ')' : '')"></td>
+                                <td class="px-2 py-2 text-center font-mono text-[11px] text-slate-600" x-text="it.ncm || '-'"></td>
+                                <td class="px-2 py-2 text-center font-mono text-[11px] text-slate-600" x-text="it.unidade || 'UN'"></td>
                                 <td class="px-2 py-2 text-right font-mono" x-text="it.quantidade"></td>
                                 <td class="px-2 py-2 text-right font-mono font-bold" x-text="fmtMoeda(it.valor_total)"></td>
                             </tr>
@@ -1066,7 +1076,8 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                                 <img src="<?= $appBase ?>/portal/assets/img/logo-danfe-nutricional.png" alt="Nutricional" class="h-11 w-auto max-w-[140px] object-contain shrink-0">
                                 <div class="text-[9px] leading-snug">
                                     <div class="font-bold text-[10px]" x-text="danfeNota.filial_razao"></div>
-                                    <div x-text="(danfeNota.filial_end || '') + ' - ' + (danfeNota.filial_bairro || '') + ' / ' + (danfeNota.filial_uf || '')"></div>
+                                    <div x-text="(danfeNota.filial_end || '') + (danfeNota.filial_numero ? ', ' + danfeNota.filial_numero : '') + ' - ' + (danfeNota.filial_bairro || '')"></div>
+                                    <div x-text="(danfeNota.filial_cidade ? danfeNota.filial_cidade + '/' : '') + (danfeNota.filial_uf || '') + (danfeNota.filial_cep ? ' • CEP: ' + danfeNota.filial_cep : '') + (danfeNota.filial_fone ? ' • Fone: ' + danfeNota.filial_fone : '')"></div>
                                     <div x-text="'CNPJ: ' + (danfeNota.filial_cnpj || '') + ' | IE: ' + (danfeNota.filial_ie || '')"></div>
                                 </div>
                             </div>
@@ -1074,6 +1085,7 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <td class="border border-black p-2 w-[22%] text-center align-middle">
                             <div class="font-black text-sm tracking-wide">DANFE</div>
                             <div class="text-[8px] uppercase">Documento Auxiliar da NF-e</div>
+                            <div class="text-[8px] font-bold mt-0.5">1 - SAÍDA</div>
                             <div class="mt-1 font-bold text-xs" x-text="'Nº ' + danfeNota.numeronf + ' | Série ' + (danfeNota.idserie || '1')"></div>
                         </td>
                         <td class="border border-black p-2 w-[38%] align-middle">
@@ -1100,21 +1112,54 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <td class="border border-black p-1.5 w-[20%]"><div class="text-[8px] uppercase text-slate-500">Inscrição Estadual</div><div class="font-mono" x-text="danfeNota.parc_ie || '-'"></div></td>
                     </tr>
                     <tr>
-                        <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Endereço</div><div x-text="(danfeNota.parc_end || '') + ' - ' + (danfeNota.parc_bairro || '')"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Endereço</div><div x-text="(danfeNota.parc_end || '') + (danfeNota.parc_numero ? ', ' + danfeNota.parc_numero : '') + ' - ' + (danfeNota.parc_bairro || '')"></div></td>
                         <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">Município / UF</div><div x-text="(danfeNota.parc_cidade || '') + ' / ' + (danfeNota.parc_uf || '')"></div></td>
                         <td class="border border-black p-1.5"><div class="text-[8px] uppercase text-slate-500">CEP / Fone</div><div x-text="(danfeNota.parc_cep || '') + ' ' + (danfeNota.parc_fone || '')"></div></td>
                     </tr>
                 </table>
+
+                <template x-if="danfeDuplicatas && danfeDuplicatas.length > 0">
+                    <div class="mb-2">
+                        <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Fatura / Duplicatas</div>
+                        <div class="border border-black p-1.5 grid grid-cols-2 sm:grid-cols-4 gap-1.5 text-[9px]">
+                            <template x-for="(dup, dIdx) in danfeDuplicatas" :key="dIdx">
+                                <div class="border border-slate-300 px-2 py-1 flex items-center justify-between gap-2">
+                                    <span class="font-mono font-bold" x-text="dup.documento + '/' + dup.parcela"></span>
+                                    <span x-text="fmtData(dup.vencimento)"></span>
+                                    <span class="font-mono font-bold" x-text="fmtMoeda(dup.valor)"></span>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
 
                 <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Cálculo do Imposto</div>
                 <table class="w-full border-collapse border border-black mb-2 text-right">
                     <tr>
                         <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Base ICMS</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.baseicms)"></div></td>
                         <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor ICMS</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valoricms)"></div></td>
-                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor IPI</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valoripi)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Base ICMS ST</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.base_st)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor ICMS ST</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valor_st)"></div></td>
+                        <td class="border border-black p-1.5 bg-slate-50"><div class="text-[8px] text-left uppercase text-slate-500">Total dos Produtos</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valortotalitens)"></div></td>
+                    </tr>
+                    <tr>
                         <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor Frete</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valorfrete)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Seguro / Outras</div><div class="font-mono font-bold" x-text="fmtMoeda(Number(danfeNota.valorseguro || 0) + Number(danfeNota.valoroutras || 0))"></div></td>
                         <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Desconto</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valortotaldesconto)"></div></td>
-                        <td class="border border-black p-1.5 bg-slate-50"><div class="text-[8px] text-left uppercase text-slate-500">Total da Nota</div><div class="font-mono font-black text-xs" x-text="fmtMoeda(danfeNota.valortotalnota)"></div></td>
+                        <td class="border border-black p-1.5"><div class="text-[8px] text-left uppercase text-slate-500">Valor IPI</div><div class="font-mono font-bold" x-text="fmtMoeda(danfeNota.valoripi)"></div></td>
+                        <td class="border border-black p-1.5 bg-slate-100"><div class="text-[8px] text-left uppercase text-slate-600 font-bold">Total da Nota</div><div class="font-mono font-black text-xs" x-text="fmtMoeda(danfeNota.valortotalnota)"></div></td>
+                    </tr>
+                </table>
+
+                <div class="font-black text-[9px] uppercase bg-slate-100 border border-b-0 border-black px-2 py-0.5">Transportador / Volumes Transportados</div>
+                <table class="w-full border-collapse border border-black mb-2">
+                    <tr>
+                        <td class="border border-black p-1.5 w-[42%]"><div class="text-[8px] uppercase text-slate-500">Razão Social Transportador</div><div class="font-bold" x-text="danfeNota.transp_razao || 'O PRÓPRIO / SEM TRANSPORTADOR'"></div></td>
+                        <td class="border border-black p-1.5 w-[18%]"><div class="text-[8px] uppercase text-slate-500">Frete por Conta</div><div class="font-bold" x-text="Number(danfeNota.tipofrete) === 1 ? '1 - Destinatário' : (Number(danfeNota.tipofrete) === 9 ? '9 - Sem Frete' : '0 - Emitente')"></div></td>
+                        <td class="border border-black p-1.5 w-[12%]"><div class="text-[8px] uppercase text-slate-500">Placa</div><div class="font-mono" x-text="danfeNota.placa || '-'"></div></td>
+                        <td class="border border-black p-1.5 w-[10%] text-right"><div class="text-[8px] text-left uppercase text-slate-500">Volumes</div><div class="font-mono font-bold" x-text="danfeNota.quant_volumes || 0"></div></td>
+                        <td class="border border-black p-1.5 w-[9%] text-right"><div class="text-[8px] text-left uppercase text-slate-500">Peso Bruto</div><div class="font-mono" x-text="Number(danfeNota.pesobruto || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})"></div></td>
+                        <td class="border border-black p-1.5 w-[9%] text-right"><div class="text-[8px] text-left uppercase text-slate-500">Peso Líq.</div><div class="font-mono" x-text="Number(danfeNota.pesoliquido || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})"></div></td>
                     </tr>
                 </table>
 
@@ -1124,23 +1169,31 @@ $version = @filemtime(__DIR__ . '/../assets/js/portal-cliente.js') ?: time();
                         <tr>
                             <th class="border border-black p-1 text-left">Código</th>
                             <th class="border border-black p-1 text-left">Descrição do Produto</th>
-                            <th class="border border-black p-1 text-center">NCM</th>
+                            <th class="border border-black p-1 text-center">NCM/SH</th>
+                            <th class="border border-black p-1 text-center">CST</th>
                             <th class="border border-black p-1 text-center">CFOP</th>
+                            <th class="border border-black p-1 text-center">Unid</th>
                             <th class="border border-black p-1 text-right">Qtd</th>
                             <th class="border border-black p-1 text-right">Vlr Unit</th>
                             <th class="border border-black p-1 text-right">Vlr Total</th>
+                            <th class="border border-black p-1 text-right">Vlr ICMS</th>
+                            <th class="border border-black p-1 text-right">IPI / ST</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <template x-for="it in danfeItens" :key="it.iditem + '-' + it.valor_total">
+                        <template x-for="(it, idx) in danfeItens" :key="idx">
                             <tr>
                                 <td class="border border-black p-1 font-mono" x-text="it.referencia || it.iditem"></td>
                                 <td class="border border-black p-1" x-text="it.descricao"></td>
-                                <td class="border border-black p-1 text-center font-mono" x-text="it.ncm || '-'"></td>
+                                <td class="border border-black p-1 text-center font-mono font-semibold" x-text="it.ncm || '-'"></td>
+                                <td class="border border-black p-1 text-center font-mono" x-text="it.cst_icms || '000'"></td>
                                 <td class="border border-black p-1 text-center font-mono" x-text="it.idcfop"></td>
+                                <td class="border border-black p-1 text-center font-mono" x-text="it.unidade || 'UN'"></td>
                                 <td class="border border-black p-1 text-right font-mono" x-text="it.quantidade"></td>
                                 <td class="border border-black p-1 text-right font-mono" x-text="fmtMoeda(it.valor_unitario)"></td>
                                 <td class="border border-black p-1 text-right font-mono font-bold" x-text="fmtMoeda(it.valor_total)"></td>
+                                <td class="border border-black p-1 text-right font-mono" x-text="fmtMoeda(it.icms_dest)"></td>
+                                <td class="border border-black p-1 text-right font-mono" x-text="fmtMoeda(Number(it.ipi || 0) + Number(it.st || 0))"></td>
                             </tr>
                         </template>
                     </tbody>

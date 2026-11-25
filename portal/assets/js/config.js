@@ -273,7 +273,7 @@ function getCsrfToken() {
 }
 
 // ==========================================================================
-// LOADING GLOBAL DO PORTAL (TODAS AS AÇÕES, FILTROS E NAVEGAÇÕES)
+// LOADING GLOBAL DO PORTAL (APENAS EM AÇÕES DO USUÁRIO E ABERTURA DE TELA)
 // ==========================================================================
 (function() {
     var activeFetches = 0;
@@ -281,6 +281,23 @@ function getCsrfToken() {
     var elapsedTimer = null;
     var startTime = 0;
     var domReady = false;
+    var pageLoadUntil = Date.now() + 2600;
+    var lastUserActionAt = 0;
+
+    function markUserAction() {
+        lastUserActionAt = Date.now();
+    }
+
+    // Registra apenas interações intencionais do usuário (ignora mousemove/scroll passivos)
+    ['pointerdown', 'mousedown', 'touchstart', 'change', 'submit'].forEach(function(evName) {
+        window.addEventListener(evName, markUserAction, { capture: true, passive: true });
+    });
+    window.addEventListener('keydown', function(ev) {
+        var k = ev && ev.key;
+        if (k === 'Enter' || k === ' ' || k === 'Tab' || (ev.target && /^(INPUT|SELECT|TEXTAREA)$/.test(ev.target.tagName))) {
+            markUserAction();
+        }
+    }, { capture: true, passive: true });
 
     function ensureLoaderDom() {
         if (document.getElementById('nutri-global-loader-style')) return true;
@@ -356,15 +373,40 @@ function getCsrfToken() {
     }
 
     function isSilentUrl(urlStr) {
-        return urlStr.indexOf('/notificacoes') !== -1 ||
-               urlStr.indexOf('/inatividade') !== -1 ||
-               urlStr.indexOf('/ping') !== -1 ||
-               urlStr.indexOf('/heartbeat') !== -1 ||
-               urlStr.indexOf('silent=1') !== -1;
+        var u = String(urlStr || '').toLowerCase();
+        return u.indexOf('/notificacoes') !== -1 ||
+               u.indexOf('/resumo-geral') !== -1 ||
+               u.indexOf('/chat/') !== -1 ||
+               u.indexOf('/mensagens') !== -1 ||
+               u.indexOf('/nao-lidas') !== -1 ||
+               u.indexOf('/inatividade') !== -1 ||
+               u.indexOf('/ping') !== -1 ||
+               u.indexOf('/heartbeat') !== -1 ||
+               u.indexOf('/online') !== -1 ||
+               u.indexOf('/unread') !== -1 ||
+               u.indexOf('/badge') !== -1 ||
+               u.indexOf('silent=1') !== -1;
+    }
+
+    function shouldShowLoaderForRequest(urlStr, options, needsCsrf) {
+        if (options && options.silent) return false;
+        if (isSilentUrl(urlStr)) return false;
+        if (options && options.showLoader === true) return true;
+        var now = Date.now();
+        // Abertura inicial da tela/módulo
+        if (now <= pageLoadUntil) return true;
+        // Ação direta do usuário nos últimos 1.6s (clique, filtro, busca, submit, encadeamento imediato)
+        if ((now - lastUserActionAt) <= 1600) return true;
+        // Já existe um carregamento ativo iniciado por ação do usuário (ex.: segunda chamada encadeada após carregarContexto)
+        if (activeFetches > 0) return true;
+        // Mutações explícitas (POST/PUT/DELETE/PATCH) não silenciosas
+        if (needsCsrf) return true;
+        // Qualquer timer/setInterval em background sem ação do usuário fica 100% silencioso!
+        return false;
     }
 
     window.PortalLoader = {
-        show: function(msg) { renderVisible(msg || 'Carregando dados, aguarde...'); },
+        show: function(msg) { markUserAction(); renderVisible(msg || 'Carregando dados, aguarde...'); },
         hide: function() { activeFetches = 0; hideVisible(); }
     };
 
@@ -389,7 +431,7 @@ function getCsrfToken() {
             }
         }
 
-        var trackLoader = !options.silent && !isSilentUrl(urlStr);
+        var trackLoader = shouldShowLoaderForRequest(urlStr, options, needsCsrf);
         if (trackLoader) {
             activeFetches++;
             if (ensureLoaderDom()) {
@@ -400,7 +442,7 @@ function getCsrfToken() {
                 var label = needsCsrf ? 'Salvando e processando, aguarde...' : 'Carregando dados, aguarde...';
                 showTimer = setTimeout(function() {
                     if (activeFetches > 0) renderVisible(label);
-                }, 180);
+                }, 320);
             }
         }
 

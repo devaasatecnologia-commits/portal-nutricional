@@ -933,10 +933,10 @@ class ContabilController
                 SELECT ni.iditemnfs AS seq, ni.iditem, i.referencia, i.descricao,
                        COALESCE(i.descricaotecnica,'') AS descricaotecnica,
                        COALESCE(NULLIF(TRIM(i.codigobarrastributavel),''), i.referencia, ni.iditem::text) AS ean,
-                       'UN'::text AS unidade,
-                       i.idclassfiscal AS ncm,
+                       COALESCE(NULLIF(TRIM(u_nf.sigla),''), NULLIF(TRIM(u_it.sigla),''), 'UN') AS unidade,
+                       COALESCE(NULLIF(NULLIF(TRIM(ni.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_nf.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_it.classificacao),''),'00000000'), '') AS ncm,
                        ni.idcfop, c.descricao AS cfop_desc,
-                       ni.idsituacaotributaria AS cst_icms, ni.idsittrib_pis AS cst_pis, ni.idsittrib_cofins AS cst_cofins,
+                       LPAD(COALESCE(ni.idsituacaotributaria,0)::text, 3, '0') AS cst_icms, ni.idsittrib_pis AS cst_pis, ni.idsittrib_cofins AS cst_cofins,
                        ni.qt AS quantidade, CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS valor_unitario, ni.valor_total,
                        ni.valor_basecalculo AS base_icms, ni.perc_icms AS aliq_icms, ni.valoricms AS icms_dest, ni.valoricms AS icms_cred,
                        ni.valorbase_pis AS base_pis, ni.perc_pis AS aliq_pis, ni.valor_pis AS pis_dest, ni.valor_pis AS pis_cred,
@@ -944,6 +944,10 @@ class ContabilController
                        ni.valor_ipi AS ipi, ni.valorsubsttrib AS st
                 FROM nfs_item ni
                 LEFT JOIN item i ON i.iditem = ni.iditem
+                LEFT JOIN classificacaofiscal cf_nf ON cf_nf.idclassificacaofiscal = ni.idclassfiscal
+                LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+                LEFT JOIN unidade u_nf ON u_nf.idunidade = COALESCE(NULLIF(ni.idunidade_impressao,0), ni.idunidade)
+                LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
                 LEFT JOIN cfop c ON c.idcfop = ni.idcfop
                 WHERE ni.idfilial = :f AND ni.idnfs = :id
                 ORDER BY ni.iditemnfs
@@ -953,10 +957,10 @@ class ContabilController
                 SELECT ni.iditemnfe AS seq, ni.iditem, i.referencia, i.descricao,
                        COALESCE(i.descricaotecnica,'') AS descricaotecnica,
                        COALESCE(NULLIF(TRIM(i.codigobarrastributavel),''), i.referencia, ni.iditem::text) AS ean,
-                       'UN'::text AS unidade,
-                       i.idclassfiscal AS ncm,
+                       COALESCE(NULLIF(TRIM(u_nf.sigla),''), NULLIF(TRIM(u_it.sigla),''), 'UN') AS unidade,
+                       COALESCE(NULLIF(NULLIF(TRIM(ni.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_nf.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_it.classificacao),''),'00000000'), '') AS ncm,
                        ni.idcfop, c.descricao AS cfop_desc,
-                       ni.idsituacaotributaria AS cst_icms, ni.idsittrib_pis_entrada AS cst_pis, ni.idsittrib_cofins_entrada AS cst_cofins,
+                       LPAD(COALESCE(ni.idsituacaotributaria,0)::text, 3, '0') AS cst_icms, ni.idsittrib_pis_entrada AS cst_pis, ni.idsittrib_cofins_entrada AS cst_cofins,
                        ni.qt AS quantidade, ni.valorunitariobruto AS valor_unitario, ni.valortotal AS valor_total,
                        ni.valorbase_icms AS base_icms, ni.perc_icms AS aliq_icms, ni.valoricms AS icms_dest, ni.valoricmscreditado AS icms_cred,
                        ni.valorbase_pis AS base_pis, ni.perc_pis AS aliq_pis, ni.valorpis AS pis_dest, ni.valorpiscreditado AS pis_cred,
@@ -964,6 +968,10 @@ class ContabilController
                        ni.valoripi AS ipi, ni.valorsubsttribicms AS st
                 FROM nfe_item ni
                 LEFT JOIN item i ON i.iditem = ni.iditem
+                LEFT JOIN classificacaofiscal cf_nf ON cf_nf.idclassificacaofiscal = ni.idclassfiscal
+                LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+                LEFT JOIN unidade u_nf ON u_nf.idunidade = ni.idunidade
+                LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
                 LEFT JOIN cfop c ON c.idcfop = ni.idcfop
                 WHERE ni.idfilial = :f AND ni.idnfe = :id
                 ORDER BY ni.iditemnfe
@@ -1043,8 +1051,8 @@ class ContabilController
         }
         if ($busca !== '') {
             $params['busca'] = '%' . $busca . '%';
-            $wS .= " AND (n.numeronf::text ILIKE :busca OR ni.iditem::text ILIKE :busca OR COALESCE(i.referencia,'') ILIKE :busca OR COALESCE(i.descricao,'') ILIKE :busca OR COALESCE(i.idclassfiscal::text,'') ILIKE :busca OR COALESCE(p.razao,'') ILIKE :busca)";
-            $wE .= " AND (n.numero::text ILIKE :busca OR ni.iditem::text ILIKE :busca OR COALESCE(i.referencia,'') ILIKE :busca OR COALESCE(i.descricao,'') ILIKE :busca OR COALESCE(i.idclassfiscal::text,'') ILIKE :busca OR COALESCE(p.razao,'') ILIKE :busca)";
+            $wS .= " AND (n.numeronf::text ILIKE :busca OR ni.iditem::text ILIKE :busca OR COALESCE(i.referencia,'') ILIKE :busca OR COALESCE(i.descricao,'') ILIKE :busca OR COALESCE(ni.classificacao,'') ILIKE :busca OR COALESCE(cf_it.classificacao,'') ILIKE :busca OR COALESCE(p.razao,'') ILIKE :busca)";
+            $wE .= " AND (n.numero::text ILIKE :busca OR ni.iditem::text ILIKE :busca OR COALESCE(i.referencia,'') ILIKE :busca OR COALESCE(i.descricao,'') ILIKE :busca OR COALESCE(ni.classificacao,'') ILIKE :busca OR COALESCE(cf_it.classificacao,'') ILIKE :busca OR COALESCE(p.razao,'') ILIKE :busca)";
         }
 
         $sqlSaida = "
@@ -1053,8 +1061,8 @@ class ContabilController
                    COALESCE(p.razao, 'CONSUMIDOR') AS parceiro, COALESCE(p.uf, n.uf_destino, '') AS uf,
                    ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS item_desc,
                    COALESCE(g.descricao,'') AS grupo_desc, COALESCE(m.descricao,'') AS marca_desc,
-                   COALESCE(i.idclassfiscal::text,'') AS ncm, ni.idcfop,
-                   COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
+                   COALESCE(NULLIF(NULLIF(TRIM(ni.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_it.classificacao),''),'00000000'), '') AS ncm, ni.idcfop,
+                   LPAD(COALESCE(ni.idsituacaotributaria,0)::text, 3, '0') AS cst_icms,
                    ni.qt AS quantidade, ni.valor_total,
                    ni.valor_basecalculo AS base_icms, ni.perc_icms AS aliq_icms, ni.valoricms AS icms_dest, ni.valoricms AS icms_cred,
                    ni.valorbase_pis AS base_pis, ni.perc_pis AS aliq_pis, ni.valor_pis AS pis_dest, ni.valor_pis AS pis_cred,
@@ -1063,6 +1071,7 @@ class ContabilController
             FROM nfs_item ni
             JOIN nfs n ON n.idnfs = ni.idnfs AND n.idfilial = ni.idfilial
             LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
             LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
             LEFT JOIN marca m ON m.idmarca = i.idmarca
             LEFT JOIN filial f ON f.idfilial = n.idfilial
@@ -1079,8 +1088,8 @@ class ContabilController
                    COALESCE(p.razao, 'FORNECEDOR') AS parceiro, COALESCE(p.uf, '') AS uf,
                    ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS item_desc,
                    COALESCE(g.descricao,'') AS grupo_desc, COALESCE(m.descricao,'') AS marca_desc,
-                   COALESCE(i.idclassfiscal::text,'') AS ncm, ni.idcfop,
-                   COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
+                   COALESCE(NULLIF(NULLIF(TRIM(ni.classificacao),''),'00000000'), NULLIF(NULLIF(TRIM(cf_it.classificacao),''),'00000000'), '') AS ncm, ni.idcfop,
+                   LPAD(COALESCE(ni.idsituacaotributaria,0)::text, 3, '0') AS cst_icms,
                    ni.qt AS quantidade, ni.valortotal AS valor_total,
                    ni.valorbase_icms AS base_icms, ni.perc_icms AS aliq_icms, ni.valoricms AS icms_dest, ni.valoricmscreditado AS icms_cred,
                    ni.valorbase_pis AS base_pis, ni.perc_pis AS aliq_pis, ni.valorpis AS pis_dest, ni.valorpiscreditado AS pis_cred,
@@ -1089,6 +1098,7 @@ class ContabilController
             FROM nfe_item ni
             JOIN nfe n ON n.idnfe = ni.idnfe AND n.idfilial = ni.idfilial
             LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
             LEFT JOIN grupo g ON g.idgrupo = i.idgrupo
             LEFT JOIN marca m ON m.idmarca = i.idmarca
             LEFT JOIN filial f ON f.idfilial = n.idfilial

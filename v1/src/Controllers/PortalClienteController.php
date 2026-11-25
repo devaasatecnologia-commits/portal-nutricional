@@ -777,6 +777,13 @@ class PortalClienteController
     {
         $u = (array)($request->getAttribute('user') ?? []);
         if (!empty($u['b2b'])) {
+            $b2bId = (int)($u['b2b_id'] ?? $u['idconta'] ?? 0);
+            $prefRow = [];
+            if ($b2bId > 0) {
+                $stPref = $this->pdo->prepare("SELECT COALESCE(whatsapp,'') AS whatsapp, COALESCE(preferencia_2fa,'email') AS preferencia_2fa FROM b2b_portal_contas WHERE id = :id");
+                $stPref->execute(['id' => $b2bId]);
+                $prefRow = $stPref->fetch(PDO::FETCH_ASSOC) ?: [];
+            }
             return [
                 'perfil' => strtoupper((string)($u['perfil_b2b'] ?? 'CLIENTE')),
                 'nome' => (string)($u['username'] ?? ''),
@@ -785,6 +792,9 @@ class PortalClienteController
                 'representantes' => (int)($u['idvendedor'] ?? 0) > 0 ? [(int)$u['idvendedor']] : [],
                 'gestores' => array_values(array_filter(array_map('intval', explode(',', (string)($u['dash_gestores'] ?? ''))))),
                 'is_admin' => !empty($u['is_admin']),
+                'conta_b2b' => true,
+                'whatsapp' => (string)($prefRow['whatsapp'] ?? ''),
+                'preferencia_2fa' => (string)($prefRow['preferencia_2fa'] ?? 'email'),
             ];
         }
 
@@ -839,7 +849,7 @@ class PortalClienteController
                 $whereRep .= " AND c.idcliforemp IN ($inR)";
             } elseif ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
                 $inG = implode(',', $esc['gestores']);
-                $whereRep .= " AND EXISTS (SELECT 1 FROM pedido p WHERE p.idvendrepre = c.idcliforemp AND p.idsupervisor IN ($inG))";
+                $whereRep .= " AND (c.idcliforemp IN (SELECT idrepresentante FROM vw_gestor_repre WHERE idgestor IN ($inG)) OR EXISTS (SELECT 1 FROM pedido p WHERE p.idvendrepre = c.idcliforemp AND p.idsupervisor IN ($inG)))";
             }
             foreach ($this->pdo->query("SELECT c.idcliforemp AS id, c.razao AS nome FROM cliforemp c WHERE $whereRep ORDER BY c.razao LIMIT 150", PDO::FETCH_ASSOC) as $r) {
                 $representantes[] = ['id' => (int)$r['id'], 'nome' => $this->utf8($r['nome'])];
@@ -872,7 +882,7 @@ class PortalClienteController
                 $whereCli[] = "cl.idvendedor IN ($inReps)";
             } elseif ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
                 $inG = implode(',', $esc['gestores']);
-                $whereCli[] = "EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = c.idcliforemp AND p.idsupervisor IN ($inG))";
+                $whereCli[] = "(cl.idvendedor IN (SELECT idrepresentante FROM vw_gestor_repre WHERE idgestor IN ($inG)) OR EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = c.idcliforemp AND p.idsupervisor IN ($inG)))";
             }
         }
 
@@ -946,7 +956,13 @@ class PortalClienteController
         }
         if ($esc['perfil'] === 'GESTOR' && $esc['gestores'] !== []) {
             $inG = implode(',', $esc['gestores']);
-            $st = $this->pdo->prepare("SELECT 1 FROM pedido WHERE idcliforemp = :c AND idsupervisor IN ($inG) LIMIT 1");
+            $st = $this->pdo->prepare("
+                SELECT 1 FROM cliente cl
+                WHERE cl.idcliforemp = :c
+                  AND (cl.idvendedor IN (SELECT idrepresentante FROM vw_gestor_repre WHERE idgestor IN ($inG))
+                       OR EXISTS (SELECT 1 FROM pedido p WHERE p.idcliforemp = :c AND p.idsupervisor IN ($inG)))
+                LIMIT 1
+            ");
             $st->execute(['c' => $idCliente]);
             return (bool)$st->fetchColumn();
         }
@@ -1259,9 +1275,20 @@ class PortalClienteController
 
         $stI = $this->pdo->prepare("
             SELECT ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                   COALESCE(NULLIF(TRIM(u_nf.sigla), ''), NULLIF(TRIM(u_it.sigla), ''), 'UN') AS unidade,
+                   COALESCE(
+                       NULLIF(NULLIF(TRIM(ni.classificacao), ''), '00000000'),
+                       NULLIF(NULLIF(TRIM(cf_nf.classificacao), ''), '00000000'),
+                       NULLIF(NULLIF(TRIM(cf_it.classificacao), ''), '00000000'),
+                       ''
+                   ) AS ncm,
                    ni.qt AS quantidade, ni.valor_total::numeric(14,2) AS valor_total, ni.idcfop
             FROM nfs_item ni
             LEFT JOIN item i ON i.iditem = ni.iditem
+            LEFT JOIN classificacaofiscal cf_nf ON cf_nf.idclassificacaofiscal = ni.idclassfiscal
+            LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+            LEFT JOIN unidade u_nf ON u_nf.idunidade = COALESCE(NULLIF(ni.idunidade_impressao, 0), ni.idunidade)
+            LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
             WHERE ni.idfilial = :f AND ni.idnfs = :id
             ORDER BY ni.iditemnfs
         ");
@@ -1270,6 +1297,8 @@ class PortalClienteController
             'iditem' => (int)$r['iditem'],
             'referencia' => trim((string)$r['referencia']),
             'descricao' => $this->utf8($r['descricao']),
+            'unidade' => trim((string)$r['unidade']) ?: 'UN',
+            'ncm' => trim((string)$r['ncm']),
             'quantidade' => (float)$r['quantidade'],
             'valor_total' => (float)$r['valor_total'],
             'idcfop' => (int)$r['idcfop'],
@@ -1335,86 +1364,119 @@ class PortalClienteController
                    n.status, COALESCE(n.cancelado_sefaz,'N') AS cancelado_sefaz, COALESCE(n.denegada,'N') AS denegada,
                    COALESCE(n.numeroprotocolo_nf_e,'') AS protocolo, COALESCE(n.numero_nf_e,'') AS chave_nfe,
                    COALESCE(to_char(n.datahora_nf_e,'DD/MM/YYYY HH24:MI:SS'),'') AS datahora_sefaz,
-                   COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.observacao,'') AS observacao,
-                   f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
-                   f.endereco AS filial_end, f.bairro AS filial_bairro, f.uf AS filial_uf,
-                   c.idcliforemp, COALESCE(c.razao,'CONSUMIDOR') AS parc_razao,
-                   COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS parc_doc,
-                   COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
-                   COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
-                   COALESCE(c.uf, n.uf_destino, '') AS parc_uf,
-                   COALESCE(c.cep,'') AS parc_cep, COALESCE(c.fone,'') AS parc_fone,
-                   COALESCE(tr.razao,'') AS transp_razao, COALESCE(NULLIF(TRIM(tr.cnpj),''), TRIM(tr.cpf), '') AS transp_doc,
-                   COALESCE(n.tipofrete,0) AS tipofrete, COALESCE(n.placa,'') AS placa,
-                   COALESCE(n.quant_mercadorias,0) AS quant_volumes,
-                   COALESCE(n.pesobruto,0)::numeric(14,3) AS pesobruto,
-                   COALESCE(n.pesoliquido,0)::numeric(14,3) AS pesoliquido,
-                   COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
-                   COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
-                   COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
-                   COALESCE(n.valorseguro,0)::numeric(14,2) AS valorseguro,
-                   COALESCE(n.valoroutrasdespesas,0)::numeric(14,2) AS valoroutras,
-                   COALESCE(n.valortotalnota,0)::numeric(14,2) AS valortotalnota,
-                   COALESCE(n.baseicms,0)::numeric(14,2) AS baseicms,
-                   COALESCE(n.valoricms,0)::numeric(14,2) AS valoricms,
-                   COALESCE(n.base_substituicaotrib,0)::numeric(14,2) AS base_st,
-                   COALESCE(n.valor_substituicaotrib,0)::numeric(14,2) AS valor_st,
-                   COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi
-            FROM nfs n
-            LEFT JOIN filial f ON f.idfilial = n.idfilial
-            LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
-            LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
-            LEFT JOIN cliforemp tr ON tr.idcliforemp = n.idtransportadora
-            LEFT JOIN cfop cf ON cf.idcfop = n.idcfop
-            WHERE n.idfilial = :f AND n.idnfs = :id
-        ";
-        $st = $this->pdo->prepare($sql);
-        $st->execute(['f' => $f, 'id' => $id]);
-        $nota = $st->fetch(PDO::FETCH_ASSOC);
-        if (!$nota) {
-            return $this->json($response, ['success' => false, 'error' => 'Nota fiscal não encontrada.'], 404);
-        }
-        if (!$this->validarAcessoCliente($esc, (int)$nota['idcliforemp'])) {
-            return $this->json($response, ['success' => false, 'error' => 'Acesso negado.'], 403);
-        }
-        foreach ($nota as $k => $v) {
-            if (is_string($v)) $nota[$k] = $this->utf8($v);
-        }
+                    COALESCE(n.pedidos,'') AS pedidos, COALESCE(n.observacao,'') AS observacao,
+                    f.razao AS filial_razao, f.nome AS filial_nome, f.cnpj AS filial_cnpj, f.ie AS filial_ie,
+                    f.endereco AS filial_end, COALESCE(NULLIF(TRIM(f.numero::text),'.'), '') AS filial_numero,
+                    f.bairro AS filial_bairro, COALESCE(cid_f.descricao,'') AS filial_cidade,
+                    f.uf AS filial_uf, COALESCE(f.cep,'') AS filial_cep, COALESCE(f.fone,'') AS filial_fone,
+                    c.idcliforemp, COALESCE(c.razao,'CONSUMIDOR') AS parc_razao,
+                    COALESCE(NULLIF(TRIM(c.cnpj),''), TRIM(c.cpf), '') AS parc_doc,
+                    COALESCE(c.ie,'') AS parc_ie, COALESCE(c.endereco,'') AS parc_end,
+                    COALESCE(NULLIF(TRIM(c.numero::text),'.'), '') AS parc_numero,
+                    COALESCE(c.bairro,'') AS parc_bairro, COALESCE(cid.descricao,'') AS parc_cidade,
+                    COALESCE(c.uf, n.uf_destino, '') AS parc_uf,
+                    COALESCE(c.cep,'') AS parc_cep, COALESCE(c.fone,'') AS parc_fone,
+                    COALESCE(tr.razao,'') AS transp_razao, COALESCE(NULLIF(TRIM(tr.cnpj),''), TRIM(tr.cpf), '') AS transp_doc,
+                    COALESCE(n.tipofrete,0) AS tipofrete, COALESCE(NULLIF(TRIM(n.placa),'.'),'') AS placa,
+                    COALESCE(n.quant_mercadorias,0) AS quant_volumes,
+                    COALESCE(n.pesobruto,0)::numeric(14,3) AS pesobruto,
+                    COALESCE(n.pesoliquido,0)::numeric(14,3) AS pesoliquido,
+                    COALESCE(n.valortotalitens,0)::numeric(14,2) AS valortotalitens,
+                    COALESCE(n.valortotaldesconto,0)::numeric(14,2) AS valortotaldesconto,
+                    COALESCE(n.valorfrete,0)::numeric(14,2) AS valorfrete,
+                    COALESCE(n.valorseguro,0)::numeric(14,2) AS valorseguro,
+                    COALESCE(n.valoroutrasdespesas,0)::numeric(14,2) AS valoroutras,
+                    COALESCE(n.valortotalnota,0)::numeric(14,2) AS valortotalnota,
+                    COALESCE(n.baseicms,0)::numeric(14,2) AS baseicms,
+                    COALESCE(n.valoricms,0)::numeric(14,2) AS valoricms,
+                    COALESCE(n.base_substituicaotrib,0)::numeric(14,2) AS base_st,
+                    COALESCE(n.valor_substituicaotrib,0)::numeric(14,2) AS valor_st,
+                    COALESCE(n.valoripi,0)::numeric(14,2) AS valoripi
+             FROM nfs n
+             LEFT JOIN filial f ON f.idfilial = n.idfilial
+             LEFT JOIN cidade cid_f ON cid_f.idcidade = f.idcidade
+             LEFT JOIN cliforemp c ON c.idcliforemp = n.idcliforemp
+             LEFT JOIN cidade cid ON cid.idcidade = c.idcidade
+             LEFT JOIN cliforemp tr ON tr.idcliforemp = n.idtransportadora
+             LEFT JOIN cfop cf ON cf.idcfop = n.idcfop
+             WHERE n.idfilial = :f AND n.idnfs = :id
+         ";
+         $st = $this->pdo->prepare($sql);
+         $st->execute(['f' => $f, 'id' => $id]);
+         $nota = $st->fetch(PDO::FETCH_ASSOC);
+         if (!$nota) {
+             return $this->json($response, ['success' => false, 'error' => 'Nota fiscal não encontrada.'], 404);
+         }
+         if (!$this->validarAcessoCliente($esc, (int)$nota['idcliforemp'])) {
+             return $this->json($response, ['success' => false, 'error' => 'Acesso negado.'], 403);
+         }
+         foreach ($nota as $k => $v) {
+             if (is_string($v)) $nota[$k] = $this->utf8(trim($v));
+         }
 
-        $stI = $this->pdo->prepare("
-            SELECT ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
-                   'UN'::text AS unidade, COALESCE(i.idclassfiscal::text,'') AS ncm,
-                   ni.idcfop, COALESCE(ni.idsituacaotributaria::text,'') AS cst_icms,
-                   ni.qt AS quantidade,
-                   CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS valor_unitario,
-                   ni.valor_total::numeric(14,2) AS valor_total,
-                   COALESCE(ni.valoricms,0)::numeric(14,2) AS icms_dest,
-                   COALESCE(ni.valor_ipi,0)::numeric(14,2) AS ipi
-            FROM nfs_item ni
-            LEFT JOIN item i ON i.iditem = ni.iditem
-            WHERE ni.idfilial = :f AND ni.idnfs = :id
-            ORDER BY ni.iditemnfs
-        ");
-        $stI->execute(['f' => $f, 'id' => $id]);
-        $itens = [];
-        foreach ($stI->fetchAll(PDO::FETCH_ASSOC) as $r) {
-            $itens[] = [
-                'iditem' => (int)$r['iditem'],
-                'referencia' => trim((string)$r['referencia']),
-                'descricao' => $this->utf8($r['descricao']),
-                'unidade' => 'UN',
-                'ncm' => trim((string)$r['ncm']),
-                'idcfop' => (int)$r['idcfop'],
-                'cst_icms' => trim((string)$r['cst_icms']),
-                'quantidade' => (float)$r['quantidade'],
-                'valor_unitario' => (float)$r['valor_unitario'],
-                'valor_total' => (float)$r['valor_total'],
-                'icms_dest' => (float)$r['icms_dest'],
-                'ipi' => (float)$r['ipi'],
-            ];
-        }
+         $stDup = $this->pdo->prepare("
+             SELECT documento, parcela, vencimento, COALESCE(valororiginal, valor, 0)::numeric(14,2) AS valor
+             FROM receber
+             WHERE idfilial = :f AND idnfs = :id AND COALESCE(excluido, 'N') = 'N'
+             ORDER BY vencimento ASC, parcela ASC
+         ");
+         $stDup->execute(['f' => $f, 'id' => $id]);
+         $duplicatas = array_map(fn($d) => [
+             'documento' => $this->utf8(trim((string)$d['documento'])),
+             'parcela' => trim((string)$d['parcela']),
+             'vencimento' => $d['vencimento'],
+             'valor' => (float)$d['valor'],
+         ], $stDup->fetchAll(PDO::FETCH_ASSOC));
 
-        return $this->json($response, ['success' => true, 'nota' => $nota, 'itens' => $itens]);
+         $stI = $this->pdo->prepare("
+             SELECT ni.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                    COALESCE(NULLIF(TRIM(u_nf.sigla), ''), NULLIF(TRIM(u_it.sigla), ''), 'UN') AS unidade,
+                    COALESCE(
+                        NULLIF(NULLIF(TRIM(ni.classificacao), ''), '00000000'),
+                        NULLIF(NULLIF(TRIM(cf_nf.classificacao), ''), '00000000'),
+                        NULLIF(NULLIF(TRIM(cf_it.classificacao), ''), '00000000'),
+                        ''
+                    ) AS ncm,
+                    ni.idcfop,
+                    LPAD(COALESCE(ni.idsituacaotributaria, 0)::text, 3, '0') AS cst_icms,
+                    ni.qt AS quantidade,
+                    CASE WHEN ni.qt > 0 THEN (ni.valor_total / ni.qt)::numeric(14,4) ELSE 0 END AS valor_unitario,
+                    ni.valor_total::numeric(14,2) AS valor_total,
+                    COALESCE(ni.perc_icms, 0)::numeric(6,2) AS aliq_icms,
+                    COALESCE(ni.valoricms,0)::numeric(14,2) AS icms_dest,
+                    COALESCE(ni.valor_ipi,0)::numeric(14,2) AS ipi,
+                    COALESCE(ni.valorsubsttrib,0)::numeric(14,2) AS st
+             FROM nfs_item ni
+             LEFT JOIN item i ON i.iditem = ni.iditem
+             LEFT JOIN classificacaofiscal cf_nf ON cf_nf.idclassificacaofiscal = ni.idclassfiscal
+             LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+             LEFT JOIN unidade u_nf ON u_nf.idunidade = COALESCE(NULLIF(ni.idunidade_impressao, 0), ni.idunidade)
+             LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
+             WHERE ni.idfilial = :f AND ni.idnfs = :id
+             ORDER BY ni.iditemnfs
+         ");
+         $stI->execute(['f' => $f, 'id' => $id]);
+         $itens = [];
+         foreach ($stI->fetchAll(PDO::FETCH_ASSOC) as $r) {
+             $itens[] = [
+                 'iditem' => (int)$r['iditem'],
+                 'referencia' => trim((string)$r['referencia']),
+                 'descricao' => $this->utf8($r['descricao']),
+                 'unidade' => trim((string)$r['unidade']) ?: 'UN',
+                 'ncm' => trim((string)$r['ncm']),
+                 'idcfop' => (int)$r['idcfop'],
+                 'cst_icms' => trim((string)$r['cst_icms']),
+                 'quantidade' => (float)$r['quantidade'],
+                 'valor_unitario' => (float)$r['valor_unitario'],
+                 'valor_total' => (float)$r['valor_total'],
+                 'aliq_icms' => (float)$r['aliq_icms'],
+                 'icms_dest' => (float)$r['icms_dest'],
+                 'ipi' => (float)$r['ipi'],
+                 'st' => (float)$r['st'],
+             ];
+         }
+
+         return $this->json($response, ['success' => true, 'nota' => $nota, 'duplicatas' => $duplicatas, 'itens' => $itens]);
     }
 
     /**
@@ -1519,9 +1581,13 @@ class PortalClienteController
 
         $stI = $this->pdo->prepare("
             SELECT pi.iditem, COALESCE(i.referencia,'') AS referencia, COALESCE(i.descricao,'') AS descricao,
+                   COALESCE(NULLIF(TRIM(u_it.sigla), ''), 'UN') AS unidade,
+                   COALESCE(NULLIF(NULLIF(TRIM(cf_it.classificacao), ''), '00000000'), '') AS ncm,
                    pi.qt AS quantidade, pi.valortotal::numeric(14,2) AS valor_total
             FROM pedido_item pi
             LEFT JOIN item i ON i.iditem = pi.iditem
+            LEFT JOIN classificacaofiscal cf_it ON cf_it.idclassificacaofiscal = i.idclassfiscal
+            LEFT JOIN unidade u_it ON u_it.idunidade = i.idunidadebasica
             WHERE pi.idfilial = :f AND pi.idpedido = :id
             ORDER BY pi.iditempedido
         ");
@@ -1530,6 +1596,8 @@ class PortalClienteController
             'iditem' => (int)$r['iditem'],
             'referencia' => trim((string)$r['referencia']),
             'descricao' => $this->utf8($r['descricao']),
+            'unidade' => trim((string)$r['unidade']) ?: 'UN',
+            'ncm' => trim((string)$r['ncm']),
             'quantidade' => (float)$r['quantidade'],
             'valor_total' => (float)$r['valor_total'],
         ], $stI->fetchAll(PDO::FETCH_ASSOC));

@@ -1,32 +1,20 @@
 # TOKEN DE CONTINUIDADE ATUAL
-Token ativo: `docs/tokens/CONTINUATION-2026-11-24-emergencia-csrf-flex.md` (unificado com `docs/tokens/CONTINUATION-2026-11-19-ETAPA2-DRP-SERVER.md`)
+Token ativo: `docs/tokens/CONTINUATION-2026-11-24-emergencia-csrf-flex.md`
 Data de geração: 2026-11-25
 Módulos principais:
-- **Chamado #82 (Hotfix Emergencial CSRF / Verba Flex — Solicitante: TIAGO):** erro `403 CSRF token inválido` após `21:00 BRT` corrigido (`222ef73`), unificado na `main` local com todos os recursos de Novembro (`PortalLoader`, B2B `/v1/portal-cliente/` e 2FA WhatsApp Admin), documentado com PDF e sincronizado via `git push origin main`.
-- **Chamado #80 v1.3 (Programa 365 Comercial T27 + Loader Global do Portal):** Auto-Soma inicial, faturamento pela data de chegada/importação do pedido (`COALESCE(pp.data, p.data, n.dataemissao)` igual Mercos), Modo Surpresa no Ranking Geral, 52 PINs e `PortalLoader` global.
-- **Chamado #32 (Mercos Sandbox Homologação):** aguardando e-mail/transcrição da Mercos para envio da lista de entidades e liberação de Sandbox.
+- **Chamado #66 v1.4 (Portal do Cliente B2B & Contábil — Correção NCM/DANFE + Revisão Geral + Ajuste Loader Global):** NCM fiscal real (`classificacaofiscal`), DANFE completa (Duplicatas, ST, Transportador/Volumes, CST, Unid, Cidade/CEP da Filial), escopo Gestor via `vw_gestor_repre`, e `PortalLoader` restrito estritamente a ações do usuário (sem disparar em notificações/chat/timers).
+- **Chamado #82 (Hotfix Emergencial CSRF / Verba Flex — Solicitante: TIAGO)** & **Chamado #80 v1.3 (Programa 365 Comercial T27):** já publicados e validados em produção hoje cedo (`api.nutricionalbr.com`).
+- **Chamado #32 (Mercos Sandbox Homologação):** aguardando e-mail/transcrição da Mercos.
 
 ---
 
-## Arquivos Obrigatórios para Deploy FTP Hoje (cPanel Produção)
+## Arquivos Alterados Agora para Deploy FTP (cPanel Produção)
+1. **Loader Global Silencioso em Background (`config.js`):**
+   - `portal/assets/js/config.js` *(só abre em ações reais do usuário e abertura inicial; ignora `/notificacoes`, `/chat/`, `/mensagens`, `/inatividade` e qualquer `setInterval` automático)*
 
-> **ATENÇÃO CRÍTICA DE SINCRONIA:** Como o hotfix de ontem à noite via celular (`AndFTP`) partiu da `origin/main` anterior (26/10), é **obrigatório reenviar hoje os 3 arquivos do item 1** já unificados para manter o hotfix do CSRF **junto** com o `PortalLoader`, a isenção B2B (`/v1/portal-cliente/`) e o 2FA WhatsApp do Admin!
-
-1. **Segurança CSRF Unificada + Loader Global do Portal (Chamado #82 + #80):**
-   - `v1/src/Middleware/CsrfMiddleware.php` *(CSRF `America/Sao_Paulo` + `UTC` + isenção `/v1/portal-cliente/` e `/v1/frota/`)*
-   - `portal/assets/js/config.js` *(CSRF `America/Sao_Paulo` + `uid` via JWT + `PortalLoader` global `"Carregando dados, aguarde..."`)*
-   - `portal/modules/admin/components/footer.php` *(CSRF `America/Sao_Paulo` + 2FA WhatsApp administrativo)*
-   - `portal/uploads/chamados/chamado_82_hotfix_csrf_flex.pdf`
-
-2. **Chamado #80 v1.3 (Programa 365 Comercial - T27):**
-   - `v1/routes/api.php`
-   - `v1/src/Services/Programa365Service.php`
-   - `v1/src/Controllers/Programa365Controller.php`
-   - `portal/modules/programa-365.php`
-   - `portal/assets/js/programa-365.js`
-   - `portal/uploads/chamados/chamado_80_programa_365_t27.pdf`
-
-3. **Entregas anteriores da semana (caso ainda não subidas por FTP):**
-   - **Chamado #70 (Depósito / FIFO):** `v1/src/Services/EnderecoItemService.php`, `v1/src/Controllers/DepositoController.php`, `portal/assets/js/gestao-deposito.js`, `portal/assets/js/desembarque.js`, `portal/uploads/chamados/chamado_70_deposito.pdf`
-   - **Verba Flex Cloud:** `v1/src/Services/MercosFlexService.php`, `v1/src/Services/SecretVault.php`
-   - **Chamado #32 (Dossiê Mercos):** `portal/uploads/chamados/chamado_32_manual_estrategico_mercos.pdf`
+2. **Portal do Cliente B2B v1.4 + NCM Contábil (`Chamado #66`):**
+   - `v1/src/Controllers/PortalClienteController.php` *(NCM real via `classificacaofiscal`, Unidade, CST 3 dígitos, Duplicatas, Cidade/CEP/Fone Filial e `vw_gestor_repre`)*
+   - `v1/src/Controllers/ContabilController.php` *(mesma correção de NCM real via `classificacaofiscal` e Unidade no espelho/relatório contábil)*
+   - `portal/modules/portal-cliente.php` *(layout completo da DANFE com Duplicatas, Base/Valor ST, Transportador/Volumes, NCM/Unid no modal de itens e cache-busting independente)*
+   - `portal/assets/js/portal-cliente.js` *(duplicatas na DANFE, 2FA pré-preenchido, busca por NF/Pedido em Boletos e Pedidos, zero `alert()`)*
+   - `portal/uploads/chamados/chamado_66_portal_cliente_v14.pdf`

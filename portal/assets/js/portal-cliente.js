@@ -66,6 +66,7 @@ function portalClienteHandler(appBase = '') {
 
         modalDanfe: false,
         danfeNota: null,
+        danfeDuplicatas: [],
         danfeItens: [],
 
         modalBoleto: false,
@@ -300,6 +301,12 @@ function portalClienteHandler(appBase = '') {
             }).toString();
             const d = await this.apiAuth(`/portal-cliente/contexto?${qs}`);
             this.escopo = d.escopo || {};
+            if (this.escopo.conta_b2b) {
+                this.formPref2fa = {
+                    whatsapp: this.escopo.whatsapp || '',
+                    preferencia_2fa: this.escopo.preferencia_2fa || 'email'
+                };
+            }
             this.representantes = d.representantes || [];
             this.clientes = d.clientes || [];
             if (this.clientes.length > 0) {
@@ -355,7 +362,7 @@ function portalClienteHandler(appBase = '') {
                 if (this.filtroTituloTipo === 'outros' && b.tem_boleto) return false;
                 if (this.filtroDataIni && String(b.vencimento || '') < this.filtroDataIni) return false;
                 if (this.filtroDataFim && String(b.vencimento || '') > this.filtroDataFim) return false;
-                if (q && !`${b.documento} ${b.nossonumero} ${b.portador_nome}`.toLowerCase().includes(q)) return false;
+                if (q && !`${b.documento} ${b.nossonumero} ${b.portador_nome} ${b.numeronf || ''} ${b.pedidos || ''}`.toLowerCase().includes(q)) return false;
                 return true;
             });
         },
@@ -375,7 +382,7 @@ function portalClienteHandler(appBase = '') {
             return this.pedidos.filter(p => {
                 if (this.filtroDataIni && String(p.data || '') < this.filtroDataIni) return false;
                 if (this.filtroDataFim && String(p.data || '') > this.filtroDataFim) return false;
-                if (q && !`${p.idpedido} ${p.vendedor}`.toLowerCase().includes(q)) return false;
+                if (q && !`${p.idpedido} ${p.vendedor} ${p.numeronf || ''} ${p.status_label || ''}`.toLowerCase().includes(q)) return false;
                 return true;
             });
         },
@@ -390,18 +397,23 @@ function portalClienteHandler(appBase = '') {
             this.modalTitulo = tipo === 'nota' ? `Itens da NF ${obj.numeronf}` : `Itens do Pedido #${obj.idpedido}`;
             this.itensModal = [];
             this.modalItens = true;
-            const d = await this.apiAuth(`/portal-cliente/${tipo}/${obj.idfilial}/${id}/itens`);
-            this.itensModal = d.itens || [];
+            try {
+                const d = await this.apiAuth(`/portal-cliente/${tipo}/${obj.idfilial}/${id}/itens`);
+                this.itensModal = d.itens || [];
+            } catch (e) {
+                this.mostrarToast(e.message || 'Erro ao carregar itens.');
+            }
         },
 
         async abrirDanfe(n) {
             try {
                 const d = await this.apiAuth(`/portal-cliente/nota/${n.idfilial}/${n.idnfs}/danfe`);
                 this.danfeNota = d.nota;
+                this.danfeDuplicatas = d.duplicatas || [];
                 this.danfeItens = d.itens || [];
                 this.modalDanfe = true;
             } catch (e) {
-                alert(e.message || 'Erro ao carregar DANFE.');
+                this.mostrarToast(e.message || 'Erro ao carregar DANFE.');
             }
         },
 
@@ -422,7 +434,7 @@ function portalClienteHandler(appBase = '') {
                     }
                 }, 60);
             } catch (e) {
-                alert(e.message || 'Erro ao carregar boleto.');
+                this.mostrarToast(e.message || 'Erro ao carregar boleto.');
             }
         },
 
@@ -506,10 +518,14 @@ function portalClienteHandler(appBase = '') {
             });
             const d = await resp.json().catch(() => ({}));
             if (!resp.ok || d.success === false) {
-                alert(d.error || 'Erro ao salvar preferências.');
+                this.mostrarToast(d.error || 'Erro ao salvar preferências.');
                 return;
             }
             this.msgPref2fa = d.message;
+            if (this.escopo) {
+                this.escopo.whatsapp = d.whatsapp || '';
+                this.escopo.preferencia_2fa = d.preferencia_2fa || 'email';
+            }
         },
 
         irParaAba(nome) {
