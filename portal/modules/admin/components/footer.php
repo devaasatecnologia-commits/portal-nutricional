@@ -12,10 +12,24 @@ function getAuthToken() {
 function getCsrfToken(token = getAuthToken()) {
     try {
         if (!token) return '';
-        const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+        let base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (base64.length % 4) base64 += '=';
+        const payload = JSON.parse(atob(base64));
         const uid = Number(payload.uid || 0);
         const today = new Date();
-        const date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        let date = '';
+        try {
+            const sp = new Intl.DateTimeFormat('en-CA', {
+                timeZone: 'America/Sao_Paulo',
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit'
+            }).format(today);
+            if (/^\d{4}-\d{2}-\d{2}$/.test(sp)) date = sp;
+        } catch (e) {}
+        if (!date) {
+            date = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
         const value = uid ? `${uid}${date}` : '';
         return value && window.CryptoJS ? CryptoJS.MD5(value).toString() : (value ? btoa(value).substring(0, 32) : '');
     } catch (error) {

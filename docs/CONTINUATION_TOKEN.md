@@ -1,22 +1,32 @@
 # TOKEN DE CONTINUIDADE ATUAL
-Token ativo: `docs/tokens/CONTINUATION-2026-11-19-ETAPA2-DRP-SERVER.md`
-Data de geração: 2026-11-24
-Módulo principal: Chamado #80 v1.3 (Programa 365 Comercial T27 + Loader Global do Portal) & Chamado #32 (Mercos Sandbox Homologação)
-Status: Chamado #80 v1.3 concluído e validado no `ema` (`status = 3`) com PDF e manual v1.3 em `sistema_manuais`; Chamado #32 aguardando e-mail/transcrição da Mercos para envio da lista de entidades e liberação de Sandbox.
+Token ativo: `docs/tokens/CONTINUATION-2026-11-24-emergencia-csrf-flex.md` (unificado com `docs/tokens/CONTINUATION-2026-11-19-ETAPA2-DRP-SERVER.md`)
+Data de geração: 2026-11-25
+Módulos principais:
+- **Chamado #82 (Hotfix Emergencial CSRF / Verba Flex — Solicitante: TIAGO):** erro `403 CSRF token inválido` após `21:00 BRT` corrigido (`222ef73`), unificado na `main` local com todos os recursos de Novembro (`PortalLoader`, B2B `/v1/portal-cliente/` e 2FA WhatsApp Admin), documentado com PDF e sincronizado via `git push origin main`.
+- **Chamado #80 v1.3 (Programa 365 Comercial T27 + Loader Global do Portal):** Auto-Soma inicial, faturamento pela data de chegada/importação do pedido (`COALESCE(pp.data, p.data, n.dataemissao)` igual Mercos), Modo Surpresa no Ranking Geral, 52 PINs e `PortalLoader` global.
+- **Chamado #32 (Mercos Sandbox Homologação):** aguardando e-mail/transcrição da Mercos para envio da lista de entidades e liberação de Sandbox.
 
-## Arquivos alterados/criados para Deploy FTP (cPanel Produção)
-1. **Loader Global de Carregamento (Todo o Portal — `PortalLoader`):**
-   - `portal/assets/js/config.js` *(barra superior animada + overlay `"Carregando dados, aguarde..."` em todas as chamadas `fetch`/`apiFetch` e navegações internas de módulos)*
+---
+
+## Arquivos Obrigatórios para Deploy FTP Hoje (cPanel Produção)
+
+> **ATENÇÃO CRÍTICA DE SINCRONIA:** Como o hotfix de ontem à noite via celular (`AndFTP`) partiu da `origin/main` anterior (26/10), é **obrigatório reenviar hoje os 3 arquivos do item 1** já unificados para manter o hotfix do CSRF **junto** com o `PortalLoader`, a isenção B2B (`/v1/portal-cliente/`) e o 2FA WhatsApp do Admin!
+
+1. **Segurança CSRF Unificada + Loader Global do Portal (Chamado #82 + #80):**
+   - `v1/src/Middleware/CsrfMiddleware.php` *(CSRF `America/Sao_Paulo` + `UTC` + isenção `/v1/portal-cliente/` e `/v1/frota/`)*
+   - `portal/assets/js/config.js` *(CSRF `America/Sao_Paulo` + `uid` via JWT + `PortalLoader` global `"Carregando dados, aguarde..."`)*
+   - `portal/modules/admin/components/footer.php` *(CSRF `America/Sao_Paulo` + 2FA WhatsApp administrativo)*
+   - `portal/uploads/chamados/chamado_82_hotfix_csrf_flex.pdf`
 
 2. **Chamado #80 v1.3 (Programa 365 Comercial - T27):**
-   - `v1/src/Services/Programa365Service.php` *(data de chegada/importação do pedido `COALESCE(pp.data, p.data, n.dataemissao)` igual Mercos, 5 Faixas detalhadas e 52 PINs oficiais)*
-   - `v1/src/Controllers/Programa365Controller.php` *(Auto-Soma inicial `participante_id = 0` por escopo e Modo Surpresa `ocultar_ranking_geral` / `liberar_ranking_gestor`)*
-   - `v1/routes/api.php` *(rota `POST /v1/programa-365/admin/config-visibilidade`)*
+   - `v1/routes/api.php`
+   - `v1/src/Services/Programa365Service.php`
+   - `v1/src/Controllers/Programa365Controller.php`
    - `portal/modules/programa-365.php`
    - `portal/assets/js/programa-365.js`
    - `portal/uploads/chamados/chamado_80_programa_365_t27.pdf`
 
-3. **Entregas anteriores do ciclo (caso ainda não subidas por FTP):**
+3. **Entregas anteriores da semana (caso ainda não subidas por FTP):**
    - **Chamado #70 (Depósito / FIFO):** `v1/src/Services/EnderecoItemService.php`, `v1/src/Controllers/DepositoController.php`, `portal/assets/js/gestao-deposito.js`, `portal/assets/js/desembarque.js`, `portal/uploads/chamados/chamado_70_deposito.pdf`
    - **Verba Flex Cloud:** `v1/src/Services/MercosFlexService.php`, `v1/src/Services/SecretVault.php`
    - **Chamado #32 (Dossiê Mercos):** `portal/uploads/chamados/chamado_32_manual_estrategico_mercos.pdf`
