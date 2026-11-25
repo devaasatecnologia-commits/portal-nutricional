@@ -186,12 +186,51 @@ window.fetchWithAuth = async function(url, options) {
 // ==========================================================================
 // CSRF TOKEN
 // ==========================================================================
+function getCsrfDateSaoPaulo() {
+    var now = new Date();
+    try {
+        var formatted = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/Sao_Paulo',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).format(now);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(formatted)) {
+            return formatted;
+        }
+    } catch (e) {
+        // Fallback para data local abaixo
+    }
+    return now.getFullYear() + '-' +
+        String(now.getMonth() + 1).padStart(2, '0') + '-' +
+        String(now.getDate()).padStart(2, '0');
+}
+
+function getCsrfUid() {
+    try {
+        var token = localStorage.getItem('authToken') ||
+                    sessionStorage.getItem('authToken') ||
+                    localStorage.getItem('token');
+        if (token && token.indexOf('.') !== -1) {
+            var base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+            while (base64.length % 4) base64 += '=';
+            var payload = JSON.parse(atob(base64));
+            if (payload && payload.uid) {
+                return payload.uid;
+            }
+        }
+    } catch (e) {
+        // Fallback para userData abaixo
+    }
+    var userData = JSON.parse(localStorage.getItem('userData') || '{}');
+    return userData.uid || 0;
+}
+
 function getCsrfToken() {
     try {
-        var userData = JSON.parse(localStorage.getItem('userData') || '{}');
-        var uid = userData.uid || 0;
-        var today = new Date().toISOString().slice(0, 10);
-        var str = uid + today;
+        var uid = getCsrfUid();
+        var today = getCsrfDateSaoPaulo();
+        var str = String(uid) + today;
         
         if (typeof CryptoJS !== 'undefined' && CryptoJS.MD5) {
             return CryptoJS.MD5(str).toString();
@@ -219,9 +258,13 @@ function getCsrfToken() {
         
         if (needsCsrf && !isPublicRoute) {
             var csrfToken = getCsrfToken();
-            options.headers = Object.assign({}, options.headers || {}, {
-                'X-CSRF-Token': csrfToken
-            });
+            if (typeof Headers !== 'undefined' && options.headers instanceof Headers) {
+                options.headers.set('X-CSRF-Token', csrfToken);
+            } else {
+                options.headers = Object.assign({}, options.headers || {}, {
+                    'X-CSRF-Token': csrfToken
+                });
+            }
         }
         
         return originalFetch(url, options);

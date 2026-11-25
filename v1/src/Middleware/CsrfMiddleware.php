@@ -51,13 +51,32 @@ class CsrfMiddleware
             }
 
             // Validar CSRF
-            $tokenHeader = $request->getHeaderLine('X-CSRF-Token');
+            $tokenHeader = trim($request->getHeaderLine('X-CSRF-Token'));
 
             $user = $request->getAttribute('user');
-            $expectedToken = $user ? md5($user['uid'] . date('Y-m-d')) : null;
-            $fallbackToken = $user ? substr(base64_encode($user['uid'] . date('Y-m-d')), 0, 32) : null;
+            $uid = $user ? (string)($user['uid'] ?? '') : '';
 
-            if (!$tokenHeader || ($tokenHeader !== $expectedToken && $tokenHeader !== $fallbackToken)) {
+            // Aceita a data no timezone configurado do servidor (America/Sao_Paulo)
+            // e em UTC (gmdate) para evitar falha na janela 21:00-23:59 BRT ou em clientes
+            // com cache antigo de JS / fuso horário divergente.
+            $validDates = array_values(array_unique([
+                date('Y-m-d'),
+                gmdate('Y-m-d'),
+            ]));
+
+            $isValid = false;
+            if ($tokenHeader !== '' && $uid !== '') {
+                foreach ($validDates as $dateStr) {
+                    $expectedToken = md5($uid . $dateStr);
+                    $fallbackToken = substr(base64_encode($uid . $dateStr), 0, 32);
+                    if (hash_equals($expectedToken, $tokenHeader) || hash_equals($fallbackToken, $tokenHeader)) {
+                        $isValid = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!$isValid) {
                 $response = new \Slim\Psr7\Response();
                 $response->getBody()->write(json_encode(['error' => 'CSRF token inválido']));
                 return $response->withStatus(403)->withHeader('Content-Type', 'application/json');
